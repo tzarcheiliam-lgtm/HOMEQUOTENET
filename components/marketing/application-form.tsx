@@ -301,21 +301,30 @@ export function ApplicationForm({
               {state.message}
             </p>
             {/*
-              Only offered when a real inbox is configured — telling someone to
-              email us while content/site.ts still holds a placeholder would be
-              a dead end.
+              A delivery failure means nothing was stored, so the applicant
+              needs a route that does not depend on the form. Only offered
+              when a real inbox is configured — pointing someone at a
+              placeholder address would be a dead end.
             */}
             {Object.keys(state.fieldErrors).length === 0 &&
             hasRealContactEmail ? (
-              <p className="mt-1 text-sm text-[var(--hq-text-muted)]">
-                If it keeps failing, email us at{' '}
+              <p className="mt-1.5 text-sm leading-6 text-[var(--hq-text-muted)]">
+                Nothing was saved, so please reach us directly and we will take
+                your details over the phone or by email:{' '}
+                <a
+                  href={`tel:${site.contact.phoneHref}`}
+                  className="font-medium text-[var(--hq-accent-bright)] hover:underline"
+                >
+                  {site.contact.phone}
+                </a>{' '}
+                or{' '}
                 <a
                   href={`mailto:${site.contact.email}`}
                   className="font-medium text-[var(--hq-accent-bright)] hover:underline"
                 >
                   {site.contact.email}
-                </a>{' '}
-                and we will pick it up from there.
+                </a>
+                .
               </p>
             ) : null}
           </div>

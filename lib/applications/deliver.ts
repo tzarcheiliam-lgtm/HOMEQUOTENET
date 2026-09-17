@@ -1,6 +1,12 @@
 import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { ApplicationInput } from '@/lib/validation/application';
+import {
+  resolveDeliveryOutcome,
+  type SinkState,
+  type DeliveryMode,
+} from './outcome';
+import { redactForLog, newSubmissionRef } from './redact';
 
 /**
  * Contractor-application delivery.
@@ -19,12 +25,18 @@ import type { ApplicationInput } from '@/lib/validation/application';
  *       Supabase table to insert into. Requires SUPABASE_SERVICE_ROLE_KEY.
  *       Create it with supabase/migrations/0006_contractor_applications.sql.
  *
- * Behaviour:
- *   - No sink configured  → log-only mode. The full payload is written to the
- *     server log with a findable marker so nothing is lost, and the applicant
- *     still sees success. Intended for local development and first deploys.
- *   - A sink is configured but fails → the action reports an error so the
- *     applicant is given a fallback, and the payload is logged for recovery.
+ * Behaviour — see `resolveDeliveryOutcome` in ./outcome.ts for the rule:
+ *   - A sink accepted it → success, even if the other sink failed.
+ *   - Sinks configured but all failed → error. The payload is logged so it can
+ *     be recovered, and the applicant is given a fallback contact route.
+ *   - Nothing configured, in production → error. A log line is not a delivery,
+ *     and telling a contractor "Application received" when nothing stored it
+ *     loses the lead silently.
+ *   - Nothing configured, in development → success, with the payload logged
+ *     and clearly flagged as a local logging fallback.
+ *
+ * Production failure logs are redacted — see ./redact.ts. They carry enough to
+ * notice and diagnose a failure and nothing that identifies the applicant.
  */
 
 const LOG_MARKER = '[contractor-application]';
@@ -39,11 +51,15 @@ export type ApplicationRecord = ApplicationInput & {
 
 export type DeliveryResult = {
   ok: boolean;
+  /** Short random id correlating the log lines for this submission. */
+  ref: string;
   /** True when at least one durable sink accepted the submission. */
   persisted: boolean;
+  /** Why this outcome was reached; useful in logs and tests. */
+  mode: DeliveryMode;
   sinks: {
-    webhook: 'skipped' | 'ok' | 'failed';
-    supabase: 'skipped' | 'ok' | 'failed';
+    webhook: SinkState;
+    supabase: SinkState;
   };
   errors: string[];
 };
@@ -121,9 +137,13 @@ async function insertSupabase(record: ApplicationRecord): Promise<void> {
 export async function deliverApplication(
   record: ApplicationRecord
 ): Promise<DeliveryResult> {
+  const ref = newSubmissionRef();
+
   const result: DeliveryResult = {
     ok: false,
+    ref,
     persisted: false,
+    mode: 'failed',
     sinks: { webhook: 'skipped', supabase: 'skipped' },
     errors: [],
   };
@@ -163,41 +183,62 @@ export async function deliverApplication(
 
   await Promise.all(tasks);
 
-  const configuredCount = tasks.length;
-  result.persisted =
-    result.sinks.webhook === 'ok' || result.sinks.supabase === 'ok';
+  const outcome = resolveDeliveryOutcome({
+    webhook: result.sinks.webhook,
+    supabase: result.sinks.supabase,
+    isProduction: process.env.NODE_ENV === 'production',
+  });
 
-  if (configuredCount === 0) {
-    // Log-only mode: nothing configured yet. Keep the payload recoverable.
-    console.warn(
-      `${LOG_MARKER} NO DELIVERY SINK CONFIGURED — submission captured in logs only. ` +
-        `Set CONTRACTOR_APPLICATION_WEBHOOK_URL or SUPABASE_SERVICE_ROLE_KEY to persist applications.`,
-      JSON.stringify(record)
-    );
-    result.ok = true;
-    return result;
+  result.ok = outcome.ok;
+  result.persisted = outcome.persisted;
+  result.mode = outcome.mode;
+
+  switch (outcome.mode) {
+    case 'delivered':
+      if (result.errors.length > 0) {
+        // One sink stored it, another did not. Note the failure and carry on —
+        // the application is safe.
+        console.warn(
+          `${LOG_MARKER} ${ref} partial delivery`,
+          JSON.stringify(redactForLog(record, { ref, sinks: result.sinks, errors: result.errors }))
+        );
+      } else {
+        console.info(`${LOG_MARKER} ${ref} delivered for ${record.company}`);
+      }
+      break;
+
+    case 'log_only_dev':
+      /*
+        Development only — this branch is unreachable in production, because
+        `resolveDeliveryOutcome` returns `unconfigured` there instead. The full
+        payload is kept here on purpose: locally it is the only way to see what
+        the form submitted, and there is no durable log to leak into.
+      */
+      console.warn(
+        `${LOG_MARKER} ${ref} NO DELIVERY SINK CONFIGURED — development logging fallback. ` +
+          `This submission was NOT stored anywhere. Set ` +
+          `CONTRACTOR_APPLICATION_WEBHOOK_URL or SUPABASE_SERVICE_ROLE_KEY to persist it.`,
+        JSON.stringify(record)
+      );
+      break;
+
+    case 'unconfigured':
+      // Production with nothing configured. The applicant must not see success.
+      console.error(
+        `${LOG_MARKER} ${ref} NO DELIVERY SINK CONFIGURED IN PRODUCTION — application ` +
+          `refused rather than silently dropped. Configure ` +
+          `CONTRACTOR_APPLICATION_WEBHOOK_URL or SUPABASE_SERVICE_ROLE_KEY.`,
+        JSON.stringify(redactForLog(record, { ref, sinks: result.sinks, errors: result.errors }))
+      );
+      break;
+
+    case 'failed':
+      console.error(
+        `${LOG_MARKER} ${ref} DELIVERY FAILED — every configured sink errored.`,
+        JSON.stringify(redactForLog(record, { ref, sinks: result.sinks, errors: result.errors }))
+      );
+      break;
   }
 
-  if (!result.persisted) {
-    // Everything configured failed. Log the payload so it can be recovered,
-    // and report failure so the applicant gets a fallback route.
-    console.error(
-      `${LOG_MARKER} DELIVERY FAILED — all configured sinks errored. Payload follows for recovery.`,
-      JSON.stringify({ record, errors: result.errors })
-    );
-    result.ok = false;
-    return result;
-  }
-
-  if (result.errors.length > 0) {
-    // Partial success: at least one sink stored it. Note the failure, continue.
-    console.warn(
-      `${LOG_MARKER} partial delivery — ${result.errors.join('; ')}`
-    );
-  } else {
-    console.info(`${LOG_MARKER} delivered for ${record.company}`);
-  }
-
-  result.ok = true;
   return result;
 }

@@ -12,6 +12,7 @@ import {
 } from '@/lib/applications/deliver';
 import type { ApplicationState } from '@/lib/applications/state';
 import { screenSubmission } from '@/lib/applications/spam';
+import { categorizeError } from '@/lib/applications/redact';
 
 /** Collects the submitted values so a failed submit does not lose the user's work. */
 function echoValues(formData: FormData): Record<string, string | string[]> {
@@ -109,10 +110,20 @@ export async function submitApplication(
   try {
     result = await deliverApplication(record);
   } catch (err) {
-    console.error('[contractor-application] unexpected delivery error', err);
+    /*
+      Never log `err` or the record directly here. A thrown delivery error can
+      carry a webhook URL, a connection string or a bearer token, and the record
+      carries the applicant's contact details. Both stay out of the log.
+    */
     console.error(
-      '[contractor-application] payload for recovery',
-      JSON.stringify(record)
+      '[contractor-application] unexpected delivery error',
+      JSON.stringify({
+        error_category: categorizeError(
+          err instanceof Error ? err.message : String(err)
+        ),
+        company: record.company,
+        submitted_at: record.submitted_at,
+      })
     );
     return {
       status: 'error',
