@@ -161,6 +161,79 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /*
+    The CRM is a light surface and has no dark variant wired up (.dark exists
+    as a token set but is never applied). Say so, so the browser builds the
+    native chrome it owns — <select> popups above all — from the light palette
+    instead of the visitor's OS preference. Without it, a contractor on a
+    dark-mode machine gets a dark popup behind our dark option text.
+
+    If .dark is ever switched on, the rule below flips with it.
+  */
+  :root {
+    color-scheme: light;
+  }
+
+  .dark {
+    color-scheme: dark;
+  }
+
+  /*
+    An <option> inherits its colour from the <select> but not its background —
+    the popup is drawn by the browser, not laid out in the page — so the
+    surface has to be named explicitly or the UA picks it. Stated here rather
+    than on the component so every native dropdown in the CRM matches,
+    including any that do not go through components/ui/select.
+
+    The marketing site overrides these under .hq (see marketing.css); that
+    selector is more specific, so it wins regardless of sheet order.
+  */
+  select option,
+  select optgroup {
+    background-color: var(--popover);
+    color: var(--popover-foreground);
+  }
+
+  /* Placeholder rows ("Bulk actions…") and genuinely unavailable choices. */
+  select option:disabled {
+    color: var(--muted-foreground);
+  }
+
+  select option:checked,
+  select option:hover {
+    background-color: var(--accent);
+    color: var(--accent-foreground);
+  }
+
+  /*
+    A placeholder row is disabled *and* selected, so the highlight rule above
+    claims it. Take it back out of the highlight entirely — an unselectable row
+    should not look like the current choice — and dim it on the plain popup
+    surface, where --muted-foreground is 4.8:1. (On --accent it lands at 4.4:1
+    and misses AA.)
+  */
+  select option:disabled:checked,
+  select option:disabled:hover {
+    background-color: var(--popover);
+    color: var(--muted-foreground);
+  }
+}
+
+/*
+  Dim the closed control while it is still showing a placeholder, so an
+  unanswered field never looks answered.
+
+  Matched on option[value=''][disabled] rather than option[value=''] alone: an
+  empty option that is NOT disabled is a real choice ("All statuses", "Assigned
+  or not") and must keep full-strength text.
+
+  Deliberately outside @layer base. The control carries Tailwind's
+  `text-foreground`, and a layered rule loses to an unlayered utility no matter
+  how specific it is — inside the layer this silently did nothing.
+*/
+select:has(option[value=''][disabled]:checked) {
+  color: var(--muted-foreground);
 }
 
 /*

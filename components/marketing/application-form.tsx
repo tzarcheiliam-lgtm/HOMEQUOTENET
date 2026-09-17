@@ -151,7 +151,18 @@ function Select({
         defaultValue={defaultValue ?? ''}
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? `${id}-error` : undefined}
-        className={cn(controlClass, 'appearance-none bg-[right_1rem_center] bg-no-repeat pr-10')}
+        /*
+          The chevron's position is written as bg-[position:...] rather than
+          bg-[right_1rem_center]. Spelled the short way, tailwind-merge reads it
+          as a bg-* utility conflicting with controlClass's bg-[var(--hq-bg)]
+          and drops the colour, leaving the control transparent — it only looked
+          right because the card behind it happens to be dark. Naming the
+          property keeps both.
+        */
+        className={cn(
+          controlClass,
+          'appearance-none bg-[position:right_1rem_center] bg-no-repeat pr-10'
+        )}
         style={{
           backgroundImage:
             "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%236c7583' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E\")",

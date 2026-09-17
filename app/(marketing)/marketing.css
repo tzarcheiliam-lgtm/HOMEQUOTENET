@@ -35,9 +35,9 @@
       navy  #042247   the roofline mark and "HOME" / "NETWORK" wordmark
       slate #656a74   the secondary "QUOTE" wordmark and tagline
 
-    The navy is far too dark to carry a call to action on a near-black page â€”
+    The navy is far too dark to carry a call to action on a near-black page —
     a button filled with it reads as an empty box. So the interactive accent is
-    the same hue (212Â°) lifted until white text clears AA on it, and the navy
+    the same hue (212°) lifted until white text clears AA on it, and the navy
     itself is kept for branded surfaces and the scrims over photography.
   */
   --hq-navy: #042247;
@@ -57,6 +57,16 @@
   background-color: var(--hq-bg);
   color: var(--hq-text);
   -webkit-font-smoothing: antialiased;
+
+  /*
+    Declares the marketing site as a dark surface to the browser itself, not
+    just to our own CSS. Without this the UA renders every piece of native
+    chrome it owns — the <select> popup, scrollbars, autofill, date pickers —
+    from the light system palette, which is what put white option text on a
+    white popup. Engines that ignore our <option> colours (Safari builds its
+    own popup) still honour this, so it is the half of the fix that travels.
+  */
+  color-scheme: dark;
 }
 
 /*
@@ -65,6 +75,16 @@
 */
 body:has(.hq) {
   background-color: #08090b;
+}
+
+/*
+  globals.css declares the document light for the CRM's sake. On a marketing
+  page that would leave the root — and so the page scrollbar — on the light
+  palette against a near-black site, so flip the whole document while one is
+  mounted. The .hq rule above still covers controls nested inside it.
+*/
+html:has(.hq) {
+  color-scheme: dark;
 }
 
 /* Selection follows the accent. */
@@ -381,4 +401,80 @@ body:has(.hq) {
   .hq-lightbox-inner {
     padding: 24px 24px 48px;
   }
+}
+
+/* ---- Native form controls ----------------------------------------------- */
+
+/*
+  <select> and its popup.
+
+  An <option> inherits colour from its <select> but NOT the select's
+  background, because the popup is drawn by the browser rather than laid out in
+  the page. So a select styled for a dark page — white text on --hq-bg — hands
+  the browser white text and lets it pick the background itself. On a
+  light-scheme UA that background is white, and the list becomes invisible.
+
+  Both halves therefore have to be stated: `color-scheme: dark` above tells the
+  UA which palette to build the popup from, and the rules here set the surface
+  and text explicitly for the engines that let us. Chrome, Edge and Firefox use
+  these values directly; Safari draws its own popup and follows color-scheme.
+*/
+
+.hq select {
+  color-scheme: dark;
+}
+
+.hq select option,
+.hq select optgroup {
+  background-color: var(--hq-surface-2);
+  color: var(--hq-text);
+}
+
+/* An option that cannot be chosen, dimmed but still readable. */
+.hq select option:disabled {
+  color: var(--hq-text-muted);
+}
+
+/*
+  The closed control while it is still showing its placeholder, so an
+  unanswered field never looks answered. --hq-text-dim is 4.9:1 on the control's
+  --hq-bg, secondary against the --hq-text a real answer gets.
+
+  Matched on option[value=''][disabled] rather than option[value=''] alone: an
+  empty option that is NOT disabled would be a real choice and must keep
+  full-strength text.
+*/
+.hq select:has(option[value=''][disabled]:checked) {
+  color: var(--hq-text-dim);
+}
+
+/*
+  The highlighted row — hovered, or moved to with the arrow keys. Chrome on
+  Windows paints this from the system accent and ignores a background here,
+  which is fine: under color-scheme: dark that highlight is already a
+  dark-palette blue carrying white text. Where the engine does honour it, the
+  row lands on the site's own accent instead.
+
+  Declared after :disabled so a highlighted row wins over the dim treatment,
+  then the pair below takes the placeholder back out of it — it is disabled
+  *and* selected, so it would otherwise be asked to draw --hq-text-dim on
+  accent blue at 1.6:1. An unselectable row should not look like the current
+  choice anyway, so it keeps the plain popup surface and steps down to
+  --hq-text-muted, which clears AA there where --hq-text-dim does not.
+*/
+.hq select option:checked,
+.hq select option:hover {
+  background-color: var(--hq-accent);
+  color: #fff;
+}
+
+.hq select option:disabled:checked,
+.hq select option:disabled:hover {
+  background-color: var(--hq-surface-2);
+  color: var(--hq-text-muted);
+}
+
+.hq select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
