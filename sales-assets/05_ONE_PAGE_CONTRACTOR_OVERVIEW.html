@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>HomeQuote Network — Contractor Overview</title>
+<!--
+  ONE-PAGE CONTRACTOR OVERVIEW
+  ----------------------------
+  Open in a browser → Print → "Save as PDF". Set margins to "None" and enable
+  "Background graphics" so the dark theme renders. Designed to fit one A4/Letter
+  page.
+
+  Before sending: replace every [BRACKET] placeholder below.
+  Do not add testimonials, logos, counters, or results that are not verified.
+-->
+<style>
+  @page { size: A4; margin: 0; }
+
+  :root {
+    --bg: #08090b;
+    --raised: #0d0f13;
+    --surface: #111419;
+    --line: #1e232c;
+    --line-2: #2a313c;
+    --text: #f4f6f8;
+    --muted: #9aa3b0;
+    --dim: #6c7583;
+    --accent: #3d7dff;
+    --accent-bright: #5b93ff;
+    --glow: rgba(61,125,255,0.14);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    font-size: 9.6pt;
+    line-height: 1.45;
+  }
+
+  .sheet {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 0 auto;
+    padding: 13mm 14mm 10mm;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .sheet::before {
+    content: "";
+    position: absolute;
+    top: -120mm; left: 50%;
+    width: 220mm; height: 170mm;
+    transform: translateX(-50%);
+    background: radial-gradient(ellipse at center, var(--glow), transparent 68%);
+    pointer-events: none;
+  }
+
+  .inner { position: relative; }
+
+  /* ---- Header ---- */
+  header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10mm;
+    padding-bottom: 5mm;
+    border-bottom: 1px solid var(--line-2);
+  }
+
+  .brand { display: flex; align-items: center; gap: 2.6mm; }
+
+  .mark {
+    width: 8mm; height: 8mm;
+    border-radius: 2mm;
+    background: linear-gradient(135deg, var(--accent-bright), #1e3a6b);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .mark svg { width: 4.6mm; height: 4.6mm; }
+
+  .brand-name { font-size: 12pt; font-weight: 700; letter-spacing: -0.02em; }
+  .brand-name span { color: var(--dim); font-weight: 600; }
+
+  .header-right { text-align: right; font-size: 8pt; color: var(--muted); line-height: 1.6; }
+  .header-right strong { color: var(--text); font-weight: 600; }
+
+  /* ---- Hero ---- */
+  .hero { padding: 6mm 0 5mm; }
+
+  .eyebrow {
+    font-size: 7.2pt; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.16em;
+    color: var(--accent-bright);
+  }
+
+  h1 {
+    font-size: 21pt; font-weight: 700;
+    letter-spacing: -0.028em; line-height: 1.12;
+    margin-top: 2.6mm;
+  }
+
+  .lede { margin-top: 3mm; color: var(--muted); font-size: 10pt; line-height: 1.55; max-width: 165mm; }
+
+  /* ---- Offer strip ---- */
+  .strip {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 2mm; margin-top: 5mm;
+  }
+  .strip div {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 2.4mm;
+    padding: 3mm 3.2mm;
+  }
+  .strip dt { font-size: 7pt; text-transform: uppercase; letter-spacing: 0.1em; color: var(--dim); font-weight: 700; }
+  .strip dd { margin-top: 1.4mm; font-size: 8.6pt; font-weight: 600; line-height: 1.35; }
+
+  /* ---- Sections ---- */
+  section { margin-top: 6mm; }
+
+  h2 {
+    font-size: 10.5pt; font-weight: 700; letter-spacing: -0.015em;
+    padding-bottom: 1.8mm; margin-bottom: 3mm;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; }
+  .cols-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm; }
+
+  ul { list-style: none; }
+  li { position: relative; padding-left: 4.4mm; margin-bottom: 1.7mm; color: var(--muted); }
+  li::before {
+    content: ""; position: absolute; left: 0; top: 1.5mm;
+    width: 1.5mm; height: 1.5mm; border-radius: 50%; background: var(--accent);
+  }
+  li strong { color: var(--text); font-weight: 600; }
+
+  .steps { counter-reset: s; }
+  .steps li { padding-left: 6.5mm; margin-bottom: 2.4mm; }
+  .steps li::before {
+    counter-increment: s; content: counter(s, decimal-leading-zero);
+    width: auto; height: auto; border-radius: 0; background: none;
+    font-size: 7.4pt; font-weight: 700; color: var(--accent-bright);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    top: 0.3mm;
+  }
+
+  .tags { display: flex; flex-wrap: wrap; gap: 1.6mm; }
+  .tag {
+    border: 1px solid var(--line-2); border-radius: 1.8mm;
+    padding: 1.3mm 2.4mm; font-size: 8pt; color: var(--muted);
+  }
+
+  /* ---- Managed box ---- */
+  .managed {
+    border: 1px dashed var(--line-2); border-radius: 2.6mm;
+    padding: 4mm; background: rgba(17,20,25,0.55);
+  }
+  .managed h3 { font-size: 9.4pt; font-weight: 700; }
+  .managed p { margin-top: 1.6mm; color: var(--muted); font-size: 8.4pt; }
+  .managed .tags { margin-top: 2.6mm; }
+
+  /* ---- CTA ---- */
+  .cta {
+    margin-top: 6mm;
+    border: 1px solid var(--accent); border-radius: 3mm;
+    background: linear-gradient(180deg, rgba(61,125,255,0.14), rgba(61,125,255,0.03));
+    padding: 5mm;
+    display: flex; align-items: center; justify-content: space-between; gap: 8mm;
+  }
+  .cta h3 { font-size: 12pt; font-weight: 700; letter-spacing: -0.02em; }
+  .cta p { margin-top: 1.6mm; color: var(--muted); font-size: 8.6pt; max-width: 105mm; }
+  .cta-btn {
+    background: var(--accent); color: #fff;
+    border-radius: 20mm; padding: 3mm 6mm;
+    font-weight: 700; font-size: 9.4pt; white-space: nowrap;
+  }
+  .cta-url { display: block; margin-top: 1.6mm; font-size: 7.6pt; color: var(--accent-bright); text-align: center; }
+
+  /* ---- Footer ---- */
+  footer {
+    margin-top: 5mm; padding-top: 3.4mm;
+    border-top: 1px solid var(--line);
+    font-size: 7.2pt; color: var(--dim); line-height: 1.55;
+  }
+  footer strong { color: var(--muted); font-weight: 600; }
+
+  @media print {
+    body { background: var(--bg) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .sheet { margin: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="sheet"><div class="inner">
+
+  <header>
+    <div class="brand">
+      <div class="mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 11.5 12 5l8 6.5"/><path d="M7 13v5.5h10V13"/>
+        </svg>
+      </div>
+      <div class="brand-name">HomeQuote<span> Network</span></div>
+    </div>
+    <div class="header-right">
+      <strong>www.homequotenetwork.com</strong><br />
+      Founder: Liam Tzarchei<br />
+      Operated by Tzarchei Investments
+    </div>
+  </header>
+
+  <div class="hero">
+    <div class="eyebrow">Pool remodeling contractors — Southern California</div>
+    <h1>Qualified homeowner leads.<br />Pay per valid opportunity.</h1>
+    <p class="lede">
+      We agree on what a valid lead looks like. We send matching homeowner opportunities
+      in your approved service area. You pay for the valid leads delivered. You handle
+      the estimate and the close.
+    </p>
+  </div>
+
+  <dl class="strip">
+    <div><dt>Model</dt><dd>Pay per valid lead</dd></div>
+    <div><dt>Retainer</dt><dd>None required to start</dd></div>
+    <div><dt>Commitment</dt><dd>Agreed test volume</dd></div>
+    <div><dt>Terms</dt><dd>In writing before launch</dd></div>
+  </dl>
+
+  <section>
+    <h2>Project categories</h2>
+    <div class="tags">
+      <span class="tag">Pool remodeling</span>
+      <span class="tag">Resurfacing</span>
+      <span class="tag">Replastering</span>
+      <span class="tag">Tile &amp; coping</span>
+      <span class="tag">Equipment upgrades</span>
+      <span class="tag">Baja shelves &amp; structural</span>
+      <span class="tag">Pool decking</span>
+      <span class="tag">Complete renovation</span>
+      <span class="tag">Backyard transformations</span>
+      <span class="tag">Outdoor living</span>
+    </div>
+  </section>
+
+  <section>
+    <div class="cols">
+      <div>
+        <h2>How it works</h2>
+        <ul class="steps">
+          <li><strong>Define the market.</strong> Project types, service areas, lead standards, capacity, and pricing — agreed first.</li>
+          <li><strong>Generate demand.</strong> We create and manage the homeowner acquisition campaigns and funnels.</li>
+          <li><strong>Deliver qualified leads.</strong> Matching enquiries reach you with the project and contact information available.</li>
+          <li><strong>Contact and close.</strong> You call quickly, run the estimate, and control the sale.</li>
+        </ul>
+      </div>
+      <div>
+        <h2>What counts as a valid lead</h2>
+        <ul>
+          <li>A real homeowner, property owner, or authorized decision-maker</li>
+          <li>Accurate contact information</li>
+          <li>Project inside your approved service area</li>
+          <li>The homeowner requested a relevant service</li>
+          <li>The project matches your agreed services</li>
+          <li>Not fake or fraudulent</li>
+          <li>Follows the duplicate and exclusivity rules in your agreement</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="cols">
+      <div>
+        <h2>Your responsibilities</h2>
+        <ul>
+          <li>Contact each lead quickly</li>
+          <li>Provide the estimate</li>
+          <li>Run your own sales process and close the job</li>
+          <li>Flag invalid leads inside the agreed dispute window</li>
+          <li>Keep capacity available for the agreed volume</li>
+          <li>Maintain licensing and insurance</li>
+        </ul>
+      </div>
+      <div>
+        <h2>What we do not promise</h2>
+        <ul>
+          <li>That every homeowner answers or replies</li>
+          <li>That every lead books an appointment or requests an estimate</li>
+          <li>That every lead purchases</li>
+          <li>Any specific revenue, return on ad spend, or profitability</li>
+          <li>That every lead is exclusive — exclusivity depends on your agreement</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="managed">
+      <h3>Optional: Managed Growth System</h3>
+      <p>Need more than leads? We can also build and manage the entire customer-acquisition system. Optional, quoted separately, and not required to receive leads.</p>
+      <div class="tags">
+        <span class="tag">Meta advertising</span>
+        <span class="tag">Landing pages</span>
+        <span class="tag">Lead forms</span>
+        <span class="tag">CRM setup</span>
+        <span class="tag">SMS &amp; email follow-up</span>
+        <span class="tag">Speed-to-lead</span>
+        <span class="tag">Appointment booking</span>
+        <span class="tag">Pipeline tracking</span>
+        <span class="tag">Reporting &amp; optimization</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="cta">
+    <div>
+      <h3>See if your market is available.</h3>
+      <p>Tell us what projects you want, where you work, and how many additional opportunities your team can handle.</p>
+    </div>
+    <div>
+      <div class="cta-btn">Check Lead Availability</div>
+      <span class="cta-url">www.homequotenetwork.com/apply</span>
+    </div>
+  </div>
+
+  <footer>
+    <strong>Contact:</strong> Liam Tzarchei · 747-217-5713 · homequotenetwork@gmail.com · www.homequotenetwork.com<br />
+    HomeQuote Network does not guarantee estimates, appointments, sales, revenue, or profitability. Contractors are
+    responsible for contacting, estimating, selling, and closing their leads. Lead pricing depends on project types,
+    market, qualification requirements, expected volume, and exclusivity, and is confirmed before launch. Final
+    qualification, duplicate, replacement, exclusivity, and dispute terms are defined in each partner agreement.
+    Operated by Tzarchei Investments.
+  </footer>
+
+</div></div>
+</body>
+</html>

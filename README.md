@@ -11,6 +11,19 @@ contact through appointment, estimate, sale, and revenue.
 - **shadcn/ui** components
 - Deploys to **Vercel**
 
+## Two applications, one codebase
+
+| Surface | Routes | Audience |
+|---|---|---|
+| **Public marketing site** | `/`, `/pool-contractors`, `/lead-standards`, `/apply`, `/privacy`, `/terms` | Contractors being prospected |
+| **Internal CRM** | `/app/*` | Admin, setters, contractors (auth required) |
+
+The marketing site lives in the `app/(marketing)/` route group with its own dark
+theme, scoped to a `.hq` wrapper in `app/(marketing)/marketing.css` so it cannot
+affect the CRM's light shadcn tokens. See
+[`MARKETING_SITE.md`](MARKETING_SITE.md) for the content model, the contractor
+application form, and how to add a new niche.
+
 ## Core architecture
 
 A few decisions you should know before touching the code:

@@ -50,7 +50,9 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
-  const isProtected = pathname.startsWith('/app');
+  // Match the /app segment exactly — a bare `startsWith('/app')` also catches
+  // public marketing routes like /apply.
+  const isProtected = pathname === '/app' || pathname.startsWith('/app/');
   const isAuthPage = pathname === '/sign-in' || pathname === '/sign-up';
 
   // Not signed in and trying to reach the app → send to sign-in.

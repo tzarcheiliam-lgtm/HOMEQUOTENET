@@ -1,0 +1,210 @@
+/*
+  Marketing-site theme.
+
+  Scoped deliberately to `.hq` so it cannot leak into the /app CRM, which keeps
+  its own shadcn light tokens from globals.css. Every marketing surface renders
+  inside <div class="hq"> (see app/(marketing)/layout.tsx).
+*/
+
+.hq {
+  /* Foundation: near-black charcoal, not pure black. */
+  --hq-bg: #08090b;
+  --hq-bg-raised: #0d0f13;
+  --hq-surface: #111419;
+  --hq-surface-2: #161a21;
+
+  /* Borders: soft, low-contrast hairlines. */
+  --hq-line: #1e232c;
+  --hq-line-strong: #2a313c;
+
+  /*
+    Type. Contrast ratios are against --hq-bg (#08090b) and all meet WCAG AA
+    (4.5:1) for normal text. Re-measure if you change any of them.
+      --hq-text        19.4:1
+      --hq-text-muted   7.7:1
+      --hq-text-dim     4.9:1
+  */
+  --hq-text: #f4f6f8;
+  --hq-text-muted: #9aa3b0;
+  --hq-text-dim: #767e8c;
+
+  /*
+    Controlled electric blue.
+    --hq-accent is a *fill* colour carrying white text, so it is tuned for
+    4.75:1 against #fff rather than for maximum vibrancy.
+    --hq-accent-bright is a *text* colour on dark (6.7:1) and stays brighter.
+  */
+  --hq-accent: #2d6ce8;
+  --hq-accent-bright: #5b93ff;
+  --hq-accent-dim: #1e3a6b;
+  --hq-accent-glow: rgba(61, 125, 255, 0.16);
+
+  /* Positive / negative, used sparingly in the system preview. */
+  --hq-good: #35c07f;
+  --hq-bad: #e0576b;
+  --hq-warn: #e5a53f;
+
+  background-color: var(--hq-bg);
+  color: var(--hq-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+  The root layout paints the body with the CRM's light token. When a marketing
+  page is mounted, repaint the body so overscroll/rubber-band areas stay dark.
+*/
+body:has(.hq) {
+  background-color: #08090b;
+}
+
+/* Selection follows the accent. */
+.hq ::selection {
+  background: var(--hq-accent);
+  color: #fff;
+}
+
+/* ---- Ambient gradients -------------------------------------------------- */
+
+/* A single soft blue bloom. Used behind the hero and final CTA only. */
+.hq-glow {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.hq-glow::before {
+  content: '';
+  position: absolute;
+  top: -30%;
+  left: 50%;
+  width: min(1100px, 130vw);
+  height: min(760px, 90vh);
+  transform: translateX(-50%);
+  background: radial-gradient(
+    ellipse at center,
+    var(--hq-accent-glow) 0%,
+    rgba(61, 125, 255, 0.06) 38%,
+    transparent 70%
+  );
+}
+
+/* Faint technical grid. Signals "system", not "agency". */
+.hq-grid::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(
+      to right,
+      rgba(255, 255, 255, 0.028) 1px,
+      transparent 1px
+    ),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 20%, transparent 75%);
+  -webkit-mask-image: radial-gradient(
+    ellipse 80% 60% at 50% 0%,
+    #000 20%,
+    transparent 75%
+  );
+}
+
+/* Hairline rule that fades at both ends. */
+.hq-rule {
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--hq-line-strong) 18%,
+    var(--hq-line-strong) 82%,
+    transparent
+  );
+}
+
+/* ---- Surfaces ----------------------------------------------------------- */
+
+.hq-card {
+  background: linear-gradient(180deg, var(--hq-surface) 0%, var(--hq-bg-raised) 100%);
+  border: 1px solid var(--hq-line);
+  border-radius: 14px;
+}
+
+/* Subtle lift on interactive cards. Motion stays professional: short + small. */
+.hq-card-hover {
+  transition: border-color 200ms ease, transform 200ms ease, background-color 200ms ease;
+}
+
+.hq-card-hover:hover {
+  border-color: var(--hq-line-strong);
+  transform: translateY(-2px);
+}
+
+/* Minimal glass, used only on the sticky header. */
+.hq-glass {
+  background: rgba(8, 9, 11, 0.72);
+  backdrop-filter: saturate(150%) blur(12px);
+  -webkit-backdrop-filter: saturate(150%) blur(12px);
+}
+
+/* ---- Focus -------------------------------------------------------------- */
+
+.hq :where(a, button, input, select, textarea, summary):focus-visible {
+  outline: 2px solid var(--hq-accent-bright);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ---- Motion ------------------------------------------------------------- */
+
+@keyframes hq-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.hq-rise {
+  animation: hq-rise 620ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes hq-pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.82);
+  }
+}
+
+.hq-pulse {
+  animation: hq-pulse-dot 2.4s ease-in-out infinite;
+}
+
+/* Respect reduced-motion across the whole marketing site. */
+@media (prefers-reduced-motion: reduce) {
+  .hq *,
+  .hq *::before,
+  .hq *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .hq-card-hover:hover {
+    transform: none;
+  }
+}
+
+/* Anchored sections must clear the sticky header. */
+.hq [id] {
+  scroll-margin-top: 92px;
+}
