@@ -35,9 +35,9 @@
       navy  #042247   the roofline mark and "HOME" / "NETWORK" wordmark
       slate #656a74   the secondary "QUOTE" wordmark and tagline
 
-    The navy is far too dark to carry a call to action on a near-black page —
+    The navy is far too dark to carry a call to action on a near-black page â€”
     a button filled with it reads as an empty box. So the interactive accent is
-    the same hue (212°) lifted until white text clears AA on it, and the navy
+    the same hue (212Â°) lifted until white text clears AA on it, and the navy
     itself is kept for branded surfaces and the scrims over photography.
   */
   --hq-navy: #042247;
@@ -323,5 +323,62 @@ body:has(.hq) {
   .hq-photo-zoom:hover > img {
     transition: none;
     transform: none;
+  }
+}
+
+/* ---- Expandable proof screenshots --------------------------------------- */
+
+/*
+  Proof assets (Ads Manager reports, the appointment calendar) are screenshots
+  of interfaces, not photography. They get no scrim and object-fit: contain, so
+  nothing is cropped and no navy cast is laid over numbers a visitor is being
+  asked to verify.
+*/
+.hq-expandable {
+  display: block;
+  background-color: var(--hq-surface);
+  transition: border-color 200ms ease;
+}
+
+.hq-expandable > img {
+  object-fit: contain;
+}
+
+.hq-expandable:hover {
+  border-color: var(--hq-line-strong);
+}
+
+/* The expanded view. A native <dialog>, so Esc and focus trapping are free. */
+.hq-lightbox {
+  width: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.hq-lightbox::backdrop {
+  background: rgb(4 20 40 / 0.88);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.hq-lightbox-inner {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 16px 16px 40px;
+}
+
+@media (min-width: 640px) {
+  .hq-lightbox-inner {
+    padding: 24px 24px 48px;
   }
 }

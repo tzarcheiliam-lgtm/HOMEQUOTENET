@@ -17,6 +17,10 @@ import { SystemPreview } from '@/components/marketing/system-preview';
 import { AfterApplySection } from '@/components/marketing/after-apply';
 import { FaqSection, FaqJsonLd } from '@/components/marketing/faq';
 import { ProofPlaceholderSection } from '@/components/marketing/proof-placeholder';
+import {
+  CampaignSnapshotSection,
+  BookedEstimateSection,
+} from '@/components/marketing/campaign-proof';
 
 export const metadata: Metadata = {
   title: 'Pool Remodeling Appointments, Booked On Your Calendar.',
@@ -60,6 +64,8 @@ export default function HomePage() {
       <FaqJsonLd items={poolNiche.faq} />
 
       <Hero niche={poolNiche} />
+      <CampaignSnapshotSection />
+      <BookedEstimateSection />
       <ProjectStrip />
       <ProblemSection niche={poolNiche} />
       <ProcessSection niche={poolNiche} />
