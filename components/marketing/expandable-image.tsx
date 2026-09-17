@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useRef } from 'react';
 import Image from 'next/image';
 import { Expand, X } from 'lucide-react';
 import type { ProofImage } from '@/content/proof';
@@ -46,31 +46,21 @@ export function ExpandableImage({
   const open = useCallback(() => dialogRef.current?.showModal(), []);
   const close = useCallback(() => dialogRef.current?.close(), []);
 
-  // showModal() locks scrolling in most browsers but not all; do it explicitly
-  // so the page behind never drifts while the screenshot is open.
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-
-    const unlock = () => {
-      document.documentElement.style.overflow = '';
-    };
-
-    dialog.addEventListener('close', unlock);
-    return () => {
-      dialog.removeEventListener('close', unlock);
-      unlock();
-    };
-  }, []);
+  /*
+    Scroll locking is CSS, not JavaScript: see html:has(dialog.hq-lightbox[open])
+    in marketing.css. An earlier version set documentElement.style.overflow when
+    opening and cleared it from a 'close' listener, and the listener did not
+    always run — closing with Esc left the page stuck at overflow: hidden and
+    the visitor unable to scroll. A declarative rule cannot desynchronise from
+    the dialog's state, and where :has is unsupported it simply falls back to
+    the browser's own modal behaviour rather than to a frozen page.
+  */
 
   return (
     <figure className={cn('m-0', className)}>
       <button
         type="button"
-        onClick={() => {
-          document.documentElement.style.overflow = 'hidden';
-          open();
-        }}
+        onClick={open}
         aria-label={label}
         className="hq-photo hq-expandable group block w-full cursor-zoom-in p-0"
         style={{ aspectRatio: `${image.width} / ${image.height}` }}

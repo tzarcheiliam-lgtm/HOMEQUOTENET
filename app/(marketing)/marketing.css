@@ -368,6 +368,20 @@ html:has(.hq) {
   border-color: var(--hq-line-strong);
 }
 
+/*
+  Hold the page still behind an open lightbox.
+
+  Declarative on purpose. Doing this from JavaScript means setting the style on
+  open and clearing it on close, and the clearing half is the half that fails —
+  a missed 'close' event leaves the document stuck at overflow: hidden and the
+  visitor unable to scroll. Tied to [open] instead, the lock cannot outlive the
+  dialog, and a browser without :has just falls back to its own modal
+  behaviour.
+*/
+html:has(dialog.hq-lightbox[open]) {
+  overflow: hidden;
+}
+
 /* The expanded view. A native <dialog>, so Esc and focus trapping are free. */
 .hq-lightbox {
   width: 100%;
