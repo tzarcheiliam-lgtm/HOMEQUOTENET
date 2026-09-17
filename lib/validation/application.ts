@@ -58,15 +58,21 @@ export const RESPONSE_TIMES = [
 export const CRM_OPTIONS = [
   'Yes — GoHighLevel',
   'Yes — another CRM',
-  'No — we track leads manually',
+  'No — we track appointments manually',
   'Not sure',
 ] as const;
 
+/*
+  The stored values are deliberately left alone. `pay_per_lead` is written into
+  a CHECK constraint in supabase/migrations/0006_contractor_applications.sql and
+  into every row already captured, so renaming it would need a migration and a
+  backfill. Only the customer-facing label changes.
+*/
 export const TRACKS = ['pay_per_lead', 'managed'] as const;
 export type Track = (typeof TRACKS)[number];
 
 export const TRACK_LABELS: Record<Track, string> = {
-  pay_per_lead: 'Pay Per Qualified Lead',
+  pay_per_lead: 'Pay Per Booked Appointment',
   managed: 'Full Managed Growth System',
 };
 
@@ -159,7 +165,7 @@ export const applicationSchema = z.object({
   min_project_size: choice(MIN_PROJECT_SIZES, 'Select a minimum project size'),
   monthly_lead_capacity: choice(
     LEAD_CAPACITIES,
-    'Select how many additional leads you can handle'
+    'Select how many additional appointments you can handle'
   ),
   response_time: choice(RESPONSE_TIMES, 'Select your typical response time'),
   uses_crm: choice(CRM_OPTIONS, 'Tell us whether you use a CRM'),

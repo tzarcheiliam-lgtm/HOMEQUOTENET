@@ -23,21 +23,31 @@
       --hq-text        19.4:1
       --hq-text-muted   7.7:1
       --hq-text-dim     4.9:1
+    --hq-text-dim is the logo's slate (#656a74) lifted until it passes AA on
+    this background; the logo value itself is too dark for body text here.
   */
   --hq-text: #f4f6f8;
   --hq-text-muted: #9aa3b0;
   --hq-text-dim: #767e8c;
 
   /*
-    Controlled electric blue.
-    --hq-accent is a *fill* colour carrying white text, so it is tuned for
-    4.75:1 against #fff rather than for maximum vibrancy.
-    --hq-accent-bright is a *text* colour on dark (6.7:1) and stays brighter.
+    Brand colours, sampled from the logo.
+      navy  #042247   the roofline mark and "HOME" / "NETWORK" wordmark
+      slate #656a74   the secondary "QUOTE" wordmark and tagline
+
+    The navy is far too dark to carry a call to action on a near-black page —
+    a button filled with it reads as an empty box. So the interactive accent is
+    the same hue (212°) lifted until white text clears AA on it, and the navy
+    itself is kept for branded surfaces and the scrims over photography.
   */
-  --hq-accent: #2d6ce8;
-  --hq-accent-bright: #5b93ff;
-  --hq-accent-dim: #1e3a6b;
-  --hq-accent-glow: rgba(61, 125, 255, 0.16);
+  --hq-navy: #042247;
+  --hq-navy-deep: #021428;
+  --hq-slate: #656a74;
+
+  --hq-accent: #196dcc;        /* fill, white text on it: 5.13:1 */
+  --hq-accent-bright: #55a0f6; /* text on --hq-bg: 7.35:1 */
+  --hq-accent-dim: #143a6b;
+  --hq-accent-glow: rgba(25, 109, 204, 0.18);
 
   /* Positive / negative, used sparingly in the system preview. */
   --hq-good: #35c07f;
@@ -84,7 +94,7 @@ body:has(.hq) {
   background: radial-gradient(
     ellipse at center,
     var(--hq-accent-glow) 0%,
-    rgba(61, 125, 255, 0.06) 38%,
+    rgba(25, 109, 204, 0.07) 38%,
     transparent 70%
   );
 }
@@ -207,4 +217,111 @@ body:has(.hq) {
 /* Anchored sections must clear the sticky header. */
 .hq [id] {
   scroll-margin-top: 92px;
+}
+
+/* ---- Photography -------------------------------------------------------- */
+
+/*
+  Every photograph on the site sits under a scrim mixed from --hq-navy. That is
+  what stops the imagery reading as a stock gallery: the pool shots come from
+  many different shoots, and the shared navy cast pulls them into one brand.
+  It also buys guaranteed contrast for any text laid over them.
+*/
+
+.hq-photo {
+  position: relative;
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid var(--hq-line);
+  background-color: var(--hq-navy-deep);
+}
+
+.hq-photo > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Shared scrim layer. */
+.hq-scrim::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Hero: dark at the left and bottom so a headline stays readable over it. */
+.hq-scrim-hero::after {
+  background:
+    /*
+      The falloff holds until ~72%, because the hero copy column runs to about
+      two thirds of the container. Releasing it earlier let the end of a
+      paragraph drift onto the bright part of the photograph.
+    */
+    linear-gradient(
+      to right,
+      rgb(4 34 71 / 0.94) 0%,
+      rgb(4 34 71 / 0.86) 45%,
+      rgb(4 34 71 / 0.56) 72%,
+      rgb(4 34 71 / 0.18) 100%
+    ),
+    linear-gradient(to top, rgb(8 9 11 / 0.92) 0%, rgb(8 9 11 / 0) 55%);
+}
+
+/*
+  On a phone the copy runs down most of the frame, so the scrim has to protect
+  a much larger area than on desktop. It stays heavy where the text and buttons
+  sit and opens up towards the top, so the water and sky still read and the
+  photograph does its job of showing a contractor their own trade.
+*/
+@media (max-width: 767px) {
+  .hq-scrim-hero::after {
+    background: linear-gradient(
+      to top,
+      rgb(8 9 11 / 0.95) 6%,
+      rgb(4 34 71 / 0.80) 42%,
+      rgb(4 34 71 / 0.46) 80%,
+      rgb(4 34 71 / 0.26) 100%
+    );
+  }
+}
+
+/* Section imagery: a tint only, enough to unify without dulling the photo. */
+.hq-scrim-soft::after {
+  background: linear-gradient(
+    to top,
+    rgb(4 34 71 / 0.45) 0%,
+    rgb(4 34 71 / 0.10) 60%,
+    rgb(4 34 71 / 0.04) 100%
+  );
+}
+
+/* Full-width band behind the closing call to action. */
+.hq-scrim-band::after {
+  background:
+    linear-gradient(
+      to right,
+      rgb(8 9 11 / 0.90) 0%,
+      rgb(4 34 71 / 0.74) 55%,
+      rgb(8 9 11 / 0.90) 100%
+    ),
+    linear-gradient(to top, rgb(8 9 11 / 0.70) 0%, rgb(8 9 11 / 0.38) 100%);
+}
+
+/* A slow, restrained lift on hover for photos that sit inside a link or card. */
+.hq-photo-zoom > img {
+  transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.hq-photo-zoom:hover > img {
+  transform: scale(1.04);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hq-photo-zoom > img,
+  .hq-photo-zoom:hover > img {
+    transition: none;
+    transform: none;
+  }
 }

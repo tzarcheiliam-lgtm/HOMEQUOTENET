@@ -75,18 +75,18 @@ export function ProofPlaceholderSection() {
       <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         <ProofSlot
           title="CRM screenshot"
-          description="Real lead pipeline view with homeowner personal information redacted."
+          description="Real appointment pipeline view with homeowner personal information redacted."
         />
         <ProofSlot
           title="Meta campaign screenshot"
           description="Ads Manager view. Redact spend if you do not want it public."
         />
         <ProofSlot
-          title="Lead form screenshot"
-          description="The homeowner-facing form, showing the qualifying questions asked."
+          title="Homeowner form screenshot"
+          description="The homeowner-facing form, showing the qualifying questions asked before an appointment is booked."
         />
         <ProofSlot
-          title="Lead notification"
+          title="Appointment notification"
           description="The actual SMS or email a contractor receives, with details redacted."
         />
         <ProofSlot
@@ -126,9 +126,9 @@ export function TestimonialPlaceholder() {
           Placeholder — contractor testimonial
         </p>
         <p className="mx-auto mt-2 max-w-xl text-xs leading-5 text-[var(--hq-text-dim)]">
-          Add a real, attributed quote from a contractor who has received leads,
-          with written permission to publish their name and company. Development
-          only — not shown in production.
+          Add a real, attributed quote from a contractor who has received
+          appointments, with written permission to publish their name and
+          company. Development only — not shown in production.
         </p>
       </div>
     </Container>

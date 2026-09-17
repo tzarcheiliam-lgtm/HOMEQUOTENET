@@ -11,7 +11,7 @@ Never argue, never oversell, and never fix an objection with a promise you canno
 
 ---
 
-## "We already have enough leads."
+## "We already have enough work."
 
 > "Good — that's the right problem to have. Can I ask what you're turning down? Most contractors I talk to are full on the small stuff and still have room for the bigger renovation jobs. If that's not you, I'll leave you alone."
 
@@ -21,51 +21,51 @@ Never argue, never oversell, and never fix an objection with a promise you canno
 
 ---
 
-## "We tried leads before and they were bad."
+## "We tried buying leads before and they were bad."
 
 > "I'd expect that. What went wrong — were they out of your area, were they the wrong kind of job, or was it that nobody picked up the phone?"
 
 *Let them answer, then:*
 
-> "Here's the question that usually matters: when you bought those, did anyone ever put in writing what counted as a valid lead? Almost nobody does, and that's exactly why the argument happens after the fact instead of before.
+> "Here's the question that usually matters: when you bought those, did anyone ever put in writing what counted as a qualified booked appointment? Almost nobody does, and that's exactly why the argument happens after the fact instead of before.
 >
-> That's the part we do differently. The standard, the area, the project types, the duplicate rules, and what happens when a lead doesn't meet the standard — all agreed before we start. It doesn't make every lead perfect. It does mean you know what you bought."
+> And here's the bigger difference: we're not selling you contact details to chase. We call the homeowner, qualify them, and put a specific date and time in your calendar. You're buying an appointment, not a phone number. The standard, the area, the project types, the duplicate and no-show rules — all agreed before we start."
 
 ---
 
-## "How do I know the leads are real?"
+## "How do I know the appointments are real?"
 
 > "Fair. Three things.
 >
 > One — the standard is written down before you pay for anything: a real homeowner or decision-maker, accurate contact details, inside your area, asking about a service on your list.
 >
-> Two — every lead is recorded with its project category, area, and delivery time, so there's a record to check against.
+> Two — every appointment is recorded with its project category, area, and the scheduled slot, so there's a record to check against.
 >
 > Three — if one doesn't meet the standard, there's a dispute process with a window and terms agreed up front, not invented after you complain.
 >
-> And the honest limit: I can tell you a lead met the standard. I can't tell you the homeowner will answer their phone. Nobody can."
+> And the honest limit: I can guarantee the appointment met the standard when we booked it. I can't guarantee the homeowner is standing there when you knock — no-shows and reschedules are covered by the replacement terms in your agreement."
 
 ---
 
 ## "Do I pay if I don't close the job?"
 
-> "Yes. You're paying for the qualified opportunity, not the outcome. I'd rather be blunt about that now than have you find out in week two.
+> "Yes. You're paying for the qualified appointment, not the outcome. I'd rather be blunt about that now than have you find out in week two.
 >
-> What I'd say is this: the close is the part you control. Your pricing, your estimate, how fast you call. If I charged per closed job, I'd be pricing your sales process, and I've got no business doing that."
+> What I'd say is this: the close is the part you control — your pricing, how you present, what you quote. If I charged per closed job, I'd be pricing your sales process, and I've got no business doing that."
 
 ---
 
-## "Are the leads exclusive?"
+## "Are the appointments exclusive?"
 
 > "It depends on the programme and what's in your agreement. Exclusive arrangements are available in some markets and for some project types, and they're priced differently.
 >
-> What I won't tell you is that every lead is automatically exclusive — that's not true at most lead companies and I'm not going to claim it here. Whatever applies to your account gets written into your agreement before launch, so you know exactly what you're buying."
+> What I won't tell you is that every appointment is automatically exclusive — that's not true at most companies in this space and I'm not going to claim it here. Whatever applies to your account gets written into your agreement before launch, so you know exactly what you're buying."
 
 ---
 
-## "How much does each lead cost?"
+## "How much does each appointment cost?"
 
-> "It depends on the project type, the market, how tight the qualification is, the volume, and whether you want exclusivity. A resurfacing lead in one county and a full-renovation lead in another aren't the same thing.
+> "It depends on the project type, the market, how tight the qualification is, the volume, and whether you want exclusivity. A resurfacing appointment in one county and a full-renovation appointment in another aren't the same thing.
 >
 > I could make a number up right now, but you'd be planning against a number I'd have to change later. Give me the area and the project types and I'll come back with a real one — usually same day."
 
@@ -73,11 +73,13 @@ Never argue, never oversell, and never fix an objection with a promise you canno
 
 ---
 
-## "Can you guarantee appointments?"
+## "Can you guarantee the homeowner shows up?"
 
-> "No. And I'd be careful with anyone who does.
+> "No, and be careful with anyone who says otherwise.
 >
-> I can guarantee what a lead has to meet before you're billed for it. I can't guarantee what a homeowner does next — whether they pick up, whether they book, whether they buy. That depends on your pricing, your speed, and your sales process as much as anything I send you."
+> Here's exactly what I do guarantee: anything I bill you as a booked appointment met the standard we agreed and had a confirmed date and time when I delivered it. That's a real commitment and it goes in writing.
+>
+> What I can't guarantee is attendance. People cancel, reschedule, and occasionally forget. That's why no-shows, cancellations and reschedules have written replacement terms in your agreement, so you're not carrying that alone. I also can't promise the appointment becomes an estimate, or the estimate becomes a signed job. That part is your pricing and your sales process."
 
 ---
 
@@ -85,15 +87,15 @@ Never argue, never oversell, and never fix an objection with a promise you canno
 
 > "Understood, and that's a real model — it just isn't this one.
 >
-> The reason: a pay-per-close arrangement means I'm carrying the risk of your pricing, your estimate, your follow-up speed, and your close rate. I've got no visibility or control over any of those. Contractors who are good at all four end up massively overpaying under that model, and the ones who aren't blame the leads.
+> The reason: a pay-per-close arrangement means I'm carrying the risk of your pricing, your estimate, and your close rate. I've got no visibility or control over any of those. Contractors who are good at all three end up massively overpaying under that model, and the ones who aren't blame the appointments.
 >
-> Paying per valid lead keeps it clean — you pay for the opportunity, and the margin on the close stays entirely yours."
+> Paying per qualified booked appointment keeps it clean — you pay for a homeowner sitting in your diary, and the margin on the close stays entirely yours."
 
 ---
 
 ## "Send me some information."
 
-> "Happy to — what's the best email? I'll send the overview page, and the section worth reading is 'what counts as a valid lead.'
+> "Happy to — what's the best email? I'll send the overview page, and the section worth reading is 'what counts as a qualified booked appointment.'
 >
 > One thing though: the information won't tell you the price, because the price depends on your area and project types. That part's a fifteen-minute call. Want me to hold a slot now, or should I follow up after you've read it?"
 
@@ -117,17 +119,17 @@ Never argue, never oversell, and never fix an objection with a promise you canno
 
 *Listen, then:*
 
-> "The difference is what you're paying for. A retainer buys you their time and effort. This buys you a delivered opportunity that meets a standard you agreed in advance.
+> "The difference is what you're paying for. A retainer buys you their time and effort. This buys you a homeowner in your calendar who met a standard you agreed in advance.
 >
-> Plenty of contractors run both. If your agency's producing, keep them. This is a per-lead test alongside it, and you can judge it on its own numbers rather than taking my word for it."
+> Plenty of contractors run both. If your agency's producing, keep them. This is a per-appointment test alongside it, and you can judge it on its own numbers rather than taking my word for it."
 
 ---
 
 ## "I don't want a retainer."
 
-> "Then we agree — that's exactly why the main programme has no monthly retainer. You pay for valid leads delivered, and that's it.
+> "Then we agree — that's exactly why the main programme has no monthly retainer. You pay for qualified appointments delivered, and that's it.
 >
-> There is a managed service where we build and run the whole system, but it's optional, quoted separately, and most contractors shouldn't start there. Start with the leads."
+> There is a managed service where we build and run the whole system, but it's optional, quoted separately, and most contractors shouldn't start there. Start with the appointments."
 
 ---
 
@@ -135,7 +137,7 @@ Never argue, never oversell, and never fix an objection with a promise you canno
 
 > "That's the right instinct, and it's the reason the test exists.
 >
-> I'm not going to show you someone else's numbers and ask you to assume yours will look the same — different pricing, different market, different sales process. What I'd rather do is start you small enough that you can judge the leads against your own numbers, with the standard agreed up front so you know what you're measuring.
+> I'm not going to show you someone else's numbers and ask you to assume yours will look the same — different pricing, different market, different sales process. What I'd rather do is start you small enough that you can judge the appointments against your own numbers, with the standard agreed up front so you know what you're measuring.
 >
 > That's a better answer than a case study, because it's yours."
 
@@ -147,16 +149,16 @@ Never argue, never oversell, and never fix an objection with a promise you canno
 
 > "You shouldn't, yet — you've spoken to me once.
 >
-> What I'd say is judge me on what I'll put in writing before you spend anything: the lead standard, the area, the project types, the price, the duplicate rules, the dispute window, and what happens if a lead doesn't meet the standard. That's a lot more than most people will commit to on a first call.
+> What I'd say is judge me on what I'll put in writing before you spend anything: the qualification standard, the area, the project types, the price, the duplicate and no-show rules, the dispute window, and what happens if an appointment doesn't meet the standard. That's a lot more than most people will commit to on a first call.
 >
-> And judge me on what I'm not claiming. I'm not telling you the leads are guaranteed, exclusive, or that you'll close a certain number. Start small, hold me to the standard we agreed, and decide from there."
+> And judge me on what I'm not claiming. I'm not telling you the homeowner will definitely show, that appointments are exclusive, or that you'll close a certain number. Start small, hold me to the standard we agreed, and decide from there."
 
 ---
 
 ## Things never to say
 
-- "Guaranteed leads" / "guaranteed appointments" / "guaranteed ROI"
-- "All our leads are exclusive"
+- "Guaranteed attendance" / "guaranteed sales" / "guaranteed ROI"
+- "All our appointments are exclusive"
 - Any specific close rate, revenue figure, or return you have not verified
 - Another contractor's results, named or implied, without written permission
 - A price you have not confirmed you can deliver at

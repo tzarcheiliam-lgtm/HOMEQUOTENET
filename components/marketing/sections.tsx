@@ -14,6 +14,8 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import type { Niche } from '@/content/types';
 import { site, disclaimers } from '@/content/site';
+import { photos } from '@/content/photos';
+import { PoolPhoto, PhotoBackdrop } from './photo';
 import {
   Section,
   SectionHeading,
@@ -30,7 +32,7 @@ export function ProblemSection({ niche }: { niche: Niche }) {
     <Section id="problem">
       <SectionHeading
         eyebrow="The gap"
-        title="Most contractor marketing sells activity, not opportunities."
+        title="Most contractor marketing sells activity, not appointments."
         lead="These are the five issues contractors describe most often. None of them are unusual, and all of them come down to the same thing: paying for work that is not measured in homeowners who want an estimate."
       />
 
@@ -55,8 +57,9 @@ export function ProblemSection({ niche }: { niche: Niche }) {
             The alternative
           </h3>
           <p className="mt-3 text-sm leading-6 text-[var(--hq-text-muted)]">
-            Agree on what a valid lead looks like. Receive matching homeowner
-            opportunities. Pay for the valid ones delivered. Keep full control of
+            Agree on what a qualified appointment looks like. We find the
+            homeowner, qualify them, and book them into your calendar. You pay
+            for the appointments that met the standard, and keep full control of
             the estimate and the close.
           </p>
         </div>
@@ -164,7 +167,18 @@ export function WhySection({ niche }: { niche: Niche }) {
       <SectionHeading
         eyebrow="Why HomeQuote Network"
         title="Operational commitments, not claims."
-        lead="Everything below is something we do, define, or hand over. There are no performance promises in this list, because performance depends on your pricing, your speed, and your sales process as much as on the lead."
+        lead="Everything below is something we do, define, or hand over. There are no performance promises in this list, because performance depends on your pricing, your speed, and your sales process as much as on the appointment."
+      />
+
+      {/*
+        An overhead frame reads as a plan view, which is the right note beside
+        claims about tracking and defined service areas.
+      */}
+      <PoolPhoto
+        photo={photos.aerial}
+        ratio="21 / 9"
+        sizes="(max-width: 1024px) 92vw, 1120px"
+        className="mt-12"
       />
 
       <div className="mt-14 grid gap-x-8 gap-y-10 sm:grid-cols-2 lg:grid-cols-4">
@@ -193,13 +207,13 @@ export function WhySection({ niche }: { niche: Niche }) {
 /* ---- 8. Two ways to work with us ---------------------------------------- */
 
 export function OptionsSection() {
-  const payPerLead = [
+  const payPerAppointment = [
     'No monthly marketing retainer required to test',
-    'Defined project types',
-    'Defined service area',
-    'Clear, written lead standards',
-    'Pay for delivered valid leads',
-    'Start with an agreed test volume',
+    'We qualify the homeowner, not you',
+    'Booked to a specific date and time in your calendar',
+    'Defined project types and service area',
+    'A written qualification standard',
+    'Start with an agreed number of appointments',
   ];
 
   const managed = [
@@ -223,15 +237,15 @@ export function OptionsSection() {
 
       <div className="mt-14 grid gap-6 lg:grid-cols-12">
         {/* Primary offer — visually dominant. */}
-        <div className="relative lg:col-span-7">
+        <div className="relative min-w-0 lg:col-span-7">
           <div
             className="absolute -inset-px rounded-[15px] bg-gradient-to-b from-[var(--hq-accent)]/40 to-transparent"
             aria-hidden="true"
           />
-          <div className="hq-card relative h-full p-8 sm:p-10">
+          <div className="hq-card relative h-full p-6 sm:p-10">
             <div className="flex flex-wrap items-center gap-3">
               <h3 className="text-2xl font-semibold tracking-tight text-[var(--hq-text)]">
-                Pay Per Qualified Lead
+                Pay Per Booked Appointment
               </h3>
               <span className="rounded-full border border-[var(--hq-accent-dim)] bg-[var(--hq-accent-glow)] px-3 py-1 text-xs font-semibold text-[var(--hq-accent-bright)]">
                 Recommended starting option
@@ -239,13 +253,14 @@ export function OptionsSection() {
             </div>
 
             <p className="mt-4 text-[15px] leading-7 text-[var(--hq-text-muted)]">
-              You pay for valid homeowner leads delivered in your approved
-              service area. Payment is for the qualified opportunity and does not
-              depend on whether you close the job.
+              You pay for qualified homeowner appointments booked into your
+              calendar in your approved service area. Payment is for the
+              appointment meeting the agreed standard, not for whether the
+              homeowner buys.
             </p>
 
             <ul className="mt-8 grid gap-3 sm:grid-cols-2">
-              {payPerLead.map((item) => (
+              {payPerAppointment.map((item) => (
                 <li key={item} className="flex gap-3 text-sm text-[var(--hq-text)]">
                   <Check
                     className="mt-0.5 size-4 shrink-0 text-[var(--hq-accent-bright)]"
@@ -257,9 +272,12 @@ export function OptionsSection() {
             </ul>
 
             <div className="mt-9">
-              <Cta href={site.cta.primaryHref}>
+              <Cta
+                href={site.cta.primaryHref}
+                className="w-full whitespace-normal text-center sm:w-auto sm:whitespace-nowrap"
+              >
                 {site.cta.primary}
-                <ArrowRight className="size-4" />
+                <ArrowRight className="size-4 shrink-0" />
               </Cta>
             </div>
 
@@ -270,15 +288,16 @@ export function OptionsSection() {
         </div>
 
         {/* Secondary offer — present, deliberately quieter. */}
-        <div className="lg:col-span-5">
-          <div className="hq-card h-full border-dashed p-8">
+        <div className="min-w-0 lg:col-span-5">
+          <div className="hq-card h-full border-dashed p-6 sm:p-8">
             <h3 className="text-xl font-semibold tracking-tight text-[var(--hq-text)]">
               Managed Growth System
             </h3>
             <p className="mt-3 text-sm leading-6 text-[var(--hq-text-muted)]">
-              Need more than leads? We can also build and manage the entire
-              customer-acquisition system. This is an optional engagement for
-              established contractors and is not required to receive leads.
+              Need more than appointments? We can also build and manage the
+              entire customer-acquisition system. This is an optional engagement
+              for established contractors and is not required to receive
+              appointments.
             </p>
 
             <ul className="mt-7 space-y-2.5">
@@ -321,7 +340,7 @@ export function FitSection({ niche }: { niche: Niche }) {
       <SectionHeading
         eyebrow="Fit"
         title="Who this is for."
-        lead="We would rather tell you it is not a fit on the first call than take a test that was never going to work."
+        lead="We would rather tell you it is not a fit on the first call than book appointments your team cannot attend."
       />
 
       <div className="mt-14 grid gap-6 lg:grid-cols-2">
@@ -377,7 +396,8 @@ export function FitSection({ niche }: { niche: Niche }) {
 export function FinalCta() {
   return (
     <section className="relative isolate overflow-hidden border-t border-[var(--hq-line)]">
-      <div className="hq-glow" aria-hidden="true" />
+      {/* The one place a photograph carries the whole section. */}
+      <PhotoBackdrop photo={photos.nightPool} scrim="band" objectClassName="object-[50%_60%]" />
       <Container className="relative">
         <div className="py-24 text-center sm:py-32">
           <h2 className="text-balance text-3xl font-semibold tracking-tight text-[var(--hq-text)] sm:text-5xl">

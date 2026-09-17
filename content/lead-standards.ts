@@ -1,10 +1,18 @@
 /**
- * The valid-lead standard. Shared by the homepage section and /lead-standards.
+ * The qualified booked appointment standard. Shared by the homepage section and
+ * the /lead-standards route (visible title: "Booked Appointment Standards" —
+ * the URL is unchanged so existing links keep working).
  *
  * IMPORTANT (compliance): this content describes the *general* standard only.
  * Every statement here must stay consistent with the partner agreement, which
- * is the governing document. Do not add guarantees of contact rate, appointment
- * rate, close rate, revenue, or ROI to this file.
+ * is the governing document.
+ *
+ * The promise is precise, and the precision matters: HomeQuote Network
+ * guarantees that anything billed as a booked appointment met the agreed
+ * qualification and scheduling standard *at the time it was delivered*. It does
+ * not guarantee the homeowner attends, or that the appointment becomes an
+ * estimate or a signed job. Do not add close rates, contract values, revenue or
+ * ROI to this file.
  */
 
 export type StandardItem = {
@@ -16,101 +24,114 @@ export const validLeadCriteria: StandardItem[] = [
   {
     title: 'A real decision-maker',
     description:
-      'The inquiry comes from an actual homeowner, property owner, or a person authorized to make decisions about the property.',
+      'The appointment is with an actual homeowner, property owner, or a person authorized to make decisions about the property.',
   },
   {
-    title: 'Accurate contact information',
+    title: 'Valid, reachable contact information',
     description:
-      'The name, phone number, and other contact details submitted are the homeowner’s real, reachable details.',
+      'The name, phone number, and other contact details are the homeowner’s real details, and the homeowner was reachable on them when the appointment was booked.',
   },
   {
     title: 'Inside your approved service area',
     description:
-      'The project is located within the service area agreed with you before launch — by county, city, or ZIP code.',
+      'The property is within the service area agreed with you before launch — by county, city, or ZIP code.',
   },
   {
-    title: 'The homeowner asked',
+    title: 'One of your agreed services',
     description:
-      'The homeowner requested information about a relevant service. Leads are generated from inquiries, not from purchased or scraped lists.',
+      'The homeowner asked about a service you selected, such as resurfacing, tile and coping, decking, or a full renovation.',
   },
   {
-    title: 'Matches your agreed services',
+    title: 'Genuine project interest',
     description:
-      'The requested project falls inside the project categories you selected, such as resurfacing, tile and coping, decking, or a full renovation.',
+      'The homeowner described a real project they intend to move on, rather than a price-check on work they are not planning.',
   },
   {
-    title: 'Not fake or fraudulent',
+    title: 'A specific date and time',
     description:
-      'Test submissions, deliberately falsified entries, bot traffic, and fraudulent inquiries are not valid leads and are not billable.',
+      'The homeowner agreed to a named appointment slot on your calendar — not a vague promise to talk later.',
   },
   {
-    title: 'Follows duplicate and exclusivity rules',
+    title: 'Not fraudulent',
     description:
-      'The lead complies with the duplicate handling and exclusivity terms stated in your individual contractor agreement.',
+      'The appointment was not generated through fraud, bots, purchased lists, or deliberate falsification. Those are never billable.',
+  },
+  {
+    title: 'Within your agreement’s rules',
+    description:
+      'It complies with the written duplicate, cancellation, rescheduling, no-show, and exclusivity rules in your individual contractor agreement.',
   },
 ];
 
 /**
  * What is explicitly NOT promised. Kept as first-class content so it is as
- * visible as the criteria themselves.
+ * visible as the criteria themselves. The booked appointment is the deliverable;
+ * everything that happens after it is the contractor's to win.
  */
 export const notPromised: string[] = [
-  'That every homeowner will answer the phone or reply',
-  'That every lead will schedule an appointment',
-  'That every lead will request an estimate',
-  'That every lead will purchase',
-  'Any specific revenue, return on ad spend, or profitability',
+  'That every scheduled homeowner will answer every follow-up call',
+  'That every homeowner will keep the appointment, or will not reschedule',
+  'That every appointment will result in an estimate',
+  'That every estimate will become a signed job',
+  'Any particular close rate, contract value, revenue, profit, or return on ad spend',
   'Any guaranteed number of closed jobs',
 ];
 
 export const confirmedBeforeLaunch: StandardItem[] = [
   {
-    title: 'Exact lead standards',
+    title: 'The qualification standard',
     description:
-      'The precise qualification criteria applied to your leads, written down before the first lead is delivered.',
+      'The precise criteria an appointment must meet before it is billable, written down before the first one is booked.',
   },
   {
     title: 'Replacement and credit policy',
     description:
-      'What happens when a lead does not meet the agreed standard, and whether it is replaced or credited.',
+      'What happens when an appointment does not meet the agreed standard, and whether it is replaced or credited.',
   },
   {
-    title: 'Dispute window',
+    title: 'Cancellations, reschedules, and no-shows',
     description:
-      'How long you have to flag a lead as invalid, and the information required to review it.',
+      'How each is treated, and which of them qualify for replacement under your agreement.',
   },
   {
     title: 'Pricing',
     description:
-      'Your per-lead pricing, based on project types, market, qualification requirements, volume, and exclusivity.',
+      'Your price per booked appointment, based on project types, market, qualification requirements, volume, and exclusivity.',
   },
   {
     title: 'Service areas',
     description:
-      'The counties, cities, or ZIP codes that define where your leads come from.',
+      'The counties, cities, or ZIP codes that define where your appointments come from.',
   },
   {
-    title: 'Exclusivity terms',
+    title: 'Calendar and availability',
     description:
-      'Whether your programme includes exclusive leads, and under what conditions.',
+      'How we access your calendar, the hours you accept appointments, and how much notice you need.',
   },
 ];
 
 /** The dispute flow, described as process rather than as a legal commitment. */
 export const disputeProcess: StandardItem[] = [
   {
-    title: '1. Flag the lead',
+    title: '1. Flag the appointment',
     description:
-      'Report the lead through the agreed channel within the dispute window in your agreement, with the reason it does not meet the standard.',
+      'Report it through the agreed channel within the dispute window in your agreement, with the reason it does not meet the standard.',
   },
   {
     title: '2. Review',
     description:
-      'We check the submission record, the service area, the requested project type, and the contact details against the agreed standard.',
+      'We check the booking record, the service area, the requested service, the contact details, and the scheduled slot against the agreed standard.',
   },
   {
     title: '3. Resolution',
     description:
-      'If the lead falls outside the agreed standard, it is resolved under the replacement or credit terms written into your agreement.',
+      'If it falls outside the agreed standard, it is resolved under the replacement or credit terms written into your agreement.',
   },
 ];
+
+/**
+ * The exact scope of the guarantee. Used verbatim wherever the promise needs
+ * stating precisely — it is deliberately narrow.
+ */
+export const guaranteeScope =
+  'We guarantee that anything billed as a booked appointment met the agreed qualification and scheduling standard when it was delivered. We do not guarantee attendance or sales. Cancellations, reschedules, unreachable homeowners, duplicates, invalid information, and no-shows are handled under the written replacement and dispute policy in your agreement.';

@@ -8,10 +8,10 @@
 - Replace every `[Bracket]` before sending. Nothing should go out with a bracket in it.
 - Keep them short. If an email runs past about 150 words, cut it.
 - One ask per email. Never stack two questions.
-- Do not add guarantees. Do not promise appointments, closed jobs, revenue, or ROI.
-- Do not state a price per lead in writing until you have agreed it on a call.
+- Do not add guarantees. Do not promise attendance, closed jobs, revenue, or ROI. The only guarantee is that a billed appointment met the agreed standard when delivered.
+- Do not state a price per appointment in writing until you have agreed it on a call.
 
-**Per-prospect placeholders:** `[First Name]` `[Company Name]` `[Service Area]` `[Project Type]` `[Lead Price]` `[Test Volume]` `[Call Date]` `[Call Time]`
+**Per-prospect placeholders:** `[First Name]` `[Company Name]` `[Service Area]` `[Project Type]` `[Appointment Price]` `[Test Volume]` `[Call Date]` `[Call Time]`
 
 Our own details (site, booking link, phone, email) are already filled in below.
 
@@ -25,11 +25,11 @@ Hi [First Name],
 
 Good talking with you just now. Quick recap of what we do, so you have it in writing:
 
-We send pool remodeling leads in your service area. You pay per valid lead, not a monthly retainer. You handle the estimate and the close.
+We book pool remodeling appointments into your calendar in your service area. You pay per qualified appointment, not a monthly retainer. You turn up, estimate, and close.
 
-Before anything runs, we agree on three things: the project types you want, the exact area, and what counts as a valid lead. Nothing starts until you have approved those in writing.
+Before anything runs, we agree on three things: the project types you want, the exact area, and what counts as a qualified booked appointment. Nothing starts until you have approved those in writing.
 
-Here is the overview: https://www.homequotenetwork.com/pool-contractors
+Here is the overview: https://homequotenet.com/pool-contractors
 
 If it looks like a fit, grab a 15-minute slot here: https://calendly.com/homequotenetwork/30min
 
@@ -45,14 +45,14 @@ Founder, HomeQuote Network
 
 Hi [First Name],
 
-As promised. Everything is on this page: https://www.homequotenetwork.com/pool-contractors
+As promised. Everything is on this page: https://homequotenet.com/pool-contractors
 
 The two sections worth your time:
 
-- **What counts as a valid lead** — the standard we would agree with you before launch.
+- **What counts as a qualified booked appointment** — the standard we would agree with you before launch.
 - **How it works** — the four steps, including what you are responsible for.
 
-Short version: we agree on what a valid lead looks like, we send matching homeowner opportunities in [Service Area], you pay for the valid ones delivered, and you run the estimate.
+Short version: we agree what a qualified appointment looks like, we find and qualify the homeowner in [Service Area], we book them into your calendar, and you run the estimate.
 
 Pricing depends on project type, area, volume, and whether you want exclusivity, so I would rather put a real number in front of you than a made-up one. That takes about fifteen minutes: https://calendly.com/homequotenetwork/30min
 
@@ -95,10 +95,10 @@ Fifteen minutes. Here is what I will ask so you are not put on the spot:
 - Which pool projects you want more of, and which you would rather not take
 - The areas you actually drive to
 - Your average project value and your minimum job size
-- How many additional estimates your team could handle this month
-- How fast someone can call a new lead
+- How many additional estimates your team could run this month
+- How your calendar works and how much notice you need
 
-Then I will tell you whether your area is available, what a valid lead would be defined as, and what a test would look like.
+Then I will tell you whether your area is available, what a qualified booked appointment would be defined as, and what a test would look like.
 
 Liam
 Founder, HomeQuote Network
@@ -133,13 +133,13 @@ Good call. Writing down what we agreed so nothing is fuzzy:
 - **Project types:** [Project Type]
 - **Service area:** [Service Area]
 - **Minimum job size:** [Minimum Job Size]
-- **Test volume:** [Test Volume]
-- **Lead price:** [Lead Price]
-- **Valid lead means:** a real homeowner or decision-maker, accurate contact details, inside your area, who asked about a service that matches the list above, and that is not fake and follows the duplicate rules in your agreement.
+- **Appointments in the test:** [Test Volume]
+- **Appointment price:** [Appointment Price]
+- **Qualified booked appointment means:** a real homeowner or decision-maker, contact details that are valid and reachable, inside your area, who asked about a service on the list above, showed genuine project interest, and agreed to a specific date and time. Not fake, and compliant with the duplicate, cancellation and no-show rules in your agreement.
 
-To be explicit about what this is not: I am not promising that every lead answers, books, or buys. You are paying for the qualified opportunity. The estimate and the close are yours.
+To be explicit about what this is not: I am not promising every homeowner keeps the appointment, or that every appointment becomes an estimate or a signed job. No-shows and reschedules are handled under the replacement terms in your agreement. You are paying for the qualified appointment. The estimate and the close are yours.
 
-Next step: I will send the test proposal with the dispute window and replacement terms written out. Once you approve it, we set up delivery and start.
+Next step: I will send the test proposal with the no-show, dispute and replacement terms written out. Once you approve it, we connect to your calendar and start.
 
 Anything in the recap wrong? Reply and correct me.
 
@@ -175,9 +175,9 @@ Founder, HomeQuote Network
 
 Hi [First Name],
 
-I have reached out a few times about pool leads in [Service Area] and have not heard back, so I will stop here — I would rather not be the guy who keeps emailing.
+I have reached out a few times about pool remodeling appointments in [Service Area] and have not heard back, so I will stop here — I would rather not be the guy who keeps emailing.
 
-If anything changes, or capacity opens up later in the season, reply to this and I will pick it straight back up. Everything is here in the meantime: https://www.homequotenetwork.com/pool-contractors
+If anything changes, or capacity opens up later in the season, reply to this and I will pick it straight back up. Everything is here in the meantime: https://homequotenet.com/pool-contractors
 
 Good luck with the season.
 
@@ -194,11 +194,11 @@ Founder, HomeQuote Network
 
 Hi [First Name],
 
-You have been receiving leads for [Time Period] now. Before I suggest anything, a question: what is happening between the lead landing and the estimate going out?
+You have been receiving appointments for [Time Period] now. Before I suggest anything, a question: what is happening between the appointment and the signed job?
 
-The reason I ask is that the leads are the easy half. Where most contractors lose jobs is the gap after — nobody calls back within the hour, nothing chases the homeowner who did not pick up, and there is no record of who got an estimate.
+The reason I ask is that the appointment is the easy half. Where most contractors lose jobs is the gap after — nothing confirms the day before, nothing chases the estimate that went out, and there is no record of what happened.
 
-If you want, we can build and run that side too: the CRM, automated text and email follow-up, speed-to-lead, booking, and pipeline tracking. That is a separate managed engagement, quoted on its own — the pay-per-lead programme carries on exactly as it is either way.
+If you want, we can build and run that side too: the CRM, automated text and email follow-up, speed-to-lead, booking, and pipeline tracking. That is a separate managed engagement, quoted on its own — the pay-per-appointment programme carries on exactly as it is either way.
 
 Worth a conversation, or are you happy as you are? Either answer is fine.
 
@@ -211,9 +211,9 @@ Founder, HomeQuote Network
 
 Before any of these goes out:
 
-- [ ] No guaranteed leads, appointments, sales, revenue, or ROI.
-- [ ] No claim that leads are exclusive unless that contractor's agreement says so.
-- [ ] No public or written price per lead before it has been agreed on a call.
+- [ ] No guaranteed attendance, estimates, sales, revenue, or ROI. The guarantee is only that a billed appointment met the agreed standard when delivered.
+- [ ] No claim that appointments are exclusive unless that contractor's agreement says so.
+- [ ] No public or written price per appointment before it has been agreed on a call.
 - [ ] No invented results, testimonials, client names, or case studies.
 - [ ] Include a way to opt out if you are emailing at volume, and follow CAN-SPAM: a real physical mailing address and a working unsubscribe.
 - [ ] `[Needs review]` Confirm your email-sending setup and opt-out handling with counsel before running cold sequences at volume.

@@ -2,7 +2,13 @@ import type { Metadata } from 'next';
 import { ArrowRight, Check, Phone } from 'lucide-react';
 import { poolNiche } from '@/content/niches/pool';
 import { site, disclaimers } from '@/content/site';
-import { validLeadCriteria, notPromised } from '@/content/lead-standards';
+import {
+  validLeadCriteria,
+  notPromised,
+  guaranteeScope,
+} from '@/content/lead-standards';
+import { photos, imageryDisclosure } from '@/content/photos';
+import { PoolPhoto, PhotoBackdrop } from '@/components/marketing/photo';
 import {
   Container,
   Section,
@@ -41,8 +47,13 @@ export default function PoolContractorsPage() {
       <FaqJsonLd items={poolNiche.faq} />
 
       {/* Hero */}
-      <section className="relative isolate overflow-hidden hq-grid">
-        <div className="hq-glow" aria-hidden="true" />
+      <section className="relative isolate overflow-hidden">
+        <PhotoBackdrop
+          photo={photos.heroHillside}
+          scrim="hero"
+          priority
+          objectClassName="object-[55%_45%] md:object-[65%_50%]"
+        />
         <Container className="relative">
           <div className="hq-rise max-w-3xl py-20 sm:py-24">
             <Pill tone="accent">
@@ -50,24 +61,25 @@ export default function PoolContractorsPage() {
               For contractors we have spoken with
             </Pill>
 
-            <h1 className="mt-6 text-balance text-4xl font-semibold leading-[1.07] tracking-tight sm:text-5xl">
-              Pool remodeling leads in {poolNiche.markets.region}. Pay per valid
-              lead.
+            <h1 className="mt-6 text-balance text-4xl font-semibold leading-[1.07] tracking-tight [text-shadow:0_1px_24px_rgb(2_20_40/0.6)] sm:text-5xl">
+              Pool remodeling appointments in {poolNiche.markets.region}, booked
+              on your calendar.
             </h1>
 
             <p className="mt-6 text-pretty text-lg leading-8 text-[var(--hq-text-muted)]">
-              Here is the whole offer in one paragraph: we agree on what a valid
-              lead looks like, we send matching homeowner opportunities in your
-              approved service area, you pay for the valid ones delivered, and
-              you handle the estimate and the close.
+              Here is the whole offer in one paragraph: we agree on what a
+              qualified appointment looks like, we find and qualify the homeowner
+              in your approved service area, we book them into your calendar, and
+              you turn up, estimate, and close.
             </p>
 
             <ul className="mt-8 space-y-3">
               {[
                 'No monthly marketing retainer required to start',
-                'You pay for the qualified opportunity, not the closed job',
+                'We qualify the homeowner and book the slot, not you',
+                'You pay per appointment that met the agreed standard',
                 'Project types and service area agreed in writing before launch',
-                'Start with a defined test volume for your market',
+                'Start with a defined number of appointments for your market',
               ].map((item) => (
                 <li key={item} className="flex gap-3 text-[15px] leading-7">
                   <Check
@@ -85,14 +97,18 @@ export default function PoolContractorsPage() {
                 <ArrowRight className="size-4" />
               </Cta>
               <Cta href="#standards" variant="secondary">
-                What counts as a valid lead
+                What counts as a qualified appointment
               </Cta>
             </div>
 
-            <p className="mt-6 text-sm leading-6 text-[var(--hq-text-dim)]">
+            <p className="mt-6 text-sm leading-6 text-[var(--hq-text-muted)]">
               {poolNiche.hero.trustLine}
             </p>
           </div>
+
+          <p className="relative pb-6 text-xs leading-5 text-[var(--hq-text-muted)]">
+            {imageryDisclosure}
+          </p>
         </Container>
       </section>
 
@@ -127,6 +143,28 @@ export default function PoolContractorsPage() {
           title="The work you can receive."
           lead="Pick the categories you want. Anything outside them is filtered out before it reaches you."
         />
+
+        {/* Three frames spanning pool, hardscape and outdoor living. */}
+        <div className="mt-12 grid gap-4 sm:grid-cols-3">
+          <PoolPhoto
+            photo={photos.longPool}
+            ratio="4 / 3"
+            sizes="(max-width: 640px) 92vw, 30vw"
+            zoom
+          />
+          <PoolPhoto
+            photo={photos.mountainView}
+            ratio="4 / 3"
+            sizes="(max-width: 640px) 92vw, 30vw"
+            zoom
+          />
+          <PoolPhoto
+            photo={photos.firepit}
+            ratio="4 / 3"
+            sizes="(max-width: 640px) 92vw, 30vw"
+            zoom
+          />
+        </div>
         <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {poolNiche.services.map((service) => (
             <div key={service.title} className="hq-card hq-card-hover flex items-start gap-4 p-5">
@@ -146,17 +184,19 @@ export default function PoolContractorsPage() {
 
       <ProcessSection niche={poolNiche} />
 
-      {/* Lead standards — condensed */}
+      {/* Appointment standards — condensed */}
       <Section id="standards">
         <SectionHeading
-          eyebrow="Lead standards"
-          title="What counts as a valid lead."
+          eyebrow="Appointment standards"
+          title="What counts as a qualified booked appointment."
           lead="This is what you are paying for, written down before you commit to anything."
         />
 
         <div className="mt-12 grid gap-6 lg:grid-cols-2">
           <div className="hq-card p-8">
-            <h3 className="text-base font-semibold">A valid lead generally means</h3>
+            <h3 className="text-base font-semibold">
+              A qualified booked appointment generally means
+            </h3>
             <ul className="mt-6 space-y-3.5">
               {validLeadCriteria.map((item) => (
                 <li key={item.title} className="flex gap-3 text-sm leading-6">
@@ -193,7 +233,7 @@ export default function PoolContractorsPage() {
               ))}
             </ul>
             <p className="mt-7 text-sm leading-6 text-[var(--hq-text-dim)]">
-              {disclaimers.noGuarantee}
+              {guaranteeScope}
             </p>
           </div>
         </div>
@@ -212,14 +252,14 @@ export default function PoolContractorsPage() {
             <div className="lg:sticky lg:top-24">
               <SectionHeading
                 eyebrow="Apply"
-                title="Check lead availability in your market."
-                lead="Tell us what projects you want, where you work, and how many additional opportunities your team can handle. It takes about two minutes."
+                title="Check appointment availability in your market."
+                lead="Tell us what projects you want, where you work, and how many additional appointments your team can attend. It takes about two minutes."
               />
               <div className="mt-8 space-y-4">
                 {[
                   'We review your application against current availability.',
                   'A short call to confirm project types, area, and capacity.',
-                  'Lead standards, pricing, and test volume in writing.',
+                  'The appointment standard, pricing, and volume in writing.',
                 ].map((line, i) => (
                   <div key={line} className="flex gap-3.5">
                     <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-full border border-[var(--hq-line-strong)] text-xs font-semibold text-[var(--hq-accent-bright)]">

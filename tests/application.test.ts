@@ -190,7 +190,7 @@ describe('applicationSchema — missing fields produce readable errors', () => {
       'Select a minimum project size'
     );
     expect(byField.get('monthly_lead_capacity')).toBe(
-      'Select how many additional leads you can handle'
+      'Select how many additional appointments you can handle'
     );
     expect(byField.get('response_time')).toBe(
       'Select your typical response time'

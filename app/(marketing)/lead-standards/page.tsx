@@ -5,8 +5,9 @@ import {
   notPromised,
   confirmedBeforeLaunch,
   disputeProcess,
+  guaranteeScope,
 } from '@/content/lead-standards';
-import { site, disclaimers } from '@/content/site';
+import { site } from '@/content/site';
 import {
   Container,
   Section,
@@ -17,14 +18,14 @@ import {
 } from '@/components/marketing/primitives';
 
 export const metadata: Metadata = {
-  title: 'Lead Standards',
+  title: 'Booked Appointment Standards',
   description:
-    'What counts as a valid lead at HomeQuote Network, what we do not promise, how invalid leads are disputed, and which terms are confirmed in writing before launch.',
+    'What counts as a qualified booked appointment at HomeQuote Network, what we do not promise, how disputes are handled, and which terms are confirmed in writing before launch.',
   alternates: { canonical: '/lead-standards' },
   openGraph: {
-    title: `Lead Standards · ${site.name}`,
+    title: `Booked Appointment Standards · ${site.name}`,
     description:
-      'What counts as a valid lead, what we do not promise, and how disputes are handled.',
+      'What counts as a qualified booked appointment, what we do not promise, and how disputes are handled.',
     url: `${site.url}/lead-standards`,
   },
 };
@@ -37,16 +38,18 @@ export default function LeadStandardsPage() {
         <Container className="relative">
           <div className="max-w-3xl py-20 sm:py-24">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--hq-accent-bright)]">
-              Lead standards
+              Appointment standards
             </p>
             <h1 className="mt-4 text-balance text-4xl font-semibold leading-[1.08] tracking-tight sm:text-5xl">
-              What counts as a valid lead.
+              What counts as a qualified booked appointment.
             </h1>
             <p className="mt-6 text-pretty text-lg leading-8 text-[var(--hq-text-muted)]">
-              You are paying for a defined thing. This page describes the general
-              standard we work to, what is explicitly not promised, and how an
-              invalid lead is handled. The governing version for your company is
-              the standard written into your partner agreement.
+              You are paying for a defined thing: a homeowner who met an agreed
+              standard and agreed to a specific slot in your calendar. This page
+              describes the general standard we work to, what is explicitly not
+              promised, and how a disputed appointment is handled. The governing
+              version for your company is the standard written into your partner
+              agreement.
             </p>
           </div>
         </Container>
@@ -56,7 +59,7 @@ export default function LeadStandardsPage() {
       <Section>
         <SectionHeading
           title="The criteria"
-          lead="A valid lead generally meets all of the following."
+          lead="A qualified booked appointment generally meets all of the following."
         />
 
         <ol className="mt-12 space-y-px overflow-hidden rounded-2xl border border-[var(--hq-line)] bg-[var(--hq-line)]">
@@ -83,8 +86,8 @@ export default function LeadStandardsPage() {
         <div className="grid gap-12 lg:grid-cols-12 lg:gap-16">
           <div className="lg:col-span-5">
             <SectionHeading
-              title="What a valid lead is not."
-              lead="A valid lead is a qualified opportunity to win work. It is not a promise about what the homeowner will do next."
+              title="What a booked appointment is not."
+              lead="A booked appointment is a scheduled opportunity to win work. It is not a promise about what the homeowner does next."
             />
           </div>
           <div className="lg:col-span-7">
@@ -103,7 +106,7 @@ export default function LeadStandardsPage() {
               ))}
             </ul>
             <p className="mt-7 text-sm leading-6 text-[var(--hq-text-dim)]">
-              {disclaimers.noGuarantee}
+              {guaranteeScope}
             </p>
           </div>
         </div>
@@ -112,8 +115,8 @@ export default function LeadStandardsPage() {
       {/* Disputes */}
       <Section>
         <SectionHeading
-          title="How invalid leads are handled."
-          lead="If a lead does not meet the agreed standard, there is a defined process rather than a negotiation."
+          title="How disputed appointments are handled."
+          lead="If an appointment does not meet the agreed standard, there is a defined process rather than a negotiation."
         />
 
         <div className="mt-12 grid gap-6 lg:grid-cols-3">
@@ -130,9 +133,9 @@ export default function LeadStandardsPage() {
         </div>
 
         <Disclosure className="mt-8">
-          The dispute window, the evidence required, and whether a lead is
-          replaced or credited are defined in your partner agreement. Those terms
-          are agreed before launch, not after a dispute arises.
+          The dispute window, the evidence required, and whether an appointment
+          is replaced or credited are defined in your partner agreement. Those
+          terms are agreed before launch, not after a dispute arises.
         </Disclosure>
       </Section>
 
@@ -165,8 +168,8 @@ export default function LeadStandardsPage() {
         <div className="flex flex-col items-start gap-5 sm:flex-row sm:items-center sm:justify-between">
           <p className="max-w-xl text-[15px] leading-7 text-[var(--hq-text-muted)]">
             Want the version that would apply to your company? Apply and we will
-            send the standard, pricing, and proposed test volume for your market
-            in writing.
+            send the standard, pricing, and the proposed number of appointments
+            for your market in writing.
           </p>
           <Cta href={site.cta.primaryHref}>
             {site.cta.primary}

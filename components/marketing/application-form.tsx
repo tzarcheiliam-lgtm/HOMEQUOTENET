@@ -223,7 +223,8 @@ function SuccessPanel() {
           <li>1. We check availability in your area.</li>
           <li>2. A short call to confirm the details.</li>
           <li>
-            3. Lead standards, pricing, and test volume sent to you in writing.
+            3. Appointment standard, pricing, and test volume sent to you in
+            writing.
           </li>
         </ol>
       </div>
@@ -498,22 +499,22 @@ export function ApplicationForm({
       {/* --- Capacity ----------------------------------------------------- */}
       <fieldset className="space-y-6">
         <legend className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--hq-accent-bright)]">
-          Capacity and follow-up
+          Capacity and calendar
         </legend>
 
         <div className="grid gap-5 sm:grid-cols-2">
           <Select
             name="monthly_lead_capacity"
-            label="Additional leads you can handle monthly"
+            label="Additional appointments you can handle monthly"
             options={LEAD_CAPACITIES}
             required
-            placeholder="Select a volume"
+            placeholder="Select a number"
             defaultValue={str('monthly_lead_capacity')}
             error={state.fieldErrors.monthly_lead_capacity}
           />
           <Select
             name="response_time"
-            label="How quickly your team can contact a new lead"
+            label="How quickly your team can confirm a new appointment"
             options={RESPONSE_TIMES}
             required
             placeholder="Select a response time"
@@ -546,7 +547,7 @@ export function ApplicationForm({
             [
               {
                 value: 'pay_per_lead' as Track,
-                note: 'Pay for valid delivered leads. No monthly marketing retainer required to start.',
+                note: 'Pay for qualified appointments booked into your calendar. No monthly marketing retainer required to start.',
                 tag: 'Recommended',
               },
               {
@@ -600,7 +601,7 @@ export function ApplicationForm({
             name="notes"
             rows={4}
             defaultValue={str('notes')}
-            placeholder="Current lead sources, what has and has not worked, questions about the programme."
+            placeholder="Where your work comes from today, what has and has not worked, questions about the programme."
             className={cn(controlClass, 'resize-y')}
           />
         </FieldShell>
@@ -620,8 +621,8 @@ export function ApplicationForm({
           />
           <span className="text-sm leading-6 text-[var(--hq-text-muted)]">
             I agree that {site.name} may contact me by phone, email, or text
-            about this business application and lead availability in my market. I
-            can ask to stop at any time. See our{' '}
+            about this business application and appointment availability in my
+            market. I can ask to stop at any time. See our{' '}
             <a
               href="/privacy"
               className="font-medium text-[var(--hq-accent-bright)] hover:underline"
@@ -648,8 +649,8 @@ export function ApplicationForm({
 
         <p className="text-xs leading-5 text-[var(--hq-text-dim)]">
           Submitting this application does not create an agreement or an
-          obligation. Lead standards, pricing, service areas, and exclusivity are
-          confirmed in writing before anything launches.
+          obligation. The appointment standard, pricing, service areas, and
+          exclusivity are confirmed in writing before anything launches.
         </p>
       </div>
     </form>

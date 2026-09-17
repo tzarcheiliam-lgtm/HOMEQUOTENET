@@ -1,6 +1,6 @@
 # Sales Assets — HomeQuote Network
 
-Editable sales and trust material for the pay-per-qualified-lead offer.
+Editable sales and trust material for the pay-per-qualified-appointment offer.
 
 | # | File | Use |
 |---|---|---|
@@ -9,8 +9,8 @@ Editable sales and trust material for the pay-per-qualified-lead offer.
 | 03 | [15-Minute Sales Call Framework](03_SALES_CALL_FRAMEWORK.md) | Call structure, discovery questions, disqualification |
 | 04 | [Objection Handling](04_OBJECTION_HANDLING.md) | Responses to the fourteen objections you will actually hear |
 | 05 | [One-Page Contractor Overview](05_ONE_PAGE_CONTRACTOR_OVERVIEW.html) | Print-to-PDF sales sheet matching the website |
-| 06 | [Lead Test Proposal Template](06_LEAD_TEST_PROPOSAL_TEMPLATE.md) | Limited-test proposal with legal-review markers |
-| 07 | [Contractor Onboarding Checklist](07_CONTRACTOR_ONBOARDING_CHECKLIST.md) | Everything required before the first lead is delivered |
+| 06 | [Appointment Test Proposal Template](06_APPOINTMENT_TEST_PROPOSAL_TEMPLATE.md) | Limited-test proposal with legal-review markers |
+| 07 | [Contractor Onboarding Checklist](07_CONTRACTOR_ONBOARDING_CHECKLIST.md) | Everything required before the first appointment is booked |
 | 08 | [Proof-Asset Checklist](08_PROOF_ASSET_CHECKLIST.md) | What to gather to replace the placeholders, and where each asset goes |
 
 ---
@@ -31,20 +31,21 @@ These mirror the rules the website is built to, and exist so sales material and 
 never drift apart.
 
 **Never claim:**
-- Guaranteed leads, appointments, estimates, sales, revenue, ROI, or profitability
-- That every lead is exclusive
-- A fixed public price per lead
+- Guaranteed attendance, estimates, sales, revenue, ROI, or profitability
+- That every appointment is exclusive
+- A fixed public price per appointment
 - Results, testimonials, client names, logos, or case studies that are not real and permissioned
 
 **Always state:**
-- Payment is for the qualified opportunity, not the closed job
-- The contractor contacts, estimates, sells, and closes
-- Lead standards, pricing, service area, exclusivity, duplicates, and dispute terms are
-  confirmed in writing before launch
+- Payment is for the qualified booked appointment, not the closed job
+- The contractor attends, estimates, sells, and closes
+- The qualification standard, pricing, service area, exclusivity, duplicates,
+  cancellation, rescheduling, no-show and dispute terms are confirmed in writing
+  before launch
 - The partner agreement governs where anything differs
 
 **Per-prospect placeholders still to fill in when sending:**
-`[First Name]` `[Company Name]` `[Service Area]` `[Project Type]` `[Lead Price]`
+`[First Name]` `[Company Name]` `[Service Area]` `[Project Type]` `[Appointment Price]`
 `[Test Volume]` `[Call Date]` `[Call Time]`
 
 HomeQuote Network's own details — website, booking link, phone, email, founder

@@ -1,4 +1,4 @@
-# Lead Test Proposal
+# Appointment Test Proposal
 
 > **How to use:** copy this file, fill every `[BRACKET]`, delete this block and every
 > `[NEEDS LEGAL REVIEW]` note once counsel has confirmed the wording. Send as a PDF.
@@ -10,7 +10,7 @@
 
 ---
 
-**HomeQuote Network — Limited Lead Test Proposal**
+**HomeQuote Network — Limited Appointment Test Proposal**
 
 | | |
 |---|---|
@@ -24,8 +24,8 @@
 
 ## 1. Purpose
 
-This proposal sets out a limited, defined lead test so `[Company Name]` can evaluate
-HomeQuote Network leads against its own numbers before any larger commitment. It is a
+This proposal sets out a limited, defined appointment test so `[Company Name]` can evaluate
+HomeQuote Network appointments against its own numbers before any larger commitment. It is a
 proposal, not an agreement. Nothing is delivered and nothing is billed until
 `[Company Name]` approves these terms in writing.
 
@@ -42,7 +42,7 @@ proposal, not an agreement. Nothing is delivered and nothing is billed until
 | **Services excluded** | `[Anything explicitly out of scope]` |
 | **Minimum project size** | `[Minimum job value]` |
 
-Leads outside the service area or outside the included services are not billable.
+Appointments outside the service area or outside the included services are not billable.
 
 ---
 
@@ -50,32 +50,34 @@ Leads outside the service area or outside the included services are not billable
 
 | Item | Agreed value |
 |---|---|
-| **Lead price** | `[Lead Price]` per valid lead |
-| **Test volume** | `[Test Volume]` valid leads |
+| **Appointment price** | `[Appointment Price]` per qualified booked appointment |
+| **Test volume** | `[Test Volume]` qualified appointments |
 | **Estimated test period** | `[Duration]` |
-| **Maximum spend during test** | `[Lead Price × Test Volume]` |
+| **Maximum spend during test** | `[Appointment Price × Test Volume]` |
 | **Exclusivity** | `[Exclusive / shared — state exactly which, and any conditions]` |
 
 > `[NEEDS LEGAL REVIEW]` — Exclusivity wording. State precisely what exclusivity does and
 > does not cover (project type, geography, time window, number of contractors a shared
-> lead may be sent to). Do not use the word "exclusive" without defining it here.
+> appointment may be offered to). Do not use the word "exclusive" without defining it here.
 
 **Volume is a cap, not a commitment.** HomeQuote Network does not guarantee that the
 full test volume will be generated within the estimated period.
 
 ---
 
-## 4. Valid-lead criteria
+## 4. Appointment qualification criteria
 
-A lead is billable only if it meets all of the following:
+An appointment is billable only if it meets all of the following:
 
 1. It comes from a real homeowner, property owner, or authorized decision-maker.
 2. The contact information provided is accurate and reachable.
 3. The project is located inside the service area in section 2.
 4. The homeowner requested information about a relevant service.
 5. The requested project matches the services included in section 2.
-6. The lead is not fake, fraudulent, a test submission, or bot traffic.
-7. The lead complies with the duplicate and exclusivity rules in sections 5 and 3.
+6. The homeowner demonstrated genuine project interest.
+7. The homeowner agreed to a specific appointment date and time.
+8. It was not generated through fraud, bots, purchased lists, or falsification.
+9. It complies with the duplicate, cancellation, rescheduling, no-show and exclusivity rules in sections 5 and 3.
 
 > `[NEEDS LEGAL REVIEW]` — Add or amend criteria to match the final partner agreement.
 > Where this proposal and the executed agreement differ, the agreement governs.
@@ -84,7 +86,7 @@ A lead is billable only if it meets all of the following:
 
 ## 5. Duplicate policy
 
-A lead is treated as a duplicate if `[define: same phone/email within X days, same
+An appointment is treated as a duplicate if `[define: same phone/email within X days, same
 property address within X days, same homeowner re-submitting for the same project]`.
 
 Duplicates identified under this rule are `[not billable / credited / replaced]`.
@@ -100,10 +102,10 @@ Duplicates identified under this rule are `[not billable / credited / replaced]`
 |---|---|
 | **Dispute window** | `[X business days]` from delivery |
 | **How to submit** | `[Email / portal / agreed channel]` |
-| **Information required** | The lead reference, the criterion it fails, and any supporting detail (e.g. call log, disconnected number) |
+| **Information required** | The appointment reference, the criterion it fails, and any supporting detail (e.g. call log, no-show record) |
 | **Review time** | `[X business days]` |
 
-**Process:** flag the lead → HomeQuote Network reviews the submission record, service
+**Process:** flag the appointment → HomeQuote Network reviews the booking record, service
 area, project type, and contact details against section 4 → resolution under section 7.
 
 > `[NEEDS LEGAL REVIEW]` — Dispute window length and evidence standard not yet set.
@@ -112,8 +114,8 @@ area, project type, and contact details against section 4 → resolution under s
 
 ## 7. Replacement or credit terms
 
-If a lead is found not to meet the criteria in section 4, it will be
-`[replaced with a valid lead / credited against the next invoice / refunded]`.
+If an appointment is found not to meet the criteria in section 4, it will be
+`[replaced with a qualified booked appointment / credited against the next invoice / refunded]`.
 
 `[State any cap on replacements or credits, e.g. as a percentage of test volume.]`
 
@@ -140,7 +142,7 @@ Fields available vary by campaign and by what the homeowner provided.
 
 | Item | Agreed value |
 |---|---|
-| **Billing frequency** | `[Weekly / per lead / on invoice]` |
+| **Billing frequency** | `[Weekly / per appointment / on invoice]` |
 | **Payment terms** | `[Net X days / on receipt / prepaid]` |
 | **Payment method** | `[ACH / card / other]` |
 | **Prepayment or deposit** | `[Amount, if any]` |
@@ -153,15 +155,15 @@ Fields available vary by campaign and by what the homeowner provided.
 
 ## 10. Launch requirements
 
-Before the first lead is delivered, `[Company Name]` provides:
+Before the first appointment is booked, `[Company Name]` provides:
 
 - [ ] Signed partner agreement
 - [ ] Confirmed service area
 - [ ] Confirmed included and excluded services
-- [ ] Lead recipients and delivery method
+- [ ] Calendar access, appointment recipients and notification method
 - [ ] Billing contact and payment method on file
 - [ ] Proof of licence and insurance
-- [ ] Written approval of the valid-lead criteria in section 4
+- [ ] Written approval of the appointment qualification criteria in section 4
 
 ---
 
@@ -169,11 +171,11 @@ Before the first lead is delivered, `[Company Name]` provides:
 
 `[Company Name]` is responsible for:
 
-- Contacting each delivered lead promptly
+- Contacting each delivered appointment promptly
 - Providing estimates and running its own sales process
 - Closing its own jobs
 - Maintaining capacity for the agreed volume
-- Flagging invalid leads inside the dispute window
+- Flagging any appointment that misses the standard inside the dispute window
 - Maintaining valid licensing and insurance
 - All communications with homeowners after delivery, including compliance with
   applicable calling, texting, and privacy rules
@@ -182,8 +184,10 @@ Before the first lead is delivered, `[Company Name]` provides:
 
 ## 12. No guarantee
 
-HomeQuote Network does not guarantee estimates, appointments, sales, revenue, return
-on ad spend, or profitability. Payment is for the delivery of valid leads as defined in
+HomeQuote Network guarantees only that an appointment billed under this proposal met the
+agreed qualification and scheduling standard in section 4 at the time it was delivered. It
+does not guarantee that a homeowner attends, and does not guarantee estimates, sales,
+revenue, return on ad spend, or profitability. Payment is for the delivery of qualified appointments as defined in
 section 4, and is not dependent on whether `[Company Name]` closes any job.
 
 HomeQuote Network does not promise that any homeowner will answer, respond, schedule an
@@ -204,7 +208,7 @@ appointment, request an estimate, or purchase.
 **Prepared by**
 Liam Tzarchei — Founder, HomeQuote Network
 Operated by Tzarchei Investments
-`747-217-5713` · `homequotenetwork@gmail.com` · www.homequotenetwork.com
+`747-217-5713` · `homequotenetwork@gmail.com` · homequotenet.com
 
 ---
 

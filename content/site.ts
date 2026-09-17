@@ -8,11 +8,12 @@
 
 export const site = {
   name: 'HomeQuote Network',
-  domain: 'www.homequotenetwork.com',
-  url: 'https://www.homequotenetwork.com',
+  domain: 'homequotenet.com',
+  url: 'https://homequotenet.com',
   founder: 'Liam Tzarchei',
   operator: 'Tzarchei Investments',
-  tagline: 'Qualified homeowner leads for home-service contractors. Pay per valid lead.',
+  tagline:
+    'Qualified booked appointments for home-service contractors. Pay per appointment we set on your calendar.',
 
   contact: {
     email: 'homequotenetwork@gmail.com',
@@ -26,7 +27,7 @@ export const site = {
   nav: [
     { label: 'How it works', href: '/#how-it-works' },
     { label: 'Projects', href: '/#projects' },
-    { label: 'Lead standards', href: '/lead-standards' },
+    { label: 'Appointment standards', href: '/lead-standards' },
     { label: 'Working together', href: '/#options' },
     { label: 'FAQ', href: '/#faq' },
   ],
@@ -34,7 +35,7 @@ export const site = {
   footerLinks: {
     company: [
       { label: 'Pool contractors', href: '/pool-contractors' },
-      { label: 'Lead standards', href: '/lead-standards' },
+      { label: 'Appointment standards', href: '/lead-standards' },
       { label: 'Contractor application', href: '/apply' },
     ],
     legal: [
@@ -44,7 +45,13 @@ export const site = {
   },
 
   cta: {
-    primary: 'Check Lead Availability',
+    primary: 'Check Appointment Availability',
+    /*
+      Header-only. The full label pushes the nav onto two lines at 1024-1280px
+      once "Appointment standards" is in the bar; in the header the surrounding
+      nav already supplies the context.
+    */
+    primaryShort: 'Check Availability',
     primaryHref: '/apply',
     secondary: 'See How It Works',
     secondaryHref: '/#how-it-works',
@@ -64,12 +71,17 @@ export const hasRealContactEmail = !site.contact.email.includes('REPLACE_ME');
  * that future copy edits don't drift into claims the business can't support.
  */
 export const disclaimers = {
+  /*
+    Precise on purpose. We do book the appointment, so we cannot say
+    "appointments are not guaranteed" — but attendance and outcomes are not ours
+    to promise, and that line has to stay sharp.
+  */
   noGuarantee:
-    'HomeQuote Network does not guarantee estimates, appointments, sales, revenue, or profitability. Contractors are responsible for contacting, estimating, and closing their own leads.',
+    'HomeQuote Network does not guarantee attendance, estimates, sales, revenue, or profitability. We guarantee that anything billed as a booked appointment met the agreed qualification and scheduling standard when delivered. Attending the appointment, estimating, and closing the job are the contractor’s responsibility.',
   agreementGoverns:
-    'Final qualification, duplicate, replacement, exclusivity, and dispute terms are defined in each partner agreement.',
+    'Final qualification, duplicate, cancellation, rescheduling, no-show, replacement, exclusivity, and dispute terms are defined in each partner agreement.',
   pricing:
-    'Lead pricing depends on project types, market, qualification requirements, expected volume, and exclusivity. Pricing is confirmed before launch.',
+    'Pricing per booked appointment depends on project types, market, qualification requirements, expected volume, and exclusivity. Pricing is confirmed before launch.',
   systemPreview:
     'Example workflow — interface preview only. Not client data or reported results.',
 } as const;

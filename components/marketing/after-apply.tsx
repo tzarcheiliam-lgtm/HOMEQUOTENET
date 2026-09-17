@@ -11,19 +11,19 @@ const steps = [
     step: '02',
     title: 'A short call',
     description:
-      'About fifteen minutes. We confirm the work you want, where you want it, your minimum job size, and how fast your team can respond.',
+      'About fifteen minutes. We confirm the work you want, where you want it, your minimum job size, and how your calendar works.',
   },
   {
     step: '03',
     title: 'Written terms',
     description:
-      'You receive the valid-lead standard, duplicate and dispute terms, delivery method, pricing, and the proposed test volume in writing.',
+      'You receive the qualification standard, the cancellation, rescheduling and no-show terms, how appointments reach your calendar, pricing, and the proposed number of appointments in writing.',
   },
   {
     step: '04',
     title: 'Agree and launch',
     description:
-      'Once you approve the terms, we set up delivery and start the agreed test. Nothing runs before you have approved it.',
+      'Once you approve the terms, we connect to your calendar and start the agreed test. Nothing runs before you have approved it.',
   },
 ];
 

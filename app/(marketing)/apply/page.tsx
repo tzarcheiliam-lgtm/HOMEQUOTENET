@@ -9,13 +9,13 @@ import type { Track } from '@/lib/validation/application';
 export const metadata: Metadata = {
   title: 'Contractor Application',
   description:
-    'Apply to check lead availability in your market. Tell us your project types, service areas, and capacity, and we will confirm what is available.',
+    'Apply to check appointment availability in your market. Tell us your project types, service areas, and capacity, and we will confirm what is available.',
   alternates: { canonical: '/apply' },
   robots: { index: true, follow: true },
   openGraph: {
     title: `Contractor Application · ${site.name}`,
     description:
-      'Check lead availability for your market. Project types, service area, and capacity.',
+      'Check appointment availability for your market. Project types, service area, and capacity.',
     url: `${site.url}/apply`,
   },
 };
@@ -31,7 +31,7 @@ const assurances = [
     icon: ShieldCheck,
     title: 'Terms before launch',
     description:
-      'Lead standards, pricing, service area, and exclusivity are confirmed before the first lead is delivered.',
+      'The qualification standard, pricing, service area, and exclusivity are confirmed before the first appointment is booked.',
   },
   {
     icon: Clock,
@@ -67,7 +67,7 @@ export default async function ApplyPage({
               </h1>
               <p className="mt-6 text-pretty text-lg leading-8 text-[var(--hq-text-muted)]">
                 Tell us what projects you want, where you work, and how many
-                additional opportunities your team can handle.
+                additional appointments your team can attend.
               </p>
 
               <div className="mt-10 space-y-6">

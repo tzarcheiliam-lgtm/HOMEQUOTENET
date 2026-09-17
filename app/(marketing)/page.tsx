@@ -12,17 +12,18 @@ import {
   FinalCta,
 } from '@/components/marketing/sections';
 import { LeadStandardSection } from '@/components/marketing/lead-standard-section';
+import { ProjectStrip } from '@/components/marketing/project-strip';
 import { SystemPreview } from '@/components/marketing/system-preview';
 import { AfterApplySection } from '@/components/marketing/after-apply';
 import { FaqSection, FaqJsonLd } from '@/components/marketing/faq';
 import { ProofPlaceholderSection } from '@/components/marketing/proof-placeholder';
 
 export const metadata: Metadata = {
-  title: 'Qualified Pool Remodeling Leads. Pay Per Valid Opportunity.',
+  title: 'Pool Remodeling Appointments, Booked On Your Calendar.',
   description: poolNiche.seo.description,
   alternates: { canonical: '/' },
   openGraph: {
-    title: `${site.name} — Qualified Pool Remodeling Leads`,
+    title: `${site.name} — Booked Pool Remodeling Appointments`,
     description: poolNiche.seo.description,
     url: site.url,
   },
@@ -59,6 +60,7 @@ export default function HomePage() {
       <FaqJsonLd items={poolNiche.faq} />
 
       <Hero niche={poolNiche} />
+      <ProjectStrip />
       <ProblemSection niche={poolNiche} />
       <ProcessSection niche={poolNiche} />
       <ServicesSection niche={poolNiche} />

@@ -26,9 +26,9 @@ import { Section, SectionHeading } from './primitives';
 
 const flow = [
   { label: 'Homeowner Inquiry', icon: Send },
-  { label: 'Lead Verification', icon: ShieldCheck },
-  { label: 'Contractor Delivery', icon: Bell },
-  { label: 'Fast Follow-Up', icon: Phone },
+  { label: 'Qualification', icon: ShieldCheck },
+  { label: 'Appointment Booked', icon: CalendarCheck },
+  { label: 'Contractor Notified', icon: Bell },
   { label: 'Estimate', icon: FileText },
   { label: 'Sale Tracking', icon: CircleCheck },
 ];
@@ -60,8 +60,8 @@ export function SystemPreview() {
     <Section id="system">
       <SectionHeading
         eyebrow="System preview"
-        title="How a lead moves through the system."
-        lead="The interface below is an example workflow that shows the stages a lead passes through and the information recorded at each one. It is a design preview, not client data or reported results."
+        title="How an appointment reaches your calendar."
+        lead="The interface below is an example workflow showing the stages between a homeowner inquiry and a booked appointment, and the information recorded at each one. It is a design preview, not client data or reported results."
       />
 
       {/*
@@ -93,7 +93,7 @@ export function SystemPreview() {
 
       {/* Mock interface cards */}
       <div className="mt-10 grid gap-5 lg:grid-cols-12">
-        {/* New lead notification */}
+        {/* Booked-appointment notification */}
         <div className="hq-card p-6 lg:col-span-5">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-2.5">
@@ -102,7 +102,7 @@ export function SystemPreview() {
               </span>
               <div>
                 <p className="text-sm font-semibold text-[var(--hq-text)]">
-                  New lead delivered
+                  Appointment booked
                 </p>
                 <p className="text-xs text-[var(--hq-text-dim)]">
                   Sent to your team
@@ -120,11 +120,11 @@ export function SystemPreview() {
               </p>
               <div className="rounded-xl border border-[var(--hq-line)] bg-[var(--hq-bg)] p-4">
                 <p className="text-sm leading-6 text-[var(--hq-text-muted)]">
-                  New pool remodeling lead in your service area. Project:{' '}
+                  Appointment booked in your service area for{' '}
                   <span className="text-[var(--hq-text)]">
-                    resurfacing and tile
+                    Tuesday 10:00
                   </span>
-                  . Contact details attached.
+                  . Project: resurfacing and tile. Homeowner details attached.
                 </p>
               </div>
             </div>
@@ -135,7 +135,7 @@ export function SystemPreview() {
               </p>
               <div className="rounded-xl border border-[var(--hq-line)] bg-[var(--hq-bg)] p-4">
                 <p className="text-sm leading-6 text-[var(--hq-text-muted)]">
-                  New lead — pool resurfacing, approved area. Call now.
+                  New appointment Tue 10:00 — pool resurfacing, approved area.
                 </p>
               </div>
             </div>
@@ -148,17 +148,18 @@ export function SystemPreview() {
           </div>
         </div>
 
-        {/* Lead details */}
+        {/* Appointment details */}
         <div className="hq-card p-6 lg:col-span-7">
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm font-semibold text-[var(--hq-text)]">
-              Lead record
+              Appointment record
             </p>
             <ExampleBadge />
           </div>
 
           <dl className="mt-3 divide-y divide-[var(--hq-line)]">
             <Field label="Homeowner" value="Example Homeowner" />
+            <Field label="Scheduled" value="Tue 10:00, confirmed" />
             <Field label="Project category" value="Resurfacing + tile & coping" />
             <Field label="Service area" value="Approved county — Example city" />
             <Field label="Property type" value="Single-family residence" />
@@ -168,7 +169,7 @@ export function SystemPreview() {
 
           <p className="mt-4 text-xs leading-5 text-[var(--hq-text-dim)]">
             Fields shown are the record structure. Actual fields available on a
-            given lead depend on the form and the campaign.
+            given appointment depend on the form and the campaign.
           </p>
         </div>
 
@@ -176,16 +177,17 @@ export function SystemPreview() {
         <div className="hq-card p-6 lg:col-span-7">
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm font-semibold text-[var(--hq-text)]">
-              Lead status timeline
+              Appointment timeline
             </p>
             <ExampleBadge />
           </div>
 
           <ol className="mt-5 space-y-4">
             {[
-              { icon: Bell, label: 'Lead delivered', note: 'Recorded with timestamp' },
-              { icon: Phone, label: 'Contact attempt', note: 'Logged by contractor' },
-              { icon: CalendarCheck, label: 'Appointment set', note: 'If the homeowner books' },
+              { icon: ShieldCheck, label: 'Qualified', note: 'Checked against your standard' },
+              { icon: CalendarCheck, label: 'Appointment booked', note: 'Specific date and time' },
+              { icon: Bell, label: 'Contractor notified', note: 'Recorded with timestamp' },
+              { icon: Phone, label: 'Attended', note: 'Contractor-reported' },
               { icon: FileText, label: 'Estimate provided', note: 'Contractor-reported' },
               { icon: CircleCheck, label: 'Won / lost', note: 'Contractor-reported outcome' },
             ].map((row) => (
@@ -204,8 +206,8 @@ export function SystemPreview() {
           </ol>
 
           <p className="mt-5 text-xs leading-5 text-[var(--hq-text-dim)]">
-            Stages after delivery depend on contractor reporting. No outcome
-            shown here is promised or typical.
+            Stages after the appointment is booked depend on contractor
+            reporting. No outcome shown here is promised or typical.
           </p>
         </div>
 
@@ -221,10 +223,11 @@ export function SystemPreview() {
           <ul className="mt-5 space-y-3">
             {[
               'Decision-maker confirmed',
-              'Contact details present',
+              'Contact details valid and reachable',
               'Inside approved service area',
               'Matches agreed project types',
-              'Duplicate rules applied',
+              'Genuine project interest',
+              'Date and time agreed',
             ].map((check) => (
               <li
                 key={check}
@@ -241,7 +244,8 @@ export function SystemPreview() {
 
           <p className="mt-5 text-xs leading-5 text-[var(--hq-text-dim)]">
             The exact checklist applied to your account is the standard written
-            into your agreement.
+            into your agreement. Duplicate, cancellation, rescheduling and
+            no-show rules are defined there too.
           </p>
         </div>
       </div>

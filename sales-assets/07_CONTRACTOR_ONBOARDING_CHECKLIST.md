@@ -1,6 +1,6 @@
 # Contractor Onboarding Checklist
 
-Complete before the first lead is delivered. Anything unchecked is a reason not to launch.
+Complete before the first appointment is booked. Anything unchecked is a reason not to launch.
 
 **Contractor:** `[Company Name]`
 **Onboarded by:** `[Name]`
@@ -58,7 +58,7 @@ Complete before the first lead is delivered. Anything unchecked is a reason not 
 
 ## 6. Capacity
 
-- [ ] Additional leads per month they can handle: `[____]`
+- [ ] Additional appointments per month they can handle: `[____]`
 - [ ] Additional estimates per week the team can run: `[____]`
 - [ ] Number of estimators / salespeople: `[____]`
 - [ ] Current backlog in weeks: `[____]`
@@ -67,23 +67,23 @@ Complete before the first lead is delivered. Anything unchecked is a reason not 
 
 ## 7. Contact routing
 
-- [ ] Who receives new leads first: `[Name]`
+- [ ] Who receives new appointment notifications first: `[Name]`
 - [ ] Backup recipient if the first is unavailable: `[Name]`
 - [ ] After-hours handling: `[____]`
 - [ ] Weekend handling: `[____]`
-- [ ] Escalation contact if leads are not being worked: `[Name]`
+- [ ] Escalation contact if appointments are not being attended: `[Name]`
 
 ## 8. CRM access or delivery method
 
 - [ ] Delivery method: `[Email / SMS / CRM integration / webhook]`
 - [ ] CRM in use: `[GoHighLevel / other / none]`
 - [ ] If integrating — endpoint or account details received and tested
-- [ ] Test lead sent and confirmed received by the contractor
-- [ ] Contractor has confirmed the test lead arrived in the right place
+- [ ] Test appointment booked and confirmed received by the contractor
+- [ ] Contractor has confirmed it landed on the right calendar
 
-> Always send a test lead before launch and get explicit confirmation it landed.
+> Always book a test appointment before launch and get explicit confirmation it landed.
 
-## 9. Lead notification recipients
+## 9. Appointment notification recipients
 
 | Name | Role | Phone | Email | Receives |
 |---|---|---|---|---|
@@ -105,8 +105,8 @@ Complete before the first lead is delivered. Anything unchecked is a reason not 
 
 - [ ] Who runs the estimates: `[Name]`
 - [ ] Who owns the follow-up on unsold estimates: `[Name]`
-- [ ] Their process for an unanswered lead: `[____]`
-- [ ] How many follow-up attempts before a lead is dropped: `[____]`
+- [ ] Their process for confirming an appointment the day before: `[____]`
+- [ ] How they handle a homeowner who reschedules: `[____]`
 
 ## 12. Billing details
 
@@ -118,9 +118,9 @@ Complete before the first lead is delivered. Anything unchecked is a reason not 
 - [ ] Deposit or prepayment received, if applicable: `[____]`
 - [ ] `[Needs review]` Late-payment and delivery-pause policy confirmed with counsel
 
-## 13. Lead standards approval
+## 13. Appointment standard approval
 
-- [ ] Valid-lead criteria sent in writing
+- [ ] Appointment qualification criteria sent in writing
 - [ ] Contractor has read them
 - [ ] Contractor has approved them in writing
 - [ ] Copy of the approval saved to the contractor's file
@@ -145,7 +145,7 @@ Complete before the first lead is delivered. Anything unchecked is a reason not 
 
 ## 16. Tracking expectations
 
-- [ ] Contractor knows what will be recorded for each lead
+- [ ] Contractor knows what will be recorded for each appointment
 - [ ] Agreed what the contractor reports back: `[contacted / appointment / estimate / won / lost]`
 - [ ] How they report it: `[____]`
 - [ ] Reporting cadence: `[____]`
@@ -158,12 +158,12 @@ Complete before the first lead is delivered. Anything unchecked is a reason not 
 
 ## Launch gate
 
-Do not deliver the first lead until all of the following are true:
+Do not book the first appointment until all of the following are true:
 
 - [ ] Partner agreement signed
 - [ ] Licence and insurance verified
 - [ ] Service area and services confirmed in writing
-- [ ] Valid-lead criteria approved in writing
+- [ ] Appointment qualification criteria approved in writing
 - [ ] Delivery tested and confirmed received
 - [ ] Billing set up
 - [ ] Recipients confirmed reachable
@@ -175,8 +175,8 @@ Do not deliver the first lead until all of the following are true:
 
 ## First-week review
 
-- [ ] Day 1 — confirm the first lead arrived and was contacted
-- [ ] Day 3 — check leads are being worked, not sitting
+- [ ] Day 1 — confirm the first appointment landed on the right calendar
+- [ ] Day 3 — check appointments are being attended, not missed
 - [ ] Day 7 — short call: quality, fit, and anything to adjust
 - [ ] Any disputes raised handled inside the agreed window
 - [ ] Notes added to the contractor's file

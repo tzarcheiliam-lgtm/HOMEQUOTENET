@@ -22,7 +22,7 @@ export default function PrivacyPage() {
     <LegalPage
       title="Privacy Policy"
       updated={String(new Date().getFullYear())}
-      intro={`How ${site.name} collects, uses, and shares information — both from homeowners who request quotes and from contractors who apply to receive leads.`}
+      intro={`How ${site.name} collects, uses, and shares information — both from homeowners who request quotes and from contractors who apply to receive booked appointments.`}
     >
       <ReviewNote>
         This page is a general template and is not legal advice. Replace the
@@ -34,9 +34,9 @@ export default function PrivacyPage() {
         <LegalSection heading="Who we are">
           <p>
             {site.name} (&ldquo;we&rdquo;, &ldquo;us&rdquo;) operates a
-            lead-generation service that connects homeowners with independent
-            contractors for home-improvement projects (including pool remodeling,
-            fencing, ADUs, and related services). {site.name} is operated by{' '}
+            lead-generation and appointment-setting service that connects
+            homeowners with independent contractors for home-improvement projects
+            (including pool remodeling, fencing, ADUs, and related services). {site.name} is operated by{' '}
             {site.operator}.
           </p>
         </LegalSection>
@@ -57,14 +57,14 @@ export default function PrivacyPage() {
             When you submit a contractor application, we collect your name,
             company name, phone number, email address, website, the services you
             offer, your service areas, your average project value and minimum
-            project size, your monthly capacity, your typical lead response time,
+            project size, your monthly capacity, your appointment response time,
             whether you use a CRM, and any notes you choose to provide. We also
             record the page the application came from and your browser user
             agent.
           </p>
           <p>
             We use this information to assess whether your business is a fit, to
-            confirm lead availability in your market, to contact you about your
+            confirm appointment availability in your market, to contact you about your
             application, and to administer your account if you become a partner.
             Contractor application data is business contact information and is
             not sold.
@@ -80,7 +80,7 @@ export default function PrivacyPage() {
           </p>
         </LegalSection>
 
-        <LegalSection heading="Lead sharing & contractor disclosure">
+        <LegalSection heading="Information sharing & contractor disclosure">
           <p>
             By submitting a homeowner request, you understand and agree that we
             may share your contact information and project details with{' '}
@@ -108,7 +108,7 @@ export default function PrivacyPage() {
           <p>
             Contractors who submit an application consent to be contacted by{' '}
             {site.name} by phone, email, or text about that application and about
-            lead availability in their market. You can ask us to stop contacting
+            appointment availability in their market. You can ask us to stop contacting
             you at any time.
           </p>
         </LegalSection>

@@ -11,11 +11,12 @@ export function SiteFooter() {
       <Container>
         <div className="grid gap-12 py-16 md:grid-cols-12 md:gap-8">
           <div className="md:col-span-5">
-            <Wordmark />
+            <Wordmark size="lg" />
             <p className="mt-4 max-w-sm text-sm leading-6 text-[var(--hq-text-muted)]">
-              Qualified homeowner leads for home-service contractors. We agree on
-              what a valid lead looks like, send matching opportunities, and you
-              handle the estimate and the close.
+              Qualified homeowner appointments for home-service contractors. We
+              agree what a qualified appointment looks like, find and qualify the
+              homeowner, and book them into your calendar. You attend, estimate,
+              and close.
             </p>
             <dl className="mt-4 space-y-1 text-sm">
               <div className="flex items-baseline gap-2">

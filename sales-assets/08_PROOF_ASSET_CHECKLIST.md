@@ -56,23 +56,23 @@ turns it into evidence that the operating system exists.
 
 ---
 
-## 2. Lead notifications
+## 2. Appointment notifications
 
 - [ ] Screenshot of the actual SMS or email a contractor receives
 - [ ] Homeowner details redacted
 - [ ] Contractor's business name redacted or permission obtained
 
-**Where it goes:** the "New lead delivered" card in the system preview section.
+**Where it goes:** the "Appointment booked" card in the system preview section.
 
 ---
 
-## 3. Real homeowner lead examples (redacted)
+## 3. Real appointment examples (redacted)
 
-- [ ] Example lead record captured
+- [ ] Example appointment record captured
 - [ ] All personal information removed — name, phone, email, exact address
 - [ ] Keep only: project category, general area (city or county), and the project detail
 
-**Where it goes:** the "Lead record" card in the system preview section.
+**Where it goes:** the "Appointment record" card in the system preview section.
 
 > Never publish a homeowner's personal information. Redaction must be applied to the image
 > itself, not just cropped — cropped images can sometimes be recovered.
@@ -90,14 +90,14 @@ optionally a "How we generate demand" expansion of step 2 in the How It Works se
 
 ---
 
-## 5. Landing-page and lead-form screenshots
+## 5. Landing-page and homeowner-form screenshots
 
 - [ ] Screenshot of the homeowner-facing landing page
-- [ ] Screenshot of the lead form showing the qualifying questions asked
+- [ ] Screenshot of the form showing the qualifying questions asked
 
 **Where it goes:** the homepage proof section. This is strong material — it shows
-contractors exactly what a homeowner is asked before the lead reaches them, which directly
-supports the valid-lead standard.
+contractors exactly what a homeowner is asked before the appointment is booked, which directly
+supports the appointment qualification standard.
 
 ---
 
@@ -113,7 +113,7 @@ the system preview timeline.
 
 ## 7. Contractor feedback
 
-- [ ] Written feedback received from a contractor who has actually received leads
+- [ ] Written feedback received from a contractor who has actually received appointments
 - [ ] Written permission to publish it
 - [ ] Permission covers their name and company name, or agree an attribution like
       "Pool remodeling contractor, Orange County"
@@ -138,9 +138,9 @@ will be seen immediately after a cold call.
 
 ---
 
-## 9. Lead-to-appointment numbers
+## 9. Appointment-to-estimate numbers
 
-- [ ] Figures come from actual delivered leads, not projections
+- [ ] Figures come from actual delivered appointments, not projections
 - [ ] The contractor has confirmed the numbers are accurate
 - [ ] Sample size is large enough to be meaningful — state it
 - [ ] Time period stated
@@ -155,7 +155,7 @@ sample size and period visible, never as a bare counter.
 
 ## 10. Estimate numbers
 
-- [ ] Number of estimates generated from delivered leads
+- [ ] Number of estimates generated from delivered appointments
 - [ ] Verified by the contractor
 - [ ] Period and sample size recorded
 
@@ -211,9 +211,9 @@ photography, which will lift the whole page. Also useful on `/pool-contractors`.
 
 If you gather nothing else, gather these three first:
 
-1. **Lead form screenshot** (item 5) — directly supports the valid-lead standard, needs no
+1. **Homeowner form screenshot** (item 5) — directly supports the appointment qualification standard, needs no
    third-party permission.
-2. **Redacted lead record and notification** (items 2 and 3) — proves the system is real,
+2. **Redacted appointment record and notification** (items 2 and 3) — proves the system is real,
    needs no third-party permission.
 3. **One named contractor testimonial** (item 7) — the single biggest trust lift on the
    page.

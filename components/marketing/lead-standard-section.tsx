@@ -3,21 +3,24 @@ import { ArrowRight, Check, Minus } from 'lucide-react';
 import {
   validLeadCriteria,
   notPromised,
+  guaranteeScope,
 } from '@/content/lead-standards';
 import { disclaimers } from '@/content/site';
+import { photos } from '@/content/photos';
+import { PoolPhoto } from './photo';
 import { Section, SectionHeading, Disclosure } from './primitives';
 
 /**
- * Homepage version of the valid-lead standard. The full detail (dispute
+ * Homepage version of the booked-appointment standard. The full detail (dispute
  * process, what is confirmed before launch) lives on /lead-standards.
  */
 export function LeadStandardSection() {
   return (
     <Section id="lead-standards">
       <SectionHeading
-        eyebrow="Lead standards"
-        title="What counts as a valid lead?"
-        lead="This is the part most lead arrangements leave vague. It is the first thing we put in writing, because it is the thing you are actually paying for."
+        eyebrow="Appointment standards"
+        title="What counts as a qualified booked appointment?"
+        lead="This is the part most arrangements leave vague. It is the first thing we put in writing, because it is the thing you are actually paying for."
       />
 
       <div className="mt-14 grid gap-6 lg:grid-cols-12">
@@ -50,8 +53,8 @@ export function LeadStandardSection() {
               What we do not promise
             </h3>
             <p className="mt-2 text-sm leading-6 text-[var(--hq-text-muted)]">
-              A valid lead is a qualified opportunity. It is not a guaranteed
-              conversation, appointment, or sale.
+              A booked appointment is a scheduled opportunity. It is not a
+              guaranteed attendance, estimate, or sale.
             </p>
             <ul className="mt-6 space-y-3">
               {notPromised.map((item) => (
@@ -72,12 +75,23 @@ export function LeadStandardSection() {
               href="/lead-standards"
               className="mt-6 inline-flex items-center gap-2 py-2 text-sm font-semibold text-[var(--hq-accent-bright)] hover:underline"
             >
-              Read the full lead standard
+              Read the full appointment standard
               <ArrowRight className="size-4" aria-hidden="true" />
             </Link>
           </div>
         </div>
       </div>
+
+      {/*
+        A detail shot, not a wide scene: the section is about precision, and a
+        close frame of a water feature says that better than another backyard.
+      */}
+      <PoolPhoto
+        photo={photos.fireWaterBowl}
+        ratio="21 / 9"
+        sizes="(max-width: 1024px) 92vw, 1120px"
+        className="mt-12"
+      />
 
       <Disclosure className="mt-8">{disclaimers.agreementGoverns}</Disclosure>
     </Section>

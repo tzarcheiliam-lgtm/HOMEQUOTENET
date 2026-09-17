@@ -61,14 +61,14 @@ export function SiteHeader() {
           </Link>
 
           <nav
-            className="hidden items-center gap-7 lg:flex"
+            className="hidden items-center gap-5 lg:flex xl:gap-7"
             aria-label="Primary"
           >
             {site.nav.map((item) => (
               <a
                 key={item.href}
                 href={item.href}
-                className="py-2 text-sm font-medium text-[var(--hq-text-muted)] transition-colors hover:text-[var(--hq-text)]"
+                className="whitespace-nowrap py-2 text-sm font-medium text-[var(--hq-text-muted)] transition-colors hover:text-[var(--hq-text)]"
               >
                 {item.label}
               </a>
@@ -78,12 +78,12 @@ export function SiteHeader() {
           <div className="hidden items-center gap-3 lg:flex">
             <Link
               href="/sign-in"
-              className="py-2 text-sm font-medium text-[var(--hq-text-muted)] transition-colors hover:text-[var(--hq-text)]"
+              className="whitespace-nowrap py-2 text-sm font-medium text-[var(--hq-text-muted)] transition-colors hover:text-[var(--hq-text)]"
             >
               Partner login
             </Link>
             <Cta href={site.cta.primaryHref} size="md">
-              {site.cta.primary}
+              {site.cta.primaryShort}
             </Cta>
           </div>
 

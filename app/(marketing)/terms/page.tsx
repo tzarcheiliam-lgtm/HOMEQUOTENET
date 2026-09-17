@@ -33,10 +33,11 @@ export default function TermsPage() {
       <div className="mt-10">
         <LegalSection heading="1. The service">
           <p>
-            {site.name} is a lead-generation and referral service operated by{' '}
-            {site.operator}. We connect homeowners who request quotes with
-            independent contractors. We do not perform home-improvement work and
-            are not a party to any agreement between a homeowner and a
+            {site.name} is a lead-generation, appointment-setting and referral
+            service operated by {site.operator}. We connect homeowners who
+            request quotes with independent contractors, and may schedule
+            appointments between them. We do not perform home-improvement work
+            and are not a party to any agreement between a homeowner and a
             contractor.
           </p>
         </LegalSection>
@@ -78,26 +79,30 @@ export default function TermsPage() {
           <p>
             Submitting a contractor application does not create an agreement, a
             partnership, or an obligation on either side, and does not reserve a
-            market or service area. We may decline any application. Lead
-            standards, pricing, service areas, exclusivity, duplicate handling,
+            market or service area. We may decline any application. The
+            qualification standard, pricing, service areas, exclusivity,
+            duplicate handling, cancellation, rescheduling and no-show treatment,
             dispute windows, and replacement or credit terms are set out in an
             individual partner agreement, which must be agreed in writing before
-            any leads are delivered.
+            any appointments are booked.
           </p>
           <p>
-            Information shown on this website about lead programmes is a general
-            description. Where this website and a signed partner agreement
-            differ, the partner agreement governs.
+            Information shown on this website about appointment programmes is a
+            general description. Where this website and a signed partner
+            agreement differ, the partner agreement governs.
           </p>
         </LegalSection>
 
         <LegalSection heading="6. No performance guarantee">
           <p>
-            {site.name} does not guarantee estimates, appointments, sales,
-            revenue, return on ad spend, or profitability. Contractors are
-            responsible for contacting, estimating, selling, and closing the
-            leads they receive. Nothing on this website should be read as a
-            promise of a particular business outcome.
+            {site.name} guarantees only that an appointment billed to a
+            contractor met the agreed qualification and scheduling standard at
+            the time it was delivered. {site.name} does not guarantee that a
+            homeowner attends a booked appointment, and does not guarantee
+            estimates, sales, revenue, return on ad spend, or profitability.
+            Contractors are responsible for attending, estimating, selling, and
+            closing. Nothing on this website should be read as a promise of a
+            particular business outcome.
           </p>
         </LegalSection>
 
@@ -137,7 +142,7 @@ export default function TermsPage() {
           href="/lead-standards"
           className="inline-block py-2 font-medium text-[var(--hq-accent-bright)] hover:underline"
         >
-          Lead Standards →
+          Appointment Standards →
         </Link>
       </p>
     </LegalPage>

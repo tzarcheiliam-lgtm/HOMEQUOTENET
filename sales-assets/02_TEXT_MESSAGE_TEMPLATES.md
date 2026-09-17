@@ -21,15 +21,15 @@ The website and booking links are already filled in below.
 
 ## 1. Immediately after the cold call
 
-> Liam from HomeQuote Network — good talking just now. I'll send the pool lead info over. Text STOP to opt out.
+> Liam from HomeQuote Network — good talking just now. I'll send the pool appointment info over. Text STOP to opt out.
 
 ---
 
 ## 2. Sending the website
 
-> Here's the overview: https://www.homequotenetwork.com/pool-contractors
+> Here's the overview: https://homequotenet.com/pool-contractors
 >
-> The section worth reading is "What counts as a valid lead" — that's the part you'd be paying for. — Liam
+> The section worth reading is "What counts as a qualified booked appointment" — that's the part you'd be paying for. — Liam
 
 ---
 
@@ -53,13 +53,13 @@ The website and booking links are already filled in below.
 
 ## 6. No-response follow-up
 
-> [First Name] — still worth a conversation about pool leads in [Service Area], or should I close the file? Either's fine. — Liam
+> [First Name] — still worth a conversation about pool appointments in [Service Area], or should I close the file? Either's fine. — Liam
 
 ---
 
-## 7. Checking whether they want to test leads
+## 7. Checking whether they want to test appointments
 
-> [First Name] — we have availability in [Service Area] for [Project Type]. Want me to put a small test together so you can judge the leads against your own numbers? — Liam
+> [First Name] — we have availability in [Service Area] for [Project Type]. Want me to put a small test together so you can judge the appointments against your own numbers? — Liam
 
 ---
 
@@ -81,7 +81,7 @@ The website and booking links are already filled in below.
 
 **Confirming capacity before launch**
 
-> Before we start: [Test Volume] leads over the test — still the right number for your crew this month? — Liam
+> Before we start: [Test Volume] appointments over the test — still the right number for your crew this month? — Liam
 
 ---
 
@@ -91,6 +91,6 @@ The website and booking links are already filled in below.
 - [ ] Under 320 characters.
 - [ ] Identifies who it is from, if it is a new thread.
 - [ ] Opt-out included on the first message to a new contact.
-- [ ] No guarantee of leads, appointments, or sales.
+- [ ] No guarantee of attendance or sales.
 - [ ] No price quoted that has not been agreed on a call.
 - [ ] Sent inside reasonable business hours for the recipient's time zone.

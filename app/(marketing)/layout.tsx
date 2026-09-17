@@ -7,7 +7,7 @@ import { site } from '@/content/site';
 export const metadata: Metadata = {
   metadataBase: new URL(site.url),
   title: {
-    default: `${site.name} — Qualified Contractor Leads. Pay Per Valid Lead.`,
+    default: `${site.name} — Booked Contractor Appointments. Pay Per Qualified Appointment.`,
     template: `%s · ${site.name}`,
   },
   description: site.tagline,
@@ -18,13 +18,13 @@ export const metadata: Metadata = {
     type: 'website',
     siteName: site.name,
     url: site.url,
-    title: `${site.name} — Qualified Contractor Leads. Pay Per Valid Lead.`,
+    title: `${site.name} — Booked Contractor Appointments. Pay Per Qualified Appointment.`,
     description: site.tagline,
     locale: 'en_US',
   },
   twitter: {
     card: 'summary_large_image',
-    title: `${site.name} — Qualified Contractor Leads`,
+    title: `${site.name} — Booked Contractor Appointments`,
     description: site.tagline,
   },
   robots: {

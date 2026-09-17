@@ -1,4 +1,6 @@
 import { ImageResponse } from 'next/og';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 
 /**
  * Open Graph / social sharing image.
@@ -13,12 +15,20 @@ import { ImageResponse } from 'next/og';
  *
  * Note: this renders through Satori, which supports a subset of CSS — every
  * container needs an explicit `display: flex`, and CSS custom properties are
- * not available, so the brand colours are repeated here as literals.
+ * not available, so the brand colours are repeated here as literals. Satori
+ * also has no WebP decoder, hence the PNG copy of the logo.
  */
+
+/** Inlined at render time; Satori cannot fetch a relative URL. */
+const logoDataUrl =
+  'data:image/png;base64,' +
+  readFileSync(
+    path.join(process.cwd(), 'public', 'images', 'brand', 'homequote-network-logo.png')
+  ).toString('base64');
 
 export const runtime = 'nodejs';
 export const alt =
-  'HomeQuote Network — Qualified Pool Remodeling Leads. Pay Per Valid Opportunity.';
+  'HomeQuote Network — Booked Pool Remodeling Appointments. Pay Per Qualified Appointment.';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
@@ -29,8 +39,8 @@ const LINE = '#2a313c';
 const TEXT = '#f4f6f8';
 const MUTED = '#9aa3b0';
 const DIM = '#767e8c';
-const ACCENT = '#2d6ce8';
-const ACCENT_BRIGHT = '#5b93ff';
+const ACCENT = '#196dcc';
+const ACCENT_BRIGHT = '#55a0f6';
 
 export default function OpengraphImage() {
   return new ImageResponse(
@@ -63,31 +73,8 @@ export default function OpengraphImage() {
 
         {/* Brand lockup */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: 60,
-              height: 60,
-              borderRadius: 16,
-              background: `linear-gradient(135deg, ${ACCENT_BRIGHT} 0%, #1e3a6b 100%)`,
-            }}
-          >
-            <svg
-              width="34"
-              height="34"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#ffffff"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M4 11.5 12 5l8 6.5" />
-              <path d="M7 13v5.5h10V13" />
-            </svg>
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={logoDataUrl} width={72} height={72} alt="" />
           <div style={{ display: 'flex', fontSize: 34, fontWeight: 700, letterSpacing: -0.5 }}>
             <span style={{ color: TEXT }}>HomeQuote</span>
             <span style={{ color: DIM, marginLeft: 10 }}>Network</span>
@@ -106,7 +93,7 @@ export default function OpengraphImage() {
               lineHeight: 1.05,
             }}
           >
-            Qualified Pool Remodeling Leads
+            Pool Remodeling Appointments
           </div>
           <div
             style={{
@@ -118,7 +105,7 @@ export default function OpengraphImage() {
               letterSpacing: -1,
             }}
           >
-            Pay Per Valid Opportunity
+            Booked On Your Calendar
           </div>
         </div>
 
@@ -164,7 +151,7 @@ export default function OpengraphImage() {
               color: '#ffffff',
             }}
           >
-            www.homequotenetwork.com
+            homequotenet.com
           </div>
         </div>
       </div>

@@ -1,5 +1,16 @@
 import type { Niche } from '@/content/types';
 
+/**
+ * Pool remodeling vertical.
+ *
+ * The offer is pay per qualified booked appointment: HomeQuote Network
+ * generates the homeowner inquiry, qualifies it against the agreed standard,
+ * and books the homeowner into the contractor's calendar. The contractor
+ * attends, estimates and closes.
+ *
+ * Copy here must never imply the contractor receives raw contact details to
+ * chase, and must never promise attendance or sales.
+ */
 export const poolNiche: Niche = {
   slug: 'pool-contractors',
   key: 'pool',
@@ -8,13 +19,13 @@ export const poolNiche: Niche = {
 
   hero: {
     eyebrow: 'For Southern California pool remodeling contractors',
-    headline: 'Qualified Pool Remodeling Leads. Pay Per Valid Opportunity.',
+    headline: 'Pool Remodeling Appointments, Booked On Your Calendar.',
     subheadline:
-      'HomeQuote Network connects pool remodeling companies with homeowners actively looking for resurfacing, renovation, tile, coping, equipment upgrades, and backyard transformations.',
+      'HomeQuote Network finds homeowners planning resurfacing, renovation, tile, coping, equipment upgrades, and backyard transformations, qualifies them against your standard, and books them into your calendar.',
     support:
-      'No monthly marketing retainer required to get started. Lead availability, qualification standards, and pricing are agreed upon before launch.',
+      'You pay per qualified booked appointment. No monthly marketing retainer required to get started. Availability, the qualification standard, and pricing are agreed upon before launch.',
     trustLine:
-      'Built for established contractors with the capacity to respond quickly and close high-value projects.',
+      'Built for established contractors with the capacity to run more estimates and close high-value projects.',
   },
 
   markets: {
@@ -36,19 +47,19 @@ export const poolNiche: Niche = {
         'Most marketing arrangements ask for a monthly retainer before a single homeowner has contacted you. You carry the risk of the test.',
     },
     {
-      title: 'Inquiries outside your service area',
+      title: 'Buying contact details, not conversations',
       description:
-        'Leads arrive from cities you do not drive to, for jobs you do not take. The volume looks fine on a report and is useless on a calendar.',
+        'A list of names is not an opportunity. Someone still has to call them, qualify them, and get a date in the calendar — and that someone is usually you, after hours.',
     },
     {
-      title: 'Leads that sit',
+      title: 'Inquiries outside your service area',
       description:
-        'An inquiry that waits until tomorrow is competing with whoever called back today. Without a follow-up system, good leads go cold in an inbox.',
+        'Enquiries arrive from cities you do not drive to, for jobs you do not take. The volume looks fine on a report and is useless on a calendar.',
     },
     {
       title: 'Reporting that measures the wrong thing',
       description:
-        'Clicks, impressions, and engagement do not tell you how many homeowners asked for an estimate on the work you actually sell.',
+        'Clicks, impressions, and engagement do not tell you how many homeowners are sitting in your diary this week waiting for an estimate.',
     },
     {
       title: 'Mismatched project types',
@@ -62,25 +73,25 @@ export const poolNiche: Niche = {
       step: '01',
       title: 'Define the Market',
       description:
-        'We agree on project types, service areas, lead standards, your monthly capacity, and pricing before anything runs.',
+        'We agree on project types, service areas, the qualification standard, your calendar availability, capacity, and pricing before anything runs.',
     },
     {
       step: '02',
       title: 'Generate Demand',
       description:
-        'HomeQuote Network creates and manages the homeowner acquisition campaigns and lead funnels that feed your market.',
+        'HomeQuote Network creates and manages the homeowner acquisition campaigns that feed your market.',
     },
     {
       step: '03',
-      title: 'Deliver Qualified Leads',
+      title: 'Qualify and Book',
       description:
-        'Matching homeowner inquiries are delivered to you with the project and contact information available for that lead.',
+        'We speak to the homeowner, check them against your agreed standard, and book a specific date and time into your calendar.',
     },
     {
       step: '04',
-      title: 'Contact and Close',
+      title: 'Attend and Close',
       description:
-        'You contact the homeowner quickly, run the estimate, and control your own sales process. The job is yours.',
+        'You turn up to the appointment, run the estimate, and control your own sales process. The job is yours.',
     },
   ],
 
@@ -134,34 +145,34 @@ export const poolNiche: Niche = {
 
   reasons: [
     {
-      title: 'Contractor-focused qualification',
+      title: 'We do the qualifying',
       description:
-        'Leads are screened against the standards we set with you, not against a generic home-services template.',
+        'The homeowner is screened against the standard we set with you before the appointment is booked, not handed to you to sort out.',
     },
     {
       title: 'Agreed areas and project types',
       description:
-        'Your service area and the work you want are defined in writing before launch and used as the delivery filter.',
+        'Your service area and the work you want are defined in writing before launch and used as the booking filter.',
     },
     {
-      title: 'Clear lead standards',
+      title: 'A written standard',
       description:
-        'What counts as a valid lead is documented up front, so an invalid lead is a defined question rather than an argument.',
+        'What counts as a qualified booked appointment is documented up front, so a disputed appointment is a defined question rather than an argument.',
+    },
+    {
+      title: 'Straight into your calendar',
+      description:
+        'Appointments are booked to a specific date and time on the calendar you nominate, using the availability rules you set.',
     },
     {
       title: 'Transparent tracking',
       description:
-        'Every delivered lead is recorded with its project category, service area, and delivery time.',
-    },
-    {
-      title: 'Fast lead delivery',
-      description:
-        'Leads are routed to your team as they come in, by the delivery method you choose during onboarding.',
+        'Every booked appointment is recorded with its project category, service area, and scheduled slot.',
     },
     {
       title: 'Flexible test structure',
       description:
-        'Start with an agreed test volume for your market instead of committing to an open-ended contract.',
+        'Start with an agreed number of appointments for your market instead of committing to an open-ended contract.',
     },
     {
       title: 'Founder-led support',
@@ -171,7 +182,7 @@ export const poolNiche: Niche = {
     {
       title: 'Optional infrastructure',
       description:
-        'If you want the CRM, follow-up, and booking system built as well, that is available as a separate managed engagement.',
+        'If you want the CRM, follow-up, and reporting system built as well, that is available as a separate managed engagement.',
     },
   ],
 
@@ -180,15 +191,15 @@ export const poolNiche: Niche = {
       'Licensed and insured contractors',
       'Pool remodeling and renovation companies',
       'Companies with real project photos and a credible online presence',
-      'Teams that answer new leads quickly',
-      'Contractors with room for additional estimates this month',
+      'Teams with a calendar they keep and can share access to',
+      'Contractors with room for more estimates this month',
       'Companies with a reliable, repeatable sales process',
       'Contractors targeting meaningful renovation projects rather than weekly maintenance',
     ],
     notFit: [
       'Pool cleaning-only businesses',
       'Weekly maintenance-only companies',
-      'Teams that cannot respond to leads quickly',
+      'Teams that cannot commit to attending booked appointments',
       'Contractors already at full capacity',
       'Companies expecting guaranteed closed jobs',
     ],
@@ -196,70 +207,75 @@ export const poolNiche: Niche = {
 
   faq: [
     {
-      question: 'What counts as a valid lead?',
+      question: 'What counts as a qualified booked appointment?',
       answer:
-        'A valid lead is generally a real homeowner, property owner, or authorized decision-maker, with accurate contact information, for a project inside your approved service area, who requested information about a relevant service that matches your agreed-upon project types, and which is not fake or fraudulent and follows the duplicate and exclusivity rules in your agreement. The exact standard for your programme is confirmed in writing before launch.',
+        'Generally: a real homeowner, property owner, or authorized decision-maker, with valid and reachable contact information, for a property inside your approved service area, who asked about one of your agreed services, showed genuine project interest, and agreed to a specific appointment date and time. It must not have been generated through fraud, bots, purchased lists, or falsification, and it must comply with the duplicate, cancellation, rescheduling, no-show, and exclusivity rules in your agreement. The exact standard for your programme is confirmed in writing before launch.',
     },
     {
-      question: 'Are the leads exclusive?',
+      question: 'So you book the appointment, not just send contact details?',
       answer:
-        'It depends on your programme and agreement. Exclusive lead arrangements may be available in some markets and for some project types. We do not claim that every lead is automatically exclusive. Whatever applies to your account is written into your agreement before launch.',
+        'Correct. We generate the homeowner inquiry, speak to them, qualify them against your standard, and book a specific date and time into your calendar. You are not buying a list to chase. You are paying for an appointment that is already in your diary.',
     },
     {
-      question: 'How much does each lead cost?',
+      question: 'Are the appointments exclusive?',
       answer:
-        'Pricing depends on project types, market, qualification requirements, expected volume, and exclusivity. Because those inputs differ by contractor and by county, we do not publish a fixed price per lead. Your pricing is confirmed before anything launches.',
+        'It depends on your programme and agreement. Exclusive arrangements may be available in some markets and for some project types. We do not claim every appointment is automatically exclusive. Whatever applies to your account is written into your agreement before launch.',
+    },
+    {
+      question: 'How much does each appointment cost?',
+      answer:
+        'Pricing depends on project types, market, qualification requirements, expected volume, and exclusivity. Because those inputs differ by contractor and by county, we do not publish a fixed price. Your pricing is confirmed before anything launches.',
     },
     {
       question: 'Is there a monthly retainer?',
       answer:
-        'Not for the standard pay-per-lead programme. You pay for valid delivered leads in your approved service area. A full managed growth engagement, where we build and run the entire acquisition system, is available separately for contractors who want it.',
+        'Not for the standard pay-per-appointment programme. You pay for qualified appointments booked into your calendar. A full managed growth engagement, where we build and run the entire acquisition system, is available separately for contractors who want it.',
+    },
+    {
+      question: 'What happens if the homeowner does not show up?',
+      answer:
+        'No-shows, cancellations, and reschedules are handled under the written replacement and dispute policy in your agreement. Those terms are agreed before launch, so the rule is known in advance rather than negotiated afterwards. We do not guarantee attendance — what we guarantee is that the appointment met the agreed standard when it was booked.',
     },
     {
       question: 'What types of pool projects can I receive?',
       answer:
-        'Resurfacing, replastering, tile and coping, equipment upgrades, Baja shelves and structural upgrades, decking, complete pool renovation, and backyard or outdoor-living projects connected to a pool renovation. You choose which of these you want, and leads are filtered to those categories.',
+        'Resurfacing, replastering, tile and coping, equipment upgrades, Baja shelves and structural upgrades, decking, complete pool renovation, and backyard or outdoor-living projects connected to a pool renovation. You choose which of these you want, and appointments are booked only for those categories.',
     },
     {
       question: 'Can I choose my service area?',
       answer:
-        'Yes. Your service area is defined before launch, by county, city, or ZIP code, and is used as a delivery filter. Availability in a given area depends on existing partner commitments at the time you apply.',
+        'Yes. Your service area is defined before launch, by county, city, or ZIP code, and is used as a booking filter. Availability in a given area depends on existing partner commitments at the time you apply.',
     },
     {
-      question: 'What happens if a lead is invalid?',
+      question: 'What if an appointment does not meet the standard?',
       answer:
-        'Invalid leads are submitted through the dispute process defined in your agreement, within the dispute window stated there. Replacement or credit terms are agreed before launch so both sides know the rule in advance.',
+        'Raise it through the dispute process defined in your agreement, within the dispute window stated there. Replacement or credit terms are agreed before launch so both sides know the rule in advance.',
     },
     {
       question: 'Are sales guaranteed?',
       answer:
-        'No. HomeQuote Network does not guarantee estimates, appointments, sales, revenue, or profitability. We are paid for delivering valid homeowner opportunities that meet the agreed standard. Contacting, estimating, and closing those homeowners is your work.',
+        'No. We do not guarantee attendance, estimates, sales, revenue, or profitability, and we do not promise any close rate or contract value. We are paid for delivering appointments that met the agreed qualification and scheduling standard. Attending, estimating, and closing are your work.',
     },
     {
-      question: 'How are leads delivered?',
+      question: 'How do appointments reach my calendar?',
       answer:
-        'By the method that fits your team: email, SMS notification, or direct delivery into your CRM. The delivery method is confirmed during onboarding.',
+        'By the method that fits your team — a shared calendar, a booking link, or direct entry into your CRM — plus a notification by email or SMS. This is confirmed during onboarding along with your availability and how much notice you need.',
     },
     {
-      question: 'How quickly should we contact a lead?',
+      question: 'Do I still need to follow up with the homeowner?',
       answer:
-        'As fast as your team can. A homeowner who just submitted an inquiry is usually still at their phone and is often contacting more than one company. Contractors who call within minutes rather than hours generally have an easier conversation. We ask about your response speed in the application because it affects whether this is a fit.',
-    },
-    {
-      question: 'Can HomeQuote Network handle our follow-up?',
-      answer:
-        'Yes, as a separate managed growth engagement. That can include CRM setup, automated SMS and email follow-up, speed-to-lead systems, appointment booking, pipeline tracking, and reporting. It is optional and is not required to receive leads.',
+        'We book the appointment and confirm it with the homeowner. Most contractors still send their own reminder and confirm the day before, which reduces no-shows. If you would rather we ran that follow-up as well, that is part of the managed growth engagement.',
     },
     {
       question: 'Can we begin with a limited test?',
       answer:
-        'Yes, and that is the recommended way to start. We agree on a defined test volume for your market and project types so you can evaluate the leads against your own numbers before scaling.',
+        'Yes, and that is the recommended way to start. We agree on a defined number of appointments for your market and project types so you can evaluate them against your own numbers before scaling.',
     },
   ],
 
   seo: {
-    title: 'Pool Remodeling Leads for Southern California Contractors',
+    title: 'Booked Pool Remodeling Appointments for Southern California Contractors',
     description:
-      'HomeQuote Network delivers qualified homeowner leads to pool remodeling contractors in Los Angeles, Orange, Ventura, Riverside, and San Bernardino counties. Pay per valid lead. No monthly retainer required to start.',
+      'HomeQuote Network books qualified homeowner appointments into the calendars of pool remodeling contractors across Los Angeles, Orange, Ventura, Riverside, and San Bernardino counties. Pay per qualified booked appointment. No monthly retainer required to start.',
   },
 };
