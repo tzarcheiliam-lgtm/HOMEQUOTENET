@@ -79,7 +79,7 @@ Not verified:
 
 ## Deployment status
 
-Migrations `0009` and `0010` are live. Commit, push, Vercel deployment, and public-logo verification are pending the final checks recorded below.
+Migrations `0009` and `0010` are live. The implementation was committed as `4fa365e` and pushed to `origin/main` (`9e33634..4fa365e`). Vercel then served the signature asset at `https://homequote-eight.vercel.app/images/email/homequote-logo-transparent.png` with HTTP 200, `Content-Type: image/png`, and the expected 153,482-byte content length. This confirms the deployment containing the public asset reached the stable production domain. Production Gmail OAuth/send remains unverified because the five required Gmail variables are not present in the available environment.
 
 ## Repository note
 
