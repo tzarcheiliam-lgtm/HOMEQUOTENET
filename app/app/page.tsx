@@ -1,3 +1,4 @@
+import { redirect } from 'next/navigation';
 import { requireProfile } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { getContractorDashboard } from '@/lib/data/contractor-dashboard';
@@ -51,6 +52,9 @@ async function SetterDashboard({ name }: { name: string | null }) {
 
 export default async function DashboardPage() {
   const profile = await requireProfile();
+
+  // A caller's whole job is the calling workspace; /app is just the way in.
+  if (profile.role === 'caller') redirect('/app/calls');
 
   if (profile.role === 'contractor') {
     const data = await getContractorDashboard();

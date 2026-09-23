@@ -1,0 +1,4 @@
+company_name,phone,website,email,city,county,state,service_area,primary_services,category,rating,review_count,assigned_to,notes
+Example Pool Remodeling Co,(818) 555-0142,https://www.example-pool-remodeling.test,info@example-pool-remodeling.test,Encino,Los Angeles,CA,San Fernando Valley,Pool remodeling; Resurfacing; Tile and coping,pool_remodeler,4.8,57,Liam,Synthetic sample row — replace with real data
+Example Backyard Renovations,(805) 555-0187,example-backyard.test,,Thousand Oaks,Ventura,CA,Conejo Valley,Backyard renovation; Pool renovation; Outdoor living,outdoor_living,4.6,23,Nadav,Synthetic sample row — replace with real data
+Example Weekly Pool Service,(818) 555-0199,,,Sherman Oaks,Los Angeles,CA,,Weekly cleaning; Chemical balancing,pool_service,4.9,112,,Synthetic: will be flagged pool-cleaning-only

@@ -49,23 +49,36 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { pathname } = request.nextUrl;
+  const { pathname, search } = request.nextUrl;
   // Match the /app segment exactly — a bare `startsWith('/app')` also catches
   // public marketing routes like /apply.
   const isProtected = pathname === '/app' || pathname.startsWith('/app/');
   const isAuthPage = pathname === '/sign-in' || pathname === '/sign-up';
 
-  // Not signed in and trying to reach the app → send to sign-in.
+  // Not signed in and trying to reach the app → send to sign-in, remembering
+  // where they were going so the sign-in action can return them there. Only
+  // the path is carried, never the host, and the action re-validates it.
   if (!user && isProtected) {
     const url = request.nextUrl.clone();
     url.pathname = '/sign-in';
+    url.search = '';
+    url.searchParams.set('next', `${pathname}${search}`);
     return NextResponse.redirect(url);
   }
 
-  // Already signed in and visiting an auth page → send to the app.
+  // Already signed in and visiting an auth page → into the app. /app itself
+  // knows each role's home (a caller is sent on to /app/calls), so a plain
+  // /app is enough here; a `next` the visitor arrived with is kept.
   if (user && isAuthPage) {
     const url = request.nextUrl.clone();
+    const next = url.searchParams.get('next');
+    url.search = '';
     url.pathname = '/app';
+    if (next && next.startsWith('/app') && !next.startsWith('//')) {
+      url.pathname = next.split('?')[0];
+      const qs = next.split('?')[1];
+      if (qs) url.search = `?${qs}`;
+    }
     return NextResponse.redirect(url);
   }
 

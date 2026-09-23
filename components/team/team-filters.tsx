@@ -16,7 +16,7 @@ export function TeamFilters({ current }: { current: UserFilters }) {
         </div>
         <Select name="role" defaultValue={current.role ?? ''}>
           <option value="">All roles</option>
-          {(['admin', 'setter', 'contractor'] as const).map((r) => (
+          {(['admin', 'setter', 'contractor', 'caller'] as const).map((r) => (
             <option key={r} value={r}>
               {ROLE_LABELS[r]}
             </option>

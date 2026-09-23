@@ -108,9 +108,63 @@ Open [http://localhost:3000](http://localhost:3000).
 
 | Role | Can do |
 | --- | --- |
-| **admin** | Everything: leads, distribution, contractors, pricing, billing, analytics, team |
+| **admin** | Everything: leads, distribution, contractors, pricing, billing, analytics, team, calling workspace + prospect assignment |
 | **setter** | Capture/qualify leads, manage appointments. No billing or pricing access |
 | **contractor** | See only their own assigned leads; report appointments, estimates, sales |
+| **caller** | Partner cold-calling only (`/app/calls`): the contractor prospects assigned to them, their own call log and sales appointments. **Not** staff — sees no homeowner leads, contractors or billing |
+
+## Partner calling workspace (`/app/calls`)
+
+Where HomeQuote partners cold call pool-remodeling contractors to sell the
+pay-per-appointment service. Backed by `supabase/migrations/0007_contractor_prospecting.sql`.
+
+- **Tables:** `contractor_prospects` (the business being called),
+  `prospect_call_attempts` (append-only call log — no update/delete policy for
+  anyone), `prospect_sales_appointments` (a sales call *with* a contractor; not
+  the homeowner `appointments` sold *to* one).
+- **One list, many views.** "Liam's list" and "Nadav's list" are filters on
+  `assigned_to`, never copies. Admins assign and reassign; a caller can only
+  change calling fields (disposition, callback, notes) on their own prospects —
+  enforced by RLS *and* a column-guard trigger, not just the UI.
+- **Do-not-call** is refused three times over: the call button disappears, the
+  server action refuses, and a trigger rejects any new attempt. Only an admin
+  can lift it, and that is written to `audit_logs`.
+- **Metrics** are defined once in `lib/calls/metrics.ts` — contact rate =
+  decision-maker conversations ÷ attempts; interest rate = interested ÷
+  conversations; booking rate = appointments ÷ conversations — and rendered as a
+  dash, not 0%, when there is no data.
+
+**Sign-in:** every role uses `/sign-in`. Callers land on `/app/calls`; everyone
+else on `/app`. A deep link into `/app/*` is remembered through sign-in via a
+validated `?next=` parameter. Invitation and reset emails land on
+`/auth/callback` → `/set-password`; there is a "Forgot your password?" link.
+
+**Creating a caller account:** `/app/team/new` → *Create with password* → role
+**Partner (Caller)** → tick *Activate*. Hand over the temporary password
+out-of-band. (If no admin exists yet, bootstrap one with step 6 above first.)
+
+**Importing a prospect list:**
+
+```bash
+node scripts/import-prospects.ts list.csv            # report only — nothing written
+node scripts/import-prospects.ts list.csv --apply --batch=liam-2026-09
+```
+
+Columns are in `scripts/prospect-import-template.csv`. The report shows counts of
+duplicates (phone → domain → name+city), missing/invalid phones, cleaning-only
+businesses and rows per assignee before anything is written; rows already in the
+database (by phone) are skipped. Never prints company names or phone numbers.
+
+**Verifying a migration before applying it:**
+
+```bash
+node scripts/verify-migration-rollback.mjs supabase/migrations/0007_contractor_prospecting.sql
+```
+
+Runs every statement inside a transaction and rolls it back. `npm run test`
+includes `tests/calls-rls.test.ts`, which exercises the real RLS policies with
+synthetic users inside a rolled-back transaction once 0007 is applied (it skips
+itself until then).
 
 ## Project structure
 

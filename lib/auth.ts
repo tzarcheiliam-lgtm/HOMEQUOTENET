@@ -43,3 +43,12 @@ export async function requireRole(
   if (!roles.includes(profile.role)) redirect('/app');
   return profile;
 }
+
+/**
+ * The calling workspace is for callers and the admins who run them. Anyone
+ * else is sent back to their own home, which for a setter or contractor is
+ * the dashboard — they should never learn the workspace exists.
+ */
+export async function requireCallerOrAdmin(): Promise<Profile> {
+  return requireRole(['admin', 'caller']);
+}

@@ -53,7 +53,7 @@ export function UserActions({
                 defaultValue={user.role}
                 className="w-44"
               >
-                {(['admin', 'setter', 'contractor'] as const).map((r) => (
+                {(['admin', 'setter', 'contractor', 'caller'] as const).map((r) => (
                   <option key={r} value={r}>
                     {ROLE_LABELS[r]}
                   </option>

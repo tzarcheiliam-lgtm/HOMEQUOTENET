@@ -35,6 +35,14 @@ export const NAV_ITEMS: NavItem[] = [
     icon: 'Building2',
     roles: ['admin'],
   },
+  // The partner cold-calling workspace. Callers land here; admins use it to
+  // assign prospects and compare callers. Setters and contractors never see it.
+  {
+    label: 'Calls',
+    href: '/app/calls',
+    icon: 'Phone',
+    roles: ['admin', 'caller'],
+  },
   {
     label: 'Appointments',
     href: '/app/appointments',
@@ -93,4 +101,13 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   admin: 'Administrator',
   setter: 'Appointment Setter',
   contractor: 'Contractor',
+  caller: 'Partner (Caller)',
 };
+
+/**
+ * Where a signed-in user belongs. Callers have exactly one job — the calling
+ * workspace — so that is home; everyone else keeps the role-aware dashboard.
+ */
+export function homePathFor(role: UserRole): string {
+  return role === 'caller' ? '/app/calls' : '/app';
+}

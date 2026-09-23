@@ -1,7 +1,7 @@
 // Domain types mirroring the database schema (supabase/migrations/0001_initial_schema.sql).
 // Hand-maintained for readability. If you change the schema, update these to match.
 
-export type UserRole = 'admin' | 'setter' | 'contractor';
+export type UserRole = 'admin' | 'setter' | 'contractor' | 'caller';
 
 export type AccountStatus = 'pending' | 'active' | 'suspended' | 'disabled';
 
@@ -349,4 +349,114 @@ export interface AdSpend {
   spend_date: string;
   notes: string | null;
   created_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Contractor prospecting (supabase/migrations/0007_contractor_prospecting.sql)
+//
+// These are the pool-remodeling contractors that HomeQuote partners cold call —
+// NOT homeowner leads (Lead) and NOT signed contractors (Contractor).
+// ---------------------------------------------------------------------------
+
+export type ProspectDisposition =
+  | 'new'
+  | 'calling'
+  | 'no_answer'
+  | 'left_voicemail'
+  | 'gatekeeper'
+  | 'spoke_with_dm'
+  | 'callback_requested'
+  | 'interested'
+  | 'follow_up_required'
+  | 'appointment_booked'
+  | 'not_interested'
+  | 'wrong_number'
+  | 'duplicate'
+  | 'do_not_call';
+
+export type SalesAppointmentStatus =
+  | 'scheduled'
+  | 'confirmed'
+  | 'rescheduled'
+  | 'completed'
+  | 'no_show'
+  | 'cancelled';
+
+export interface ContractorProspect {
+  id: string;
+  company_name: string;
+  phone: string | null;
+  phone_e164: string | null;
+  website: string | null;
+  website_domain: string | null;
+  email: string | null;
+  city: string | null;
+  county: string | null;
+  state: string;
+  service_area: string | null;
+  primary_services: string[];
+  category: string | null;
+  rating: number | null;
+  review_count: number | null;
+  is_pool_cleaning_only: boolean;
+  flags: string[];
+  assigned_to: string | null;
+  assigned_at: string | null;
+  assigned_by: string | null;
+  disposition: ProspectDisposition;
+  call_attempt_count: number;
+  last_contacted_at: string | null;
+  next_callback_at: string | null;
+  follow_up_at: string | null;
+  appointment_at: string | null;
+  decision_maker_name: string | null;
+  best_contact_method: string | null;
+  do_not_call_at: string | null;
+  notes: string | null;
+  source: string | null;
+  import_batch: string | null;
+  archived_at: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** One row per call. Append-only in the database. */
+export interface ProspectCallAttempt {
+  id: string;
+  prospect_id: string;
+  caller_id: string | null;
+  caller_name: string | null;
+  outcome: ProspectDisposition;
+  notes: string | null;
+  attempt_number: number;
+  previous_disposition: ProspectDisposition | null;
+  new_disposition: ProspectDisposition;
+  callback_at: string | null;
+  appointment_at: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** A sales call booked WITH a contractor prospect (not a homeowner Appointment). */
+export interface ProspectSalesAppointment {
+  id: string;
+  prospect_id: string;
+  partner_id: string | null;
+  call_attempt_id: string | null;
+  decision_maker_name: string | null;
+  scheduled_at: string;
+  time_zone: string;
+  appointment_type: string | null;
+  contact_info: string | null;
+  status: SalesAppointmentStatus;
+  confirmed_at: string | null;
+  notes: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
 }

@@ -52,14 +52,14 @@ async function emailFor(userId: string): Promise<string | null> {
   return (data as any)?.email ?? null;
 }
 
-const ROLES: UserRole[] = ['admin', 'setter', 'contractor'];
+const ROLES: UserRole[] = ['admin', 'setter', 'contractor', 'caller'];
 
 // --- create / invite --------------------------------------------------------
 
 const baseUserSchema = z.object({
   email: z.string().email('Enter a valid email'),
   full_name: z.string().min(1, 'Name is required'),
-  role: z.enum(['admin', 'setter', 'contractor']),
+  role: z.enum(['admin', 'setter', 'contractor', 'caller']),
 });
 
 function resolveContractorId(fd: FormData, role: UserRole): string | null {
@@ -142,7 +142,7 @@ export async function inviteUser(
     parsed.data.email,
     {
       data: { full_name: parsed.data.full_name },
-      redirectTo: `${SITE_URL}/sign-in`,
+      redirectTo: `${SITE_URL}/auth/callback?next=/set-password`,
     }
   );
   if (error) return { error: error.message };
@@ -229,7 +229,7 @@ export async function resetPassword(fd: FormData): Promise<void> {
 
   const supabase = await createClient();
   await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${SITE_URL}/sign-in`,
+    redirectTo: `${SITE_URL}/auth/callback?next=/set-password`,
   });
   await logAudit('user.password_reset', userId, { email });
   revalidatePath(`/app/team/${userId}`);
@@ -244,7 +244,7 @@ export async function resendInvite(fd: FormData): Promise<void> {
 
   const admin = createAdminClient();
   await admin.auth.admin.inviteUserByEmail(email, {
-    redirectTo: `${SITE_URL}/sign-in`,
+    redirectTo: `${SITE_URL}/auth/callback?next=/set-password`,
   });
   await logAudit('user.invite_resend', userId, { email });
   revalidatePath(`/app/team/${userId}`);

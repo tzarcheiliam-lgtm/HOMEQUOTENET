@@ -38,3 +38,32 @@ marketplace, public-facing contractor portal, external API integrations.
 - "Last admin" safeguard (prevent demoting/deleting the only admin).
 - Lead attachments are URL-based; Supabase Storage uploads are a future add-on.
 - Invitations & password resets require Supabase SMTP to be configured.
+
+## Phase 8 — Partner calling workspace
+
+Cold-calling portal for HomeQuote partners at `/app/calls`, backed by
+`supabase/migrations/0007_contractor_prospecting.sql` (additive; verified in a
+rolled-back transaction with `scripts/verify-migration-rollback.mjs`).
+
+- New `caller` role: not staff, so existing RLS keeps homeowner data away from
+  callers with no policy changes. Callers see only prospects assigned to them.
+- Tables: `contractor_prospects`, `prospect_call_attempts` (append-only),
+  `prospect_sales_appointments` (sales calls *with* contractors — distinct from
+  homeowner `appointments`).
+- Views are filters on one table (My list, Liam's, Nadav's, All, New, Callbacks
+  due, Interested, Booked, Do not call). Admin assigns/bulk-assigns; audited.
+- Outcome logging with per-outcome required fields; do-not-call refused by UI,
+  action and trigger; "Save and open next"; caller metrics defined once in
+  `lib/calls/metrics.ts`; call logs; sales appointments with status workflow.
+- Sign-in now honours a validated `?next=`, routes callers to `/app/calls`, and
+  the previously broken invite/reset flows land on `/auth/callback` →
+  `/set-password`. "Forgot your password?" added.
+- Import: `node scripts/import-prospects.ts list.csv [--apply]` — report first.
+- Tests: `tests/calls-*.test.ts` (rules, metrics, redirect guard, import) plus
+  `tests/calls-rls.test.ts`, which runs the real RLS policies with synthetic
+  users in a rolled-back transaction once 0007 is applied.
+
+**Status:** `0007_contractor_prospecting.sql` was applied to the Supabase
+project on 2026-09-23 and the RLS suite passes against it. Remaining setup:
+bootstrap an admin (README step 6), then create caller accounts at
+`/app/team/new`.

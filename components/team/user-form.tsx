@@ -43,7 +43,7 @@ export function UserForm({
             value={role}
             onChange={(e) => setRole(e.target.value as UserRole)}
           >
-            {(['admin', 'setter', 'contractor'] as const).map((r) => (
+            {(['admin', 'setter', 'contractor', 'caller'] as const).map((r) => (
               <option key={r} value={r}>
                 {ROLE_LABELS[r]}
               </option>

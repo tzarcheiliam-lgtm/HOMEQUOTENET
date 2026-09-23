@@ -18,9 +18,12 @@ type Action = (state: AuthState, formData: FormData) => Promise<AuthState>;
 export function AuthForm({
   mode,
   action,
+  next,
 }: {
   mode: 'sign-in' | 'sign-up';
   action: Action;
+  /** Path to return to after sign-in; validated server-side before use. */
+  next?: string;
 }) {
   const [state, formAction, pending] = useActionState<AuthState, FormData>(
     action,
@@ -42,6 +45,9 @@ export function AuthForm({
       </CardHeader>
       <CardContent>
         <form action={formAction} className="flex flex-col gap-4">
+          {!isSignUp && next ? (
+            <input type="hidden" name="next" value={next} />
+          ) : null}
           {isSignUp && (
             <Field label="Full name">
               <Input name="fullName" autoComplete="name" required />
@@ -60,7 +66,9 @@ export function AuthForm({
           </Field>
 
           {state?.error && (
-            <p className="text-sm text-destructive">{state.error}</p>
+            <p className="text-sm text-destructive" role="alert">
+              {state.error}
+            </p>
           )}
 
           <Button type="submit" disabled={pending} className="mt-2">
@@ -71,6 +79,17 @@ export function AuthForm({
                 : 'Sign in'}
           </Button>
         </form>
+
+        {!isSignUp && (
+          <p className="mt-3 text-center text-sm">
+            <Link
+              href="/forgot-password"
+              className="text-muted-foreground hover:text-foreground hover:underline"
+            >
+              Forgot your password?
+            </Link>
+          </p>
+        )}
 
         <p className="mt-4 text-center text-sm text-muted-foreground">
           {isSignUp ? (
