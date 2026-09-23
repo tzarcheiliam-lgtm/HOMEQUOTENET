@@ -93,7 +93,7 @@ export async function getGmailConnectionStatus(): Promise<{
 }
 
 export async function sendGmailMessage(
-  input: { toEmail: string; subject: string; message: string },
+  input: { toEmail: string; subject: string; message: string; html: string },
   request: typeof fetch = fetch
 ): Promise<{ id: string; fromEmail: string }> {
   const config = gmailOAuthConfig();

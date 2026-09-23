@@ -236,6 +236,16 @@ and sends only when a user clicks **Send email**. Successful and failed sends
 are recorded in that prospect's activity history; failed Gmail requests are
 never marked sent.
 
+The template describes HomeQuote's homeowner qualification and scheduled
+contractor appointments without adding pricing or claims that were not
+discussed. Pool services are included only when the reviewer enters them in
+**Pool services discussed**; those reviewed details are saved on the prospect
+for the next email. The editable body is rendered into the same Gmail-safe HTML
+shown in the sent-email preview. Its compact Liam signature uses the public,
+transparent logo at
+`https://homequote-eight.vercel.app/images/email/homequote-logo-transparent.png`
+and includes readable text and alt text when images are blocked.
+
 ### Gmail OAuth setup
 
 1. In Google Cloud Console, use the project that will own the integration and
@@ -262,9 +272,11 @@ never marked sent.
    | `GMAIL_FROM_EMAIL` | HomeQuote Gmail address being connected |
    | `GMAIL_TOKEN_ENCRYPTION_KEY` | Base64 key generated in step 5 |
 
-7. Apply `supabase/migrations/0009_prospect_emails.sql`, deploy/restart the
-   app, sign in as an administrator, open **Calls → Emails**, click **Connect
-   Gmail**, and authorize the HomeQuote account.
+7. Apply `supabase/migrations/0009_prospect_emails.sql` and
+   `supabase/migrations/0010_email_template_html.sql`, deploy/restart the app,
+   sign in as an administrator, open **Calls → Emails**, click **Connect
+   Gmail**, and authorize the HomeQuote account. Until the variables are
+   present, the page shows **Configure Gmail** and links to the setup error.
 
 The OAuth request asks only for
 `https://www.googleapis.com/auth/gmail.send`. The refresh token is encrypted

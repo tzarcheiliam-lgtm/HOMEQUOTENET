@@ -2,6 +2,7 @@ import { Mail, PlugZap } from 'lucide-react';
 import { requireCallerOrAdmin } from '@/lib/auth';
 import { listEmailProspects } from '@/lib/data/emails';
 import { getGmailConnectionStatus } from '@/lib/emails/gmail';
+import { emailLogoUrl } from '@/lib/emails/template';
 import { buttonVariants } from '@/components/ui/button';
 import { CallsSubnav } from '@/components/calls/calls-subnav';
 import { EmailComposer } from '@/components/calls/email-composer';
@@ -27,6 +28,7 @@ export default async function EmailsPage({
   const [prospects, gmail] = await Promise.all([listEmailProspects(), getGmailConnectionStatus()]);
   const params = await searchParams;
   const gmailResult = Array.isArray(params.gmail) ? params.gmail[0] : params.gmail;
+  const logoUrl = emailLogoUrl(process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000');
 
   return (
     <div className="space-y-6">
@@ -34,10 +36,10 @@ export default async function EmailsPage({
         title="Emails"
         description="Review and personally send a follow-up to one contractor at a time."
       >
-        {me.role === 'admin' && gmail.environmentReady ? (
+        {me.role === 'admin' ? (
           <a href="/api/integrations/gmail/oauth/start" className={buttonVariants({ variant: gmail.connected ? 'outline' : 'default' })}>
             <PlugZap className="size-4" aria-hidden="true" />
-            {gmail.connected ? 'Reconnect Gmail' : 'Connect Gmail'}
+            {gmail.connected ? 'Reconnect Gmail' : gmail.environmentReady ? 'Connect Gmail' : 'Configure Gmail'}
           </a>
         ) : null}
       </PageHeader>
@@ -57,8 +59,8 @@ export default async function EmailsPage({
 
       <EmailComposer
         prospects={prospects}
-        senderName={me.full_name || me.email}
         gmailConnected={gmail.connected}
+        logoUrl={logoUrl}
       />
     </div>
   );

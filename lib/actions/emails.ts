@@ -5,7 +5,11 @@ import { z } from 'zod';
 import { requireCallerOrAdmin } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { MORE_INFO_TEMPLATE_KEY } from '@/lib/emails/template';
+import {
+  buildProspectEmailHtml,
+  emailLogoUrl,
+  MORE_INFO_TEMPLATE_KEY,
+} from '@/lib/emails/template';
 import { gmailOAuthConfig, sendGmailMessage } from '@/lib/emails/gmail';
 
 export type SendEmailState =
@@ -25,6 +29,7 @@ const schema = z.object({
     .max(200)
     .refine((value) => !/[\r\n]/.test(value), 'Subject must be one line'),
   message: z.string().trim().min(1, 'Enter a message').max(20_000),
+  service_interests: z.string().trim().max(500),
 });
 
 const field = (fd: FormData, name: string) => {
@@ -44,11 +49,20 @@ export async function sendProspectEmail(
     template_key: field(formData, 'template_key'),
     subject: field(formData, 'subject'),
     message: field(formData, 'message'),
+    service_interests: field(formData, 'service_interests'),
   });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.errors[0]?.message ?? 'Check the email fields', contactSaved: false };
   }
   const input = parsed.data;
+  const serviceInterests = Array.from(
+    new Set(
+      input.service_interests
+        .split(',')
+        .map((service) => service.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim())
+        .filter(Boolean)
+    )
+  ).slice(0, 5);
   const supabase = await createClient();
   const { data: prospect } = await supabase
     .from('contractor_prospects')
@@ -67,6 +81,7 @@ export async function sendProspectEmail(
     .update({
       decision_maker_name: input.recipient_name || null,
       decision_maker_email: input.recipient_email.toLowerCase(),
+      email_service_interests: serviceInterests,
       updated_by: me.id,
     })
     .eq('id', prospect.id);
@@ -86,6 +101,8 @@ export async function sendProspectEmail(
   }
 
   const admin = createAdminClient();
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
+  const html = buildProspectEmailHtml(input.message, emailLogoUrl(siteUrl));
   const { data: activity, error: activityError } = await admin
     .from('prospect_email_logs')
     .insert({
@@ -99,6 +116,7 @@ export async function sendProspectEmail(
       template_key: input.template_key,
       subject: input.subject,
       message: input.message,
+      html_message: html,
       status: 'pending',
     })
     .select('id')
@@ -116,6 +134,7 @@ export async function sendProspectEmail(
       toEmail: input.recipient_email.toLowerCase(),
       subject: input.subject,
       message: input.message,
+      html,
     });
     const sentAt = new Date().toISOString();
     const { error: finalizeError } = await admin

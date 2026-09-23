@@ -166,9 +166,10 @@ describe('calls RLS', () => {
 
   maybe()('a caller can save contact details only on their assigned company', async () => {
     const own = await as(ids.liam, () =>
-      q(`update public.contractor_prospects set decision_maker_name='Jordan', decision_maker_email='jordan@example.test' where id=$1 returning decision_maker_email`, [ids.p1])
+      q(`update public.contractor_prospects set decision_maker_name='Jordan', decision_maker_email='jordan@example.test', email_service_interests=array['pool remodels'] where id=$1 returning decision_maker_email, email_service_interests`, [ids.p1])
     );
     expect(own[0].decision_maker_email).toBe('jordan@example.test');
+    expect(own[0].email_service_interests).toEqual(['pool remodels']);
     const other = await as(ids.liam, () =>
       q(`update public.contractor_prospects set decision_maker_email='wrong@example.test' where id=$1 returning id`, [ids.p2])
     );

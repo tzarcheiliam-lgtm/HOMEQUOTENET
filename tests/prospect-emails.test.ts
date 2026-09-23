@@ -1,34 +1,56 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
-import { buildMoreInfoAfterCallEmail } from '@/lib/emails/template';
+import {
+  buildMoreInfoAfterCallEmail,
+  buildProspectEmailHtml,
+  emailLogoUrl,
+} from '@/lib/emails/template';
 import { buildRawGmailMessage, deliverGmailWithAccessToken } from '@/lib/emails/gmail-message';
 import { decryptToken, encryptToken } from '@/lib/emails/token-crypto';
 
 describe('More info after our call template', () => {
-  it('personalizes only from known contact, company, service, and sender data', () => {
+  it('uses only reviewed contact, company, and discussed-service details', () => {
     const draft = buildMoreInfoAfterCallEmail(
-      { company_name: 'Pacific Pools', primary_services: ['pool remodeling', 'new pool construction'] },
+      { company_name: 'Pacific Pools' },
       'Jordan Lee',
-      'Liam Cohen'
+      ['pool remodeling', 'new pool construction']
     );
     expect(draft.subject).toContain('Pacific Pools');
     expect(draft.message).toContain('Hi Jordan,');
+    expect(draft.message).toContain('Pacific Pools');
     expect(draft.message).toContain('pool remodeling and new pool construction');
-    expect(draft.message).toContain('$125 per booked appointment');
-    expect(draft.message).toContain('no upfront payment for a batch of leads');
-    expect(draft.message).toContain('15-minute call');
-    expect(draft.message).not.toMatch(/\{\{|\[.*?\]|exclusive|guaranteed to close|shared/i);
+    expect(draft.message).toContain('specific day and time');
+    expect(draft.message).toContain('contractor to meet with the homeowner');
+    expect(draft.message).toContain('15-minute call with Liam');
+    expect(draft.message).not.toMatch(
+      /\{\{|\[.*?\]|\$|pricing|no upfront|exclusive|guaranteed|shared/i
+    );
   });
 
-  it('omits unknown personal details without leaving placeholders', () => {
-    const draft = buildMoreInfoAfterCallEmail(
-      { company_name: 'Pacific Pools', primary_services: [] },
-      '',
-      null
-    );
+  it('omits optional services without inventing them or leaving placeholders', () => {
+    const draft = buildMoreInfoAfterCallEmail({ company_name: 'Pacific Pools' }, '', []);
     expect(draft.message).toContain('Hi,');
-    expect(draft.message).toContain('pool projects');
+    expect(draft.message).not.toContain('Based on our conversation');
     expect(draft.message).not.toContain('undefined');
     expect(draft.message).not.toContain('null');
+  });
+
+  it('renders a compact Gmail-safe signature with an image-blocking fallback', () => {
+    const logoUrl = emailLogoUrl('https://homequote-eight.vercel.app');
+    const html = buildProspectEmailHtml('Hi Jordan,\n\nThanks for your time.', logoUrl);
+    expect(html).toContain(`src="${logoUrl}"`);
+    expect(html).toContain('alt="HomeQuote Network"');
+    expect(html).toContain('width="72"');
+    expect(html).toContain('font-family:Arial,Helvetica,sans-serif');
+    expect(html).toContain('color:#082f63');
+    expect(html).toContain('Liam');
+  });
+
+  it('ships a real-alpha PNG for the public signature asset', () => {
+    const png = readFileSync('public/images/email/homequote-logo-transparent.png');
+    expect(png.subarray(1, 4).toString()).toBe('PNG');
+    // PNG IHDR color type 6 is truecolor with an alpha channel.
+    expect(png[25]).toBe(6);
   });
 });
 
@@ -41,36 +63,56 @@ describe('Gmail delivery', () => {
     expect(() => decryptToken(encrypted, Buffer.alloc(32, 8))).toThrow();
   });
 
-  it('builds a plain-text MIME message and returns a successful Gmail id', async () => {
+  it('sends the exact HTML preview in a multipart Gmail message', async () => {
     const request = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       void input;
       void init;
       return new Response(JSON.stringify({ id: 'gmail-message-1' }), { status: 200 });
     });
+    const html = buildProspectEmailHtml(
+      'Hi Jordan,\n\nThanks for your time.',
+      'https://homequote-eight.vercel.app/images/email/homequote-logo-transparent.png'
+    );
     const result = await deliverGmailWithAccessToken(
       'access-token',
-      { fromEmail: 'hello@example.com', toEmail: 'jordan@example.com', subject: 'Follow up', message: 'Hello Jordan' },
+      {
+        fromEmail: 'hello@example.com',
+        toEmail: 'jordan@example.com',
+        subject: 'Follow up',
+        message: 'Hi Jordan,\n\nThanks for your time.',
+        html,
+      },
       request as typeof fetch
     );
     expect(result.id).toBe('gmail-message-1');
     const init = request.mock.calls[0][1] as RequestInit;
     const payload = JSON.parse(String(init.body));
     const mime = Buffer.from(payload.raw, 'base64url').toString('utf8');
+    expect(mime).toContain('Content-Type: multipart/alternative');
     expect(mime).toContain('From: HomeQuote Network <hello@example.com>');
     expect(mime).toContain('To: jordan@example.com');
-    expect(mime).toContain('Hello Jordan');
+    expect(mime).toContain('Best,\r\nLiam\r\nHomeQuote Network');
+    expect(mime).toContain(html);
   });
 
   it('throws the provider error and never reports a failed request as sent', async () => {
     const request = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       void input;
       void init;
-      return new Response(JSON.stringify({ error: { message: 'Invalid recipient' } }), { status: 400 });
+      return new Response(JSON.stringify({ error: { message: 'Invalid recipient' } }), {
+        status: 400,
+      });
     });
     await expect(
       deliverGmailWithAccessToken(
         'access-token',
-        { fromEmail: 'hello@example.com', toEmail: 'bad@example.com', subject: 'Follow up', message: 'Hello' },
+        {
+          fromEmail: 'hello@example.com',
+          toEmail: 'bad@example.com',
+          subject: 'Follow up',
+          message: 'Hello',
+          html: '<div>Hello</div>',
+        },
         request as typeof fetch
       )
     ).rejects.toThrow('Invalid recipient');
@@ -82,6 +124,7 @@ describe('Gmail delivery', () => {
       toEmail: 'jordan@example.com',
       subject: 'Following up — Pacific Pools',
       message: 'Hello',
+      html: '<div>Hello</div>',
     });
     expect(Buffer.from(raw, 'base64url').toString('utf8')).toContain('Subject: =?UTF-8?B?');
   });

@@ -411,6 +411,7 @@ export interface ContractorProspect {
   appointment_at: string | null;
   decision_maker_name: string | null;
   decision_maker_email: string | null;
+  email_service_interests: string[];
   best_contact_method: string | null;
   do_not_call_at: string | null;
   notes: string | null;
@@ -446,6 +447,7 @@ export interface ProspectEmailLog {
   template_key: string;
   subject: string;
   message: string;
+  html_message: string | null;
   status: ProspectEmailStatus;
   provider_message_id: string | null;
   error_message: string | null;

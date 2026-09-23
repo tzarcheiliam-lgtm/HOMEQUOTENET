@@ -1,13 +1,16 @@
-# Codex handoff: Emails v1
+# Codex handoff: polished call follow-up email
 
 Updated: 2026-09-23
 
 ## What changed
 
 - Added **Calls → Emails** at `/app/calls/emails` for one-at-a-time, manually reviewed sending. There are no sequences, schedules, or bulk-send paths.
-- Added the single **More info after our call** template. It uses only known contact name, company name, pool services, and signed-in sender name; absent data is omitted and no placeholder is shown.
-- The recipient, subject, and plain-text message remain fully editable before send.
+- Rewrote **More info after our call** as a personal post-call follow-up. It explains that HomeQuote speaks with homeowners, qualifies their pool projects, and books a specific day and time for the contractor to meet them. It does not mention pricing, no-upfront terms, exclusivity, sharing, or guaranteed sales. It ends with a 15-minute-call invitation with Liam.
+- Contact name and company come from the selected prospect. Pool services appear only when the reviewer enters services explicitly discussed on the call; no scraped service is inserted automatically. Missing optional details are omitted without placeholders.
+- The recipient, subject, and message remain fully editable. The UI renders the exact Gmail HTML before send, including a compact Liam signature in HomeQuote navy/blue. The multipart email also includes a readable plain-text fallback.
+- Added `public/images/email/homequote-logo-transparent.png`, a 360×360 truecolor-alpha PNG derived from `C:/Users/tzarc/Desktop/HQN/LOGOFORHOMEQUOTE.png`. The black exterior was removed to real transparency (all four corner alpha values are zero). It is served from `https://homequote-eight.vercel.app/images/email/homequote-logo-transparent.png`; the signature also has `alt="HomeQuote Network"` when images are blocked.
 - Sending saves `decision_maker_name` and the new `decision_maker_email` on the selected prospect, including when Gmail later returns an error.
+- Sending also saves the reviewed service interests on the prospect for future use and stores the exact sent HTML on its email-log row.
 - Added server-side Google OAuth using only `https://www.googleapis.com/auth/gmail.send`. OAuth state is checked in an HttpOnly SameSite cookie. Refresh tokens are AES-256-GCM encrypted before storage and never sent to the browser.
 - Every attempt creates a pending `prospect_email_logs` row before contacting Gmail. It is finalized as `sent` only after Gmail returns a message ID, or `failed` with the provider error. A failed request is never marked sent.
 - Prospect detail now has one chronological activity history containing calls and outbound emails, including sender, recipient, subject, timestamp, status, message, and failure reason.
@@ -21,7 +24,12 @@ Added and applied `supabase/migrations/0009_prospect_emails.sql`:
 - `prospect_email_logs` with RLS-scoped read access and no app-user write policy
 - `gmail_connections`, a singleton encrypted-token store with admin-only read access and service-role writes
 
-Migration `0009` was applied successfully to the configured Supabase project. Existing prospects, assignments, call attempts, and prior history were not reset or rewritten.
+Added and applied `supabase/migrations/0010_email_template_html.sql`:
+
+- `contractor_prospects.email_service_interests text[]` (non-null, default empty)
+- `prospect_email_logs.html_message text`
+
+Migrations `0009` and `0010` were applied successfully to the configured Supabase project. They are additive; existing prospects, assignments, call attempts, email logs, and prior history were not reset or rewritten.
 
 ## Gmail configuration
 
@@ -33,12 +41,14 @@ Required server-only environment variables:
 - `GMAIL_FROM_EMAIL`
 - `GMAIL_TOKEN_ENCRYPTION_KEY` (base64-encoded 32-byte key)
 
-Exact Google Cloud, redirect URI, key-generation, Vercel, and connection steps are in `README.md` and `.env.example`. After configuration/deployment, an administrator opens **Calls → Emails**, clicks **Connect Gmail**, and authorizes the HomeQuote Gmail account. Keep the encryption key stable; changing it requires reconnecting.
+Exact Google Cloud, redirect URI, key-generation, Vercel, and connection steps are in `README.md` and `.env.example`. After configuration/deployment, an administrator opens **Calls → Emails**, clicks **Connect Gmail**, and authorizes the HomeQuote Gmail account. When variables are missing, administrators now see **Configure Gmail** instead of no button. Keep the encryption key stable; changing it requires reconnecting.
 
 ## Files added or changed
 
 - `.env.example`, `README.md`, `CODEX_HANDOFF.md`
 - `supabase/migrations/0009_prospect_emails.sql`
+- `supabase/migrations/0010_email_template_html.sql`
+- `public/images/email/homequote-logo-transparent.png`
 - `app/app/calls/emails/page.tsx`
 - `app/api/integrations/gmail/oauth/start/route.ts`
 - `app/api/integrations/gmail/oauth/callback/route.ts`
@@ -54,13 +64,13 @@ Exact Google Cloud, redirect URI, key-generation, Vercel, and connection steps a
 
 ## Tests and results
 
-- `npm run test` with the live database URL: **15 files, 193 tests passed**. The real RLS tests run in a transaction and roll back all synthetic data.
-- Email template tests cover personalization, missing optional data, accurate offer language, banned claims, and visible-placeholder prevention.
-- Gmail security/transport tests cover authenticated refresh-token encryption, wrong-key rejection, MIME generation, successful provider response, non-ASCII subject encoding, and provider failure without a false success.
-- Live RLS tests cover saving a contact only on the assigned company, email-history visibility, and refusal of forged app-user activity rows.
+- `npm run test` with the live database URL: **15 files, 195 tests passed**. The real RLS tests ran in a transaction and rolled back all synthetic data.
+- Email template tests cover reviewed-only personalization, omission of missing optional services, prohibited offer/claim language, visible-placeholder prevention, Gmail-safe signature markup, and a real-alpha PNG asset.
+- Gmail security/transport tests cover authenticated refresh-token encryption, wrong-key rejection, multipart MIME generation, exact HTML preview/delivery parity, plain-text fallback, successful provider response, non-ASCII subject encoding, and provider failure without a false success.
+- Live RLS tests cover saving contact and discussed-service details only on the assigned company, email-history visibility, and refusal of forged app-user activity rows.
 - `npx tsc --noEmit`: passed.
 - `npm run build`: passed, including the new page and OAuth routes.
-- Authenticated headless browser smoke test as Liam: loaded 60 selectable companies, selected a company, entered contact details, generated an editable personalized preview with the required offer/no placeholders, and confirmed sending was disabled while Gmail is unconfigured. It did not mutate a prospect or send an email.
+- Authenticated headless browser smoke test as Liam: loaded 60 selectable companies, selected a company, entered unsaved contact details and `pool remodeling`, generated the template, and verified company/service personalization, the specific-day-and-time explanation, the Liam CTA, and absence of price/no-upfront language. It verified the subject and message remain editable, the **Configure Gmail** control is visible, and the rendered 72px signature points to the intended public logo URL. It did not save a prospect or send an email.
 
 Not verified:
 
@@ -69,7 +79,7 @@ Not verified:
 
 ## Deployment status
 
-Migration `0009` is live. The verified code is committed and pushed to `origin/main` as part of this handoff. The project deploys through Vercel, but Codex does not have evidence that the production deployment completed or that its environment contains the Gmail variables.
+Migrations `0009` and `0010` are live. Commit, push, Vercel deployment, and public-logo verification are pending the final checks recorded below.
 
 ## Repository note
 
