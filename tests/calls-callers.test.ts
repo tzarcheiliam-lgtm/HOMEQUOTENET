@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { findCallerByName, type CallerOption } from '@/lib/calls/callers';
+import {
+  assignedProfileIdForView,
+  callerIdsForSelection,
+  findCallerByName,
+  isCallAssigneeRole,
+  type CallerOption,
+} from '@/lib/calls/callers';
 
 const c = (id: string, name: string, email: string | null = null): CallerOption => ({ id, name, email });
 
@@ -24,5 +30,28 @@ describe('findCallerByName', () => {
     expect(findCallerByName([c('a', 'LIAM')], 'Liam')?.id).toBe('a');
     expect(findCallerByName([c('a', 'Liam')], 'nadav')).toBeNull();
     expect(findCallerByName([c('a', 'Liam')], '  ')).toBeNull();
+  });
+});
+
+describe('call-list assignment', () => {
+  const callers = [c('liam-id', 'Liam'), c('nadav-id', 'Nadav Solachnek')];
+
+  it('submits the exact selected profile ids for prospect refreshes', () => {
+    expect(callerIdsForSelection(callers, 'liam')).toEqual(['liam-id']);
+    expect(callerIdsForSelection(callers, 'nadav')).toEqual(['nadav-id']);
+    expect(callerIdsForSelection(callers, 'both')).toEqual(['liam-id', 'nadav-id']);
+  });
+
+  it('resolves named tabs and keeps My Calls specific to the signed-in user', () => {
+    expect(assignedProfileIdForView('liam', 'nadav-id', callers)).toBe('liam-id');
+    expect(assignedProfileIdForView('nadav', 'liam-id', callers)).toBe('nadav-id');
+    expect(assignedProfileIdForView('mine', 'liam-id', callers)).toBe('liam-id');
+    expect(assignedProfileIdForView('mine', 'nadav-id', callers)).toBe('nadav-id');
+  });
+
+  it('allows both live call-capable roles to own lists', () => {
+    expect(isCallAssigneeRole('admin')).toBe(true);
+    expect(isCallAssigneeRole('caller')).toBe(true);
+    expect(isCallAssigneeRole('setter')).toBe(false);
   });
 });

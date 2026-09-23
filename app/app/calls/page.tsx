@@ -88,7 +88,7 @@ export default async function CallsPage({
       >
         {isAdmin ? (
           <>
-            <RefreshProspectsDialog />
+            <RefreshProspectsDialog assignees={callers} />
             <Link href="/app/calls/new" className={buttonVariants()}>
               <Plus className="size-4" aria-hidden="true" /> Add prospect
             </Link>

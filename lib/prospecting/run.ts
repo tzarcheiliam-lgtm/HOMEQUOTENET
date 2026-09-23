@@ -1,7 +1,7 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Profile } from '@/lib/types';
-import { findCallerByName, type CallerOption } from '@/lib/calls/callers';
+import { CALL_ASSIGNEE_ROLES, type CallerOption } from '@/lib/calls/callers';
 import {
   distribute,
   isDuplicate,
@@ -27,7 +27,7 @@ import * as places from './google-places';
 export interface RefreshRequest {
   nicheSlug: string;
   customNiche?: string | null;
-  callers: 'liam' | 'nadav' | 'both';
+  callerIds: string[];
   perCaller: number;
 }
 
@@ -44,7 +44,7 @@ export async function listAssignees(supabase: SupabaseClient): Promise<CallerOpt
   const { data } = await supabase
     .from('profiles')
     .select('id, full_name, email, role, account_status, deleted_at')
-    .in('role', ['caller', 'admin'])
+    .in('role', [...CALL_ASSIGNEE_ROLES])
     .eq('account_status', 'active')
     .is('deleted_at', null);
   return ((data ?? []) as { id: string; full_name: string | null; email: string | null }[]).map(
@@ -91,20 +91,18 @@ export async function runRefresh(
   }
   const perCaller = Math.max(1, Math.min(MAX_PER_CALLER, Math.floor(req.perCaller || 100)));
 
-  // Resolve the caller names to real, active accounts.
+  // Revalidate the exact ids selected in the dialog against active assignees.
   const assignees = await listAssignees(supabase);
-  const wanted = req.callers === 'both' ? ['liam', 'nadav'] : [req.callers];
-  const callerIds: string[] = [];
-  for (const name of wanted) {
-    const c = findCallerByName(assignees, name);
-    if (!c) {
+  const activeIds = new Set(assignees.map((assignee) => assignee.id));
+  const callerIds = [...new Set(req.callerIds)];
+  for (const callerId of callerIds) {
+    if (!activeIds.has(callerId)) {
       await emit({
         type: 'error',
-        message: `No active account named "${name[0].toUpperCase()}${name.slice(1)}" to assign prospects to. Create it under Team first.`,
+        message: 'A selected caller is no longer active. Refresh the page and choose again.',
       });
       return;
     }
-    callerIds.push(c.id);
   }
 
   // The run row exists from the first moment so a crash still leaves a record.

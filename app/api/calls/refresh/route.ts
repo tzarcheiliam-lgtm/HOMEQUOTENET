@@ -19,7 +19,7 @@ export const maxDuration = 120;
 const bodySchema = z.object({
   nicheSlug: z.string().min(1),
   customNiche: z.string().max(80).optional().nullable(),
-  callers: z.enum(['liam', 'nadav', 'both']),
+  callerIds: z.array(z.string().uuid()).min(1).max(2),
   perCaller: z.number().int().min(1).max(MAX_PER_CALLER),
 });
 

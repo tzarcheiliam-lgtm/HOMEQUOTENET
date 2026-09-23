@@ -27,7 +27,12 @@ import {
  * here is applied: a caller asking for "all" still only receives their own.
  */
 
-import { findCallerByName, type CallerOption } from '@/lib/calls/callers';
+import {
+  assignedProfileIdForView,
+  CALL_ASSIGNEE_ROLES,
+  findCallerByName,
+  type CallerOption,
+} from '@/lib/calls/callers';
 export { findCallerByName, type CallerOption };
 
 type ProfileRow = Pick<Profile, 'id' | 'full_name' | 'email'>;
@@ -53,13 +58,13 @@ type ListQuery = {
   range: (from: number, to: number) => ListQuery;
 } & PromiseLike<{ data: ContractorProspect[] | null; count: number | null }>;
 
-/** Callers an admin can assign to. A caller sees only themselves. */
+/** Active admins and callers who can own a call list. */
 export async function listCallers(): Promise<CallerOption[]> {
   const supabase = await createClient();
   const { data } = await supabase
     .from('profiles')
     .select('id, full_name, email, role, account_status, deleted_at')
-    .eq('role', 'caller')
+    .in('role', [...CALL_ASSIGNEE_ROLES])
     .eq('account_status', 'active')
     .is('deleted_at', null)
     .order('full_name', { ascending: true });
@@ -111,13 +116,15 @@ function applyView(
   now: Date
 ) {
   switch (view) {
-    case 'mine':
-      return query.eq('assigned_to', me.id).in('disposition', QUEUE_DISPOSITIONS);
+    case 'mine': {
+      const assignedTo = assignedProfileIdForView('mine', me.id, callers);
+      return query.eq('assigned_to', assignedTo).in('disposition', QUEUE_DISPOSITIONS);
+    }
     case 'liam':
     case 'nadav': {
-      const c = findCallerByName(callers, view);
+      const assignedTo = assignedProfileIdForView(view, me.id, callers);
       // No such caller yet → an empty, honest list rather than everything.
-      return query.eq('assigned_to', c?.id ?? '00000000-0000-0000-0000-000000000000');
+      return query.eq('assigned_to', assignedTo ?? '00000000-0000-0000-0000-000000000000');
     }
     case 'all':
       return query;

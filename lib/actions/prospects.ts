@@ -3,6 +3,7 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+import { isCallAssigneeRole } from '@/lib/calls/callers';
 import { createClient } from '@/lib/supabase/server';
 import { requireCallerOrAdmin, requireRole } from '@/lib/auth';
 import { nextProspectIdFor } from '@/lib/data/prospects';
@@ -227,7 +228,7 @@ export async function assignProspects(fd: FormData): Promise<void> {
   const supabase = await createClient();
 
   if (assignee) {
-    // Only an active caller may hold prospects; a stale id is refused here
+    // Only an active call-capable account may hold prospects; a stale id is refused here
     // rather than silently creating a list nobody can see.
     const { data: target } = await supabase
       .from('profiles')
@@ -236,11 +237,11 @@ export async function assignProspects(fd: FormData): Promise<void> {
       .maybeSingle();
     if (
       !target ||
-      target.role !== 'caller' ||
+      !isCallAssigneeRole(target.role) ||
       target.account_status !== 'active' ||
       target.deleted_at
     ) {
-      throw new Error('Assignee must be an active caller');
+      throw new Error('Assignee must be an active admin or caller');
     }
   }
 

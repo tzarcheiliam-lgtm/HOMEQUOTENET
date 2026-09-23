@@ -4,6 +4,14 @@ export interface CallerOption {
   email: string | null;
 }
 
+export const CALL_ASSIGNEE_ROLES = ['caller', 'admin'] as const;
+
+export function isCallAssigneeRole(role: string): boolean {
+  return CALL_ASSIGNEE_ROLES.some((allowed) => allowed === role);
+}
+
+export type NamedCallerSelection = 'liam' | 'nadav' | 'both';
+
 /**
  * Resolves a saved view like "Liam's list" to a caller account. Pure, so it
  * is unit-tested directly.
@@ -28,4 +36,26 @@ export function findCallerByName(callers: CallerOption[], name: string): CallerO
     callers.find((c) => local(c).startsWith(n)) ??
     null
   );
+}
+
+/** Converts the refresh dialog's labels to the exact profile ids it selected. */
+export function callerIdsForSelection(
+  callers: CallerOption[],
+  selection: NamedCallerSelection
+): string[] {
+  const names = selection === 'both' ? ['liam', 'nadav'] : [selection];
+  return names.flatMap((name) => {
+    const caller = findCallerByName(callers, name);
+    return caller ? [caller.id] : [];
+  });
+}
+
+/** The assigned profile id represented by an account-specific saved view. */
+export function assignedProfileIdForView(
+  view: 'mine' | 'liam' | 'nadav',
+  signedInUserId: string,
+  callers: CallerOption[]
+): string | null {
+  if (view === 'mine') return signedInUserId;
+  return findCallerByName(callers, view)?.id ?? null;
 }

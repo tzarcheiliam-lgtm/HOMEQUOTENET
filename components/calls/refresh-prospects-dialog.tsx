@@ -9,6 +9,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { NICHES, CUSTOM_NICHE_SLUG } from '@/lib/prospecting/catalog';
+import {
+  callerIdsForSelection,
+  type CallerOption,
+  type NamedCallerSelection,
+} from '@/lib/calls/callers';
 
 /**
  * "Refresh Prospects": pick a niche, who gets them and how many, then watch
@@ -26,13 +31,13 @@ interface Summary {
   unqualified: number;
 }
 
-export function RefreshProspectsDialog() {
+export function RefreshProspectsDialog({ assignees }: { assignees: CallerOption[] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [phase, setPhase] = useState<Phase>('form');
   const [niche, setNiche] = useState(NICHES[0].slug);
   const [customNiche, setCustomNiche] = useState('');
-  const [callers, setCallers] = useState<'liam' | 'nadav' | 'both'>('both');
+  const [callers, setCallers] = useState<NamedCallerSelection>('both');
   const [perCaller, setPerCaller] = useState(100);
   const [messages, setMessages] = useState<string[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -59,13 +64,18 @@ export function RefreshProspectsDialog() {
     setMessages([]);
     setError(null);
     try {
+      const callerIds = callerIdsForSelection(assignees, callers);
+      const expectedCount = callers === 'both' ? 2 : 1;
+      if (callerIds.length !== expectedCount) {
+        throw new Error('Liam or Nadav is not available as an active call assignee. Refresh the page and try again.');
+      }
       const res = await fetch('/api/calls/refresh', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           nicheSlug: niche,
           customNiche: niche === CUSTOM_NICHE_SLUG ? customNiche : null,
-          callers,
+          callerIds,
           perCaller,
         }),
       });
