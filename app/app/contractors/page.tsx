@@ -25,33 +25,48 @@ const STATUS_VARIANT: Record<string, 'success' | 'warning' | 'muted'> = {
 };
 
 export default async function ContractorsPage() {
-  await requireRole(['admin']);
+  // Setters read this list to know who they are setting appointments for;
+  // creating and editing contractors stays with admins.
+  const profile = await requireRole(['admin', 'setter']);
+  const canManage = profile.role === 'admin';
   const contractors = await listContractors();
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Contractors"
-        description="Businesses that receive your leads, with their verticals and pricing."
+        description={
+          canManage
+            ? 'Businesses that receive your leads, with their verticals and pricing.'
+            : 'Businesses that receive your leads.'
+        }
       >
-        <Button asChild>
-          <Link href="/app/contractors/new">
-            <Plus className="size-4" /> New contractor
-          </Link>
-        </Button>
+        {canManage ? (
+          <Button asChild>
+            <Link href="/app/contractors/new">
+              <Plus className="size-4" /> New contractor
+            </Link>
+          </Button>
+        ) : null}
       </PageHeader>
 
       {contractors.length === 0 ? (
         <EmptyState
           icon={Building2}
           title="No contractors yet"
-          description="Add your first contractor to start assigning and selling leads."
+          description={
+            canManage
+              ? 'Add your first contractor to start assigning and selling leads.'
+              : 'No contractors have been added yet.'
+          }
           action={
-            <Button asChild>
-              <Link href="/app/contractors/new">
-                <Plus className="size-4" /> New contractor
-              </Link>
-            </Button>
+            canManage ? (
+              <Button asChild>
+                <Link href="/app/contractors/new">
+                  <Plus className="size-4" /> New contractor
+                </Link>
+              </Button>
+            ) : undefined
           }
         />
       ) : (
@@ -63,7 +78,9 @@ export default async function ContractorsPage() {
                 <TableHead>Contact</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-center">Verticals</TableHead>
-                <TableHead className="text-center">Agreements</TableHead>
+                {canManage ? (
+                  <TableHead className="text-center">Agreements</TableHead>
+                ) : null}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -86,9 +103,11 @@ export default async function ContractorsPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-center">{c.vertical_count}</TableCell>
-                  <TableCell className="text-center">
-                    {c.agreement_count}
-                  </TableCell>
+                  {canManage ? (
+                    <TableCell className="text-center">
+                      {c.agreement_count}
+                    </TableCell>
+                  ) : null}
                 </TableRow>
               ))}
             </TableBody>

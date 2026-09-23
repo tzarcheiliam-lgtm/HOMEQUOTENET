@@ -45,10 +45,16 @@ export async function requireRole(
 }
 
 /**
- * The calling workspace is for callers and the admins who run them. Anyone
- * else is sent back to their own home, which for a setter or contractor is
- * the dashboard — they should never learn the workspace exists.
+ * The calling workspace is for the people who work a prospect call list —
+ * callers and appointment setters — plus the admins who run them. A
+ * contractor is sent back to their own home; they should never learn the
+ * workspace exists.
+ *
+ * This only decides who gets through the door. Everything inside still
+ * separates admin from call agent: a non-admin sees only the prospects
+ * assigned to them, and admin-only controls (Refresh Prospects, assignment,
+ * lifting a do-not-call) keep their own `requireRole(['admin'])` guards.
  */
-export async function requireCallerOrAdmin(): Promise<Profile> {
-  return requireRole(['admin', 'caller']);
+export async function requireCallWorkspace(): Promise<Profile> {
+  return requireRole(['admin', 'caller', 'setter']);
 }

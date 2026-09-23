@@ -33,15 +33,16 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Contractors',
     href: '/app/contractors',
     icon: 'Building2',
-    roles: ['admin'],
+    roles: ['admin', 'setter'],
   },
-  // The partner cold-calling workspace. Callers land here; admins use it to
-  // assign prospects and compare callers. Setters and contractors never see it.
+  // The partner cold-calling workspace. Callers and setters work their own
+  // assigned list here; admins use it to assign prospects and compare agents.
+  // Contractors never see it.
   {
     label: 'Calls',
     href: '/app/calls',
     icon: 'Phone',
-    roles: ['admin', 'caller'],
+    roles: ['admin', 'caller', 'setter'],
   },
   {
     label: 'Appointments',

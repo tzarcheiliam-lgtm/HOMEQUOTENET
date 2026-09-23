@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { ScrollText } from 'lucide-react';
-import { requireCallerOrAdmin } from '@/lib/auth';
+import { requireCallWorkspace } from '@/lib/auth';
 import { listCallLogs, listCallers, type LogFilters } from '@/lib/data/prospects';
 import { DISPOSITIONS } from '@/lib/calls/constants';
 import { Button } from '@/components/ui/button';
@@ -39,7 +39,7 @@ export default async function CallLogsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const me = await requireCallerOrAdmin();
+  const me = await requireCallWorkspace();
   const isAdmin = me.role === 'admin';
   const sp = await searchParams;
 

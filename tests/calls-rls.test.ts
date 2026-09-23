@@ -28,6 +28,7 @@ const ids = {
   p2: '00000000-0000-4000-8000-0000000000f2', // assigned to nadav
   p3: '00000000-0000-4000-8000-0000000000f3', // unassigned
   pDnc: '00000000-0000-4000-8000-0000000000f4', // assigned to liam, do-not-call
+  pSetter: '00000000-0000-4000-8000-0000000000f5', // assigned to the setter
   email1: '00000000-0000-4000-8000-0000000000e1',
 };
 
@@ -113,8 +114,9 @@ beforeAll(async () => {
       ($1, 'RLS Test Pools A', '(818) 555-0191', $5),
       ($2, 'RLS Test Pools B', '(818) 555-0192', $6),
       ($3, 'RLS Test Pools C', '(818) 555-0193', null),
-      ($4, 'RLS Test Pools DNC', '(818) 555-0194', $5)`,
-    [ids.p1, ids.p2, ids.p3, ids.pDnc, ids.liam, ids.nadav]
+      ($4, 'RLS Test Pools DNC', '(818) 555-0194', $5),
+      ($7, 'RLS Test Pools S', '(818) 555-0195', $8)`,
+    [ids.p1, ids.p2, ids.p3, ids.pDnc, ids.liam, ids.nadav, ids.pSetter, ids.setter]
   );
   await q(`update public.contractor_prospects set disposition='do_not_call' where id=$1`, [ids.pDnc]);
   await q(
@@ -189,16 +191,118 @@ describe('calls RLS', () => {
     }
   });
 
-  maybe()('setters and contractors see no prospects at all', async () => {
-    for (const u of [ids.setter, ids.contractor]) {
-      const rows = await as(u, () => q(`select id from public.contractor_prospects`));
-      expect(rows).toHaveLength(0);
-    }
+  maybe()('a contractor still sees no prospects at all', async () => {
+    const rows = await as(ids.contractor, () => q(`select id from public.contractor_prospects`));
+    expect(rows).toHaveLength(0);
+  });
+
+  maybe()('a setter sees only prospects assigned to them', async () => {
+    const rows = await as(ids.setter, () => q(`select id from public.contractor_prospects order by id`));
+    expect(rows.map((r) => r.id)).toEqual([ids.pSetter]);
+    // Another agent's prospect stays invisible even when asked for by id.
+    const other = await as(ids.setter, () =>
+      q(`select id from public.contractor_prospects where id=$1`, [ids.p1])
+    );
+    expect(other).toHaveLength(0);
+  });
+
+  maybe()('a setter can work their own prospect like a caller', async () => {
+    // Save contact details and log a call.
+    const saved = await as(ids.setter, () =>
+      q(
+        `update public.contractor_prospects
+            set decision_maker_name='Sam', decision_maker_email='sam@example.test', disposition='interested'
+          where id=$1 returning decision_maker_email, disposition`,
+        [ids.pSetter]
+      )
+    );
+    expect(saved[0].decision_maker_email).toBe('sam@example.test');
+    expect(saved[0].disposition).toBe('interested');
+
+    await as(ids.setter, () =>
+      q(
+        `insert into public.prospect_call_attempts
+           (prospect_id, caller_id, outcome, new_disposition, attempt_number, notes, callback_at)
+         values ($1, $2, 'no_answer', 'callback_requested', 0, 'setter rls note', now()+interval '1 day')`,
+        [ids.pSetter, ids.setter]
+      )
+    );
+    // History, notes, callback and the denormalized counter all persist.
+    const [a] = await as(ids.setter, () =>
+      q(
+        `select attempt_number, notes, caller_name, callback_at
+           from public.prospect_call_attempts where prospect_id=$1`,
+        [ids.pSetter]
+      )
+    );
+    expect(a.attempt_number).toBe(1);
+    expect(a.notes).toBe('setter rls note');
+    expect(a.callback_at).not.toBeNull();
+    const [counter] = await as(ids.setter, () =>
+      q(`select call_attempt_count, last_contacted_at from public.contractor_prospects where id=$1`, [ids.pSetter])
+    );
+    expect(counter.call_attempt_count).toBe(1);
+    expect(counter.last_contacted_at).not.toBeNull();
+
+    // And book a sales appointment against it.
+    await as(ids.setter, () =>
+      q(
+        `insert into public.prospect_sales_appointments (prospect_id, partner_id, scheduled_at) values ($1, $2, now()+interval '3 days')`,
+        [ids.pSetter, ids.setter]
+      )
+    );
+    const appts = await as(ids.setter, () =>
+      q(`select id from public.prospect_sales_appointments where prospect_id=$1`, [ids.pSetter])
+    );
+    expect(appts).toHaveLength(1);
+  });
+
+  maybe()('a setter cannot touch another agent’s prospect or log against it', async () => {
+    const updated = await as(ids.setter, () =>
+      q(`update public.contractor_prospects set disposition='interested' where id=$1 returning id`, [ids.p2])
+    );
+    expect(updated).toHaveLength(0);
+
+    const e = await refused(ids.setter, () =>
+      q(
+        `insert into public.prospect_call_attempts (prospect_id, caller_id, outcome) values ($1, $2, 'no_answer')`,
+        [ids.p2, ids.setter]
+      )
+    );
+    expect(e).toMatch(/row-level security/i);
+  });
+
+  maybe()('a setter gets no admin powers: no creating, no reassigning, no lifting DNC', async () => {
+    // Creating a prospect stays admin-only.
+    const created = await refused(ids.setter, () =>
+      q(`insert into public.contractor_prospects (company_name) values ('Setter Made This')`)
+    );
+    expect(created).toMatch(/row-level security/i);
+
+    // Reassigning their own prospect away is refused by the column guard.
+    const reassigned = await refused(ids.setter, () =>
+      q(`update public.contractor_prospects set assigned_to=$2 where id=$1`, [ids.pSetter, ids.liam])
+    );
+    expect(reassigned).toMatch(/only update calling fields/i);
+
+    // Marking do-not-call is allowed; lifting it is not.
+    await as(ids.setter, () =>
+      q(`update public.contractor_prospects set disposition='do_not_call', do_not_call_at=now() where id=$1`, [ids.pSetter])
+    );
+    const lifted = await refused(ids.setter, () =>
+      q(`update public.contractor_prospects set disposition='new', do_not_call_at=null where id=$1`, [ids.pSetter])
+    );
+    expect(lifted).toMatch(/only an admin can/i);
+
+    // Restore so later assertions see a clean row.
+    await as(ids.admin, () =>
+      q(`update public.contractor_prospects set disposition='new', do_not_call_at=null where id=$1`, [ids.pSetter])
+    );
   });
 
   maybe()('an admin sees every prospect', async () => {
     const rows = await as(ids.admin, () => q(`select id from public.contractor_prospects where company_name like 'RLS Test%'`));
-    expect(rows).toHaveLength(4);
+    expect(rows).toHaveLength(5);
   });
 
   maybe()('a caller can log a call on their own prospect and the counter follows', async () => {

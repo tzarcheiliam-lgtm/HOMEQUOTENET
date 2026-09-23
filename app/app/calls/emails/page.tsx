@@ -1,5 +1,5 @@
 import { Mail, PlugZap } from 'lucide-react';
-import { requireCallerOrAdmin } from '@/lib/auth';
+import { requireCallWorkspace } from '@/lib/auth';
 import { listEmailProspects } from '@/lib/data/emails';
 import { getGmailConnectionStatus } from '@/lib/emails/gmail';
 import { emailLogoUrl } from '@/lib/emails/template';
@@ -24,7 +24,7 @@ export default async function EmailsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const me = await requireCallerOrAdmin();
+  const me = await requireCallWorkspace();
   const [prospects, gmail] = await Promise.all([listEmailProspects(), getGmailConnectionStatus()]);
   const params = await searchParams;
   const gmailResult = Array.isArray(params.gmail) ? params.gmail[0] : params.gmail;

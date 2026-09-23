@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Plus } from 'lucide-react';
-import { requireCallerOrAdmin } from '@/lib/auth';
+import { requireCallWorkspace } from '@/lib/auth';
 import {
   getCallerDashboard,
   listCallers,
@@ -44,7 +44,7 @@ export default async function CallsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const me = await requireCallerOrAdmin();
+  const me = await requireCallWorkspace();
   const isAdmin = me.role === 'admin';
   const sp = await searchParams;
 

@@ -59,7 +59,7 @@ type ListQuery = {
   range: (from: number, to: number) => ListQuery;
 } & PromiseLike<{ data: ContractorProspect[] | null; count: number | null }>;
 
-/** Active admins and callers who can own a call list. */
+/** Active admins, callers and setters who can own a call list. */
 export async function listCallers(): Promise<CallerOption[]> {
   const supabase = await createClient();
   const { data } = await supabase
@@ -213,7 +213,8 @@ export async function listProspects(
 
   const { data, count } = await query;
   const nameById = new Map(callers.map((c) => [c.id, c.name]));
-  if (me.role === 'caller') nameById.set(me.id, me.full_name || me.email || 'Me');
+  // A call agent sees their own list labelled "Me" rather than their own name.
+  if (me.role !== 'admin') nameById.set(me.id, me.full_name || me.email || 'Me');
 
   return {
     rows: ((data ?? []) as ContractorProspect[]).map((p) => ({

@@ -4,7 +4,13 @@ export interface CallerOption {
   email: string | null;
 }
 
-export const CALL_ASSIGNEE_ROLES = ['caller', 'admin'] as const;
+/**
+ * Roles that can hold a prospect call list. Setters work the same list as
+ * callers, so an admin must be able to assign prospects to them — without
+ * this they could open the workspace and only ever see an empty "My Call
+ * List". Contractors are never assignable.
+ */
+export const CALL_ASSIGNEE_ROLES = ['caller', 'admin', 'setter'] as const;
 
 export function isCallAssigneeRole(role: string): boolean {
   return CALL_ASSIGNEE_ROLES.some((allowed) => allowed === role);

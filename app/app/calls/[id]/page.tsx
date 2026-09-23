@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { Phone, ExternalLink, PhoneOff, AlarmClock, CalendarCheck } from 'lucide-react';
-import { requireCallerOrAdmin } from '@/lib/auth';
+import { requireCallWorkspace } from '@/lib/auth';
 import { getProspect, listCallers } from '@/lib/data/prospects';
 import { clearDoNotCall } from '@/lib/actions/prospects';
 import { isDialable } from '@/lib/calls/rules';
@@ -39,7 +39,7 @@ export default async function ProspectPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const me = await requireCallerOrAdmin();
+  const me = await requireCallWorkspace();
   const isAdmin = me.role === 'admin';
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();

@@ -49,9 +49,13 @@ describe('call-list assignment', () => {
     expect(assignedProfileIdForView('mine', 'nadav-id', callers)).toBe('nadav-id');
   });
 
-  it('allows both live call-capable roles to own lists', () => {
+  it('allows every call-capable role to own lists, and nobody else', () => {
     expect(isCallAssigneeRole('admin')).toBe(true);
     expect(isCallAssigneeRole('caller')).toBe(true);
-    expect(isCallAssigneeRole('setter')).toBe(false);
+    // Setters work the same call list, so they must be assignable; without
+    // this their "My Call List" could never be anything but empty.
+    expect(isCallAssigneeRole('setter')).toBe(true);
+    expect(isCallAssigneeRole('contractor')).toBe(false);
+    expect(isCallAssigneeRole('')).toBe(false);
   });
 });

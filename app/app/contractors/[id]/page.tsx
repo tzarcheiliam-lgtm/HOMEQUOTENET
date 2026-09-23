@@ -21,7 +21,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { PageHeader } from '@/components/ui/page-header';
-import type { PricingAgreement } from '@/lib/types';
+import type { Contractor, PricingAgreement } from '@/lib/types';
 
 export const metadata = { title: 'Contractor · HomeQuote Network' };
 
@@ -51,12 +51,91 @@ function summarize(a: PricingAgreement): string {
   }
 }
 
+/**
+ * What a setter sees: who the contractor is and what they cover, with no
+ * editable form, no delete and no pricing. Pricing is billing-sensitive and
+ * `pricing_agreements` already excludes setters at the RLS layer, so the
+ * section is omitted rather than rendered empty.
+ */
+function ContractorReadOnly({
+  contractor,
+  verticalNames,
+}: {
+  contractor: Contractor;
+  verticalNames: string[];
+}) {
+  const rows: [string, string][] = [
+    ['Contact', contractor.contact_name || '—'],
+    ['Email', contractor.email || '—'],
+    ['Phone', contractor.phone || '—'],
+    ['Service areas', contractor.service_areas.join(', ') || '—'],
+  ];
+
+  return (
+    <div className="space-y-8">
+      <PageHeader
+        title={contractor.name}
+        backHref="/app/contractors"
+        backLabel="Contractors"
+      >
+        <Badge variant="muted">{contractor.status}</Badge>
+      </PageHeader>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Details</CardTitle>
+          <CardDescription>Business contact and service information.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <dl className="grid gap-4 sm:grid-cols-2">
+            {rows.map(([label, value]) => (
+              <div key={label}>
+                <dt className="text-sm text-muted-foreground">{label}</dt>
+                <dd className="mt-0.5 text-sm font-medium">{value}</dd>
+              </div>
+            ))}
+          </dl>
+          {contractor.notes ? (
+            <div className="mt-4">
+              <dt className="text-sm text-muted-foreground">Notes</dt>
+              <dd className="mt-0.5 whitespace-pre-wrap text-sm">{contractor.notes}</dd>
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Verticals served</CardTitle>
+          <CardDescription>
+            Which lead categories this contractor can receive.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {verticalNames.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No verticals assigned yet.</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {verticalNames.map((name) => (
+                <Badge key={name} variant="secondary">
+                  {name}
+                </Badge>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export default async function ContractorDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requireRole(['admin']);
+  const profile = await requireRole(['admin', 'setter']);
+  const canManage = profile.role === 'admin';
   const { id } = await params;
 
   const [detail, verticals] = await Promise.all([
@@ -66,6 +145,17 @@ export default async function ContractorDetailPage({
   if (!detail) notFound();
 
   const { contractor, verticalIds, agreements } = detail;
+
+  if (!canManage) {
+    return (
+      <ContractorReadOnly
+        contractor={contractor}
+        verticalNames={verticals
+          .filter((v) => verticalIds.includes(v.id))
+          .map((v) => v.name)}
+      />
+    );
+  }
 
   return (
     <div className="space-y-8">

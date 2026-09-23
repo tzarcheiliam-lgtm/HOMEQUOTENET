@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { isCallAssigneeRole } from '@/lib/calls/callers';
 import { createClient } from '@/lib/supabase/server';
-import { requireCallerOrAdmin, requireRole } from '@/lib/auth';
+import { requireCallWorkspace, requireRole } from '@/lib/auth';
 import { nextProspectIdFor } from '@/lib/data/prospects';
 import {
   prospectPatchFor,
@@ -108,7 +108,7 @@ export async function logCallOutcome(
   _prev: ProspectActionState,
   fd: FormData
 ): Promise<ProspectActionState> {
-  const me = await requireCallerOrAdmin();
+  const me = await requireCallWorkspace();
   const isAdmin = me.role === 'admin';
   const prospectId = str(fd, 'prospect_id');
   if (!prospectId) return { ok: false, error: 'Missing prospect' };
@@ -241,7 +241,7 @@ export async function assignProspects(fd: FormData): Promise<void> {
       target.account_status !== 'active' ||
       target.deleted_at
     ) {
-      throw new Error('Assignee must be an active admin or caller');
+      throw new Error('Assignee must be an active admin, caller or setter');
     }
   }
 
@@ -293,7 +293,7 @@ const STATUSES: SalesAppointmentStatus[] = [
 ];
 
 export async function setSalesAppointmentStatus(fd: FormData): Promise<void> {
-  const me = await requireCallerOrAdmin();
+  const me = await requireCallWorkspace();
   const id = str(fd, 'id');
   const status = str(fd, 'status') as SalesAppointmentStatus;
   if (!id || !STATUSES.includes(status)) throw new Error('Invalid appointment update');

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { requireCallerOrAdmin } from '@/lib/auth';
+import { requireCallWorkspace } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import {
@@ -41,7 +41,7 @@ export async function sendProspectEmail(
   _previous: SendEmailState,
   formData: FormData
 ): Promise<SendEmailState> {
-  const me = await requireCallerOrAdmin();
+  const me = await requireCallWorkspace();
   const parsed = schema.safeParse({
     prospect_id: field(formData, 'prospect_id'),
     recipient_name: field(formData, 'recipient_name'),
