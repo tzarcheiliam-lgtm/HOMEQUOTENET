@@ -200,3 +200,29 @@ supabase/migrations/          SQL schema + Row Level Security
 6. ✅ Integration framework + Lead Intake Engine + Meta Lead Ads connector
    (provider-agnostic pipeline: source → connector → intake → dedupe → attribution → lead)
 7. Reporting depth & revenue tracking (ROAS by campaign, ad-spend entry, billing reconciliation)
+
+## Refresh Prospects (`/app/calls` → Refresh Prospects)
+
+Sources **real** contractor businesses by niche for Los Angeles and Ventura
+County and adds them to the call list, assigned to Liam, Nadav or both. Backed
+by `supabase/migrations/0008_prospect_refresh.sql` and the Google Places API
+(New) — nothing is ever invented; without a key the run explains what is
+missing and adds nothing.
+
+- **Set up:** create a Google Cloud API key with *Places API (New)* enabled and
+  set `GOOGLE_PLACES_API_KEY` in Vercel (Production) and `.env.local`. Server-side
+  only. A 100-per-caller run is roughly 15–30 billed Text Search requests.
+- **Duplicate protection** checks the entire prospect history — archived,
+  do-not-call, any assignment — on provider id, phone, website domain and
+  name + city, and never gives Liam and Nadav the same company in one run.
+- **Qualification** drops closed businesses, listings with no usable phone,
+  anything outside the two counties, and results that match the niche by
+  neither type nor name. Pool listings that read as cleaning-only are flagged,
+  not dropped.
+- Every run is recorded in `prospect_refresh_runs` (parameters, progress log,
+  counts) and in `audit_logs`; the selected niche is saved on each prospect and
+  drives the **Niche** filter on `/app/calls`.
+- Code: `lib/prospecting/catalog.ts` (pure rules, unit-tested),
+  `lib/prospecting/google-places.ts` (provider), `lib/prospecting/run.ts`
+  (orchestrator), `app/api/calls/refresh/route.ts` (streams progress),
+  `components/calls/refresh-prospects-dialog.tsx`.

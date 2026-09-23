@@ -17,6 +17,7 @@ import { ViewTabs } from '@/components/calls/view-tabs';
 import { ProspectFilters } from '@/components/calls/prospect-filters';
 import { ProspectsTable } from '@/components/calls/prospects-table';
 import { Pagination } from '@/components/calls/pagination';
+import { RefreshProspectsDialog } from '@/components/calls/refresh-prospects-dialog';
 import type { ProspectDisposition } from '@/lib/types';
 
 export const metadata = { title: 'Calls · HomeQuote Network' };
@@ -60,6 +61,7 @@ export default async function CallsPage({
     city: first(sp.city),
     county: first(sp.county),
     service: first(sp.service),
+    niche: first(sp.niche),
     callback: first(sp.callback) as Filters['callback'],
     sort: first(sp.sort) as CallSort | undefined,
     page: Number(first(sp.page) ?? '1') || 1,
@@ -85,9 +87,12 @@ export default async function CallsPage({
         }
       >
         {isAdmin ? (
-          <Link href="/app/calls/new" className={buttonVariants()}>
-            <Plus className="size-4" aria-hidden="true" /> Add prospect
-          </Link>
+          <>
+            <RefreshProspectsDialog />
+            <Link href="/app/calls/new" className={buttonVariants()}>
+              <Plus className="size-4" aria-hidden="true" /> Add prospect
+            </Link>
+          </>
         ) : null}
       </PageHeader>
 
@@ -133,6 +138,7 @@ export default async function CallsPage({
           city: filters.city,
           county: filters.county,
           service: filters.service,
+          niche: filters.niche,
           callback: filters.callback,
           sort: filters.sort,
         }}

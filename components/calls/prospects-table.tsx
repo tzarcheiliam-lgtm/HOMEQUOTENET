@@ -137,7 +137,7 @@ export function ProspectsTable({
                       ) : (
                         <span>No website</span>
                       )}
-                      {p.category ? <span>&middot; {p.category}</span> : null}
+                      {p.niche || p.category ? <span>&middot; {p.niche ?? p.category}</span> : null}
                     </div>
                   </TableCell>
                   <TableCell className="whitespace-nowrap tabular-nums">

@@ -23,7 +23,7 @@ export function ProspectFilters({
   current: Filters;
   callers: CallerOption[];
   isAdmin: boolean;
-  options: { cities: string[]; counties: string[]; services: string[] };
+  options: { cities: string[]; counties: string[]; services: string[]; niches: string[] };
 }) {
   return (
     <Card className="sticky top-0 z-10 p-3 shadow-sm">
@@ -91,6 +91,17 @@ export function ProspectFilters({
             </option>
           ))}
         </Select>
+
+        {options.niches.length > 0 ? (
+          <Select name="niche" defaultValue={current.niche ?? ''} aria-label="Niche" className="md:col-span-2">
+            <option value="">All niches</option>
+            {options.niches.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </Select>
+        ) : null}
 
         <Select name="callback" defaultValue={current.callback ?? ''} aria-label="Callback" className="md:col-span-2">
           <option value="">Any callback state</option>

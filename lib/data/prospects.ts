@@ -78,6 +78,7 @@ export interface ProspectFilters {
   city?: string;
   county?: string;
   service?: string;
+  niche?: string;
   callback?: 'due' | 'upcoming' | 'any';
   sort?: CallSort;
   page?: number;
@@ -188,6 +189,7 @@ export async function listProspects(
   if (filters.city) query = query.ilike('city', `%${filters.city}%`);
   if (filters.county) query = query.ilike('county', `%${filters.county}%`);
   if (filters.service) query = query.contains('primary_services', [filters.service]);
+  if (filters.niche) query = query.eq('niche', filters.niche);
   if (filters.callback === 'due') {
     query = query.not('next_callback_at', 'is', null).lte('next_callback_at', now.toISOString());
   } else if (filters.callback === 'upcoming') {
@@ -221,23 +223,31 @@ export async function listProspectFilterOptions(): Promise<{
   cities: string[];
   counties: string[];
   services: string[];
+  niches: string[];
 }> {
   const supabase = await createClient();
   const { data } = await supabase
     .from('contractor_prospects')
-    .select('city, county, primary_services')
+    .select('city, county, primary_services, niche')
     .is('archived_at', null)
     .limit(5000);
   const cities = new Set<string>();
   const counties = new Set<string>();
   const services = new Set<string>();
+  const niches = new Set<string>();
   for (const r of data ?? []) {
     if (r.city) cities.add(r.city);
     if (r.county) counties.add(r.county);
+    if (r.niche) niches.add(r.niche);
     for (const s of r.primary_services ?? []) services.add(s);
   }
   const sorted = (s: Set<string>) => Array.from(s).sort((a, b) => a.localeCompare(b));
-  return { cities: sorted(cities), counties: sorted(counties), services: sorted(services) };
+  return {
+    cities: sorted(cities),
+    counties: sorted(counties),
+    services: sorted(services),
+    niches: sorted(niches),
+  };
 }
 
 export interface ProspectDetail {

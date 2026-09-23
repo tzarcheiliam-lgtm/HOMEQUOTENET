@@ -416,6 +416,14 @@ export interface ContractorProspect {
   source: string | null;
   import_batch: string | null;
   archived_at: string | null;
+  // Sourcing (0008): set by Refresh Prospects, null for manual/CSV rows.
+  niche: string | null;
+  external_source: string | null;
+  external_id: string | null;
+  address: string | null;
+  zip: string | null;
+  business_status: string | null;
+  maps_url: string | null;
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
