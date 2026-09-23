@@ -47,6 +47,8 @@ export function buildMoreInfoAfterCallEmail(
         : []),
       '',
       'If that sounds worth exploring, would you be open to a 15-minute call with Liam?',
+      '',
+      'You can also book an appointment with Liam and see our results at https://homequotenet.com/.',
     ].join('\n'),
   };
 }
@@ -64,9 +66,15 @@ function messageHtml(message: string): string {
   return message
     .trim()
     .split(/\n{2,}/)
-    .map((paragraph) =>
-      `<p style="margin:0 0 16px 0;">${escapeHtml(paragraph).replace(/\n/g, '<br>')}</p>`
-    )
+    .map((paragraph) => {
+      const content = escapeHtml(paragraph)
+        .replace(
+          /https:\/\/homequotenet\.com\/?/gi,
+          '<a href="https://homequotenet.com/" style="color:#1267a8;text-decoration:underline;">homequotenet.com</a>'
+        )
+        .replace(/\n/g, '<br>');
+      return `<p style="margin:0 0 16px 0;">${content}</p>`;
+    })
     .join('');
 }
 

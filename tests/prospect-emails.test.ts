@@ -22,6 +22,9 @@ describe('More info after our call template', () => {
     expect(draft.message).toContain('specific day and time');
     expect(draft.message).toContain('contractor to meet with the homeowner');
     expect(draft.message).toContain('15-minute call with Liam');
+    expect(draft.message).toContain(
+      'book an appointment with Liam and see our results at https://homequotenet.com/'
+    );
     expect(draft.message).not.toMatch(
       /\{\{|\[.*?\]|\$|pricing|no upfront|exclusive|guaranteed|shared/i
     );
@@ -37,13 +40,19 @@ describe('More info after our call template', () => {
 
   it('renders a compact Gmail-safe signature with an image-blocking fallback', () => {
     const logoUrl = emailLogoUrl('https://homequote-eight.vercel.app');
-    const html = buildProspectEmailHtml('Hi Jordan,\n\nThanks for your time.', logoUrl);
+    const html = buildProspectEmailHtml(
+      'Hi Jordan,\n\nThanks for your time.\n\nBook with Liam and see our results at https://homequotenet.com/.',
+      logoUrl
+    );
     expect(html).toContain(`src="${logoUrl}"`);
     expect(html).toContain('alt="HomeQuote Network"');
     expect(html).toContain('width="72"');
     expect(html).toContain('font-family:Arial,Helvetica,sans-serif');
     expect(html).toContain('color:#082f63');
     expect(html).toContain('Liam');
+    expect(html).toContain(
+      '<a href="https://homequotenet.com/" style="color:#1267a8;text-decoration:underline;">homequotenet.com</a>'
+    );
   });
 
   it('ships a real-alpha PNG for the public signature asset', () => {
