@@ -4,6 +4,7 @@ import type {
   ContractorProspect,
   Profile,
   ProspectCallAttempt,
+  ProspectEmailLog,
   ProspectDisposition,
   ProspectSalesAppointment,
   SalesAppointmentStatus,
@@ -260,6 +261,7 @@ export async function listProspectFilterOptions(): Promise<{
 export interface ProspectDetail {
   prospect: ProspectListRow;
   attempts: ProspectCallAttempt[];
+  emails: ProspectEmailLog[];
   appointments: ProspectSalesAppointment[];
 }
 
@@ -268,13 +270,18 @@ export async function getProspect(
   callers: CallerOption[]
 ): Promise<ProspectDetail | null> {
   const supabase = await createClient();
-  const [{ data: p }, { data: attempts }, { data: appointments }] = await Promise.all([
+  const [{ data: p }, { data: attempts }, { data: emails }, { data: appointments }] = await Promise.all([
     supabase.from('contractor_prospects').select('*').eq('id', id).maybeSingle(),
     supabase
       .from('prospect_call_attempts')
       .select('*')
       .eq('prospect_id', id)
       .order('attempt_number', { ascending: false }),
+    supabase
+      .from('prospect_email_logs')
+      .select('*')
+      .eq('prospect_id', id)
+      .order('created_at', { ascending: false }),
     supabase
       .from('prospect_sales_appointments')
       .select('*')
@@ -289,6 +296,7 @@ export async function getProspect(
       assigned_name: p.assigned_to ? (nameById.get(p.assigned_to) ?? 'Assigned') : null,
     },
     attempts: (attempts ?? []) as ProspectCallAttempt[],
+    emails: (emails ?? []) as ProspectEmailLog[],
     appointments: (appointments ?? []) as ProspectSalesAppointment[],
   };
 }

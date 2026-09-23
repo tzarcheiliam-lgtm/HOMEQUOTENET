@@ -226,3 +226,48 @@ missing and adds nothing.
   `lib/prospecting/google-places.ts` (provider), `lib/prospecting/run.ts`
   (orchestrator), `app/api/calls/refresh/route.ts` (streams progress),
   `components/calls/refresh-prospects-dialog.tsx`.
+
+## Manual prospect email (`/app/calls/emails`)
+
+The Calls workspace has an **Emails** tab for one-at-a-time, manually reviewed
+follow-ups. Version 1 includes only **More info after our call**. Selecting a
+prospect loads any saved decision-maker name/email, builds an editable draft,
+and sends only when a user clicks **Send email**. Successful and failed sends
+are recorded in that prospect's activity history; failed Gmail requests are
+never marked sent.
+
+### Gmail OAuth setup
+
+1. In Google Cloud Console, use the project that will own the integration and
+   enable **Gmail API**.
+2. Configure the OAuth consent screen. If the app is in Testing, add the
+   HomeQuote Gmail account as a test user.
+3. Create an **OAuth client ID** with application type **Web application**.
+4. Add the exact authorized redirect URI for each environment:
+   - Local: `http://localhost:3000/api/integrations/gmail/oauth/callback`
+   - Production: `https://YOUR-DOMAIN/api/integrations/gmail/oauth/callback`
+5. Generate the token-encryption key once:
+
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+   ```
+
+6. Set these server-side variables in `.env.local` and in Vercel Production:
+
+   | Variable | Value |
+   | --- | --- |
+   | `GOOGLE_GMAIL_CLIENT_ID` | OAuth Web client ID |
+   | `GOOGLE_GMAIL_CLIENT_SECRET` | OAuth Web client secret |
+   | `GMAIL_OAUTH_REDIRECT_URI` | Exact URI registered in step 4 |
+   | `GMAIL_FROM_EMAIL` | HomeQuote Gmail address being connected |
+   | `GMAIL_TOKEN_ENCRYPTION_KEY` | Base64 key generated in step 5 |
+
+7. Apply `supabase/migrations/0009_prospect_emails.sql`, deploy/restart the
+   app, sign in as an administrator, open **Calls → Emails**, click **Connect
+   Gmail**, and authorize the HomeQuote account.
+
+The OAuth request asks only for
+`https://www.googleapis.com/auth/gmail.send`. The refresh token is encrypted
+server-side with AES-256-GCM before database storage. OAuth credentials and
+tokens are never returned to the browser. Keep the encryption key stable;
+changing it requires reconnecting Gmail.

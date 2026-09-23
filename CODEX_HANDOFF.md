@@ -1,4 +1,83 @@
-# Codex handoff: refreshed call-list assignment fix
+# Codex handoff: Emails v1
+
+Updated: 2026-09-23
+
+## What changed
+
+- Added **Calls → Emails** at `/app/calls/emails` for one-at-a-time, manually reviewed sending. There are no sequences, schedules, or bulk-send paths.
+- Added the single **More info after our call** template. It uses only known contact name, company name, pool services, and signed-in sender name; absent data is omitted and no placeholder is shown.
+- The recipient, subject, and plain-text message remain fully editable before send.
+- Sending saves `decision_maker_name` and the new `decision_maker_email` on the selected prospect, including when Gmail later returns an error.
+- Added server-side Google OAuth using only `https://www.googleapis.com/auth/gmail.send`. OAuth state is checked in an HttpOnly SameSite cookie. Refresh tokens are AES-256-GCM encrypted before storage and never sent to the browser.
+- Every attempt creates a pending `prospect_email_logs` row before contacting Gmail. It is finalized as `sent` only after Gmail returns a message ID, or `failed` with the provider error. A failed request is never marked sent.
+- Prospect detail now has one chronological activity history containing calls and outbound emails, including sender, recipient, subject, timestamp, status, message, and failure reason.
+- Emailing a prospect marked `do_not_call` is blocked.
+
+## Database
+
+Added and applied `supabase/migrations/0009_prospect_emails.sql`:
+
+- `contractor_prospects.decision_maker_email`
+- `prospect_email_logs` with RLS-scoped read access and no app-user write policy
+- `gmail_connections`, a singleton encrypted-token store with admin-only read access and service-role writes
+
+Migration `0009` was applied successfully to the configured Supabase project. Existing prospects, assignments, call attempts, and prior history were not reset or rewritten.
+
+## Gmail configuration
+
+Required server-only environment variables:
+
+- `GOOGLE_GMAIL_CLIENT_ID`
+- `GOOGLE_GMAIL_CLIENT_SECRET`
+- `GMAIL_OAUTH_REDIRECT_URI`
+- `GMAIL_FROM_EMAIL`
+- `GMAIL_TOKEN_ENCRYPTION_KEY` (base64-encoded 32-byte key)
+
+Exact Google Cloud, redirect URI, key-generation, Vercel, and connection steps are in `README.md` and `.env.example`. After configuration/deployment, an administrator opens **Calls → Emails**, clicks **Connect Gmail**, and authorizes the HomeQuote Gmail account. Keep the encryption key stable; changing it requires reconnecting.
+
+## Files added or changed
+
+- `.env.example`, `README.md`, `CODEX_HANDOFF.md`
+- `supabase/migrations/0009_prospect_emails.sql`
+- `app/app/calls/emails/page.tsx`
+- `app/api/integrations/gmail/oauth/start/route.ts`
+- `app/api/integrations/gmail/oauth/callback/route.ts`
+- `components/calls/email-composer.tsx`
+- `components/calls/calls-subnav.tsx`
+- `components/calls/activity-timeline.tsx`
+- `app/app/calls/[id]/page.tsx`
+- `lib/actions/emails.ts`
+- `lib/data/emails.ts`, `lib/data/prospects.ts`
+- `lib/emails/template.ts`, `lib/emails/gmail-message.ts`, `lib/emails/token-crypto.ts`, `lib/emails/gmail.ts`
+- `lib/types.ts`
+- `tests/prospect-emails.test.ts`, `tests/calls-rls.test.ts`
+
+## Tests and results
+
+- `npm run test` with the live database URL: **15 files, 193 tests passed**. The real RLS tests run in a transaction and roll back all synthetic data.
+- Email template tests cover personalization, missing optional data, accurate offer language, banned claims, and visible-placeholder prevention.
+- Gmail security/transport tests cover authenticated refresh-token encryption, wrong-key rejection, MIME generation, successful provider response, non-ASCII subject encoding, and provider failure without a false success.
+- Live RLS tests cover saving a contact only on the assigned company, email-history visibility, and refusal of forged app-user activity rows.
+- `npx tsc --noEmit`: passed.
+- `npm run build`: passed, including the new page and OAuth routes.
+- Authenticated headless browser smoke test as Liam: loaded 60 selectable companies, selected a company, entered contact details, generated an editable personalized preview with the required offer/no placeholders, and confirmed sending was disabled while Gmail is unconfigured. It did not mutate a prospect or send an email.
+
+Not verified:
+
+- A live Gmail send could not be tested because none of the five Gmail environment variables are configured and no Gmail account is connected. After configuration, verify OAuth consent, send one reviewed message to a controlled inbox, confirm its Gmail message ID is logged as `sent`, then open the prospect detail and confirm the activity entry.
+- The mocked transport and database policy tests cover success/failure logic, but the Google OAuth exchange itself requires the real Google client credentials.
+
+## Deployment status
+
+Migration `0009` is live. The verified code is committed and pushed to `origin/main` as part of this handoff. The project deploys through Vercel, but Codex does not have evidence that the production deployment completed or that its environment contains the Gmail variables.
+
+## Repository note
+
+The worktree already contained unrelated modified and untracked files. They must remain intact and must not be included in the Emails commit. `lib/types.ts` was already modified before this task, so only the Emails-specific type hunks should be staged.
+
+---
+
+# Previous handoff: refreshed call-list assignment fix
 
 Updated: 2026-09-23
 

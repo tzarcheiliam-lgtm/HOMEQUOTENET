@@ -410,6 +410,7 @@ export interface ContractorProspect {
   follow_up_at: string | null;
   appointment_at: string | null;
   decision_maker_name: string | null;
+  decision_maker_email: string | null;
   best_contact_method: string | null;
   do_not_call_at: string | null;
   notes: string | null;
@@ -426,6 +427,29 @@ export interface ContractorProspect {
   maps_url: string | null;
   created_by: string | null;
   updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ProspectEmailStatus = 'pending' | 'sent' | 'failed';
+
+/** One manually reviewed outbound email and its final delivery state. */
+export interface ProspectEmailLog {
+  id: string;
+  prospect_id: string;
+  company_name: string;
+  sender_user_id: string | null;
+  sender_name: string | null;
+  sender_email: string;
+  recipient_name: string | null;
+  recipient_email: string;
+  template_key: string;
+  subject: string;
+  message: string;
+  status: ProspectEmailStatus;
+  provider_message_id: string | null;
+  error_message: string | null;
+  sent_at: string | null;
   created_at: string;
   updated_at: string;
 }

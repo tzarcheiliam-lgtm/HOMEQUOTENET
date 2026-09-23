@@ -28,6 +28,7 @@ const ids = {
   p2: '00000000-0000-4000-8000-0000000000f2', // assigned to nadav
   p3: '00000000-0000-4000-8000-0000000000f3', // unassigned
   pDnc: '00000000-0000-4000-8000-0000000000f4', // assigned to liam, do-not-call
+  email1: '00000000-0000-4000-8000-0000000000e1',
 };
 
 const q = async (sql: string, params: unknown[] = []) =>
@@ -116,6 +117,12 @@ beforeAll(async () => {
     [ids.p1, ids.p2, ids.p3, ids.pDnc, ids.liam, ids.nadav]
   );
   await q(`update public.contractor_prospects set disposition='do_not_call' where id=$1`, [ids.pDnc]);
+  await q(
+    `insert into public.prospect_email_logs
+       (id, prospect_id, company_name, sender_user_id, sender_email, recipient_email, template_key, subject, message, status, provider_message_id, sent_at)
+     values ($1, $2, 'RLS Test Pools A', $3, 'homequote@rls.test', 'contact@rls.test', 'more_info_after_call', 'Follow up', 'Hello', 'sent', 'gmail-test', now())`,
+    [ids.email1, ids.p1, ids.admin]
+  );
   ready = true;
 });
 
@@ -155,6 +162,30 @@ describe('calls RLS', () => {
   maybe()('a caller cannot read another caller’s prospect, even by id', async () => {
     const rows = await as(ids.liam, () => q(`select id from public.contractor_prospects where id=$1`, [ids.p2]));
     expect(rows).toHaveLength(0);
+  });
+
+  maybe()('a caller can save contact details only on their assigned company', async () => {
+    const own = await as(ids.liam, () =>
+      q(`update public.contractor_prospects set decision_maker_name='Jordan', decision_maker_email='jordan@example.test' where id=$1 returning decision_maker_email`, [ids.p1])
+    );
+    expect(own[0].decision_maker_email).toBe('jordan@example.test');
+    const other = await as(ids.liam, () =>
+      q(`update public.contractor_prospects set decision_maker_email='wrong@example.test' where id=$1 returning id`, [ids.p2])
+    );
+    expect(other).toHaveLength(0);
+  });
+
+  maybe()('email activity follows prospect visibility and cannot be forged by app users', async () => {
+    const liamRows = await as(ids.liam, () => q(`select id, status from public.prospect_email_logs where id=$1`, [ids.email1]));
+    expect(liamRows).toHaveLength(1);
+    const nadavRows = await as(ids.nadav, () => q(`select id from public.prospect_email_logs where id=$1`, [ids.email1]));
+    expect(nadavRows).toHaveLength(0);
+    for (const user of [ids.liam, ids.admin]) {
+      const error = await refused(user, () =>
+        q(`insert into public.prospect_email_logs (prospect_id, company_name, sender_email, recipient_email, template_key, subject, message) values ($1, 'Forged', 'x@example.test', 'y@example.test', 'more_info_after_call', 'x', 'x')`, [ids.p1])
+      );
+      expect(error).toMatch(/row-level security/i);
+    }
   });
 
   maybe()('setters and contractors see no prospects at all', async () => {

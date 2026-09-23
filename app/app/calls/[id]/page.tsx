@@ -49,7 +49,7 @@ export default async function ProspectPage({
   // RLS returns nothing for a prospect the user may not see; to them it does
   // not exist, which is the correct thing to say.
   if (!detail) notFound();
-  const { prospect: p, attempts, appointments } = detail;
+  const { prospect: p, attempts, emails, appointments } = detail;
 
   const dnc = p.disposition === 'do_not_call';
   const tel = isDialable(p) ? telHref(p.phone) : null;
@@ -187,6 +187,11 @@ export default async function ProspectPage({
                 {p.decision_maker_name ? (
                   <Row label="Decision maker">
                     {p.decision_maker_name}
+                    {p.decision_maker_email ? (
+                      <span className="block text-xs text-muted-foreground">
+                        {p.decision_maker_email}
+                      </span>
+                    ) : null}
                     {p.best_contact_method ? (
                       <span className="ml-2 text-xs text-muted-foreground">
                         via {p.best_contact_method}
@@ -243,7 +248,7 @@ export default async function ProspectPage({
         {/* Script + history */}
         <div className="space-y-6 lg:col-span-2">
           <CallScript />
-          <ActivityTimeline attempts={attempts} />
+          <ActivityTimeline attempts={attempts} emails={emails} />
         </div>
       </div>
     </div>
