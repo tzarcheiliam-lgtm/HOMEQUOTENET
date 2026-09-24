@@ -18,6 +18,8 @@ beforeAll(async () => {
   await db.connect(); connected = true; await q('begin');
   const [table] = await q("select to_regclass('public.funnels') as name");
   if (!table.name) await q(readFileSync('supabase/migrations/0012_lead_funnels.sql', 'utf8'));
+  const [house] = await q("select to_regproc('public.activity_visible_to_contractor') as name");
+  if (!house.name) await q(readFileSync('supabase/migrations/0013_house_funnels_private_sharing.sql', 'utf8'));
   await q("insert into public.contractors(id,name) values($1,'Funnel test'),($2,'Other test')", [ids.contractor, ids.other]);
   await q("insert into public.integrations(id,provider,name,is_enabled,secret) values($1,'ghl',$2,true,'test-secret')", [ids.integration, ids.integration]);
   await q('insert into public.funnels(id,slug,contractor_id,integration_id,published,config) values($1,$2,$3,$4,true,$5)', [ids.funnel, `test-${ids.funnel}`, ids.contractor, ids.integration, config]);

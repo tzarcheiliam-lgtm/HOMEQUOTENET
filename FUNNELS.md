@@ -5,6 +5,34 @@ The sample `/estimate/pool-remodeling-demo` is explicitly a demo. It stores prog
 and submission timestamps (discarding contact PII) but never creates a homeowner lead, calls a CRM,
 or confirms a real appointment. Do not send paid traffic to the demo.
 
+## Live funnels
+
+- `/estimate/pool-remodeling`: HomeQuote-owned ("house") pool funnel for LA &
+  Ventura County ads. Config: `content/funnels/pool-remodeling.json`. Each
+  submission creates an **unassigned lead in the HomeQuote Leads inbox**. Open the
+  lead and assign it to one or more contractors (Distribution panel).
+
+### House funnels and private sharing (migration 0013)
+
+A funnel with no contractor is a house funnel. It reuses an existing active lead
+with the same email/phone instead of creating inbox duplicates. The consent text
+names "HomeQuote Network and the contractor partners it matches me with", so the
+homeowner is told their request may be shared.
+
+When a lead is assigned to several contractors, each contractor sees only their
+own side: their assignment, appointments, estimates and sales (already
+per-assignment), plus only their own company's notes and files. HomeQuote's
+assignment/appointment/status entries are hidden from contractors; neutral staff
+notes and system entries (e.g. "Website estimate request received") are shown.
+Staff notes are visible to every assigned contractor, so don't mention other
+contractors in notes. A non-exclusive assignment shows no badge.
+Enforced by RLS (`activity_visible_to_contractor`, `upload_visible_to_contractor`);
+covered by `tests/funnels-house-db.test.ts`.
+
+Service areas can list exact `zipCodes` and/or 3-digit `zipPrefixes`. Outside the
+area, the lead is still captured with `qualified = false` (unqualifiedAction
+`review`).
+
 ## Architecture
 
 - `lib/funnels/schema.ts`: Zod configuration/contact validation, conditional
@@ -68,6 +96,16 @@ node --env-file=.env.local scripts/funnels.mjs demo
 
 # Check a config offline (no database needed)
 node scripts/funnels.mjs validate content/funnels/client.json
+
+# Apply a migration (validate first with check)
+node --env-file=.env.local scripts/funnels.mjs check supabase/migrations/0013_house_funnels_private_sharing.sql
+node --env-file=.env.local scripts/funnels.mjs migrate supabase/migrations/0013_house_funnels_private_sharing.sql
+
+# Publish a HomeQuote house funnel (leads go to the inbox, unassigned)
+node --env-file=.env.local scripts/funnels.mjs publish content/funnels/pool-remodeling.json pool-remodeling house none
+
+# Take a funnel offline (sessions/leads kept)
+node --env-file=.env.local scripts/funnels.mjs unpublish pool-remodeling-demo
 
 # Publish a real funnel using EXISTING contractor / integration / vertical UUIDs
 node --env-file=.env.local scripts/funnels.mjs publish content/funnels/client.json client-slug CONTRACTOR_UUID INTEGRATION_UUID VERTICAL_UUID
@@ -201,7 +239,7 @@ implementation was found in this repository. No pixel ID is configured for the d
 ## Verification
 
 ```powershell
-node --env-file=.env.local node_modules/vitest/vitest.mjs run tests/funnels.test.ts tests/funnels-db.test.ts
+node --env-file=.env.local node_modules/vitest/vitest.mjs run tests/funnels.test.ts tests/funnels-db.test.ts tests/funnels-house-db.test.ts
 npx tsc --noEmit
 npm run lint
 npm run build

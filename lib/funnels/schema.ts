@@ -28,7 +28,8 @@ export const funnelSchema = z.object({
   primaryColor: readableColor.default('#196dcc'),
   secondaryColor: readableColor.default('#042247'),
   industry: text,
-  serviceArea: z.object({ label: text, zipCodes: z.array(z.string().regex(/^\d{5}$/)).max(10000) }),
+  // zipPrefixes (3 digits) cover whole regions without listing every ZIP.
+  serviceArea: z.object({ label: text, zipCodes: z.array(z.string().regex(/^\d{5}$/)).max(10000).default([]), zipPrefixes: z.array(z.string().regex(/^\d{3}$/)).max(1000).default([]) }),
   questions: z.array(questionSchema).min(1).max(30),
   qualificationRules: z.array(conditionSchema).max(30).default([]),
   qualifiedMessage: text.default('Great — it looks like we may be able to help.'),
@@ -100,10 +101,14 @@ export function sanitizeAnswers(config: FunnelConfig, input: Answers): Answers {
 export function qualify(config: FunnelConfig, answers: Answers): boolean | null {
   if (visibleQuestions(config, answers).some(q => !answers[q.id])) return null;
   const zip = answers[config.questions.find(q => q.type === 'zip')!.id];
-  return config.serviceArea.zipCodes.includes(zip) && config.qualificationRules.every(rule => matches(rule, answers));
+  return inServiceArea(config, zip) && config.qualificationRules.every(rule => matches(rule, answers));
+}
+export function inServiceArea(config: FunnelConfig, zip: string) {
+  return config.serviceArea.zipCodes.includes(zip) || config.serviceArea.zipPrefixes.some(prefix => zip.startsWith(prefix));
 }
 export function consentText(config: FunnelConfig) {
-  const recipients = config.clientName === 'HomeQuote Network' ? 'HomeQuote Network' : `HomeQuote Network and ${config.clientName}`;
+  // A HomeQuote-branded (house) funnel can share the request with partner contractors.
+  const recipients = config.clientName === 'HomeQuote Network' ? 'HomeQuote Network and the contractor partners it matches me with' : `HomeQuote Network and ${config.clientName}`;
   return `I agree that ${recipients} may call, text, or email me about my project, including using automated technology. Consent is not a condition of purchase. Message and data rates may apply. Reply STOP to opt out.`;
 }
 export function captureAttribution(url: string, referrer: string, device: string): Attribution {

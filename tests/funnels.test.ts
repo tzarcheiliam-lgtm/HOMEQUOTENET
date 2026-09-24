@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { captureAttribution, contactSchema, funnelSchema, qualify, sanitizeAnswers, visibleQuestions } from '@/lib/funnels/schema';
+import { captureAttribution, consentText, contactSchema, funnelSchema, qualify, sanitizeAnswers, visibleQuestions } from '@/lib/funnels/schema';
 import example from '@/content/funnels/pool-demo.json';
 import { conversion } from '@/lib/funnels/analytics';
 
@@ -32,6 +32,15 @@ describe('funnel engine', () => {
   it('allows a different niche through configuration alone', () => {
     const roofing = funnelSchema.parse({ ...poolExample, industry: 'Roofing', questions: poolExample.questions.filter(q => q.id !== 'surface').map(q => q.id === 'service' ? { ...q, options: [{ value: 'roof', label: 'Replace my roof' }] } : q) });
     expect(qualify(roofing, { ...answers, service: 'roof' })).toBe(true);
+  });
+  it('qualifies by ZIP prefix for region-wide house funnels and discloses partner sharing', () => {
+    const live = funnelSchema.parse(JSON.parse(readFileSync('content/funnels/pool-remodeling.json', 'utf8')));
+    expect(qualify(live, { ...answers, zip: '91362' })).toBe(true);
+    expect(qualify(live, { ...answers, zip: '93065' })).toBe(true);
+    expect(qualify(live, { ...answers, zip: '10001' })).toBe(false);
+    expect(consentText(live)).toContain('contractor partners it matches me with');
+    expect(consentText({ ...live, clientName: 'Pool Masters LA' })).not.toContain('partners');
+    expect(consentText({ ...live, clientName: 'Pool Masters LA' })).toContain('HomeQuote Network and Pool Masters LA');
   });
   it('ships a valid, completable starter template for every niche', () => {
     const dir = 'content/funnels/templates';
