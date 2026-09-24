@@ -4,7 +4,7 @@ import { Section, SectionHeading, Container } from './primitives';
 /**
  * PROOF-ASSET PLACEHOLDERS
  *
- * These mark the exact spots where real proof belongs: CRM screenshots, Meta
+ * These mark the exact spots where real proof belongs: CRM screenshots,
  * campaign screenshots, lead-form screenshots, calendar screenshots,
  * testimonials, and verified case-study metrics.
  *
@@ -78,8 +78,8 @@ export function ProofPlaceholderSection() {
           description="Real appointment pipeline view with homeowner personal information redacted."
         />
         <ProofSlot
-          title="Meta campaign screenshot"
-          description="Ads Manager view. Redact spend if you do not want it public."
+          title="Campaign screenshot"
+          description="Campaign report view. Redact spend if you do not want it public."
         />
         <ProofSlot
           title="Homeowner form screenshot"

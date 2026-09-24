@@ -1,10 +1,15 @@
 import type { Metadata } from 'next';
 import { ShieldCheck, Clock, FileSignature } from 'lucide-react';
 import { site } from '@/content/site';
-import { poolNiche } from '@/content/niches/pool';
+import { homeContent } from '@/content/home';
 import { Container } from '@/components/marketing/primitives';
 import { ApplicationForm } from '@/components/marketing/application-form';
-import type { Track } from '@/lib/validation/application';
+import {
+  SERVICES_BY_NICHE,
+  GENERAL_SERVICES,
+  isServiceNicheKey,
+  type Track,
+} from '@/lib/validation/application';
 
 export const metadata: Metadata = {
   title: 'Contractor Application',
@@ -31,7 +36,7 @@ const assurances = [
     icon: ShieldCheck,
     title: 'Terms before launch',
     description:
-      'The qualification standard, pricing, service area, and exclusivity are confirmed before the first appointment is booked.',
+      'The qualification standard, pricing, and service area are confirmed before the first appointment is booked.',
   },
   {
     icon: Clock,
@@ -44,9 +49,14 @@ const assurances = [
 export default async function ApplyPage({
   searchParams,
 }: {
-  searchParams: Promise<{ track?: string }>;
+  searchParams: Promise<{ track?: string; niche?: string }>;
 }) {
   const params = await searchParams;
+  // ?niche=roofing (etc.) shows that industry's services; otherwise a
+  // cross-trade list.
+  const services = isServiceNicheKey(params.niche)
+    ? SERVICES_BY_NICHE[params.niche]
+    : GENERAL_SERVICES;
   // Deep link from the "Discuss Managed Growth" button preselects that option.
   const defaultTrack: Track =
     params.track === 'managed' ? 'managed' : 'pay_per_lead';
@@ -117,7 +127,7 @@ export default async function ApplyPage({
                   Currently serving
                 </p>
                 <p className="mt-2.5 text-sm leading-6 text-[var(--hq-text-muted)]">
-                  {poolNiche.markets.areas.join(' · ')}
+                  {homeContent.markets.areas.join(' · ')}
                 </p>
                 <p className="mt-3 text-xs leading-5 text-[var(--hq-text-dim)]">
                   Outside these areas? Apply anyway and tell us where you work.
@@ -129,7 +139,7 @@ export default async function ApplyPage({
           {/* Form */}
           <div className="lg:col-span-7">
             <div className="hq-card p-6 sm:p-9">
-              <ApplicationForm defaultTrack={defaultTrack} />
+              <ApplicationForm defaultTrack={defaultTrack} services={services} />
             </div>
           </div>
         </div>

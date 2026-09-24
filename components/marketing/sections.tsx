@@ -12,9 +12,9 @@ import {
   Boxes,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import type { Niche } from '@/content/types';
+import type { Niche, ProcessStep, ServiceCard } from '@/content/types';
 import { site, disclaimers } from '@/content/site';
-import { photos } from '@/content/photos';
+import { photos, type Photo } from '@/content/photos';
 import { PoolPhoto, PhotoBackdrop } from './photo';
 import {
   Section,
@@ -27,17 +27,23 @@ import { ContentIcon } from './icon';
 
 /* ---- 2. Problem --------------------------------------------------------- */
 
-export function ProblemSection({ niche }: { niche: Niche }) {
+export function ProblemSection({
+  items,
+  eyebrow = 'The gap',
+  title = 'Most contractor marketing sells activity, not appointments.',
+  lead = 'These are the five issues contractors describe most often. None of them are unusual, and all of them come down to the same thing: paying for work that is not measured in homeowners who want an estimate.',
+}: {
+  items: { title: string; description: string }[];
+  eyebrow?: string;
+  title?: string;
+  lead?: string;
+}) {
   return (
     <Section id="problem">
-      <SectionHeading
-        eyebrow="The gap"
-        title="Most contractor marketing sells activity, not appointments."
-        lead="These are the five issues contractors describe most often. None of them are unusual, and all of them come down to the same thing: paying for work that is not measured in homeowners who want an estimate."
-      />
+      <SectionHeading eyebrow={eyebrow} title={title} lead={lead} />
 
       <div className="mt-14 grid gap-px overflow-hidden rounded-2xl border border-[var(--hq-line)] bg-[var(--hq-line)] sm:grid-cols-2 lg:grid-cols-3">
-        {niche.problems.map((problem) => (
+        {items.map((problem) => (
           <div
             key={problem.title}
             className="bg-[var(--hq-bg-raised)] p-7"
@@ -70,17 +76,21 @@ export function ProblemSection({ niche }: { niche: Niche }) {
 
 /* ---- 3. How it works ---------------------------------------------------- */
 
-export function ProcessSection({ niche }: { niche: Niche }) {
+export function ProcessSection({
+  steps,
+  title = 'Four steps, agreed before anything runs.',
+  lead = 'No part of this starts until the terms in step one are written down and confirmed by both sides.',
+}: {
+  steps: ProcessStep[];
+  title?: string;
+  lead?: string;
+}) {
   return (
     <Section id="how-it-works" className="border-y border-[var(--hq-line)] bg-[var(--hq-bg-raised)]">
-      <SectionHeading
-        eyebrow="How it works"
-        title="Four steps, agreed before anything runs."
-        lead="No part of this starts until the terms in step one are written down and confirmed by both sides."
-      />
+      <SectionHeading eyebrow="How it works" title={title} lead={lead} />
 
       <ol className="mt-14 grid gap-6 lg:grid-cols-4">
-        {niche.process.map((step, i) => (
+        {steps.map((step, i) => (
           <li
             key={step.step}
             className="hq-card hq-card-hover relative p-7"
@@ -89,7 +99,7 @@ export function ProcessSection({ niche }: { niche: Niche }) {
               <span className="font-mono text-sm font-semibold tracking-wider text-[var(--hq-accent-bright)]">
                 {step.step}
               </span>
-              {i < niche.process.length - 1 ? (
+              {i < steps.length - 1 ? (
                 <ArrowRight
                   className="size-4 text-[var(--hq-text-dim)] lg:hidden"
                   aria-hidden="true"
@@ -111,17 +121,40 @@ export function ProcessSection({ niche }: { niche: Niche }) {
 
 /* ---- 4. Project types --------------------------------------------------- */
 
-export function ServicesSection({ niche }: { niche: Niche }) {
+export function ServicesSection({
+  items,
+  lead = 'You select the categories you want. Leads are filtered to those categories and to your approved service area before they reach you.',
+  gallery,
+}: {
+  items: ServiceCard[];
+  lead?: string;
+  /** Optional row of three trade photos above the cards. */
+  gallery?: readonly Photo[];
+}) {
   return (
     <Section id="projects">
       <SectionHeading
         eyebrow="Project types"
         title="The work you can receive."
-        lead="You select the categories you want. Leads are filtered to those categories and to your approved service area before they reach you."
+        lead={lead}
       />
 
+      {gallery?.length ? (
+        <div className="mt-12 grid gap-4 sm:grid-cols-3">
+          {gallery.map((photo) => (
+            <PoolPhoto
+              key={photo.src}
+              photo={photo}
+              ratio="4 / 3"
+              sizes="(max-width: 640px) 92vw, 30vw"
+              zoom
+            />
+          ))}
+        </div>
+      ) : null}
+
       <div className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        {niche.services.map((service) => (
+        {items.map((service) => (
           <article
             key={service.title}
             className="hq-card hq-card-hover group p-6"
@@ -161,28 +194,41 @@ const reasonIcons: LucideIcon[] = [
   Boxes,
 ];
 
-export function WhySection({ niche }: { niche: Niche }) {
+export function WhySection({
+  reasons,
+  photo = photos.aerial,
+  title = 'Operational commitments, not claims.',
+  lead = 'Everything below is something we do, define, or hand over. There are no performance promises in this list, because performance depends on your pricing, your speed, and your sales process as much as on the appointment.',
+}: {
+  reasons: { title: string; description: string }[];
+  /** Pass null to render the section without a photograph. */
+  photo?: Photo | null;
+  title?: string;
+  lead?: string;
+}) {
   return (
     <Section id="why" className="border-y border-[var(--hq-line)] bg-[var(--hq-bg-raised)]">
       <SectionHeading
         eyebrow="Why HomeQuote Network"
-        title="Operational commitments, not claims."
-        lead="Everything below is something we do, define, or hand over. There are no performance promises in this list, because performance depends on your pricing, your speed, and your sales process as much as on the appointment."
+        title={title}
+        lead={lead}
       />
 
       {/*
         An overhead frame reads as a plan view, which is the right note beside
         claims about tracking and defined service areas.
       */}
+      {photo ? (
       <PoolPhoto
-        photo={photos.aerial}
+        photo={photo}
         ratio="21 / 9"
         sizes="(max-width: 1024px) 92vw, 1120px"
         className="mt-12"
       />
+      ) : null}
 
       <div className="mt-14 grid gap-x-8 gap-y-10 sm:grid-cols-2 lg:grid-cols-4">
-        {niche.reasons.map((reason, i) => {
+        {reasons.map((reason, i) => {
           const Icon = reasonIcons[i % reasonIcons.length];
           return (
             <div key={reason.title}>
@@ -217,7 +263,7 @@ export function OptionsSection() {
   ];
 
   const managed = [
-    'Meta advertising management',
+    'Advertising management',
     'Landing pages and lead forms',
     'CRM setup',
     'Automated SMS and email follow-up',
@@ -393,23 +439,36 @@ export function FitSection({ niche }: { niche: Niche }) {
 
 /* ---- 11. Final CTA ------------------------------------------------------ */
 
-export function FinalCta() {
+export function FinalCta({
+  photo = photos.nightPool,
+  objectClassName = 'object-[50%_60%]',
+  title = 'See If Your Market Is Available.',
+  lead = 'Tell us what projects you want, where you work, and how many additional opportunities your team can handle.',
+  ctaLabel = site.cta.primary,
+  ctaHref = site.cta.primaryHref,
+}: {
+  photo?: Photo;
+  objectClassName?: string;
+  title?: string;
+  lead?: string;
+  ctaLabel?: string;
+  ctaHref?: string;
+} = {}) {
   return (
     <section className="relative isolate overflow-hidden border-t border-[var(--hq-line)]">
       {/* The one place a photograph carries the whole section. */}
-      <PhotoBackdrop photo={photos.nightPool} scrim="band" objectClassName="object-[50%_60%]" />
+      <PhotoBackdrop photo={photo} scrim="band" objectClassName={objectClassName} />
       <Container className="relative">
         <div className="py-24 text-center sm:py-32">
           <h2 className="text-balance text-3xl font-semibold tracking-tight text-[var(--hq-text)] sm:text-5xl">
-            See If Your Market Is Available.
+            {title}
           </h2>
           <p className="mx-auto mt-5 max-w-2xl text-pretty text-lg leading-8 text-[var(--hq-text-muted)]">
-            Tell us what projects you want, where you work, and how many
-            additional opportunities your team can handle.
+            {lead}
           </p>
           <div className="mt-10 flex justify-center">
-            <Cta href={site.cta.primaryHref}>
-              {site.cta.primary}
+            <Cta href={ctaHref}>
+              {ctaLabel}
               <ArrowRight className="size-4" />
             </Cta>
           </div>

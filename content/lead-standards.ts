@@ -39,7 +39,7 @@ export const validLeadCriteria: StandardItem[] = [
   {
     title: 'One of your agreed services',
     description:
-      'The homeowner asked about a service you selected, such as resurfacing, tile and coping, decking, or a full renovation.',
+      'The homeowner asked about a service you selected, such as a kitchen remodel, roof replacement, new fence, AC replacement, or pool renovation.',
   },
   {
     title: 'Genuine project interest',
@@ -59,7 +59,7 @@ export const validLeadCriteria: StandardItem[] = [
   {
     title: 'Within your agreement’s rules',
     description:
-      'It complies with the written duplicate, cancellation, rescheduling, no-show, and exclusivity rules in your individual contractor agreement.',
+      'It complies with the written duplicate, cancellation, rescheduling, and no-show rules in your individual contractor agreement.',
   },
 ];
 
@@ -96,7 +96,7 @@ export const confirmedBeforeLaunch: StandardItem[] = [
   {
     title: 'Pricing',
     description:
-      'Your price per booked appointment, based on project types, market, qualification requirements, volume, and exclusivity.',
+      'Your price per booked appointment, based on project types, market, qualification requirements, and volume.',
   },
   {
     title: 'Service areas',

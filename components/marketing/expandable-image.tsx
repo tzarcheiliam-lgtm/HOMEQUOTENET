@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 /**
  * A screenshot that opens full size.
  *
- * Proof assets are dense — an Ads Manager table, a week of appointments — and
+ * Proof assets are dense — a campaign report table, a week of appointments — and
  * at section width a visitor can see the shape but not read the rows. So the
  * thumbnail is a button that opens the same file in a native <dialog>, which
  * brings Esc, focus trapping and the top layer with it rather than us

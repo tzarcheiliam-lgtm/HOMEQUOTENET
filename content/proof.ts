@@ -7,7 +7,7 @@
  *
  * RULE — nothing in this file may be extended with figures that are not
  * legible in the screenshot itself. The metrics below are transcribed from the
- * Meta Ads Manager view shown in `campaignSnapshot`; if the screenshot is
+ * campaign report shown in `campaignSnapshot`; if the screenshot is
  * replaced, retranscribe them. Do not add conversion rates, close rates,
  * revenue or appointment counts that the image does not show.
  */
@@ -20,12 +20,12 @@ export type ProofImage = {
 };
 
 export const proof = {
-  /** Meta Ads Manager, last 30 days. Source: "CAMPAIGN SPEND.jpg". */
+  /** Campaign report, last 30 days. Source: "CAMPAIGN SPEND.jpg". */
   campaignSnapshot: {
     src: '/images/proof/campaign-snapshot-meta-results.webp',
     width: 1365,
     height: 768,
-    alt: 'HomeQuote Network campaign snapshot: a Meta Ads Manager report for August 17 to September 15, 2026 showing 450 pool-remodeling lead-form inquiries against $17,558.54 in ad spend across three ads.',
+    alt: 'HomeQuote Network campaign snapshot: a campaign report for August 17 to September 15, 2026 showing 450 pool-remodeling homeowner inquiries against $17,558.54 in ad spend across three ads.',
   },
 
   /** Illustrative week view. Source: "Lead Calendar Packed.png". */
@@ -45,7 +45,7 @@ export const campaignSnapshotStats = [
   {
     value: '450',
     label: 'pool-remodeling inquiries',
-    detail: 'Meta lead-form results over 30 days',
+    detail: 'Homeowner inquiries over 30 days',
   },
   {
     value: '$17,558.54',
@@ -61,4 +61,4 @@ export const campaignSnapshotStats = [
 
 /** Stated wherever the snapshot appears. */
 export const campaignSnapshotNote =
-  'Figures are taken directly from the Meta Ads Manager report shown above, for August 17 – September 15, 2026. A lead-form inquiry is a homeowner enquiry, not a booked appointment. Past campaign activity is not a guarantee of future results, and results vary by market, budget and season.';
+  'Figures are taken directly from the campaign report shown above, for August 17 – September 15, 2026. An inquiry is a homeowner request, not a booked appointment. Past campaign activity is not a guarantee of future results, and results vary by market, budget and season.';

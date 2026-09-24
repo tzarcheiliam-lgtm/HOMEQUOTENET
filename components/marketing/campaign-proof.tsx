@@ -9,7 +9,7 @@ import { ExpandableImage } from './expandable-image';
  *
  * Sits immediately under the hero, because the first question a contractor has
  * after the pitch is "show me". The numbers are set as large type above the
- * screenshot rather than only inside it: on a phone the Ads Manager table is
+ * screenshot rather than only inside it: on a phone the report table is
  * far too dense to read at section width, so the figures have to survive on
  * their own, with the screenshot underneath as the thing that substantiates
  * them. Every figure here is transcribed from that screenshot — see the rule in
@@ -23,8 +23,8 @@ export function CampaignSnapshotSection() {
     >
       <SectionHeading
         eyebrow="Real campaign snapshot"
-        title="Get in Front of Homeowners Looking to Remodel Their Pool."
-        lead="We run the ads and pay for the traffic. This is one of our own pool-remodeling campaigns, exactly as it reads in Meta Ads Manager."
+        title="Get in Front of Homeowners Ready to Start Their Project."
+        lead="We run the campaigns and pay for the traffic. Here is one of our own campaigns, from a pool remodeling programme, exactly as the report reads."
       />
 
       {/*
@@ -52,8 +52,8 @@ export function CampaignSnapshotSection() {
         <ExpandableImage
           image={proof.campaignSnapshot}
           sizes="(max-width: 1024px) 100vw, 1024px"
-          label="Expand the Meta Ads Manager campaign snapshot"
-          caption="Meta Ads Manager, Aug 17 – Sep 15, 2026. Tap to expand and read the full report."
+          label="Expand the campaign snapshot"
+          caption="Campaign report, Aug 17 – Sep 15, 2026. Tap to expand and read the full report."
         />
       </div>
 
@@ -84,7 +84,7 @@ export function BookedEstimateSection() {
           </h2>
           <p className="mt-5 text-pretty text-base leading-7 text-[var(--hq-text-muted)] sm:text-lg sm:leading-8">
             A booked appointment means a homeowner who makes the decisions,
-            wants a pool remodeling project, and has agreed to a specific day
+            wants the kind of project you do, and has agreed to a specific day
             and time. They&rsquo;re expecting you to discuss their project.
           </p>
 
@@ -110,7 +110,7 @@ export function BookedEstimateSection() {
 
       <div className="mt-12 flex flex-col gap-4 border-t border-[var(--hq-line)] pt-10 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-base leading-7 text-[var(--hq-text-muted)]">
-          Coverage is limited to one contractor per category per area.
+          Coverage is assigned market by market, based on availability.
         </p>
         <Cta href={site.cta.primaryHref} className="self-start sm:self-auto">
           Check Availability in Your Area

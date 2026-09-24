@@ -11,9 +11,13 @@ route group, its own theme, its own content layer.
 | Route | File | Purpose |
 |---|---|---|
 | `/` | `app/(marketing)/page.tsx` | Full homepage — all twelve sections |
-| `/pool-contractors` | `app/(marketing)/pool-contractors/page.tsx` | Cold-call follow-up landing page, form embedded |
+| `/pool-contractors` | `app/(marketing)/pool-contractors/page.tsx` | Industry page — pool contractors, form embedded |
+| `/general-contractors` | `app/(marketing)/general-contractors/page.tsx` | Industry page — general contractors / remodelers |
+| `/roofing` | `app/(marketing)/roofing/page.tsx` | Industry page — roofing |
+| `/fencing` | `app/(marketing)/fencing/page.tsx` | Industry page — fencing |
+| `/hvac` | `app/(marketing)/hvac/page.tsx` | Industry page — HVAC |
 | `/lead-standards` | `app/(marketing)/lead-standards/page.tsx` | The valid-lead standard in full |
-| `/apply` | `app/(marketing)/apply/page.tsx` | Contractor application (`?track=managed` preselects the managed option) |
+| `/apply` | `app/(marketing)/apply/page.tsx` | Contractor application (`?track=managed` preselects the managed option; `?niche=roofing` etc. shows that industry's services) |
 | `/privacy`, `/terms` | `app/(marketing)/{privacy,terms}/page.tsx` | Legal templates — **need counsel review** |
 | `/sitemap.xml`, `/robots.txt` | `app/sitemap.ts`, `app/robots.ts` | Marketing routes only; `/app`, `/api`, auth pages excluded |
 
@@ -48,20 +52,60 @@ content/
   types.ts           The Niche type every vertical satisfies
   lead-standards.ts  Valid-lead criteria, what is not promised, dispute process
   niches/
-    pool.ts          Pool remodeling — hero, problems, process, services, FAQ…
+    pool.ts          Pool remodeling services, reused by /pool-contractors
+  home.ts            Homepage copy and photography — trade-neutral, general-contractor imagery
+  industries/
+    index.ts         Ordered list: Industries menu, footer, sitemap, homepage cards
+    shared.ts        Four-step process, core reasons and core FAQ, per trade
+    pool.ts, general-contractors.ts, roofing.ts, fencing.ts, hvac.ts
+  industry-photos.ts Unsplash stock for the non-pool industries, with credits
+  proof.ts           Campaign screenshot + calendar, and the rules for using them
 ```
 
-### Adding a niche (fencing, roofing, ADUs, kitchens, baths, outdoor living)
+### Industry landing pages
 
-1. Create `content/niches/<niche>.ts` exporting a `Niche`.
-2. Add any new icon names to `IconName` in `content/types.ts` and register the
-   Lucide component in `components/marketing/icon.tsx`.
-3. Create `app/(marketing)/<niche>-contractors/page.tsx` — copy
-   `pool-contractors/page.tsx` and swap the imported niche.
-4. Add the route to `app/sitemap.ts`.
+Each industry page is one `IndustryPage` object (`content/types.ts`) rendered by
+`IndustryLandingPage` (`components/marketing/industry-page.tsx`) in this order:
+hero → pain points → how it works → services + photos → proof (ad click to
+booked appointment) → "We don't stop at the lead" → why → embedded application
+→ FAQ → final CTA. Sections shared with the homepage (`sections.tsx`, `faq.tsx`)
+take their copy as props; the industry-only ones live in
+`industry-sections.tsx`.
 
-No component changes are required. Every section component takes `niche` as a
-prop.
+**Proof rule.** The Meta Ads screenshot and the calendar come from a *pool*
+remodeling programme. On every non-pool page they are captioned as an example
+of the system and never as that trade's results. The transcribed stat cards
+(450 inquiries, spend) only render on the pool page.
+
+**Wording rules.** Nothing on the site may describe appointments or leads as
+exclusive, and the site does not name the advertising platform campaigns run
+on. `tests/industries.test.ts` scans every marketing source file for both
+(the privacy policy is exempt because it must name data sources). Note the
+campaign screenshot image itself still shows its original platform labels.
+
+**CTA rule.** One label per page (`industry.cta`, e.g. "Get More Roofing
+Appointments"), used by the hero, the application eyebrow and the final CTA,
+all pointing at the embedded form (`#apply`). The header keeps the site-wide
+"Check Availability".
+
+### Adding an industry
+
+1. Add its service options to `SERVICES_BY_NICHE` in
+   `lib/validation/application.ts` (the form and schema pick them up).
+2. Create `content/industries/<slug>.ts` exporting an `IndustryPage`; reuse
+   `bookingSteps`, `coreReasons` and `coreFaq` from `shared.ts`.
+3. Add it to the list in `content/industries/index.ts`. Menu, footer, sitemap
+   and homepage card update automatically.
+4. Create `app/(marketing)/<slug>/page.tsx` and `opengraph-image.tsx` — copy
+   `roofing/` and change the import.
+5. Register any new icon names in `content/types.ts` and
+   `components/marketing/icon.tsx`.
+
+`tests/industries.test.ts` checks every industry for complete sections, real
+image files, credits on stock photos, and banned outcome claims.
+
+New trades are added as industry pages (above). The `Niche` type remains the
+model behind the homepage.
 
 ---
 
@@ -276,3 +320,14 @@ npm run build    # must pass with no warnings
 `tests/application.test.ts` covers schema validation, website normalization,
 null-field handling (so Zod's raw enum errors never reach a user), and both spam
 checks.
+
+### Stock photography (industry pages)
+
+The general-contractor, roofing, fencing and HVAC pages use Unsplash photos
+under the Unsplash License (free for commercial use; attribution not required
+but given). Each was confirmed free — not Unsplash+ — at download. Photographer
+and source URL are stored on each `Photo.credit` in `content/industry-photos.ts`
+and printed in small type at the bottom of each page. Files were re-encoded to
+WebP (q≈76–78) at 1920px for heroes and 800–1100px for gallery frames. The same
+positioning rule as the pool imagery applies: `stockImageryDisclosure` sits
+under each hero.

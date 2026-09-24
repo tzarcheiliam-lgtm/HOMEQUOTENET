@@ -21,6 +21,8 @@ export type Photo = {
   height: number;
   /** Factual description of what is visible. */
   alt: string;
+  /** Stock photography only: photographer and source page. */
+  credit?: { name: string; url: string };
 };
 
 const base = '/images/pools';

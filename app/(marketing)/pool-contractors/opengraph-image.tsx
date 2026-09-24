@@ -1,14 +1,18 @@
-/**
- * Re-exports the shared marketing OG image so this route emits its own
- * og:image tag.
- *
- * Needed because this page declares its own `openGraph` metadata block, which
- * replaces the parent layout's object wholesale — including the inherited
- * image. A file-based image in the route's own segment is applied regardless.
- * Edit the artwork in app/(marketing)/opengraph-image.tsx; this file is only a
- * pointer.
- */
-export { default, alt, size, contentType } from '../opengraph-image';
+import { renderOgCard, ogSize } from '@/components/marketing/og-card';
+import { poolIndustry as industry } from '@/content/industries';
 
-// `runtime` cannot be re-exported from another module, so it is declared here.
+/*
+  Required, not redundant: this route declares its own `openGraph` metadata,
+  which replaces the parent layout's object and drops the inherited image.
+*/
 export const runtime = 'nodejs';
+export const alt = `${industry.seo.ogHeadline} — HomeQuote Network`;
+export const size = ogSize;
+export const contentType = 'image/png';
+
+export default function OpengraphImage() {
+  return renderOgCard({
+    headline: industry.seo.ogHeadline,
+    subline: industry.seo.ogSubline,
+  });
+}

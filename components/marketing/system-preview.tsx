@@ -124,7 +124,7 @@ export function SystemPreview() {
                   <span className="text-[var(--hq-text)]">
                     Tuesday 10:00
                   </span>
-                  . Project: resurfacing and tile. Homeowner details attached.
+                  . Project: kitchen remodel. Homeowner details attached.
                 </p>
               </div>
             </div>
@@ -135,7 +135,7 @@ export function SystemPreview() {
               </p>
               <div className="rounded-xl border border-[var(--hq-line)] bg-[var(--hq-bg)] p-4">
                 <p className="text-sm leading-6 text-[var(--hq-text-muted)]">
-                  New appointment Tue 10:00 — pool resurfacing, approved area.
+                  New appointment Tue 10:00 — kitchen remodel, approved area.
                 </p>
               </div>
             </div>
@@ -160,7 +160,7 @@ export function SystemPreview() {
           <dl className="mt-3 divide-y divide-[var(--hq-line)]">
             <Field label="Homeowner" value="Example Homeowner" />
             <Field label="Scheduled" value="Tue 10:00, confirmed" />
-            <Field label="Project category" value="Resurfacing + tile & coping" />
+            <Field label="Project category" value="Kitchen remodel" />
             <Field label="Service area" value="Approved county — Example city" />
             <Field label="Property type" value="Single-family residence" />
             <Field label="Source" value="Paid social campaign" />

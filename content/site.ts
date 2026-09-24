@@ -26,15 +26,16 @@ export const site = {
 
   nav: [
     { label: 'How it works', href: '/#how-it-works' },
-    { label: 'Projects', href: '/#projects' },
+    /* wideOnly: hidden in the desktop bar below 1280px, where the Industries
+       menu needs the room. Always listed in the mobile sheet. */
+    { label: 'Projects', href: '/#projects', wideOnly: true },
     { label: 'Appointment standards', href: '/lead-standards' },
     { label: 'Working together', href: '/#options' },
-    { label: 'FAQ', href: '/#faq' },
+    { label: 'FAQ', href: '/#faq', wideOnly: true },
   ],
 
   footerLinks: {
     company: [
-      { label: 'Pool contractors', href: '/pool-contractors' },
       { label: 'Appointment standards', href: '/lead-standards' },
       { label: 'Contractor application', href: '/apply' },
     ],
@@ -79,9 +80,9 @@ export const disclaimers = {
   noGuarantee:
     'HomeQuote Network does not guarantee attendance, estimates, sales, revenue, or profitability. We guarantee that anything billed as a booked appointment met the agreed qualification and scheduling standard when delivered. Attending the appointment, estimating, and closing the job are the contractor’s responsibility.',
   agreementGoverns:
-    'Final qualification, duplicate, cancellation, rescheduling, no-show, replacement, exclusivity, and dispute terms are defined in each partner agreement.',
+    'Final qualification, duplicate, cancellation, rescheduling, no-show, replacement, and dispute terms are defined in each partner agreement.',
   pricing:
-    'Pricing per booked appointment depends on project types, market, qualification requirements, expected volume, and exclusivity. Pricing is confirmed before launch.',
+    'Pricing per booked appointment depends on project types, market, qualification requirements, and expected volume. Pricing is confirmed before launch.',
   systemPreview:
     'Example workflow — interface preview only. Not client data or reported results.',
 } as const;

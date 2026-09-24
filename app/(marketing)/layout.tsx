@@ -3,6 +3,7 @@ import './marketing.css';
 import { SiteHeader } from '@/components/marketing/site-header';
 import { SiteFooter } from '@/components/marketing/site-footer';
 import { site } from '@/content/site';
+import { industries } from '@/content/industries';
 
 export const metadata: Metadata = {
   metadataBase: new URL(site.url),
@@ -50,7 +51,9 @@ export default function MarketingLayout({
       >
         Skip to content
       </a>
-      <SiteHeader />
+      <SiteHeader
+        industries={industries.map((i) => ({ label: i.navLabel, href: `/${i.slug}` }))}
+      />
       <main id="main">{children}</main>
       <SiteFooter />
     </div>

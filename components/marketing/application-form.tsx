@@ -252,8 +252,11 @@ function SuccessPanel() {
 
 export function ApplicationForm({
   defaultTrack = 'pay_per_lead',
+  services = PRIMARY_SERVICES,
 }: {
   defaultTrack?: Track;
+  /** Service checkboxes to offer. Industry pages pass their own list. */
+  services?: readonly string[];
 }) {
   const [state, formAction] = useActionState(
     submitApplication,
@@ -436,7 +439,7 @@ export function ApplicationForm({
             }
             className="grid gap-2.5 sm:grid-cols-2"
           >
-            {PRIMARY_SERVICES.map((service) => (
+            {services.map((service) => (
               <label
                 key={service}
                 className="flex cursor-pointer items-center gap-3 rounded-xl border border-[var(--hq-line)] bg-[var(--hq-bg)] px-4 py-3 text-sm text-[var(--hq-text)] transition-colors hover:border-[var(--hq-line-strong)] has-[:checked]:border-[var(--hq-accent)] has-[:checked]:bg-[var(--hq-accent-glow)]"
@@ -660,8 +663,8 @@ export function ApplicationForm({
 
         <p className="text-xs leading-5 text-[var(--hq-text-dim)]">
           Submitting this application does not create an agreement or an
-          obligation. The appointment standard, pricing, service areas, and
-          exclusivity are confirmed in writing before anything launches.
+          obligation. The appointment standard, pricing, and service areas are
+          confirmed in writing before anything launches.
         </p>
       </div>
     </form>

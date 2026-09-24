@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { site, disclaimers } from '@/content/site';
+import { industries } from '@/content/industries';
 import { Container, Rule } from './primitives';
 import { Wordmark } from './wordmark';
 
@@ -56,7 +57,10 @@ export function SiteFooter() {
               Contractors
             </h3>
             <ul className="mt-3 space-y-1">
-              {site.footerLinks.company.map((link) => (
+              {[
+                ...industries.map((i) => ({ label: i.navLabel, href: `/${i.slug}` })),
+                ...site.footerLinks.company,
+              ].map((link) => (
                 <li key={link.href}>
                   <Link
                     href={link.href}

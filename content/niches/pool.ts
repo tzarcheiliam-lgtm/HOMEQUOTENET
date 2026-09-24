@@ -209,7 +209,7 @@ export const poolNiche: Niche = {
     {
       question: 'What counts as a qualified booked appointment?',
       answer:
-        'Generally: a real homeowner, property owner, or authorized decision-maker, with valid and reachable contact information, for a property inside your approved service area, who asked about one of your agreed services, showed genuine project interest, and agreed to a specific appointment date and time. It must not have been generated through fraud, bots, purchased lists, or falsification, and it must comply with the duplicate, cancellation, rescheduling, no-show, and exclusivity rules in your agreement. The exact standard for your programme is confirmed in writing before launch.',
+        'Generally: a real homeowner, property owner, or authorized decision-maker, with valid and reachable contact information, for a property inside your approved service area, who asked about one of your agreed services, showed genuine project interest, and agreed to a specific appointment date and time. It must not have been generated through fraud, bots, purchased lists, or falsification, and it must comply with the duplicate, cancellation, rescheduling, and no-show rules in your agreement. The exact standard for your programme is confirmed in writing before launch.',
     },
     {
       question: 'So you book the appointment, not just send contact details?',
@@ -217,14 +217,9 @@ export const poolNiche: Niche = {
         'Correct. We generate the homeowner inquiry, speak to them, qualify them against your standard, and book a specific date and time into your calendar. You are not buying a list to chase. You are paying for an appointment that is already in your diary.',
     },
     {
-      question: 'Are the appointments exclusive?',
-      answer:
-        'It depends on your programme and agreement. Exclusive arrangements may be available in some markets and for some project types. We do not claim every appointment is automatically exclusive. Whatever applies to your account is written into your agreement before launch.',
-    },
-    {
       question: 'How much does each appointment cost?',
       answer:
-        'Pricing depends on project types, market, qualification requirements, expected volume, and exclusivity. Because those inputs differ by contractor and by county, we do not publish a fixed price. Your pricing is confirmed before anything launches.',
+        'Pricing depends on project types, market, qualification requirements, and expected volume. Because those inputs differ by contractor and by county, we do not publish a fixed price. Your pricing is confirmed before anything launches.',
     },
     {
       question: 'Is there a monthly retainer?',

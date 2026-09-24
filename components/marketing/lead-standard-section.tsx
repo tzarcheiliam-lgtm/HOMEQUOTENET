@@ -6,7 +6,7 @@ import {
   guaranteeScope,
 } from '@/content/lead-standards';
 import { disclaimers } from '@/content/site';
-import { photos } from '@/content/photos';
+import type { Photo } from '@/content/photos';
 import { PoolPhoto } from './photo';
 import { Section, SectionHeading, Disclosure } from './primitives';
 
@@ -14,7 +14,7 @@ import { Section, SectionHeading, Disclosure } from './primitives';
  * Homepage version of the booked-appointment standard. The full detail (dispute
  * process, what is confirmed before launch) lives on /lead-standards.
  */
-export function LeadStandardSection() {
+export function LeadStandardSection({ photo }: { photo: Photo }) {
   return (
     <Section id="lead-standards">
       <SectionHeading
@@ -82,12 +82,8 @@ export function LeadStandardSection() {
         </div>
       </div>
 
-      {/*
-        A detail shot, not a wide scene: the section is about precision, and a
-        close frame of a water feature says that better than another backyard.
-      */}
       <PoolPhoto
-        photo={photos.fireWaterBowl}
+        photo={photo}
         ratio="21 / 9"
         sizes="(max-width: 1024px) 92vw, 1120px"
         className="mt-12"

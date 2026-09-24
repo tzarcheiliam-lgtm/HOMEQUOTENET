@@ -1,28 +1,38 @@
 import { ArrowRight, MapPin, Check } from 'lucide-react';
 import type { Niche } from '@/content/types';
 import { site } from '@/content/site';
-import { photos, imageryDisclosure } from '@/content/photos';
+import type { Photo } from '@/content/photos';
 import { Container, Cta, Pill } from './primitives';
 import { PhotoBackdrop } from './photo';
 
 /**
  * Hero.
  *
- * A real pool photograph sits behind the pitch under a navy scrim, so a
- * contractor sees their own trade in the first screen rather than a gradient.
+ * A project photograph sits behind the pitch under a navy scrim, so a
+ * contractor sees real work in the first screen rather than a gradient.
  * The coverage card holds the right-hand side, which keeps the headline off the
  * busiest part of the frame and stops the hero emptying out on a wide display.
  */
-export function Hero({ niche }: { niche: Niche }) {
+export function Hero({
+  niche,
+  photo,
+  objectClassName,
+  disclosure,
+}: {
+  niche: Niche;
+  photo: Photo;
+  /** Responsive object-position for the backdrop crop. */
+  objectClassName?: string;
+  /** Stated under the photograph so imagery is never read as our own work. */
+  disclosure: string;
+}) {
   return (
     <section className="relative isolate overflow-hidden">
       <PhotoBackdrop
-        photo={photos.heroPool}
+        photo={photo}
         scrim="hero"
         priority
-        // Phones crop to a tall slice, so aim away from the umbrella pole that
-        // sits dead centre and towards open water and sky.
-        objectClassName="object-[58%_38%] md:object-[70%_50%]"
+        objectClassName={objectClassName}
       />
 
       <Container className="relative">
@@ -101,7 +111,7 @@ export function Hero({ niche }: { niche: Niche }) {
           read the imagery as HomeQuote Network's own construction work.
         */}
         <p className="relative pb-6 text-xs leading-5 text-[var(--hq-text-muted)]">
-          {imageryDisclosure}
+          {disclosure}
         </p>
       </Container>
     </section>

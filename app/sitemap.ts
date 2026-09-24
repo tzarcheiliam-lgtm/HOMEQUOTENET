@@ -1,5 +1,6 @@
 import type { MetadataRoute } from 'next';
 import { site } from '@/content/site';
+import { industries } from '@/content/industries';
 
 /** Public marketing routes only. The /app CRM and auth pages stay out. */
 export default function sitemap(): MetadataRoute.Sitemap {
@@ -7,12 +8,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
   return [
     { url: site.url, lastModified: now, changeFrequency: 'weekly', priority: 1 },
-    {
-      url: `${site.url}/pool-contractors`,
+    ...industries.map((industry) => ({
+      url: `${site.url}/${industry.slug}`,
       lastModified: now,
-      changeFrequency: 'weekly',
+      changeFrequency: 'weekly' as const,
       priority: 0.9,
-    },
+    })),
     {
       url: `${site.url}/apply`,
       lastModified: now,

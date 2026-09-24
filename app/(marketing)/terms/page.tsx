@@ -80,7 +80,7 @@ export default function TermsPage() {
             Submitting a contractor application does not create an agreement, a
             partnership, or an obligation on either side, and does not reserve a
             market or service area. We may decline any application. The
-            qualification standard, pricing, service areas, exclusivity,
+            qualification standard, pricing, service areas,
             duplicate handling, cancellation, rescheduling and no-show treatment,
             dispute windows, and replacement or credit terms are set out in an
             individual partner agreement, which must be agreed in writing before

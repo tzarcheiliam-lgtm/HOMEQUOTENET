@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { poolNiche } from '@/content/niches/pool';
+import { homeContent, homePhotos } from '@/content/home';
 import { site } from '@/content/site';
 import { Hero } from '@/components/marketing/hero';
 import {
@@ -13,6 +13,7 @@ import {
 } from '@/components/marketing/sections';
 import { LeadStandardSection } from '@/components/marketing/lead-standard-section';
 import { ProjectStrip } from '@/components/marketing/project-strip';
+import { IndustriesSection } from '@/components/marketing/industries-section';
 import { SystemPreview } from '@/components/marketing/system-preview';
 import { AfterApplySection } from '@/components/marketing/after-apply';
 import { FaqSection, FaqJsonLd } from '@/components/marketing/faq';
@@ -23,12 +24,12 @@ import {
 } from '@/components/marketing/campaign-proof';
 
 export const metadata: Metadata = {
-  title: 'Pool Remodeling Appointments, Booked On Your Calendar.',
-  description: poolNiche.seo.description,
+  title: homeContent.seo.title,
+  description: homeContent.seo.description,
   alternates: { canonical: '/' },
   openGraph: {
-    title: `${site.name} — Booked Pool Remodeling Appointments`,
-    description: poolNiche.seo.description,
+    title: `${site.name} — ${homeContent.seo.title}`,
+    description: homeContent.seo.description,
     url: site.url,
   },
 };
@@ -42,7 +43,7 @@ function OrganizationJsonLd() {
     url: site.url,
     founder: { '@type': 'Person', name: site.founder },
     parentOrganization: { '@type': 'Organization', name: site.operator },
-    areaServed: poolNiche.markets.areas.map((area) => ({
+    areaServed: homeContent.markets.areas.map((area) => ({
       '@type': 'AdministrativeArea',
       name: area,
     })),
@@ -61,24 +62,33 @@ export default function HomePage() {
   return (
     <>
       <OrganizationJsonLd />
-      <FaqJsonLd items={poolNiche.faq} />
+      <FaqJsonLd items={homeContent.faq} />
 
-      <Hero niche={poolNiche} />
+      <Hero
+        niche={homeContent}
+        photo={homePhotos.hero}
+        objectClassName={homePhotos.heroPosition}
+        disclosure={homePhotos.disclosure}
+      />
       <CampaignSnapshotSection />
       <BookedEstimateSection />
-      <ProjectStrip />
-      <ProblemSection niche={poolNiche} />
-      <ProcessSection niche={poolNiche} />
-      <ServicesSection niche={poolNiche} />
-      <LeadStandardSection />
-      <WhySection niche={poolNiche} />
+      <ProjectStrip
+        {...homePhotos.strip}
+        caption="Kitchens and baths, additions and whole-home remodels, plus roofing, HVAC, fencing and pools. You choose the categories we book for you."
+      />
+      <IndustriesSection />
+      <ProblemSection items={homeContent.problems} />
+      <ProcessSection steps={homeContent.process} />
+      <ServicesSection items={homeContent.services} />
+      <LeadStandardSection photo={homePhotos.standards} />
+      <WhySection reasons={homeContent.reasons} photo={homePhotos.why} />
       <SystemPreview />
       <ProofPlaceholderSection />
       <OptionsSection />
-      <FitSection niche={poolNiche} />
+      <FitSection niche={homeContent} />
       <AfterApplySection />
-      <FaqSection items={poolNiche.faq} />
-      <FinalCta />
+      <FaqSection items={homeContent.faq} />
+      <FinalCta photo={homePhotos.finalCta} objectClassName="object-[50%_50%]" />
     </>
   );
 }
