@@ -69,6 +69,12 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ['admin'],
   },
   {
+    label: 'Funnels',
+    href: '/app/funnels',
+    icon: 'BarChart3',
+    roles: ['admin'],
+  },
+  {
     label: 'Team',
     href: '/app/team',
     icon: 'ShieldCheck',

@@ -1,0 +1,165 @@
+{
+  "version": 1,
+  "clientName": "REPLACE_WITH_CLIENT_NAME",
+  "industry": "ADU",
+  "serviceArea": {
+    "label": "REPLACE_WITH_SERVICE_AREA",
+    "zipCodes": []
+  },
+  "questions": [
+    {
+      "id": "service",
+      "type": "choice",
+      "headline": "What would you like help with?",
+      "description": "Let’s talk about your ADU.",
+      "options": [
+        {
+          "value": "detached",
+          "label": "Detached ADU"
+        },
+        {
+          "value": "attached",
+          "label": "Attached ADU"
+        },
+        {
+          "value": "garage",
+          "label": "Garage conversion"
+        },
+        {
+          "value": "jadu",
+          "label": "Junior ADU"
+        },
+        {
+          "value": "unsure",
+          "label": "Not sure yet"
+        }
+      ]
+    },
+    {
+      "id": "adu_stage",
+      "type": "choice",
+      "headline": "Where are you in the process?",
+      "showWhen": [
+        {
+          "question": "service",
+          "operator": "in",
+          "values": [
+            "detached",
+            "attached",
+            "garage",
+            "jadu"
+          ]
+        }
+      ],
+      "options": [
+        {
+          "value": "idea",
+          "label": "Just an idea"
+        },
+        {
+          "value": "design",
+          "label": "Have a design"
+        },
+        {
+          "value": "permits",
+          "label": "Have permits"
+        },
+        {
+          "value": "ready",
+          "label": "Ready to build"
+        }
+      ]
+    },
+    {
+      "id": "timeline",
+      "type": "choice",
+      "headline": "When are you hoping to start?",
+      "options": [
+        {
+          "value": "asap",
+          "label": "As soon as possible"
+        },
+        {
+          "value": "1_3_months",
+          "label": "Within 1–3 months"
+        },
+        {
+          "value": "3_6_months",
+          "label": "Within 3–6 months"
+        },
+        {
+          "value": "researching",
+          "label": "Just researching"
+        }
+      ]
+    },
+    {
+      "id": "budget",
+      "type": "choice",
+      "headline": "What’s your approximate budget?",
+      "description": "A ballpark is perfect. This isn’t a quote.",
+      "options": [
+        {
+          "value": "budget_under_100k",
+          "label": "Under $100,000"
+        },
+        {
+          "value": "budget_100_200k",
+          "label": "$100,000–$200,000"
+        },
+        {
+          "value": "budget_200_350k",
+          "label": "$200,000–$350,000"
+        },
+        {
+          "value": "budget_over_350k",
+          "label": "$350,000+"
+        }
+      ]
+    },
+    {
+      "id": "homeowner",
+      "type": "choice",
+      "headline": "Are you the homeowner?",
+      "options": [
+        {
+          "value": "yes",
+          "label": "Yes, I own the home"
+        },
+        {
+          "value": "no",
+          "label": "No, I don’t"
+        }
+      ]
+    },
+    {
+      "id": "zip",
+      "type": "zip",
+      "headline": "Where is your project located?",
+      "description": "Enter the ZIP code of the property."
+    }
+  ],
+  "qualificationRules": [
+    {
+      "question": "homeowner",
+      "operator": "equals",
+      "values": [
+        "yes"
+      ]
+    },
+    {
+      "question": "timeline",
+      "operator": "in",
+      "values": [
+        "asap",
+        "1_3_months",
+        "3_6_months"
+      ]
+    }
+  ],
+  "qualifiedMessage": "Great — it looks like we may be able to help.",
+  "thankYouPage": {
+    "headline": "You’re all set.",
+    "message": "Your project details are saved. The team will be in touch to discuss the next step."
+  }
+}

@@ -1,0 +1,74 @@
+// Run against a local server with the published demo. Stores only synthetic demo sessions.
+import { chromium } from '@playwright/test';
+import assert from 'node:assert/strict';
+import { mkdir } from 'node:fs/promises';
+
+const base = process.env.FUNNEL_TEST_BASE_URL ?? 'http://localhost:3000';
+const browser = await chromium.launch({ headless: true });
+await mkdir('.qa-screenshots', { recursive: true });
+const results = [];
+try {
+  for (const width of [375, 390, 768, 1440]) {
+    const context = await browser.newContext({ viewport: { width, height: width < 768 ? 844 : 1000 } });
+    const page = await context.newPage();
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    page.on('console', msg => { if (msg.type() === 'error') errors.push(msg.text()); });
+    await page.goto(`${base}/estimate/pool-remodeling-demo?utm_source=facebook&utm_medium=paid_social&utm_campaign=qa&fbclid=qa-fb&gclid=qa-google`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.getByRole('button', { name: /Full Pool Remodel/ }).waitFor();
+    await page.waitForFunction(() => { const button = document.querySelector('.funnel-answer'); return button && !button.disabled; }, undefined, { timeout: 60000 });
+    await page.screenshot({ path: `.qa-screenshots/funnel-${width}-service.png`, fullPage: true });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'Horizontal overflow');
+    const session = async () => (await (await context.request.get(`${base}/api/funnels/pool-remodeling-demo/session`)).json()).session;
+    const initial = await session();
+    await page.getByRole('button', { name: /Pool Resurfacing/ }).click();
+    await page.getByRole('heading', { name: 'What would you like to improve?' }).waitFor();
+    await page.getByRole('button', { name: /A worn or rough surface/ }).click();
+    await page.getByRole('heading', { name: 'When are you hoping to start?' }).waitFor();
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.getByRole('heading', { name: 'When are you hoping to start?' }).waitFor();
+    const restored = await session();
+    assert.equal(restored.id, initial.id); assert.equal(restored.answers.surface, 'worn');
+    assert.equal(restored.attribution.fbclid, 'qa-fb'); assert.equal(restored.attribution.gclid, 'qa-google');
+    assert.equal(restored.attribution.utm_campaign, 'qa');
+    await page.getByRole('button', { name: 'Back', exact: true }).click();
+    await page.getByRole('heading', { name: 'What would you like to improve?' }).waitFor();
+    await page.getByRole('button', { name: 'Back', exact: true }).click();
+    await page.getByRole('heading', { name: 'What would you like help with?' }).waitFor();
+    await page.getByRole('button', { name: /Full Pool Remodel/ }).click();
+    await page.getByRole('heading', { name: 'What should your remodel include?' }).waitFor();
+    assert.equal((await session()).answers.surface, undefined);
+    await page.getByRole('button', { name: /Pool and spa/ }).click();
+    await page.getByRole('heading', { name: 'When are you hoping to start?' }).waitFor();
+    await page.getByRole('button', { name: /Within 1–3 months/ }).click();
+    await page.getByRole('button', { name: /\$25,000–\$50,000/ }).click();
+    await page.getByRole('button', { name: /Yes, I own the home/ }).click();
+    await page.getByLabel('Project ZIP code').fill('123');
+    await page.getByRole('button', { name: 'Check my project' }).click();
+    assert.equal(await page.getByLabel('Project ZIP code').evaluate(el => el.validity.valid), false);
+    await page.getByLabel('Project ZIP code').fill('91301');
+    await page.getByRole('button', { name: 'Check my project' }).click();
+    await page.getByRole('button', { name: 'Continue', exact: true }).click();
+    await page.getByLabel('First name', { exact: true }).fill('Funnel');
+    await page.getByLabel('Last name', { exact: true }).fill('Test');
+    await page.getByLabel('Phone number').fill('123');
+    await page.getByLabel('Email address').fill('funnel-browser@example.test');
+    await page.locator('[name=consent]').check();
+    await page.getByRole('button', { name: 'Preview the next step' }).click();
+    await page.getByRole('alert').filter({ hasText: 'Enter a valid US phone number' }).waitFor();
+    await page.getByLabel('Phone number').fill('8185550188');
+    await page.screenshot({ path: `.qa-screenshots/funnel-${width}-contact.png`, fullPage: true });
+    await page.getByRole('button', { name: 'Preview the next step' }).click();
+    await page.getByRole('heading', { name: 'Your next chapter starts here.' }).waitFor();
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.getByRole('heading', { name: 'Your next chapter starts here.' }).waitFor();
+    const final = await session();
+    assert.equal(final.id, initial.id); assert.equal(final.qualified, true); assert.ok(final.contact_submitted_at);
+    assert.equal(final.attribution.utm_source, 'facebook');
+    assert.deepEqual(errors, []);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    results.push({ width, sessionId: final.id, navigation: 'pass', branchBackAndRefresh: 'pass', validation: 'pass', contactAndAttribution: 'pass', consoleErrors: errors.length });
+    await context.close();
+  }
+  console.log(JSON.stringify(results, null, 2));
+} finally { await browser.close(); }

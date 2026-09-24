@@ -11,6 +11,11 @@ import { NextResponse, type NextRequest } from 'next/server';
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
+  // Public estimate routes use their own scoped session cookie / webhook secret.
+  // Avoid an unrelated Supabase Auth round trip on every quiz step and asset load.
+  const publicPath = request.nextUrl.pathname;
+  if (publicPath.startsWith('/estimate/') || publicPath.startsWith('/api/funnels/')) return supabaseResponse;
+
   // Guard: if the Supabase env vars aren't present in this build, don't throw
   // (which would 500 the entire site via MIDDLEWARE_INVOCATION_FAILED). Skip the
   // auth refresh and let the request through; pages handle auth themselves.
