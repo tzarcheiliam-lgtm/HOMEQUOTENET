@@ -31,6 +31,7 @@
   ],
   "qualifiedMessage": "Great — it looks like we may be able to help.",
   "calendarProvider": "calendly",
+  "calendarUrl": "https://calendly.com/homequotenetwork/30min",
   "calendarHeadline": "Great — your project looks like a fit. Choose a time below for your free pool consultation.",
   "thankYouPage": {
     "headline": "You’re all set.",
