@@ -2,7 +2,7 @@
 //   validate config.json                                   (offline; no database)
 //   check|migrate [migration.sql]                          (default 0012)
 //   demo
-//   publish config.json slug contractorId|house [integrationId|none] [verticalId|verticalSlug]
+//   publish config.json slug contractorId|"Contractor Name"|house [integrationId|none] [verticalId|verticalSlug]
 //     'house' = HomeQuote-owned: leads land unassigned in the HomeQuote inbox
 //   unpublish slug
 //   ghl-check integration.json                             (verify token, pipeline, stage, custom fields; read-only)
@@ -98,7 +98,13 @@ try {
     const slug = demo ? 'pool-remodeling-demo' : process.argv[4];
     const contractorArg = demo ? null : process.argv[5];
     if (!slug || (!demo && !contractorArg)) throw new Error("Supply config JSON, slug, and an existing contractor UUID or 'house'");
-    const contractor = contractorArg === 'house' ? null : contractorArg;
+    let contractor = contractorArg === 'house' ? null : contractorArg;
+    if (contractor && !/^[0-9a-f-]{36}$/i.test(contractor)) {
+      // Accept an exact contractor name, e.g. "Pool Masters LA".
+      const { rows } = await db.query('select id, name from public.contractors where lower(name)=lower($1)', [contractor]);
+      if (rows.length !== 1) throw new Error(`Expected exactly one contractor named "${contractor}", found ${rows.length}`);
+      contractor = rows[0].id;
+    }
     const integration = demo || !process.argv[6] || process.argv[6] === 'none' ? null : process.argv[6];
     let vertical = null;
     if (!demo && process.argv[7]) {

@@ -12,6 +12,33 @@ or confirms a real appointment. Do not send paid traffic to the demo.
   submission creates an **unassigned lead in the HomeQuote Leads inbox**. Open the
   lead and assign it to one or more contractors (Distribution panel).
 
+- `/estimate/pool-masters`: **Ethan / Pool Masters LA** client funnel. Config:
+  `content/funnels/clients/pool-masters-la.json` (independent of the general form;
+  editing it never changes other funnels). Leads are assigned to the Pool Masters LA
+  contractor, `consent_source = funnel:pool-masters`. Flow: project type (Full Pool
+  Build / Full Pool Remodel / Backyard Renovation featured) → ZIP → homeowner →
+  timeline → contact (lead saved) → Calendly (prefilled name/email/UTMs) → booked.
+
+### Client-specific funnels
+
+Put contractor-specific configs in `content/funnels/clients/<client>.json` and
+publish them under their own slug with that contractor (name or UUID). Shared engine
+options are additive and default off, so a client config can't alter another funnel:
+`featured` answer cards, `calendarProvider` (`ghl` | `calendly`), `calendarHeadline`.
+
+### Calendly booking (migration 0015)
+
+With `calendarProvider: "calendly"` and `calendarUrl` (a calendly.com event link),
+qualified leads see the Calendly inline embed right after the contact form. The
+lead and contractor assignment are saved **before** Calendly opens, so abandoners
+stay as "Submitted, not booked" (see Recent submissions on `/app/funnels`) for manual
+call/text follow-up. Calendly's `calendly.event_scheduled` embed message (accepted
+only from https://calendly.com) is sent to the server, which records one appointment
+per Calendly invitee, sets the assignment to `appointment_set`, marks the session
+booked and fires the Meta `Schedule` event. Set `CALENDLY_API_TOKEN` (Calendly personal
+access token, server-only) to verify each booking with Calendly's API and store the
+real start time; without it the booking is recorded as unverified with no time.
+
 ### House funnels and private sharing (migration 0013)
 
 A funnel with no contractor is a house funnel. It reuses an existing active lead
@@ -252,7 +279,9 @@ implementation was found in this repository. No pixel ID is configured for the d
 ## Verification
 
 ```powershell
-node --env-file=.env.local node_modules/vitest/vitest.mjs run tests/funnels.test.ts tests/funnel-ghl.test.ts tests/funnel-delivery.test.ts tests/funnels-db.test.ts tests/funnels-house-db.test.ts
+node --env-file=.env.local node_modules/vitest/vitest.mjs run tests/funnels.test.ts tests/funnel-ghl.test.ts tests/funnel-delivery.test.ts tests/funnel-pool-masters.test.ts tests/funnels-db.test.ts tests/funnels-house-db.test.ts tests/funnel-calendly-db.test.ts
+# Ethan funnel end to end (fixture data, removed afterwards), with a local dev server:
+node --env-file=.env.local scripts/test-pool-masters-browser.mjs
 npx tsc --noEmit
 npm run lint
 npm run build

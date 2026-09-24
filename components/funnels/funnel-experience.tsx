@@ -1,12 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import Image from 'next/image';
 import { ArrowLeft, ArrowRight, Check, CheckCircle2, ClipboardList, LockKeyhole, MapPin, ShieldCheck, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { consentText, contactSchema, visibleQuestions, type FunnelConfig, type Session } from '@/lib/funnels/schema';
+import { calendlyEmbedUrl, consentText, contactSchema, visibleQuestions, type FunnelConfig, type Session } from '@/lib/funnels/schema';
 import { trackFunnel } from '@/lib/funnels/tracking';
 
 export function FunnelExperience({ slug, initialConfig, demo }: { slug: string; initialConfig: FunnelConfig; demo: boolean }) {
@@ -77,6 +77,27 @@ export function FunnelExperience({ slug, initialConfig, demo }: { slug: string; 
     return () => clearInterval(timer);
   }, [session?.contact_submitted_at, session?.version, config.calendarUrl, step, endpoint]);
 
+  // Calendly reports a completed booking to the embedding page via postMessage.
+  // Only messages from calendly.com are accepted; the server re-checks the session.
+  const calendly = config.calendarProvider === 'calendly';
+  useEffect(() => {
+    if (!calendly || step !== 'calendar' || !session?.contact_submitted_at || session.booked_at) return;
+    function onMessage(event: MessageEvent) {
+      if (event.origin !== 'https://calendly.com' || event.data?.event !== 'calendly.event_scheduled') return;
+      const eventUri = event.data.payload?.event?.uri; const inviteeUri = event.data.payload?.invitee?.uri;
+      if (typeof eventUri === 'string' && typeof inviteeUri === 'string') void save({ calendlyBooking: { eventUri, inviteeUri } });
+    }
+    addEventListener('message', onMessage);
+    return () => removeEventListener('message', onMessage);
+  }, [calendly, step, session?.contact_submitted_at, session?.booked_at, save]);
+  // Keep the first prefill so later polls never change the iframe src (which would reload it).
+  const prefill = useRef<Session['prefill']>(undefined);
+  if (session?.prefill && !prefill.current) prefill.current = session.prefill;
+  const calendlySrc = useMemo(() => calendly && config.calendarUrl && session && step === 'calendar'
+    ? calendlyEmbedUrl(config.calendarUrl, location.hostname, prefill.current, session.attribution) : null,
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [calendly, config.calendarUrl, session?.id, step]);
+
   function back() {
     const previous = index > 0 ? questions[index - 1].id : step === 'contact' || step === 'qualification' ? questions.at(-1)!.id : null;
     if (previous) void save({ step: previous });
@@ -90,11 +111,11 @@ export function FunnelExperience({ slug, initialConfig, demo }: { slug: string; 
   }
   const done = !!session?.booked_at || step === 'thanks';
   const title = done ? session?.booked_at ? 'You’re on the calendar.' : config.thankYouPage.headline
-    : step === 'calendar' ? 'Choose a time for your free estimate'
+    : step === 'calendar' ? config.calendarHeadline ?? 'Choose a time for your free estimate'
     : step === 'qualification' ? checking ? 'Checking availability in your area…' : session?.qualified ? config.qualifiedMessage : config.reviewMessage
     : step === 'contact' ? 'Who should we reach out to?' : question?.headline;
   const calendarUrl = config.calendarUrl ? new URL(config.calendarUrl) : null;
-  if (calendarUrl && session) calendarUrl.searchParams.set('hqn_session_id', session.id);
+  if (calendarUrl && session && !calendly) calendarUrl.searchParams.set('hqn_session_id', session.id);
 
   return <main className="hqn-funnel" style={{ '--funnel-primary': config.primaryColor, '--funnel-secondary': config.secondaryColor } as CSSProperties}>
     <div className="funnel-shell">
@@ -113,10 +134,10 @@ export function FunnelExperience({ slug, initialConfig, demo }: { slug: string; 
         <h1 ref={heading} tabIndex={-1}>{title}</h1>
         {question?.description && <p className="funnel-description">{question.description}</p>}
         {!session && <p className="funnel-description" role="status">{busy ? 'Getting things ready…' : 'Let’s get started.'}</p>}
-        {question?.type === 'choice' && <div className="funnel-answers">{question.options.map((option, i) => <button className="funnel-answer" key={option.value}
+        {question?.type === 'choice' && <div className="funnel-answers">{question.options.map((option, i) => <button className={option.featured ? 'funnel-answer funnel-answer-featured' : 'funnel-answer'} key={option.value}
           disabled={!session || busy} aria-pressed={session?.answers[question.id] === option.value} onClick={() => void save({ answer: { question: question.id, value: option.value } })}>
           <span className="funnel-answer-number">{session?.answers[question.id] === option.value ? <Check size={17} /> : String(i + 1).padStart(2, '0')}</span>
-          <span>{option.label}{option.detail && <small>{option.detail}</small>}</span><ArrowRight size={18} className="funnel-arrow" />
+          <span>{option.label}{option.detail && <small>{option.detail}</small>}</span>{option.featured && <span className="funnel-featured-tag">Popular</span>}<ArrowRight size={18} className="funnel-arrow" />
         </button>)}</div>}
         {question?.type === 'zip' && <form className="funnel-form" onSubmit={e => { e.preventDefault(); void save({ answer: { question: question.id, value: zip } }); }}>
           <Label htmlFor="project-zip">Project ZIP code</Label><div className="funnel-zip"><MapPin size={21} /><Input id="project-zip" name="zip" autoComplete="postal-code" inputMode="numeric" pattern="[0-9]{5}" maxLength={5} required value={zip} onChange={e => { setZip(e.target.value.replace(/\D/g, '')); setError(''); }} placeholder="e.g. 91301" /></div>
@@ -140,8 +161,8 @@ export function FunnelExperience({ slug, initialConfig, demo }: { slug: string; 
           <Button type="submit" className="funnel-primary" disabled={busy}>{busy ? 'Saving your request…' : demo ? 'Preview the next step' : session?.qualified && config.calendarUrl ? 'Choose my estimate time' : 'Request my free estimate'}<ArrowRight size={18} /></Button>
         </form>}
         {step === 'calendar' && !done && calendarUrl && <div className="funnel-calendar">
-          <p className="funnel-description">Pick the day and time that works for you.</p>
-          <iframe title={`Book an estimate with ${config.clientName}`} src={calendarUrl.toString()} referrerPolicy="strict-origin-when-cross-origin" allow="payment" />
+          <p className="funnel-description">{calendly ? 'Your request is saved. Pick the day and time that works for you.' : 'Pick the day and time that works for you.'}</p>
+          <iframe title={`Book an estimate with ${config.clientName}`} src={calendlySrc ?? calendarUrl.toString()} referrerPolicy="strict-origin-when-cross-origin" allow="payment" />
           <p>Booking confirmation will appear here after the calendar confirms your appointment. If no times work, the team has your request and can follow up.</p>
         </div>}
         {done && <div className="funnel-result"><div className="funnel-success"><CheckCircle2 size={36} /></div><p>{demo ? 'You’ve completed the demo. In a published client funnel, these details reach HomeQuote and the connected CRM.' : session?.booked_at ? 'Your appointment has been confirmed. Please check your calendar confirmation for the details.' : config.thankYouPage.message}</p></div>}

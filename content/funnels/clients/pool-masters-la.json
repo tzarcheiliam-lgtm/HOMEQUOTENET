@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "clientName": "Pool Masters LA",
+  "industry": "Pool construction & remodeling",
+  "serviceArea": {
+    "label": "Los Angeles & Ventura County",
+    "zipPrefixes": ["900", "901", "902", "903", "904", "905", "906", "907", "908", "910", "911", "912", "913", "914", "915", "916", "917", "918", "930", "935"]
+  },
+  "questions": [
+    { "id": "service", "type": "choice", "headline": "What type of project are you interested in?", "description": "Choose the closest fit.", "options": [
+      { "value": "full_build", "label": "Full Pool Build", "featured": true },
+      { "value": "full_remodel", "label": "Full Pool Remodel", "featured": true },
+      { "value": "backyard", "label": "Backyard Renovation", "featured": true },
+      { "value": "resurfacing", "label": "Pool Resurfacing / Replastering" },
+      { "value": "spa", "label": "Baja Shelf / Spa Addition" },
+      { "value": "tile", "label": "Tile & Coping" },
+      { "value": "decking", "label": "Decking / Pool Deck Renovation" },
+      { "value": "other", "label": "Other Pool Project" }
+    ] },
+    { "id": "zip", "type": "zip", "headline": "Where is the property located?", "description": "Enter the property’s ZIP code." },
+    { "id": "homeowner", "type": "choice", "headline": "Are you the homeowner?", "options": [
+      { "value": "yes", "label": "Yes, I own the home" }, { "value": "no", "label": "No, I don’t" }
+    ] },
+    { "id": "timeline", "type": "choice", "headline": "When are you looking to start?", "options": [
+      { "value": "asap", "label": "As soon as possible" }, { "value": "1_3_months", "label": "Within 1–3 months" },
+      { "value": "3_6_months", "label": "Within 3–6 months" }, { "value": "researching", "label": "Just researching" }
+    ] }
+  ],
+  "qualificationRules": [
+    { "question": "homeowner", "operator": "equals", "values": ["yes"] }
+  ],
+  "qualifiedMessage": "Great — it looks like we may be able to help.",
+  "calendarProvider": "calendly",
+  "calendarHeadline": "Great — your project looks like a fit. Choose a time below for your free pool consultation.",
+  "thankYouPage": {
+    "headline": "You’re all set.",
+    "message": "Your project details are saved. The Pool Masters LA team will reach out shortly to schedule your free pool consultation."
+  }
+}

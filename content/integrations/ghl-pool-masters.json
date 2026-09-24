@@ -4,14 +4,40 @@
   "pipelineId": "Vy3H74kDvRTGThFPUKNd",
   "pipelineStageId": "829de9dc-500e-445d-91d5-5ed35e3972c3",
   "tokenEnv": "GHL_POOL_MASTERS_TOKEN",
-  "tags": ["pool-funnel"],
+  "tags": [
+    "pool-funnel"
+  ],
   "onlyQualified": true,
   "source": "HomeQuote pool funnel",
   "customFields": [
-    { "id": "hMJxVq8uSY28MthxfPLO", "from": "answers.service", "multi": true, "map": {
-      "full_remodel": "Full Pool Remodel", "resurfacing": "Pool Resurfacing / Replaster", "tile": "Pool Tile & Coping",
-      "spa": "Baja Shelf / Spa Addition", "equipment": "Other", "backyard": "Other", "other": "Other" } },
-    { "id": "G4MUGErTOLZgSzqe9qXS", "from": "answers.timeline" },
-    { "id": "gauIxdPt5NUVuMFVfYrU", "from": "answers.homeowner", "multi": true, "map": { "yes": "Yes", "no": "No" } }
+    {
+      "id": "hMJxVq8uSY28MthxfPLO",
+      "from": "answers.service",
+      "multi": true,
+      "map": {
+        "full_remodel": "Full Pool Remodel",
+        "resurfacing": "Pool Resurfacing / Replaster",
+        "tile": "Pool Tile & Coping",
+        "spa": "Baja Shelf / Spa Addition",
+        "equipment": "Other",
+        "backyard": "Other",
+        "other": "Other",
+        "full_build": "Other",
+        "decking": "Other"
+      }
+    },
+    {
+      "id": "G4MUGErTOLZgSzqe9qXS",
+      "from": "answers.timeline"
+    },
+    {
+      "id": "gauIxdPt5NUVuMFVfYrU",
+      "from": "answers.homeowner",
+      "multi": true,
+      "map": {
+        "yes": "Yes",
+        "no": "No"
+      }
+    }
   ]
 }

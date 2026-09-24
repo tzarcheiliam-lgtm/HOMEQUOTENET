@@ -18,7 +18,8 @@ export const questionSchema = z.object({
   type: z.enum(['choice', 'zip']),
   headline: text,
   description: z.string().max(300).optional(),
-  options: z.array(z.object({ value: z.string().regex(/^[a-z0-9_]{1,50}$/), label: text, detail: z.string().max(120).optional() })).max(20).default([]),
+  // featured: visually emphasized card (e.g. high-ticket services). Order is the array order.
+  options: z.array(z.object({ value: z.string().regex(/^[a-z0-9_]{1,50}$/), label: text, detail: z.string().max(120).optional(), featured: z.boolean().optional() })).max(20).default([]),
   showWhen: z.array(conditionSchema).max(10).default([]),
 });
 export const funnelSchema = z.object({
@@ -37,6 +38,10 @@ export const funnelSchema = z.object({
   unqualifiedAction: z.enum(['review', 'stop']).default('review'),
   calendarUrl: httpsUrl.optional(),
   calendarId: z.string().max(100).optional(),
+  // ghl: embedded GHL calendar confirmed by a server callback. calendly: Calendly
+  // inline embed, prefilled with name/email, booking reported by the embed.
+  calendarProvider: z.enum(['ghl', 'calendly']).default('ghl'),
+  calendarHeadline: text.optional(),
   thankYouPage: z.object({ headline: text, message: text }),
   trackingPixels: z.object({ metaPixelId: z.string().regex(/^\d{5,30}$/).optional() }).default({}),
   trust: z.object({
@@ -59,7 +64,8 @@ export const funnelSchema = z.object({
   });
   if (config.questions.filter(q => q.type === 'zip').length !== 1) ctx.addIssue({ code: 'custom', message: 'Include exactly one ZIP question' });
   for (const c of config.qualificationRules) if (!ids.has(c.question)) ctx.addIssue({ code: 'custom', message: 'Qualification question does not exist' });
-  if (!!config.calendarUrl !== !!config.calendarId) ctx.addIssue({ code: 'custom', message: 'Set calendarUrl and calendarId together' });
+  if (config.calendarProvider === 'ghl' && !!config.calendarUrl !== !!config.calendarId) ctx.addIssue({ code: 'custom', message: 'Set calendarUrl and calendarId together' });
+  if (config.calendarProvider === 'calendly' && config.calendarUrl && new URL(config.calendarUrl).hostname !== 'calendly.com') ctx.addIssue({ code: 'custom', message: 'Calendly URLs must be on calendly.com' });
 });
 export type FunnelConfig = z.infer<typeof funnelSchema>;
 export type Question = FunnelConfig['questions'][number];
@@ -78,6 +84,8 @@ export type Session = {
   id: string; answers: Answers; current_step: string; version: number;
   qualified: boolean | null; contact_submitted_at: string | null;
   booked_at: string | null; attribution: Attribution;
+  // Only for the session owner on the Calendly step, to prefill the booking form.
+  prefill?: { name: string; email: string };
 };
 
 export function matches(condition: z.infer<typeof conditionSchema>, answers: Answers) {
@@ -121,3 +129,16 @@ export function captureAttribution(url: string, referrer: string, device: string
   try { const r = new URL(referrer); result.referrer = `${r.origin}${r.pathname}`; } catch { /* Direct visit. */ }
   return result;
 }
+
+/** Calendly inline-embed URL with prefilled invitee details and UTM passthrough. */
+export function calendlyEmbedUrl(base: string, host: string, prefill?: { name: string; email: string }, attribution: Attribution = {}) {
+  const url = new URL(base);
+  url.searchParams.set('embed_domain', host);
+  url.searchParams.set('embed_type', 'Inline');
+  url.searchParams.set('hide_gdpr_banner', '1');
+  if (prefill?.name) url.searchParams.set('name', prefill.name);
+  if (prefill?.email) url.searchParams.set('email', prefill.email);
+  for (const key of ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content']) if (attribution[key]) url.searchParams.set(key, attribution[key]);
+  return url.toString();
+}
+export const calendlyUri = z.string().max(300).regex(/^https:\/\/api\.calendly\.com\/scheduled_events\/[A-Za-z0-9-]+(\/invitees\/[A-Za-z0-9-]+)?$/);
