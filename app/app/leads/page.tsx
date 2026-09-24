@@ -38,6 +38,9 @@ export default async function LeadsPage({
     date_to: first(sp.date_to),
     archived: (first(sp.archived) as LeadFilters['archived']) ?? 'active',
     assigned: first(sp.assigned) as LeadFilters['assigned'],
+    qualification_status: (['needs_qualification', 'qualified', 'not_qualified'] as const).find(
+      (v) => v === first(sp.review)
+    ),
   };
 
   const isContractor = profile.role === 'contractor';
@@ -83,6 +86,12 @@ export default async function LeadsPage({
           className="rounded-md border px-3 py-1 hover:bg-accent"
         >
           All
+        </Link>
+        <Link
+          href="/app/leads?review=needs_qualification"
+          className="rounded-md border px-3 py-1 hover:bg-accent"
+        >
+          Needs qualification
         </Link>
         <Link
           href="/app/leads?status=new"

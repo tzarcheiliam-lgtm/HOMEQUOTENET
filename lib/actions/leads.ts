@@ -68,6 +68,7 @@ export async function createLead(
     .from('leads')
     .insert({
       ...d,
+      qualification_status: d.qualified ? 'qualified' : 'needs_qualification',
       qualified_at: d.qualified ? new Date().toISOString() : null,
       qualified_by: d.qualified ? actorId : null,
       created_by: actorId,
@@ -96,7 +97,23 @@ export async function updateLead(
   const d = parsed.data;
 
   const supabase = await createClient();
-  const { error } = await supabase.from('leads').update({ ...d }).eq('id', id);
+  // Keep the review status in step with the form's "Mark as qualified" box.
+  const { data: before } = await supabase
+    .from('leads')
+    .select('qualification_status')
+    .eq('id', id)
+    .single();
+  const review: Record<string, unknown> = {};
+  if (d.qualified && before?.qualification_status !== 'qualified') {
+    Object.assign(review, {
+      qualification_status: 'qualified',
+      qualified_at: new Date().toISOString(),
+      qualified_by: await currentUserId(),
+    });
+  } else if (!d.qualified && before?.qualification_status === 'qualified') {
+    Object.assign(review, { qualification_status: 'needs_qualification', qualified_at: null, qualified_by: null });
+  }
+  const { error } = await supabase.from('leads').update({ ...d, ...review }).eq('id', id);
   if (error) return { error: error.message };
 
   await recordActivity(id, 'field_change', 'Lead details updated');
@@ -249,16 +266,35 @@ export async function updateQualification(
   const id = str(formData, 'lead_id');
   if (!id) return { error: 'Missing lead id' };
 
-  const qualified = formData.get('qualified') === 'on';
+  // Review decision: needs_qualification | qualified | not_qualified. The
+  // legacy `qualified` checkbox is still accepted for older forms.
+  const rawStatus = str(formData, 'qualification_status');
+  const reviewStatus =
+    rawStatus === 'qualified' || rawStatus === 'not_qualified' || rawStatus === 'needs_qualification'
+      ? rawStatus
+      : formData.get('qualified') === 'on'
+        ? 'qualified'
+        : 'needs_qualification';
+  const qualified = reviewStatus === 'qualified';
   const supabase = await createClient();
+
+  const { data: before } = await supabase
+    .from('leads')
+    .select('qualification_status, qualified_at, qualified_by')
+    .eq('id', id)
+    .single();
+  // Keep who/when from the first time it was qualified; re-saving doesn't change it.
+  const alreadyQualified = before?.qualification_status === 'qualified';
 
   const update: Record<string, unknown> = {
     qualified,
+    qualification_status: reviewStatus,
+    qualification_notes: str(formData, 'qualification_notes'),
     budget_range: str(formData, 'budget_range'),
     timeline: str(formData, 'timeline'),
     urgency: str(formData, 'urgency'),
-    qualified_at: qualified ? new Date().toISOString() : null,
-    qualified_by: qualified ? await currentUserId() : null,
+    qualified_at: qualified ? (alreadyQualified ? before?.qualified_at : new Date().toISOString()) : null,
+    qualified_by: qualified ? (alreadyQualified ? before?.qualified_by : await currentUserId()) : null,
   };
 
   const { error } = await supabase.from('leads').update(update).eq('id', id);
@@ -273,10 +309,17 @@ export async function updateQualification(
       .in('status', ['new', 'contact_attempted']);
   }
 
+  const changed = before?.qualification_status !== reviewStatus;
   await recordActivity(
     id,
     'qualification',
-    qualified ? 'Lead marked qualified' : 'Qualification updated'
+    changed && reviewStatus === 'qualified'
+      ? 'Lead marked qualified'
+      : changed && reviewStatus === 'not_qualified'
+        ? 'Lead marked not qualified'
+        : changed
+          ? 'Lead moved back to needs qualification'
+          : 'Qualification updated'
   );
   revalidateLead(id);
   return { success: true };

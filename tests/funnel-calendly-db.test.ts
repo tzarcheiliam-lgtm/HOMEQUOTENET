@@ -18,7 +18,7 @@ let connected = false;
 beforeAll(async () => {
   if (!url) return;
   await db.connect(); connected = true; await q('begin');
-  for (const [file, probe] of [['0013_house_funnels_private_sharing', 'activity_visible_to_contractor'], ['0015_funnel_calendly_bookings', 'record_calendly_booking']]) {
+  for (const [file, probe] of [['0013_house_funnels_private_sharing', 'activity_visible_to_contractor'], ['0015_funnel_calendly_bookings', 'record_calendly_booking'], ['0016_lead_review_distribution', 'distribute_lead']]) {
     const [fn] = await q('select to_regproc($1) as name', [`public.${probe}`]);
     if (!fn.name) await q(readFileSync(`supabase/migrations/${file}.sql`, 'utf8'));
   }

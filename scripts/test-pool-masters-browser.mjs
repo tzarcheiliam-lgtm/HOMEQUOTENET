@@ -72,6 +72,9 @@ try {
     assert.ok(saved, 'lead saved before Calendly');
     assert.equal(saved.booked_at, null); assert.equal(saved.current_step, 'calendar');
     assert.equal(saved.contractor_id, ids.contractor); assert.equal(saved.consent_source, `funnel:${slug}`);
+    // Migration 0016: only the HomeQuote team alert is queued; nobody else is emailed.
+    const { rows: emails } = await db.query('select d.kind from public.lead_email_deliveries d join public.funnel_sessions s on s.lead_id=d.lead_id where s.id=$1', [saved.id]);
+    assert.deepEqual(emails.map(e => e.kind), ['new_lead_alert']);
     assert.equal(saved.attribution.utm_campaign, 'ethan-qa'); assert.equal(saved.attribution.fbclid, `qa-${device}`);
     const src = new URL(calendlySrc);
     assert.equal(src.searchParams.get('name'), `Qa ${device === 'mobile' ? 'Mobile' : 'Desktop'}`);

@@ -20,6 +20,8 @@ beforeAll(async () => {
   if (!table.name) await q(readFileSync('supabase/migrations/0012_lead_funnels.sql', 'utf8'));
   const [house] = await q("select to_regproc('public.activity_visible_to_contractor') as name");
   if (!house.name) await q(readFileSync('supabase/migrations/0013_house_funnels_private_sharing.sql', 'utf8'));
+  const [review] = await q("select to_regproc('public.distribute_lead') as name");
+  if (!review.name) await q(readFileSync('supabase/migrations/0016_lead_review_distribution.sql', 'utf8'));
   await q("insert into public.contractors(id,name) values($1,'Funnel test'),($2,'Other test')", [ids.contractor, ids.other]);
   await q("insert into public.integrations(id,provider,name,is_enabled,secret) values($1,'ghl',$2,true,'test-secret')", [ids.integration, ids.integration]);
   await q('insert into public.funnels(id,slug,contractor_id,integration_id,published,config) values($1,$2,$3,$4,true,$5)', [ids.funnel, `test-${ids.funnel}`, ids.contractor, ids.integration, config]);
@@ -46,6 +48,9 @@ suite('funnel database (rolled back)', () => {
     expect(lead.utm_source).toBe('facebook'); expect(lead.phone_e164).toBe('+18185550188'); expect(lead.consent_granted).toBe(true);
     const [assignment] = await q('select * from public.lead_assignments where id=$1', [s.assignment_id]);
     expect(assignment.contractor_id).toBe(ids.contractor);
+    // 0016: a person must qualify it; only the internal team alert is queued.
+    expect(lead.qualification_status).toBe('needs_qualification');
+    expect(await q('select kind, recipient_email from public.lead_email_deliveries where lead_id=$1', [s.lead_id])).toEqual([{ kind: 'new_lead_alert', recipient_email: null }]);
     expect((await q('select id from public.funnel_deliveries where session_id=$1', [s.id]))).toHaveLength(1);
     expect((await q('select id from public.lead_intake_events where lead_id=$1', [s.lead_id]))).toHaveLength(1);
     expect(s.attribution.fbclid).toBe('test-click');
@@ -55,6 +60,8 @@ suite('funnel database (rolled back)', () => {
     expect(await q('select id from public.leads where email=$1', [contact.email])).toHaveLength(1);
     expect(await q('select id from public.funnel_events where session_id=$1 and event=$2', [ids.session, 'contact_submitted'])).toHaveLength(1);
     expect(await q('select id from public.funnel_deliveries where session_id=$1', [ids.session])).toHaveLength(1);
+    const [s] = await q('select lead_id from public.funnel_sessions where id=$1', [ids.session]);
+    expect(await q('select 1 from public.lead_email_deliveries where lead_id=$1', [s.lead_id])).toHaveLength(1);
   });
   it('records an appointment only through verified calendar mapping and deduplicates retries', async () => {
     await q('savepoint wrong_calendar');

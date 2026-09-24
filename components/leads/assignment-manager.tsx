@@ -263,7 +263,10 @@ export function AssignmentManager({
 
       {canManage && (
         <div className="rounded-lg border border-dashed p-4">
-          <p className="mb-3 text-sm font-medium">Assign to contractors</p>
+          <p className="text-sm font-medium">Assign without emailing</p>
+          <p className="mb-3 text-xs text-muted-foreground">
+            Records the assignment only. To email the lead, use Send lead above.
+          </p>
           <AssignForm leadId={leadId} available={available} />
         </div>
       )}

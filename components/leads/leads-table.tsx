@@ -121,6 +121,11 @@ export function LeadsTable({
                     {LEAD_STATUSES.find((s) => s.value === r.status)?.label ??
                       r.status}
                   </Badge>
+                  {!readOnly && r.qualification_status === 'needs_qualification' && (
+                    <Badge variant="warning" className="ml-1.5">
+                      Needs qualification
+                    </Badge>
+                  )}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {r.city ?? '—'}

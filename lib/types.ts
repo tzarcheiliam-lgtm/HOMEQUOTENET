@@ -177,6 +177,9 @@ export interface Lead {
   qualified: boolean;
   qualified_at: string | null;
   qualified_by: string | null;
+  // Human review (migration 0016): the funnel's automatic check never sets this.
+  qualification_status: QualificationStatus;
+  qualification_notes: string | null;
   budget_range: string | null;
   timeline: string | null;
   urgency: string | null;
@@ -493,4 +496,41 @@ export interface ProspectSalesAppointment {
   updated_by: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// --- Lead review + distribution (migration 0016) -------------------------------
+
+export type QualificationStatus = 'needs_qualification' | 'qualified' | 'not_qualified';
+
+export type LeadRecipientKind = 'team_member' | 'contractor';
+
+export interface LeadRecipient {
+  id: string;
+  name: string;
+  company: string | null;
+  email: string;
+  phone: string | null;
+  kind: LeadRecipientKind;
+  contractor_id: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LeadEmailDelivery {
+  id: string;
+  lead_id: string;
+  kind: 'new_lead_alert' | 'qualified_lead';
+  is_repeat: boolean;
+  recipient_id: string | null;
+  recipient_name: string | null;
+  recipient_email: string | null;
+  is_resend: boolean;
+  requested_by: string | null;
+  status: 'pending' | 'sending' | 'sent' | 'failed';
+  attempts: number;
+  subject: string | null;
+  last_error: string | null;
+  sent_at: string | null;
+  created_at: string;
 }

@@ -1,6 +1,7 @@
 import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getConnector } from './connectors';
+import { sendLeadEmailsSoon } from '@/lib/leads/notify';
 import type { IntakeContext, IntakeResult, NormalizedLead } from './types';
 
 function splitName(full: string | null | undefined): {
@@ -76,6 +77,8 @@ export async function ingestLead(
       .select('id')
       .single();
     await touchIntegration(ctx.integrationId, { activity: true });
+    // The intake row queued the internal new-lead alert (migration 0016).
+    sendLeadEmailsSoon();
     return { status: 'duplicate', duplicateOf, intakeEventId: ev?.id };
   }
 
@@ -133,6 +136,7 @@ export async function ingestLead(
     .single();
 
   await touchIntegration(ctx.integrationId, { sync: true });
+  sendLeadEmailsSoon();
   return { status: 'created', leadId: lead.id, intakeEventId: ev?.id };
 }
 

@@ -10,6 +10,8 @@ export function buildRawGmailMessage(input: {
   subject: string;
   message: string;
   html: string;
+  /** Plain-text part as-is. Without it, `message` gets the prospect-email signature. */
+  text?: string;
 }): string {
   const boundary = 'hqn-prospect-email-boundary';
   const lines = [
@@ -23,7 +25,7 @@ export function buildRawGmailMessage(input: {
     'Content-Type: text/plain; charset=UTF-8',
     'Content-Transfer-Encoding: 8bit',
     '',
-    buildProspectEmailText(input.message).replace(/\r?\n/g, '\r\n'),
+    (input.text ?? buildProspectEmailText(input.message)).replace(/\r?\n/g, '\r\n'),
     '',
     `--${boundary}`,
     'Content-Type: text/html; charset=UTF-8',
@@ -38,7 +40,7 @@ export function buildRawGmailMessage(input: {
 
 export async function deliverGmailWithAccessToken(
   accessToken: string,
-  input: { fromEmail: string; toEmail: string; subject: string; message: string; html: string },
+  input: { fromEmail: string; toEmail: string; subject: string; message: string; html: string; text?: string },
   request: typeof fetch = fetch
 ): Promise<{ id: string }> {
   const response = await request('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {

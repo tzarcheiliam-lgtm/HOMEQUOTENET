@@ -31,6 +31,8 @@ import { NoteForm } from '@/components/leads/note-form';
 import { AttachmentForm } from '@/components/leads/attachment-form';
 import { AssignmentManager } from '@/components/leads/assignment-manager';
 import { ActivityTimeline } from '@/components/leads/activity-timeline';
+import { LeadDistributionPanel } from '@/components/leads/lead-distribution-panel';
+import { getLeadDistribution, listRecipients } from '@/lib/data/lead-distribution';
 
 export const metadata = { title: 'Lead · HomeQuote Network' };
 
@@ -63,7 +65,13 @@ export default async function LeadDetailPage({
   const isStaff = profile.role === 'admin' || profile.role === 'setter';
   const isAdmin = profile.role === 'admin';
 
-  const contractors = isStaff ? await listContractorOptions() : [];
+  const [contractors, distribution, recipients] = isStaff
+    ? await Promise.all([
+        listContractorOptions(),
+        getLeadDistribution(lead.id, lead.qualified_by),
+        listRecipients({ activeOnly: true }),
+      ])
+    : [[], null, []];
 
   const name =
     [lead.first_name, lead.last_name].filter(Boolean).join(' ') ||
@@ -221,11 +229,29 @@ export default async function LeadDetailPage({
             </CardContent>
           </Card>
 
+          {/* Review & send: new leads go to the HomeQuote team first; a
+              person qualifies them, then chooses who receives them. */}
+          {isStaff && distribution && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Review &amp; send</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <LeadDistributionPanel
+                  lead={lead}
+                  distribution={distribution}
+                  recipients={recipients}
+                  isAdmin={isAdmin}
+                />
+              </CardContent>
+            </Card>
+          )}
+
           {/* Assignment / distribution */}
           <Card>
             <CardHeader>
               <CardTitle>
-                {isStaff ? 'Distribution' : 'Your assignment'}
+                {isStaff ? 'Contractor assignments' : 'Your assignment'}
               </CardTitle>
             </CardHeader>
             <CardContent>

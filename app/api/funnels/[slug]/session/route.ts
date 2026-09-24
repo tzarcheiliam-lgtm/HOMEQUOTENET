@@ -7,6 +7,7 @@ import { verifyCalendlyBooking } from '@/lib/funnels/calendly';
 import { cookieName, getFunnel, getSession, hash, newToken, publicSession, readBody, sameOrigin } from '@/lib/funnels/server';
 import { after } from 'next/server';
 import { deliverPendingFunnels } from '@/lib/funnels/delivery';
+import { sendLeadEmailsSoon } from '@/lib/leads/notify';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -121,6 +122,8 @@ export async function PATCH(request: Request, context: Context) {
     const { data, error } = await db.rpc('save_funnel_session', { p_id: s.id, p_hash: s.token_hash, p_version: body.version,
       p_answers: answers, p_step: nextStep, p_completed: completed, p_contact: body.contact ?? null, p_qualified: qualified, p_consent: consentText(config) });
     if (error) return reply({ error: error.code === '40001' ? 'Your progress changed in another tab. Refresh to continue.' : 'We couldn’t save that. Please try again.' }, error.code === '40001' ? 409 : 503);
+    // Saved lead -> internal new-lead alert to the HomeQuote team only (never the funnel's contractor).
+    if (body.contact && !funnel.is_demo) sendLeadEmailsSoon();
     if (body.contact && !funnel.is_demo && funnel.integration_id) after(async () => { try { await deliverPendingFunnels(); } catch { /* Durable queue retains the job for retry. */ } });
     const saved = publicSession(data);
     return reply({ session: body.contact && config.calendarProvider === 'calendly' && saved.current_step === 'calendar'

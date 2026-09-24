@@ -15,7 +15,9 @@ or confirms a real appointment. Do not send paid traffic to the demo.
 - `/estimate/pool-masters`: **Ethan / Pool Masters LA** client funnel. Config:
   `content/funnels/clients/pool-masters-la.json` (independent of the general form;
   editing it never changes other funnels). Leads are assigned to the Pool Masters LA
-  contractor, `consent_source = funnel:pool-masters`. Flow: project type (Full Pool
+  contractor, `consent_source = funnel:pool-masters`. The assignment emails nobody:
+  new leads alert only the HomeQuote team, and Ethan/Gio get a lead only via
+  Send lead ([`LEAD_DISTRIBUTION.md`](LEAD_DISTRIBUTION.md)). Flow: project type (Full Pool
   Build / Full Pool Remodel / Backyard Renovation featured) → ZIP → homeowner →
   timeline → contact (lead saved) → Calendly (prefilled name/email/UTMs) → booked.
 

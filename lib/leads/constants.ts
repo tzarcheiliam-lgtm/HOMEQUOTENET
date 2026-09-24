@@ -1,4 +1,4 @@
-import type { LeadStatus } from '@/lib/types';
+import type { LeadStatus, QualificationStatus } from '@/lib/types';
 
 // Pipeline statuses in canonical order, with display labels and badge styling.
 export const LEAD_STATUSES: {
@@ -82,3 +82,23 @@ export const BUDGET_RANGES = [
   '$60k-$100k',
   '$100k+',
 ];
+
+// Human review of a new lead (migration 0016). Only "qualified" leads can be sent.
+export const QUALIFICATION_STATUSES: {
+  value: QualificationStatus;
+  label: string;
+  help: string;
+  variant: 'warning' | 'success' | 'muted';
+}[] = [
+  { value: 'needs_qualification', label: 'Needs qualification', help: 'Not reviewed yet', variant: 'warning' },
+  { value: 'qualified', label: 'Qualified', help: 'Ready to send', variant: 'success' },
+  { value: 'not_qualified', label: 'Not qualified', help: 'Won’t be sent', variant: 'muted' },
+];
+
+export const QUALIFICATION_STATUS_LABELS: Record<QualificationStatus, string> = Object.fromEntries(
+  QUALIFICATION_STATUSES.map((s) => [s.value, s.label])
+) as Record<QualificationStatus, string>;
+
+export function qualificationVariant(status: QualificationStatus) {
+  return QUALIFICATION_STATUSES.find((s) => s.value === status)?.variant ?? 'muted';
+}

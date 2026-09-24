@@ -6,6 +6,7 @@ import type {
   LeadAssignment,
   LeadAttachment,
   LeadStatus,
+  QualificationStatus,
 } from '@/lib/types';
 
 export interface LeadFilters {
@@ -21,6 +22,7 @@ export interface LeadFilters {
   date_to?: string;
   archived?: 'active' | 'archived' | 'all';
   assigned?: 'assigned' | 'unassigned';
+  qualification_status?: QualificationStatus;
 }
 
 export interface LeadListRow extends Lead {
@@ -67,6 +69,8 @@ export async function listLeads(
   if (archived === 'archived') query = query.not('archived_at', 'is', null);
 
   if (filters.status) query = query.eq('status', filters.status);
+  if (filters.qualification_status)
+    query = query.eq('qualification_status', filters.qualification_status);
   if (filters.vertical_id) query = query.eq('vertical_id', filters.vertical_id);
   if (filters.sub_service_id)
     query = query.eq('sub_service_id', filters.sub_service_id);

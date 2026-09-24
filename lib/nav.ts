@@ -35,6 +35,13 @@ export const NAV_ITEMS: NavItem[] = [
     icon: 'Building2',
     roles: ['admin', 'setter'],
   },
+  // Who a qualified lead can be sent to (contractors + team members).
+  {
+    label: 'Lead Recipients',
+    href: '/app/lead-recipients',
+    icon: 'Send',
+    roles: ['admin'],
+  },
   // The partner cold-calling workspace. Callers and setters work their own
   // assigned list here; admins use it to assign prospects and compare agents.
   // Contractors never see it.
