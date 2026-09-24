@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import {
   verifyMetaChallenge,
+  verifyMetaSignature,
   normalizeMetaValue,
   fetchMetaLead,
 } from '@/lib/integrations/meta';
@@ -40,17 +41,30 @@ export async function GET(req: NextRequest) {
 
 // Lead delivery.
 export async function POST(req: NextRequest) {
-  let body: any;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
-  }
+  // Read the RAW body — required for an exact HMAC signature comparison.
+  const rawBody = await req.text();
 
   const integration = await getMetaIntegration();
   if (!integration || !integration.is_enabled) {
     // Acknowledge so Meta doesn't retry; nothing to do.
     return NextResponse.json({ received: 0, skipped: 'disabled' });
+  }
+
+  // C1: verify Meta's X-Hub-Signature-256 against the app secret. Reject 401.
+  const appSecret = integration.config?.app_secret as string | undefined;
+  const signature = req.headers.get('x-hub-signature-256');
+  if (!verifyMetaSignature(rawBody, signature, appSecret)) {
+    return NextResponse.json(
+      { error: 'Invalid or missing signature' },
+      { status: 401 }
+    );
+  }
+
+  let body: any;
+  try {
+    body = JSON.parse(rawBody);
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
   const token = integration.config?.page_access_token as string | undefined;

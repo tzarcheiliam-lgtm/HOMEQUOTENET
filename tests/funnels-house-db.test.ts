@@ -52,8 +52,9 @@ suite('house funnels and private sharing (rolled back)', () => {
     expect(s.lead_id).toBeTruthy(); expect(s.assignment_id).toBeNull();
     lead = s.lead_id;
     expect(await q('select 1 from public.lead_assignments where lead_id=$1', [lead])).toHaveLength(0);
-    const [l] = await q('select status, qualified, consent_source, utm_source from public.leads where id=$1', [lead]);
-    expect(l).toMatchObject({ qualified: true, consent_source: `funnel:house-${ids.funnel}`, utm_source: 'facebook' });
+    // Review-first (migration 0016): funnel leads wait for a person to qualify them.
+    const [l] = await q('select status, qualified, qualification_status, consent_source, utm_source from public.leads where id=$1', [lead]);
+    expect(l).toMatchObject({ qualified: false, qualification_status: 'needs_qualification', consent_source: `funnel:house-${ids.funnel}`, utm_source: 'facebook' });
   });
   it('shows each contractor only their own side of a shared lead', async () => {
     await q('insert into public.lead_assignments(lead_id,contractor_id) values($1,$2),($1,$3)', [lead, ids.a, ids.b]);

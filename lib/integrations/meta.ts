@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Connector, NormalizedLead } from './types';
 
 /**
@@ -61,6 +62,15 @@ export function normalizeMetaValue(
     form: value?.form_name ?? null,
     form_id: value?.form_id ?? null,
     external_lead_id: value?.leadgen_id ?? value?.lead_id ?? null,
+    // Consent: Meta lead forms carry a consent checkbox in some setups. Capture
+    // it if present; otherwise leave false for a human to confirm.
+    consent_granted: /^(true|yes|1|on|i agree|agree|consent)$/i.test(
+      (pick(f, 'consent', 'tcpa_consent', 'consent_to_contact') ?? '').trim()
+    ),
+    consent_source: 'meta',
+    consent_disclosure: value?.form_name
+      ? `Meta Lead Ad form: ${value.form_name}`
+      : null,
     timestamp: value?.created_time ?? null,
   };
 }
@@ -107,6 +117,29 @@ export function verifyMetaChallenge(
     return challenge;
   }
   return null;
+}
+
+/**
+ * Verify Meta's `X-Hub-Signature-256` header against the raw request body using
+ * the app secret. Constant-time comparison. Returns false on any mismatch or if
+ * the secret/header is missing — callers should reject with 401.
+ */
+export function verifyMetaSignature(
+  rawBody: string,
+  signatureHeader: string | null | undefined,
+  appSecret: string | null | undefined
+): boolean {
+  if (!appSecret || !signatureHeader) return false;
+  const expected =
+    'sha256=' + createHmac('sha256', appSecret).update(rawBody, 'utf8').digest('hex');
+  const a = Buffer.from(expected);
+  const b = Buffer.from(signatureHeader);
+  if (a.length !== b.length) return false;
+  try {
+    return timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
 }
 
 /**

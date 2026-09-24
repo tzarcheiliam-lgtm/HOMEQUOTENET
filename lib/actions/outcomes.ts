@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireProfile, requireRole } from '@/lib/auth';
 import { computeCommission } from '@/lib/outcomes/commission';
+import { resolvePricingAgreementId } from '@/lib/data/contractors';
 import type { PricingAgreement } from '@/lib/types';
 
 export type OutcomeState = { error?: string; success?: boolean } | undefined;
@@ -155,11 +156,33 @@ export async function addSale(
 
   // Resolve the pricing agreement to auto-calculate commission.
   let agreement: PricingAgreement | null = null;
-  if (assignment.pricing_agreement_id) {
+  let agreementId = assignment.pricing_agreement_id;
+
+  // Fallback (H1 safety net): older assignments may have no agreement linked —
+  // resolve the contractor's active one now and persist it onto the assignment.
+  if (!agreementId) {
+    const { data: leadRow } = await supabase
+      .from('leads')
+      .select('vertical_id')
+      .eq('id', assignment.lead_id)
+      .single();
+    agreementId = await resolvePricingAgreementId(
+      assignment.contractor_id,
+      (leadRow as { vertical_id: string | null } | null)?.vertical_id ?? null
+    );
+    if (agreementId) {
+      await supabase
+        .from('lead_assignments')
+        .update({ pricing_agreement_id: agreementId })
+        .eq('id', assignmentId);
+    }
+  }
+
+  if (agreementId) {
     const { data } = await supabase
       .from('pricing_agreements')
       .select('*')
-      .eq('id', assignment.pricing_agreement_id)
+      .eq('id', agreementId)
       .single();
     agreement = (data as PricingAgreement) ?? null;
   }

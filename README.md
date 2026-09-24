@@ -229,6 +229,11 @@ missing and adds nothing.
 
 ## Manual prospect email (`/app/calls/emails`)
 
+For the reusable homeowner estimate funnel engine at `/estimate/[slug]` and its
+admin conversion report at `/app/funnels`, see [FUNNELS.md](FUNNELS.md). It covers
+configuration-driven publishing, migration 0012, progressive persistence,
+GoHighLevel calendar/webhook setup, attribution, tracking and browser verification.
+
 The Calls workspace has an **Emails** tab for one-at-a-time, manually reviewed
 follow-ups. Version 1 includes only **More info after our call**. Selecting a
 prospect loads any saved decision-maker name/email, builds an editable draft,

@@ -187,6 +187,14 @@ export interface Lead {
   notes: string | null;
   last_contact_date: string | null;
   archived_at: string | null;
+  // Normalized contact (maintained by DB trigger; used for dedupe)
+  email_normalized: string | null;
+  phone_e164: string | null;
+  // TCPA consent
+  consent_granted: boolean;
+  consent_at: string | null;
+  consent_source: string | null;
+  consent_disclosure: string | null;
   // Attribution
   source: string | null;
   campaign: string | null;

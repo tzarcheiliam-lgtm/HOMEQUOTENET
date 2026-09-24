@@ -185,6 +185,33 @@ export default async function LeadDetailPage({
             </CardContent>
           </Card>
 
+          {/* Consent (TCPA) */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Consent</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Row
+                label="Consent to contact"
+                value={
+                  <Badge variant={lead.consent_granted ? 'success' : 'muted'}>
+                    {lead.consent_granted ? 'Granted' : 'Not on file'}
+                  </Badge>
+                }
+              />
+              <Row
+                label="When"
+                value={
+                  lead.consent_at
+                    ? new Date(lead.consent_at).toLocaleString()
+                    : null
+                }
+              />
+              <Row label="Source" value={lead.consent_source} />
+              <Row label="Disclosure" value={lead.consent_disclosure} />
+            </CardContent>
+          </Card>
+
           {/* Economics — admin only */}
           {isAdmin && (
             <Card>

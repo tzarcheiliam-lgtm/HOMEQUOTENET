@@ -1,5 +1,6 @@
 import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { normalizeEmail, normalizePhone } from '@/lib/leads/normalize';
 import { getConnector } from './connectors';
 import { sendLeadEmailsSoon } from '@/lib/leads/notify';
 import type { IntakeContext, IntakeResult, NormalizedLead } from './types';
@@ -25,8 +26,11 @@ export async function ingestLead(
 ): Promise<IntakeResult> {
   const admin = createAdminClient();
 
-  const email = normalized.email?.trim().toLowerCase() || null;
-  const phone = normalized.phone?.trim() || null;
+  // Normalized for matching (mirrors the DB columns); raw kept for display.
+  const emailNorm = normalizeEmail(normalized.email);
+  const phoneNorm = normalizePhone(normalized.phone);
+  const email = normalized.email ?? null;
+  const phone = normalized.phone ?? null;
 
   const eventBase = {
     integration_id: ctx.integrationId,
@@ -48,12 +52,12 @@ export async function ingestLead(
     raw_payload: (ctx.rawPayload ?? {}) as Record<string, unknown>,
   };
 
-  // ---- 1. Duplicate detection (by email or phone) --------------------------
+  // ---- 1. Duplicate detection (by normalized email or phone) ---------------
   let duplicateOf: string | null = null;
-  if (email || phone) {
+  if (emailNorm || phoneNorm) {
     const ors: string[] = [];
-    if (email) ors.push(`email.ilike.${email}`);
-    if (phone) ors.push(`phone.eq.${phone}`);
+    if (emailNorm) ors.push(`email_normalized.eq.${emailNorm}`);
+    if (phoneNorm) ors.push(`phone_e164.eq.${phoneNorm}`);
     const { data: existing } = await admin
       .from('leads')
       .select('id')
@@ -108,6 +112,11 @@ export async function ingestLead(
       form_id: normalized.form_id ?? null,
       external_lead_id: normalized.external_lead_id ?? null,
       integration_id: ctx.integrationId,
+      // TCPA consent captured at intake (H4)
+      consent_granted: normalized.consent_granted ?? false,
+      consent_at: normalized.consent_granted ? new Date().toISOString() : null,
+      consent_source: normalized.consent_source ?? ctx.provider,
+      consent_disclosure: normalized.consent_disclosure ?? null,
     })
     .select('id')
     .single();

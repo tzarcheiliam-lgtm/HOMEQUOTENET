@@ -54,6 +54,36 @@ async function emailFor(userId: string): Promise<string | null> {
 
 const ROLES: UserRole[] = ['admin', 'setter', 'contractor', 'caller'];
 
+const LAST_ADMIN_ERROR =
+  'This is the last active admin. Promote another admin before removing, suspending, disabling, or demoting this account.';
+
+async function countActiveAdmins(): Promise<number> {
+  const supabase = await createClient();
+  const { count } = await supabase
+    .from('profiles')
+    .select('*', { count: 'exact', head: true })
+    .eq('role', 'admin')
+    .eq('account_status', 'active')
+    .is('deleted_at', null);
+  return count ?? 0;
+}
+
+// True if removing/deactivating/demoting this user would leave zero active admins.
+async function wouldRemoveLastAdmin(userId: string): Promise<boolean> {
+  const supabase = await createClient();
+  const { data: target } = await supabase
+    .from('profiles')
+    .select('role, account_status, deleted_at')
+    .eq('id', userId)
+    .single();
+  const t = target as
+    | { role: string; account_status: string; deleted_at: string | null }
+    | null;
+  if (!t || t.role !== 'admin' || t.account_status !== 'active' || t.deleted_at)
+    return false;
+  return (await countActiveAdmins()) <= 1;
+}
+
 // --- create / invite --------------------------------------------------------
 
 const baseUserSchema = z.object({
@@ -171,6 +201,10 @@ export async function setUserStatus(fd: FormData): Promise<void> {
   const status = str(fd, 'status') as AccountStatus | null;
   if (!userId || !status) return;
 
+  if (status !== 'active' && (await wouldRemoveLastAdmin(userId))) {
+    throw new Error(LAST_ADMIN_ERROR);
+  }
+
   const supabase = await createClient();
   await supabase
     .from('profiles')
@@ -190,6 +224,10 @@ export async function changeUserRole(fd: FormData): Promise<void> {
 
   const contractorId = role === 'contractor' ? str(fd, 'contractor_id') : null;
   if (role === 'contractor' && !contractorId) return;
+
+  if (role !== 'admin' && (await wouldRemoveLastAdmin(userId))) {
+    throw new Error(LAST_ADMIN_ERROR);
+  }
 
   const supabase = await createClient();
   await supabase
@@ -257,6 +295,10 @@ export async function softDeleteUser(fd: FormData): Promise<void> {
   const userId = str(fd, 'user_id');
   if (!userId) return;
 
+  if (await wouldRemoveLastAdmin(userId)) {
+    throw new Error(LAST_ADMIN_ERROR);
+  }
+
   const supabase = await createClient();
   await supabase
     .from('profiles')
@@ -286,6 +328,21 @@ export async function bulkUserAction(fd: FormData): Promise<void> {
   };
   const update = map[action];
   if (!update) return;
+
+  // Guard: a bulk suspend/disable/delete must not take out every active admin.
+  if (action !== 'activate') {
+    const totalAdmins = await countActiveAdmins();
+    const { data: selAdmins } = await supabase
+      .from('profiles')
+      .select('id')
+      .in('id', ids)
+      .eq('role', 'admin')
+      .eq('account_status', 'active')
+      .is('deleted_at', null);
+    if (totalAdmins > 0 && (selAdmins?.length ?? 0) >= totalAdmins) {
+      throw new Error(LAST_ADMIN_ERROR);
+    }
+  }
 
   await supabase.from('profiles').update(update).in('id', ids);
   await logAudit(`user.bulk.${action}`, null, { ids });

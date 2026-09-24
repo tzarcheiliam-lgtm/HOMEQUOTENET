@@ -22,6 +22,11 @@ export interface NormalizedLead {
   form_id?: string | null;
   external_lead_id?: string | null;
 
+  // TCPA consent (connectors populate where the source provides it)
+  consent_granted?: boolean | null;
+  consent_source?: string | null;
+  consent_disclosure?: string | null;
+
   timestamp?: string | null;
 }
 

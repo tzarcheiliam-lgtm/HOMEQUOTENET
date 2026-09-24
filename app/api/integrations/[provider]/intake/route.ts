@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { ingestPayload } from '@/lib/integrations/intake';
 import { getConnector } from '@/lib/integrations/connectors';
+import { checkIntakeAuth } from '@/lib/integrations/auth';
 
 // Generic intake endpoint for non-Meta sources (Website Forms, Zapier, Public
 // API). Demonstrates how every future connector reuses the same pipeline:
@@ -40,13 +41,13 @@ export async function POST(
     );
   }
 
-  // Optional shared-secret check.
-  if (integration.secret) {
-    const auth = req.headers.get('authorization') ?? '';
-    const provided = auth.replace(/^Bearer\s+/i, '');
-    if (provided !== integration.secret) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+  // C3: a configured API key is REQUIRED for generic providers.
+  const auth = checkIntakeAuth(
+    integration.secret,
+    req.headers.get('authorization')
+  );
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.message }, { status: auth.status });
   }
 
   let body: unknown;

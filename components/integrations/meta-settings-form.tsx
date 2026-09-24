@@ -39,7 +39,7 @@ export function MetaSettingsForm({ integration }: { integration: Integration }) 
             defaultValue={config?.page_id ?? ''}
           />
         </div>
-        <div className="space-y-1.5 sm:col-span-2">
+        <div className="space-y-1.5">
           <Label htmlFor="page_access_token">Page access token</Label>
           <Input
             id="page_access_token"
@@ -50,8 +50,20 @@ export function MetaSettingsForm({ integration }: { integration: Integration }) 
             }
           />
           <p className="text-xs text-muted-foreground">
-            Used to fetch lead field data from the Graph API. Leave blank to keep
-            the saved token.
+            Fetches lead field data via Graph API. Blank keeps the saved token.
+          </p>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="app_secret">App secret</Label>
+          <Input
+            id="app_secret"
+            name="app_secret"
+            type="password"
+            placeholder={config?.app_secret ? '•••••••• (saved)' : 'Meta app secret'}
+          />
+          <p className="text-xs text-muted-foreground">
+            Verifies webhook signatures (required for live leads). Blank keeps the
+            saved secret.
           </p>
         </div>
       </div>

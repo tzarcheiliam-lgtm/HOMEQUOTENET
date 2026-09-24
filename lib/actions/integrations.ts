@@ -36,13 +36,15 @@ export async function updateMetaIntegration(
     .select('config')
     .eq('id', id)
     .single();
+  const appSecret = str(fd, 'app_secret');
   const config = {
     ...((current?.config as Record<string, unknown>) ?? {}),
     page_id: pageId,
-    // Keep an existing token if the field is left blank.
+    // Keep existing token / app secret if the field is left blank.
     page_access_token:
       pageAccessToken ??
       ((current?.config as any)?.page_access_token ?? null),
+    app_secret: appSecret ?? ((current?.config as any)?.app_secret ?? null),
     category: 'ads',
     platforms: ['facebook', 'instagram'],
   };
@@ -61,6 +63,19 @@ export async function updateMetaIntegration(
   revalidatePath('/app/integrations/meta');
   revalidatePath('/app/integrations');
   return { success: 'Meta settings saved.' };
+}
+
+// Generate (or rotate) the API key for a generic provider (website/zapier/api).
+// Required so the generic intake endpoint can authenticate callers (C3).
+export async function regenerateIntegrationSecret(fd: FormData): Promise<void> {
+  await requireRole(['admin']);
+  const id = str(fd, 'id');
+  if (!id) return;
+  const { randomBytes } = await import('node:crypto');
+  const secret = randomBytes(24).toString('hex');
+  const supabase = await createClient();
+  await supabase.from('integrations').update({ secret }).eq('id', id);
+  revalidatePath('/app/integrations');
 }
 
 export async function toggleIntegration(fd: FormData): Promise<void> {

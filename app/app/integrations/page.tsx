@@ -3,7 +3,10 @@ import { Plug, Settings2 } from 'lucide-react';
 import { requireRole } from '@/lib/auth';
 import { listIntegrations } from '@/lib/data/integrations';
 import { getConnector } from '@/lib/integrations/connectors';
-import { toggleIntegration } from '@/lib/actions/integrations';
+import {
+  toggleIntegration,
+  regenerateIntegrationSecret,
+} from '@/lib/actions/integrations';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -24,6 +27,7 @@ const fmt = (iso: string | null) =>
 export default async function IntegrationsPage() {
   await requireRole(['admin']);
   const integrations = await listIntegrations();
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
 
   return (
     <div className="space-y-6">
@@ -93,6 +97,26 @@ export default async function IntegrationsPage() {
                     </form>
                   )}
                 </div>
+
+                {/* Generic providers: intake endpoint + required API key (C3) */}
+                {implemented && !isMeta && (
+                  <div className="space-y-2 rounded-md border bg-muted/30 p-2 text-xs">
+                    <div className="break-all">
+                      <span className="text-muted-foreground">POST </span>
+                      <code>{siteUrl}/api/integrations/{it.provider}/intake</code>
+                    </div>
+                    <div className="break-all">
+                      <span className="text-muted-foreground">API key: </span>
+                      <code>{it.secret ?? 'not set — generate one'}</code>
+                    </div>
+                    <form action={regenerateIntegrationSecret}>
+                      <input type="hidden" name="id" value={it.id} />
+                      <Button type="submit" size="sm" variant="outline">
+                        {it.secret ? 'Rotate API key' : 'Generate API key'}
+                      </Button>
+                    </form>
+                  </div>
+                )}
               </CardContent>
             </Card>
           );

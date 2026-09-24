@@ -1,10 +1,33 @@
 import 'server-only';
 import { createClient } from '@/lib/supabase/server';
+import { selectActiveAgreement } from '@/lib/outcomes/pricing';
 import type {
   Contractor,
   PricingAgreement,
   Vertical,
 } from '@/lib/types';
+
+/**
+ * Resolve the active pricing agreement id for a contractor + lead vertical.
+ * Returns null if the contractor has no applicable active agreement.
+ * (H1 — used so assignments link an agreement and commissions aren't $0.)
+ */
+export async function resolvePricingAgreementId(
+  contractorId: string,
+  verticalId: string | null
+): Promise<string | null> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('pricing_agreements')
+    .select('*')
+    .eq('contractor_id', contractorId)
+    .eq('is_active', true);
+  const agreement = selectActiveAgreement(
+    (data as PricingAgreement[]) ?? [],
+    verticalId
+  );
+  return agreement?.id ?? null;
+}
 
 export interface ContractorListRow extends Contractor {
   vertical_count: number;

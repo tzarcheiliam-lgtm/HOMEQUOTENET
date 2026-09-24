@@ -19,7 +19,34 @@
 - ✅ Phase 5 — Team management (users, roles, status, audit log)
 - ✅ Admin UI refinement pass — design system + consistent admin experience
 - ✅ Phase 6 — Integration framework + Lead Intake Engine + Meta connector
+- ✅ Production Hardening — H1 commission linkage, C1 webhook HMAC, C3 intake auth,
+  M1/M2 dedupe normalization, H4 consent, H5 privacy/terms, M8 last-admin; vitest suite
+- ✅ Phase 7 — Public marketing site + contractor application + sales assets
 - ⏳ Next — reporting depth & revenue reconciliation (or further connectors)
+
+## Public marketing site (Phase 7)
+
+Prospect-facing site for the pay-per-qualified-lead offer, at `/`,
+`/pool-contractors`, `/lead-standards`, `/apply`, `/privacy`, `/terms`. Lives in
+the `app/(marketing)/` route group with a dark theme scoped to `.hq` so the CRM
+is unaffected. Copy is data-driven in `content/` so new niches (fencing,
+roofing, ADUs, kitchens, baths, outdoor living) are a content file, not a
+rewrite.
+
+See [`MARKETING_SITE.md`](MARKETING_SITE.md). Sales material is in
+[`sales-assets/`](sales-assets/README.md).
+
+**Compliance stance:** no invented testimonials, logos, counters, results, or
+case studies; no guarantee of estimates, appointments, sales, revenue, or ROI;
+no fixed public price per lead; exclusivity never claimed universally. Keep this
+when editing copy.
+
+## Testing
+
+`npm run test` (vitest) covers the pure hardening logic: phone/email
+normalization, pricing-agreement resolution + commission, Meta HMAC signature
+verification, generic-intake auth, plus the contractor-application schema and
+spam screening.
 
 ## Migrations applied to the live database
 
@@ -27,11 +54,27 @@
 - `0002_phase4_outcomes.sql`
 - `0003_phase5_team.sql`
 - `0004_phase6_integrations.sql`
+- `0005_phase6_hardening.sql`
+
+**Not yet applied — must be run before the application form can store to
+Supabase:**
+
+- `0006_contractor_applications.sql`
 
 ## Explicitly not built yet (do not start without a new instruction)
 
 Meta / Google Ads / Brevo integrations, AI agents, lead-routing automation,
 marketplace, public-facing contractor portal, external API integrations.
+
+## Before the marketing site goes live
+
+- [ ] Run `supabase/migrations/0006_contractor_applications.sql`, **or** set
+      `CONTRACTOR_APPLICATION_WEBHOOK_URL`. With neither, applications are only
+      written to the server log.
+- [x] Real contact details set in `content/site.ts` (email, phone, booking link).
+- [ ] Have counsel review `/privacy`, `/terms`, and the consent language.
+- [ ] Add an Open Graph image at `app/(marketing)/opengraph-image.png`.
+- [ ] Gather proof assets — see `sales-assets/08_PROOF_ASSET_CHECKLIST.md`.
 
 ## Known follow-ups
 

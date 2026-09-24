@@ -39,6 +39,11 @@ function genericNormalize(
       form: get('form', 'form_name'),
       form_id: get('form_id'),
       external_lead_id: get('external_lead_id', 'id', 'lead_id'),
+      consent_granted: /^(true|yes|1|on|i agree|agree|consent)$/i.test(
+        (get('consent', 'tcpa_consent', 'consent_to_contact') ?? '').trim()
+      ),
+      consent_source: get('consent_source') ?? provider,
+      consent_disclosure: get('consent_text', 'consent_disclosure'),
       timestamp: get('timestamp', 'created_time'),
     },
   ];

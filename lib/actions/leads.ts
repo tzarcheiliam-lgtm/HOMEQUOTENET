@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { requireProfile, requireRole } from '@/lib/auth';
+import { resolvePricingAgreementId } from '@/lib/data/contractors';
 import { leadFormToObject, leadInputSchema } from '@/lib/validation/leads';
 import type { ActivityType, LeadStatus } from '@/lib/types';
 
@@ -182,14 +183,26 @@ export async function bulkLeadAction(formData: FormData): Promise<void> {
   } else if (action.startsWith('assign:')) {
     const contractorId = action.slice('assign:'.length);
     const actorId = await currentUserId();
-    await supabase.from('lead_assignments').upsert(
-      ids.map((lead_id) => ({
-        lead_id,
+    // Resolve the contractor's active agreement per lead vertical (H1).
+    const { data: leadRows } = await supabase
+      .from('leads')
+      .select('id, vertical_id')
+      .in('id', ids);
+    const rows = await Promise.all(
+      (leadRows ?? []).map(async (l: any) => ({
+        lead_id: l.id,
         contractor_id: contractorId,
         assigned_by: actorId,
-      })),
-      { onConflict: 'lead_id,contractor_id', ignoreDuplicates: true }
+        pricing_agreement_id: await resolvePricingAgreementId(
+          contractorId,
+          l.vertical_id ?? null
+        ),
+      }))
     );
+    await supabase.from('lead_assignments').upsert(rows, {
+      onConflict: 'lead_id,contractor_id',
+      ignoreDuplicates: true,
+    });
     await supabase
       .from('leads')
       .update({ status: 'assigned' })
@@ -355,15 +368,32 @@ export async function assignLead(
   const supabase = await createClient();
   const actorId = await currentUserId();
 
-  const { error } = await supabase.from('lead_assignments').upsert(
-    contractorIds.map((contractor_id) => ({
+  // Look up the lead's vertical so we can link the right pricing agreement (H1).
+  const { data: leadRow } = await supabase
+    .from('leads')
+    .select('vertical_id')
+    .eq('id', id)
+    .single();
+  const verticalId = (leadRow as { vertical_id: string | null } | null)
+    ?.vertical_id ?? null;
+
+  // Resolve each contractor's active agreement so commission isn't $0 later.
+  const rows = await Promise.all(
+    contractorIds.map(async (contractor_id) => ({
       lead_id: id,
       contractor_id,
       is_exclusive: isExclusive,
       assigned_by: actorId,
-    })),
-    { onConflict: 'lead_id,contractor_id', ignoreDuplicates: true }
+      pricing_agreement_id: await resolvePricingAgreementId(
+        contractor_id,
+        verticalId
+      ),
+    }))
   );
+
+  const { error } = await supabase
+    .from('lead_assignments')
+    .upsert(rows, { onConflict: 'lead_id,contractor_id', ignoreDuplicates: true });
   if (error) return { error: error.message };
 
   await supabase
