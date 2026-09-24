@@ -135,51 +135,64 @@ Question types: single-choice cards and ZIP. One ZIP question is required. Branc
 can reference only earlier questions, preventing cycles. More input types/operators
 can be added to this versioned schema when the future builder needs them.
 
-## GoHighLevel / webhook setup
+## GoHighLevel (direct API — recommended)
 
-1. Create a dedicated existing-style `integrations` row for the client (`provider`
-   = `ghl`, `is_enabled` = true). Set `config.funnelWebhookUrl` to the client's GHL
-   **Inbound Webhook** workflow URL. Put a random integration secret in `secret`.
-   It remains in the server/admin-only integration record. Do not store secrets
-   in a config JSON file committed to the repository.
-2. Publish the funnel referencing that integration UUID. Set `calendarUrl` to the
-   calendar's HTTPS embed URL and `calendarId` to its exact calendar identifier.
-   The browser appends `hqn_session_id` to the embed URL, but do not assume GHL
-   automatically saves arbitrary query parameters: explicitly map the session ID
-   received in step 3 into a GHL contact custom field and verify that mapping.
-3. The outgoing JSON contains `eventId`, `sessionId`, `clientId`, `funnel`, `leadId`,
-   `contact`, `answers`, `attribution`, `qualified`, and `timestamp`. Map the contact
-   fields to a Create/Update Contact action and preserve session ID and all
-   qualification/attribution fields. Signature: `X-HomeQuote-Signature` is HMAC-SHA256
-   over the exact JSON body using the integration secret. Event IDs remain stable
-   across retries. Configure provider-side deduplication by eventId.
-4. In a GHL appointment-booked workflow, add a **Custom Webhook** POST to
-   `https://YOUR-HOMEQUOTE-DOMAIN/api/funnels/CLIENT-SLUG/booking`.
-   Set `Authorization: Bearer YOUR_INTEGRATION_SECRET` and Content-Type JSON.
-   Map actual GHL workflow fields to this body (values below are descriptive,
-   not literal GHL merge-field syntax):
+Submissions are sent straight to the GHL API v2 from the server (no Inbound
+Webhook trigger needed). Code: `lib/funnels/ghl.ts`; settings (non-secret IDs):
+`content/integrations/ghl-pool-masters.json`. For each submitted lead:
 
-   ```json
-   {
-     "sessionId": "SAVED_HOMEQUOTE_SESSION_UUID",
-     "appointmentId": "ACTUAL_GHL_APPOINTMENT_ID",
-     "calendarId": "CONFIGURED_CALENDAR_ID",
-     "scheduledAt": "2026-10-01T14:00:00-07:00"
-   }
-   ```
+1. `POST /contacts/upsert` in the configured location: first/last name, email,
+   E.164 phone, ZIP (standard postal code), source, mapped custom fields. GHL
+   matches existing contacts by email/phone (the location has duplicate contacts
+   disabled), so repeat submitters are updated, not duplicated.
+2. `POST /contacts/{id}/tags` adds the configured tags (`pool-funnel`) without
+   removing existing tags. Use a **Contact Tag added** workflow in GHL for follow-up.
+3. Opportunity in the configured pipeline/stage: an existing open or won one is
+   left alone, a lost/abandoned one is reopened into the stage, otherwise one is
+   created. One opportunity per contact per pipeline.
+4. `POST /contacts/{id}/notes`: every answer (incl. budget, which has no GHL field
+   yet), qualification, UTMs, fbclid/gclid and landing page, plus the HomeQuote lead ID.
 
-5. Test a real booking and callback in the client subaccount. The server checks
-   the secret, integration, funnel, session, qualification, assignment, and calendar
-   before creating an existing-model HomeQuote appointment. Provider appointment
-   IDs deduplicate retries. The page polls for verified confirmation. It deliberately
-   does not trust browser `postMessage` events or an iframe load as a booking.
+`onlyQualified: true` sends only qualified leads; others are marked `skipped` and
+stay in the HomeQuote inbox. Custom field `map` translates funnel answers to exact
+GHL picklist options; unmapped answers send the option label. Create more text
+custom fields in GHL (e.g. Budget, UTM Campaign, fbclid), then add
+`{ "id": "...", "from": "answers.budget" }` / `"attribution.utm_campaign"` / `"attribution.fbclid"`.
 
-Official references: [HighLevel custom webhook](https://help.gohighlevel.com/support/solutions/articles/155000003305/)
-and [outbound appointment webhook context](https://help.gohighlevel.com/support/solutions/articles/155000003299).
-Provider-specific reschedule/cancel sync is a future extension; current callback
-is for initial booking only. Reusing a contact custom field across simultaneous
-requests requires care: preserve the session for the actual appointment, not just
-the latest contact value. This must be verified in the client's GHL workflow.
+Credentials: a sub-account **Private Integration token** stored only in the
+server env var named by `tokenEnv` (`GHL_POOL_MASTERS_TOKEN`), in `.env.local` and
+Vercel. It is never in the database, repository or browser. Required scopes:
+`contacts.write`, `contacts.readonly`, `opportunities.write`, `opportunities.readonly`,
+plus `locations/customFields.readonly` for `ghl-check`.
+
+Reliability: the lead is always saved in HomeQuote first. GHL delivery runs right
+after submission through the durable `funnel_deliveries` queue; failures are
+retried with backoff (up to 8 attempts, on the next submission or scheduled
+`/api/funnels/deliver` call). Each step is idempotent, so retries don't duplicate
+contacts or opportunities. `last_error` and the server log record only the failed
+step and HTTP status (e.g. `GHL contact upsert failed (HTTP 401)`), never provider
+bodies or PII. Successful rows store `external_contact_id`/`external_opportunity_id`.
+
+```powershell
+# After adding GHL_POOL_MASTERS_TOKEN to .env.local:
+node --env-file=.env.local scripts/funnels.mjs ghl-check content/integrations/ghl-pool-masters.json
+node --env-file=.env.local scripts/funnels.mjs ghl-connect content/integrations/ghl-pool-masters.json pool-remodeling
+```
+
+## GoHighLevel inbound webhook (legacy alternative)
+
+Integrations whose config has `funnelWebhookUrl` (and no `api`) still receive the
+signed JSON webhook: HMAC-SHA256 `X-HomeQuote-Signature`, stable
+`X-HomeQuote-Event-Id`, allowlisted hosts via `FUNNEL_WEBHOOK_HOSTS`. GHL's
+Inbound Webhook trigger requires a paid upgrade.
+
+## GoHighLevel calendar booking callback
+
+Single-contractor funnels with `calendarUrl`/`calendarId` can confirm bookings:
+in a GHL appointment-booked workflow, POST to
+`https://YOUR-HOMEQUOTE-DOMAIN/api/funnels/CLIENT-SLUG/booking` with
+`Authorization: Bearer INTEGRATION_SECRET` and JSON `{ sessionId, appointmentId,
+calendarId, scheduledAt }`. House funnels have no assignment, so no calendar.
 
 ## Environment variables
 
@@ -239,7 +252,7 @@ implementation was found in this repository. No pixel ID is configured for the d
 ## Verification
 
 ```powershell
-node --env-file=.env.local node_modules/vitest/vitest.mjs run tests/funnels.test.ts tests/funnels-db.test.ts tests/funnels-house-db.test.ts
+node --env-file=.env.local node_modules/vitest/vitest.mjs run tests/funnels.test.ts tests/funnel-ghl.test.ts tests/funnel-delivery.test.ts tests/funnels-db.test.ts tests/funnels-house-db.test.ts
 npx tsc --noEmit
 npm run lint
 npm run build
