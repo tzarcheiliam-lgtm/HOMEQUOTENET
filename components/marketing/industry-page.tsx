@@ -16,6 +16,7 @@ import {
   IndustryApplySection,
   PhotoCredits,
 } from './industry-sections';
+import { baseOpenGraph } from '@/lib/site-metadata';
 
 /** Title, description, canonical and Open Graph for an industry route. */
 export function industryMetadata(industry: IndustryPage): Metadata {
@@ -25,6 +26,7 @@ export function industryMetadata(industry: IndustryPage): Metadata {
     description: industry.seo.description,
     alternates: { canonical: `/${industry.slug}` },
     openGraph: {
+      ...baseOpenGraph,
       title: `${industry.seo.title} · ${site.name}`,
       description: industry.seo.description,
       url,

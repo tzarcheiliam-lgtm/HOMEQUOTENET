@@ -10,6 +10,7 @@ import {
   isServiceNicheKey,
   type Track,
 } from '@/lib/validation/application';
+import { baseOpenGraph } from '@/lib/site-metadata';
 
 export const metadata: Metadata = {
   title: 'Contractor Application',
@@ -18,10 +19,15 @@ export const metadata: Metadata = {
   alternates: { canonical: '/apply' },
   robots: { index: true, follow: true },
   openGraph: {
+    ...baseOpenGraph,
     title: `Contractor Application · ${site.name}`,
     description:
       'Check appointment availability for your market. Project types, service area, and capacity.',
     url: `${site.url}/apply`,
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: `Contractor Application · ${site.name}`,
   },
 };
 

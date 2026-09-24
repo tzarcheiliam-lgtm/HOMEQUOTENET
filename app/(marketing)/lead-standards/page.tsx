@@ -16,6 +16,7 @@ import {
   Disclosure,
   Rule,
 } from '@/components/marketing/primitives';
+import { baseOpenGraph } from '@/lib/site-metadata';
 
 export const metadata: Metadata = {
   title: 'Booked Appointment Standards',
@@ -23,10 +24,15 @@ export const metadata: Metadata = {
     'What counts as a qualified booked appointment at HomeQuote Network, what we do not promise, how disputes are handled, and which terms are confirmed in writing before launch.',
   alternates: { canonical: '/lead-standards' },
   openGraph: {
+    ...baseOpenGraph,
     title: `Booked Appointment Standards · ${site.name}`,
     description:
       'What counts as a qualified booked appointment, what we do not promise, and how disputes are handled.',
     url: `${site.url}/lead-standards`,
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: `Booked Appointment Standards · ${site.name}`,
   },
 };
 

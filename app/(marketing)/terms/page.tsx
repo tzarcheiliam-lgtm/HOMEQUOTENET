@@ -6,6 +6,7 @@ import {
   LegalSection,
   ReviewNote,
 } from '@/components/marketing/legal';
+import { baseOpenGraph, defaultOgImage } from '@/lib/site-metadata';
 
 export const metadata: Metadata = {
   title: 'Terms of Service',
@@ -13,6 +14,18 @@ export const metadata: Metadata = {
     'The terms governing use of the HomeQuote Network website, homeowner requests, and contractor applications.',
   alternates: { canonical: '/terms' },
   robots: { index: true, follow: true },
+  openGraph: {
+    ...baseOpenGraph,
+    title: `Terms of Service · ${site.name}`,
+    description:
+      'The terms governing use of the HomeQuote Network website, homeowner requests, and contractor applications.',
+    url: `${site.url}/terms`,
+    images: [defaultOgImage],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    images: [defaultOgImage],
+  },
 };
 
 // Standard lead-gen terms template — have counsel review before launch.

@@ -24,7 +24,9 @@ or confirms a real appointment. Do not send paid traffic to the demo.
 Put contractor-specific configs in `content/funnels/clients/<client>.json` and
 publish them under their own slug with that contractor (name or UUID). Shared engine
 options are additive and default off, so a client config can't alter another funnel:
-`featured` answer cards, `calendarProvider` (`ghl` | `calendly`), `calendarHeadline`.
+`featured` answer cards, `calendarProvider` (`ghl` | `calendly`), `calendarHeadline`,
+and `seo` (`{ "title", "description" }`) to change the page title and link-preview
+wording. Link previews always keep the HomeQuote image and favicon.
 
 ### Calendly booking (migration 0015)
 

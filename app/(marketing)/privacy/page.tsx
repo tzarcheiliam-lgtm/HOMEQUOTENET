@@ -6,6 +6,7 @@ import {
   LegalSection,
   ReviewNote,
 } from '@/components/marketing/legal';
+import { baseOpenGraph, defaultOgImage } from '@/lib/site-metadata';
 
 export const metadata: Metadata = {
   title: 'Privacy Policy',
@@ -13,6 +14,18 @@ export const metadata: Metadata = {
     'How HomeQuote Network collects, uses, and shares information from homeowners and contractor applicants.',
   alternates: { canonical: '/privacy' },
   robots: { index: true, follow: true },
+  openGraph: {
+    ...baseOpenGraph,
+    title: `Privacy Policy · ${site.name}`,
+    description:
+      'How HomeQuote Network collects, uses, and shares information from homeowners and contractor applicants.',
+    url: `${site.url}/privacy`,
+    images: [defaultOgImage],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    images: [defaultOgImage],
+  },
 };
 
 // NOTE: This is a standard lead-generation privacy policy template. Have counsel

@@ -15,6 +15,12 @@ export const site = {
   tagline:
     'Qualified booked appointments for home-service contractors. Pay per appointment we set on your calendar.',
 
+  /** Default <title> and link-preview title for any route without its own. */
+  defaultTitle: 'HomeQuote | Qualified Contractor Leads',
+  /** Default meta / Open Graph description for any route without its own. */
+  description:
+    'HomeQuote Network delivers qualified homeowner leads and booked estimate appointments to remodeling, roofing, fencing, HVAC and pool contractors across Southern California.',
+
   contact: {
     email: 'homequotenetwork@gmail.com',
     phone: '747-217-5713',

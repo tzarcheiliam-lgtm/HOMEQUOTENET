@@ -43,6 +43,8 @@ export const funnelSchema = z.object({
   calendarProvider: z.enum(['ghl', 'calendly']).default('ghl'),
   calendarHeadline: text.optional(),
   thankYouPage: z.object({ headline: text, message: text }),
+  // Optional link-preview / <title> overrides. Unset keeps the HomeQuote defaults.
+  seo: z.object({ title: z.string().trim().min(1).max(70).optional(), description: z.string().trim().min(1).max(200).optional() }).optional(),
   trackingPixels: z.object({ metaPixelId: z.string().regex(/^\d{5,30}$/).optional() }).default({}),
   trust: z.object({
     rating: z.number().min(1).max(5).optional(), reviewCount: z.number().int().positive().optional(),

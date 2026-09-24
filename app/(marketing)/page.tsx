@@ -22,15 +22,22 @@ import {
   CampaignSnapshotSection,
   BookedEstimateSection,
 } from '@/components/marketing/campaign-proof';
+import { baseOpenGraph } from '@/lib/site-metadata';
 
 export const metadata: Metadata = {
-  title: homeContent.seo.title,
+  title: { absolute: site.defaultTitle },
   description: homeContent.seo.description,
   alternates: { canonical: '/' },
   openGraph: {
-    title: `${site.name} — ${homeContent.seo.title}`,
+    ...baseOpenGraph,
+    title: site.defaultTitle,
     description: homeContent.seo.description,
     url: site.url,
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: site.defaultTitle,
+    description: homeContent.seo.description,
   },
 };
 

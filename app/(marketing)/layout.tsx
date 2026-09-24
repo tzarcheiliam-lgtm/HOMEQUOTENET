@@ -4,29 +4,28 @@ import { SiteHeader } from '@/components/marketing/site-header';
 import { SiteFooter } from '@/components/marketing/site-footer';
 import { site } from '@/content/site';
 import { industries } from '@/content/industries';
+import { baseOpenGraph } from '@/lib/site-metadata';
 
 export const metadata: Metadata = {
   metadataBase: new URL(site.url),
   title: {
-    default: `${site.name} — Booked Contractor Appointments. Pay Per Qualified Appointment.`,
+    default: site.defaultTitle,
     template: `%s · ${site.name}`,
   },
-  description: site.tagline,
+  description: site.description,
   applicationName: site.name,
   authors: [{ name: site.founder }],
   alternates: { canonical: '/' },
   openGraph: {
-    type: 'website',
-    siteName: site.name,
+    ...baseOpenGraph,
     url: site.url,
-    title: `${site.name} — Booked Contractor Appointments. Pay Per Qualified Appointment.`,
-    description: site.tagline,
-    locale: 'en_US',
+    title: site.defaultTitle,
+    description: site.description,
   },
   twitter: {
     card: 'summary_large_image',
-    title: `${site.name} — Booked Contractor Appointments`,
-    description: site.tagline,
+    title: site.defaultTitle,
+    description: site.description,
   },
   robots: {
     index: true,
