@@ -69,6 +69,17 @@ export function ContractorForm({
         </div>
 
         <div className="space-y-1.5 sm:col-span-2">
+          <Label htmlFor="website">Website</Label>
+          <Input
+            id="website"
+            name="website"
+            placeholder="e.g. poolmastersla.com"
+            maxLength={300}
+            defaultValue={contractor?.website ?? ''}
+          />
+        </div>
+
+        <div className="space-y-1.5 sm:col-span-2">
           <Label htmlFor="service_areas">Service areas</Label>
           <Input
             id="service_areas"

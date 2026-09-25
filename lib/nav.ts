@@ -57,6 +57,21 @@ export const NAV_ITEMS: NavItem[] = [
     icon: 'CalendarDays',
     roles: ['admin', 'setter', 'contractor'],
   },
+  // Optional growth services for contractors. Listed after the lead workflow
+  // so leads and appointments stay first.
+  {
+    label: 'Grow Your Business',
+    href: '/app/growth',
+    icon: 'Sprout',
+    roles: ['contractor'],
+  },
+  // Contractors' requests for growth services, reviewed by HQN admins.
+  {
+    label: 'Service Requests',
+    href: '/app/service-requests',
+    icon: 'Handshake',
+    roles: ['admin'],
+  },
   {
     label: 'Sales',
     href: '/app/sales',

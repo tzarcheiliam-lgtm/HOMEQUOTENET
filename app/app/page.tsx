@@ -3,6 +3,8 @@ import { requireProfile } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { getContractorDashboard } from '@/lib/data/contractor-dashboard';
 import { getAdminDashboard } from '@/lib/data/admin-dashboard';
+import { getGrowthContext } from '@/lib/data/service-requests';
+import { OPEN_REQUEST_STATUSES } from '@/lib/growth/catalog';
 import { ContractorDashboard } from '@/components/dashboard/contractor-dashboard';
 import { AdminDashboard } from '@/components/dashboard/admin-dashboard';
 import { PageHeader } from '@/components/ui/page-header';
@@ -57,8 +59,25 @@ export default async function DashboardPage() {
   if (profile.role === 'caller') redirect('/app/calls');
 
   if (profile.role === 'contractor') {
-    const data = await getContractorDashboard();
-    return <ContractorDashboard data={data} name={profile.full_name} />;
+    const [data, growth] = await Promise.all([
+      getContractorDashboard(),
+      // The services card is optional: if it can't load, the dashboard still does.
+      getGrowthContext(profile)
+        .then((g) =>
+          g.company
+            ? {
+                recommendation: g.recommendation,
+                openRequests: g.requests.filter((r) =>
+                  OPEN_REQUEST_STATUSES.includes(r.status)
+                ).length,
+              }
+            : null
+        )
+        .catch(() => null),
+    ]);
+    return (
+      <ContractorDashboard data={data} name={profile.full_name} growth={growth} />
+    );
   }
 
   if (profile.role === 'admin') {
