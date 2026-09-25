@@ -4,6 +4,10 @@ import { getFunnelForBuilder } from '@/lib/data/funnel-builder';
 import { listContractorOptions } from '@/lib/data/contractors';
 import { listVerticals } from '@/lib/data/verticals';
 import { FunnelBuilder } from '@/components/funnels/builder/funnel-builder';
+// The live preview renders the real FunnelExperience component; it needs the
+// same stylesheet the public /estimate/[slug] route loads, since Next.js CSS
+// imports are tied to the importing file, not to the component itself.
+import '@/app/estimate/[slug]/funnel.css';
 
 export const metadata = { title: 'Edit funnel · HomeQuote Network' };
 
