@@ -5,9 +5,9 @@ import pg from 'pg';
 import { eventIdempotencyKey, runKeys, stepRunIdempotencyKey, WORKFLOW_TEMPLATES } from '@/lib/workflows';
 
 /**
- * Workflow data model (migration 0017) against the real database, with real
+ * Workflow data model (migration 0020) against the real database, with real
  * constraints, triggers and RLS — inside one transaction that always rolls
- * back. If 0017 is not applied yet it is applied inside that transaction, so
+ * back. If 0020 is not applied yet it is applied inside that transaction, so
  * this doubles as a pre-apply verification. Skipped without SUPABASE_DB_URL.
  */
 const url = process.env.SUPABASE_DB_URL;
@@ -52,7 +52,7 @@ beforeAll(async () => {
   if (!url) return;
   await db.connect(); connected = true; await q('begin');
   const [applied] = await q("select to_regclass('public.workflow_runs') as t");
-  if (!applied.t) await q(readFileSync('supabase/migrations/0017_workflow_automation_foundation.sql', 'utf8'));
+  if (!applied.t) await q(readFileSync('supabase/migrations/0020_workflow_automation_foundation.sql', 'utf8'));
 
   await q("insert into public.contractors(id,name) values($1,'Pool Co (test)'),($2,'Fence Co (test)')", [ids.poolCo, ids.fenceCo]);
   for (const [user, role, contractor] of [[ids.poolUser, 'contractor', ids.poolCo], [ids.fenceUser, 'contractor', ids.fenceCo], [ids.admin, 'admin', null], [ids.setter, 'setter', null]]) {

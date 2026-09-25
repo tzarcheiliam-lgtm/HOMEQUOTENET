@@ -5,7 +5,7 @@
 | | |
 |---|---|
 | Status | Phase 1 complete: architecture, data model, shared contracts. No engine, no UI, no providers. |
-| Database | `supabase/migrations/0017_workflow_automation_foundation.sql` |
+| Database | `supabase/migrations/0020_workflow_automation_foundation.sql` |
 | TypeScript contract | `lib/workflows/` (import from `@/lib/workflows`) |
 | Tests | `tests/workflows-contract.test.ts` (pure), `tests/workflows-db.test.ts` (real DB, rolled back) |
 
@@ -49,7 +49,7 @@
 | Statuses in this schema are `text + CHECK` for new tables (funnels, 0016), enums for legacy ones. | Workflow value lists are `text + CHECK`; a unit test fails if SQL and TypeScript lists drift. |
 | RLS helpers: `is_admin()`, `is_staff()` (admin+setter), `auth_contractor_id()`. | Reused as-is; no new predicates. |
 
-## 3. Database tables (migration 0017)
+## 3. Database tables (migration 0020)
 
 All additive. No existing table, function, policy or row is touched.
 
@@ -324,7 +324,7 @@ Handlers return `WorkflowActionResult`:
 
 ## 17. What Phase 2 must know
 
-1. **Apply 0017 first** (`node scripts/verify-migration-rollback.mjs supabase/migrations/0017_workflow_automation_foundation.sql` dry-runs it). `tests/workflows-db.test.ts` passes before and after applying.
+1. **Apply 0020 first** (`node scripts/verify-migration-rollback.mjs supabase/migrations/0020_workflow_automation_foundation.sql` dry-runs it). `tests/workflows-db.test.ts` passes before and after applying.
 2. **Emit through `emit_workflow_event` only** (never a raw `insert into workflow_events` — a raw insert turns a replay into a unique-violation that aborts the caller's transaction instead of a no-op), with the canonical refs in §9. Prefer AFTER triggers on the source tables so every writer (including `save_funnel_session`, `distribute_lead`, `record_*_booking`) emits atomically; set `contractor_id` per the tenant-scope rules in §4. Do not emit `lead.created` for duplicate intakes.
 3. **Dispatcher**: claim `workflow_events` (`dispatch_status in pending/failed`, `available_at <= now()`, `for update skip locked`), match enabled, non-archived workflows by `trigger_type` and `workflowCanSeeEvent()`, apply `trigger_config`, entry conditions and `runKeys()`, insert runs with `on conflict do nothing`, snapshot the definition and version. Cancel active runs whose workflow lists the event type in `exit_events` for the same lead.
 4. **Executor**: claim due runs (`resume_at <= now()`, lease), walk root steps by position, create step runs with `stepRunIdempotencyKey()`, evaluate step guards against fresh data, compute waits with `computeWaitUntil()`, apply results with `stepRunUpdateForResult()`, respect `canTransitionRun()` / `canTransitionStepRun()`.

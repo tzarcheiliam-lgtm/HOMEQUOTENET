@@ -4,7 +4,7 @@ import { nextRetryAt } from './actions';
 
 /**
  * Run and step-run state machines. The value lists are mirrored by CHECK
- * constraints in migration 0017; terminal states are also enforced there
+ * constraints in migration 0020; terminal states are also enforced there
  * (trg_workflow_runs_guard / trg_workflow_step_runs_guard).
  */
 

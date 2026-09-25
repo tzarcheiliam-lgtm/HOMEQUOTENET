@@ -53,7 +53,7 @@ import {
 // ---------------------------------------------------------------------------
 // The TS contract and the migration's CHECK constraints must never drift.
 // ---------------------------------------------------------------------------
-const sql = readFileSync('supabase/migrations/0017_workflow_automation_foundation.sql', 'utf8');
+const sql = readFileSync('supabase/migrations/0020_workflow_automation_foundation.sql', 'utf8');
 function tableBlock(table: string): string {
   const start = sql.indexOf(`create table if not exists public.${table} (`);
   expect(start, `table ${table}`).toBeGreaterThan(-1);
@@ -65,7 +65,7 @@ function checkList(table: string, column: string): string[] {
   return Array.from(m![1].matchAll(/'([^']+)'/g), (x) => x[1]);
 }
 
-describe('migration 0017 mirrors the TypeScript contract', () => {
+describe('migration 0020 mirrors the TypeScript contract', () => {
   it.each([
     ['workflows', 'trigger_type', WORKFLOW_EVENT_TYPES],
     ['workflows', 'reentry_policy', WORKFLOW_REENTRY_POLICIES],

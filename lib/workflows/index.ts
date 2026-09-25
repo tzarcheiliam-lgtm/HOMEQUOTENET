@@ -7,7 +7,7 @@
  * creating a parallel implementation.
  *
  * Source of truth: docs/workflow-automation-architecture.md
- * Database:        supabase/migrations/0017_workflow_automation_foundation.sql
+ * Database:        supabase/migrations/0020_workflow_automation_foundation.sql
  *
  * Pure and isomorphic (no server-only imports), so UI, server actions, route
  * handlers and tests can all import it.
@@ -22,3 +22,5 @@ export * from './runs';
 export * from './logging';
 export * from './definition';
 export * from './templates';
+export * from './evaluator';
+export * from './planner';
