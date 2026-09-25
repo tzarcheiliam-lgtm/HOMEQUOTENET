@@ -1,72 +1,122 @@
 import Link from 'next/link';
 import { requireRole } from '@/lib/auth';
-import { createAdminClient } from '@/lib/supabase/admin';
-import { funnelSchema } from '@/lib/funnels/schema';
-import { conversion, type FunnelCounts } from '@/lib/funnels/analytics';
-import type { FunnelStatus } from '@/lib/funnels/builder';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { listFunnelsForDashboard, countFunnelLeadsThisMonth, type FunnelDashboardRow } from '@/lib/data/funnel-builder';
+import { listContractorOptions } from '@/lib/data/contractors';
 import { PageHeader } from '@/components/ui/page-header';
 import { KpiCard } from '@/components/ui/kpi-card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { FunnelStatusActions } from '@/components/funnels/builder/funnel-status-actions';
+import { FunnelFiltersBar, type FunnelListFilters } from '@/components/funnels/dashboard/funnel-filters';
+import { FunnelDashboard } from '@/components/funnels/dashboard/funnel-dashboard';
+import type { FunnelCardData, FunnelGroup } from '@/components/funnels/dashboard/types';
 
 export const metadata = { title: 'Funnels · HomeQuote Network' };
-export default async function FunnelsPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+
+function first(v: string | string[] | undefined): string | undefined {
+  const s = Array.isArray(v) ? v[0] : v;
+  return s && s.trim() !== '' ? s : undefined;
+}
+
+function toCardData(row: FunnelDashboardRow): FunnelCardData {
+  return {
+    id: row.id, slug: row.slug, status: row.status, isDemo: row.isDemo,
+    clientName: row.clientName, industry: row.industry,
+    contractorId: row.contractorId, contractorName: row.contractorName,
+    createdAt: row.createdAt, updatedAt: row.updatedAt,
+    starts: row.starts, leads: row.leads, bookings: row.bookings, needsQualification: row.needsQualification,
+    conversionRate: row.starts > 0 ? (row.leads / row.starts) * 100 : null,
+  };
+}
+
+export default async function FunnelsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requireRole(['admin']);
-  const q = (await searchParams).q?.trim().toLowerCase() ?? '';
-  const db = createAdminClient();
-  const { data: allFunnels, error } = await db.from('funnels').select('id,slug,config,is_demo,published,status').order('created_at');
-  const funnels = (allFunnels ?? []).filter(f => !q
-    || f.slug.toLowerCase().includes(q)
-    || JSON.stringify(f.config).toLowerCase().includes(q));
-  const since = new Date(Date.now() - 30 * 86400000).toISOString();
+  const sp = await searchParams;
+
+  const filters: FunnelListFilters = {
+    q: first(sp.q) ?? '',
+    status: (first(sp.status) as FunnelListFilters['status']) ?? 'all',
+    contractor: first(sp.contractor) ?? 'all',
+    niche: first(sp.niche) ?? 'all',
+    sort: (first(sp.sort) as FunnelListFilters['sort']) ?? 'updated',
+    group: first(sp.group) === 'contractor' ? 'contractor' : 'none',
+  };
+
+  const [allRows, leadsThisMonth, contractors] = await Promise.all([
+    listFunnelsForDashboard(),
+    countFunnelLeadsThisMonth(),
+    listContractorOptions(),
+  ]);
+
+  const cards = allRows.map(toCardData);
+  const niches = Array.from(new Set(cards.map((c) => c.industry).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+
+  const recentlyEdited = [...cards].sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt)).slice(0, 5);
+
+  const q = filters.q.trim().toLowerCase();
+  let matching = cards.filter((c) => {
+    if (filters.status !== 'all' && c.status !== filters.status) return false;
+    if (filters.contractor === 'house' && c.contractorId) return false;
+    if (filters.contractor !== 'all' && filters.contractor !== 'house' && c.contractorId !== filters.contractor) return false;
+    if (filters.niche !== 'all' && c.industry !== filters.niche) return false;
+    if (q && !`${c.clientName} ${c.contractorName ?? 'homequote house'} ${c.industry} ${c.slug}`.toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  const sorters: Record<FunnelListFilters['sort'], (a: FunnelCardData, b: FunnelCardData) => number> = {
+    updated: (a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt),
+    created: (a, b) => +new Date(b.createdAt) - +new Date(a.createdAt),
+    name: (a, b) => a.clientName.localeCompare(b.clientName),
+    leads: (a, b) => b.leads - a.leads,
+    conversion: (a, b) => (b.conversionRate ?? -1) - (a.conversionRate ?? -1),
+    starts: (a, b) => b.starts - a.starts,
+  };
+  matching = [...matching].sort(sorters[filters.sort]);
+
+  const grouped = filters.group === 'contractor';
+  let groups: FunnelGroup[];
+  if (grouped) {
+    const byKey = new Map<string, FunnelGroup>();
+    for (const row of matching) {
+      const key = row.contractorId ?? 'house';
+      const label = row.contractorName ?? 'HomeQuote (house)';
+      if (!byKey.has(key)) byKey.set(key, { key, label, rows: [] });
+      byKey.get(key)!.rows.push(row);
+    }
+    groups = [...byKey.values()].sort((a, b) => a.key === 'house' ? 1 : b.key === 'house' ? -1 : a.label.localeCompare(b.label));
+  } else {
+    groups = [{ key: 'all', label: '', rows: matching }];
+  }
+
+  const publishedCount = cards.filter((c) => c.status === 'published').length;
+  const totalStarts = cards.reduce((n, c) => n + c.starts, 0);
+  const totalLeads = cards.reduce((n, c) => n + c.leads, 0);
+  const avgCompletion = totalStarts > 0 ? `${((totalLeads / totalStarts) * 100).toFixed(1)}%` : '—';
+
   return <div className="space-y-6">
-    <PageHeader title="Lead funnels" description="Last 30 days · Unique sessions, from first question to sale.">
+    <PageHeader title="Lead funnels" description="Find and manage every funnel — search, filter and sort instead of scrolling.">
       <Button asChild><Link href="/app/funnels/new">Create funnel</Link></Button>
     </PageHeader>
-    <form className="max-w-sm"><Input name="q" defaultValue={q} placeholder="Search by client, industry or slug…" /></form>
-    {error && <Card><CardContent className="p-6">Funnel reporting is unavailable. Apply migration 0012 and check the database connection.</CardContent></Card>}
-    {!error && !funnels.length && <Card><CardContent className="p-6">{q ? 'No funnels match your search.' : 'No funnels yet. Click Create funnel to build one, or follow FUNNELS.md to publish a client configuration by script.'}</CardContent></Card>}
-    {await Promise.all(funnels.map(async funnel => {
-      const config = funnelSchema.parse(funnel.config);
-      const { data, error: reportError } = await db.rpc('funnel_report', { p_funnel: funnel.id, p_since: since });
-      const { data: recent } = await db.from('funnel_sessions').select('id,contact_submitted_at,qualified,booked_at,lead_id,lead:leads(first_name,last_name)')
-        .eq('funnel_id', funnel.id).not('contact_submitted_at', 'is', null).order('contact_submitted_at', { ascending: false }).limit(25);
-      const status = funnel.status as FunnelStatus;
-      const statusBadge = <Badge variant={status === 'published' ? 'success' : status === 'archived' ? 'muted' : 'outline'}>{status}</Badge>;
-      if (reportError) return <Card key={funnel.id}><CardContent className="space-y-3 p-6">
-        <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-semibold">{config.clientName} · {config.industry} {statusBadge}</h2>
-          {!funnel.is_demo && <div className="flex items-center gap-2"><Button asChild size="sm" variant="outline"><Link href={`/app/funnels/${funnel.id}/builder`}>Edit</Link></Button><FunnelStatusActions id={funnel.id} slug={funnel.slug} status={status} /></div>}</div>
-        Unable to load {funnel.slug} reporting.</CardContent></Card>;
-      const events = data.events as FunnelCounts;
-      const count = (event: string, step = '') => events.find(e => e.event === event && e.step_id === step)?.total ?? 0;
-      const stages = [
-        ['Landing views', count('landing_view')], ['Started funnel', count('session_started')],
-        ['Questions completed', count('step_viewed', 'qualification')], ['Contact submitted', count('contact_submitted')],
-        ['Qualified leads', count('qualified')], ['Calendar viewed', count('calendar_viewed')],
-        ['Appointment booked', count('appointment_booked')], ['Showed', data.showed], ['Sold', data.sold],
-      ] as [string, number][];
-      return <div key={funnel.id} className="space-y-4"><div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="flex flex-wrap items-center gap-2 text-lg font-semibold">{config.clientName} · {config.industry}{funnel.is_demo ? ' (Demo)' : ''} {statusBadge}</h2>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link className="text-sm underline" href={`/estimate/${funnel.slug}`} target="_blank">Open funnel ↗</Link>
-          {!funnel.is_demo && <><Button asChild size="sm" variant="outline"><Link href={`/app/funnels/${funnel.id}/builder`}>Edit</Link></Button><FunnelStatusActions id={funnel.id} slug={funnel.slug} status={status} /></>}
-        </div></div>
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4"><KpiCard label="Landing views" value={count('landing_view')} /><KpiCard label="Contacts" value={count('contact_submitted')} /><KpiCard label="Qualified" value={count('qualified')} /><KpiCard label="Booked" value={count('appointment_booked')} /></div>
-        <Card><CardHeader><CardTitle>Conversion stages</CardTitle></CardHeader><CardContent><Table><TableHeader><TableRow><TableHead>Stage</TableHead><TableHead>Sessions</TableHead><TableHead>From prior stage</TableHead><TableHead>From landing</TableHead></TableRow></TableHeader><TableBody>{stages.map(([label, value], i) => <TableRow key={label}><TableCell>{label}</TableCell><TableCell>{value}</TableCell><TableCell>{i ? conversion(value, stages[i - 1][1]) : '—'}</TableCell><TableCell>{conversion(value, stages[0][1])}</TableCell></TableRow>)}</TableBody></Table><p className="mt-4 text-xs text-muted-foreground">Ad clicks require a future ad-platform import; landing sessions are not ad clicks. Downstream stages can skip a prior stage (for example a sale without a recorded showing), so ratios can exceed 100%.</p></CardContent></Card>
-        <Card><CardHeader><CardTitle>Question dropoff</CardTitle></CardHeader><CardContent><Table><TableHeader><TableRow><TableHead>Question</TableHead><TableHead>Viewed</TableHead><TableHead>Completed</TableHead><TableHead>Completion</TableHead><TableHead>Dropoff</TableHead></TableRow></TableHeader><TableBody>{config.questions.map(q => { const viewed = count('step_viewed', q.id); const completed = count('step_completed', q.id); return <TableRow key={q.id}><TableCell>{q.headline}{q.showWhen.length ? ' (conditional)' : ''}</TableCell><TableCell>{viewed}</TableCell><TableCell>{completed}</TableCell><TableCell>{conversion(completed, viewed)}</TableCell><TableCell>{conversion(Math.max(0, viewed - completed), viewed)}</TableCell></TableRow>; })}</TableBody></Table><p className="mt-4 text-xs text-muted-foreground">Branch questions use only sessions that saw that question. Each session is counted once per event. In-progress sessions are included.</p></CardContent></Card>
-        {!funnel.is_demo && <Card><CardHeader><CardTitle>Recent submissions</CardTitle></CardHeader><CardContent>{recent?.length ? <Table><TableHeader><TableRow><TableHead>Submitted</TableHead><TableHead>Lead</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>{recent.map(r => {
-          const lead = (Array.isArray(r.lead) ? r.lead[0] : r.lead) as { first_name: string | null; last_name: string | null } | null;
-          const status = r.booked_at ? 'Appointment booked' : r.qualified ? (config.calendarUrl ? 'Submitted, not booked' : 'Submitted') : 'Needs review';
-          return <TableRow key={r.id}><TableCell>{new Date(r.contact_submitted_at!).toLocaleString('en-US', { timeZone: 'America/Los_Angeles', dateStyle: 'medium', timeStyle: 'short' })}</TableCell>
-            <TableCell>{r.lead_id ? <Link className="underline" href={`/app/leads/${r.lead_id}`}>{[lead?.first_name, lead?.last_name].filter(Boolean).join(' ') || 'View lead'}</Link> : '—'}</TableCell>
-            <TableCell>{status}</TableCell></TableRow>;
-        })}</TableBody></Table> : <p className="text-sm text-muted-foreground">No submissions yet.</p>}<p className="mt-4 text-xs text-muted-foreground">“Submitted, not booked” leads are saved; call or text them to book manually.</p></CardContent></Card>}
-        <p className="text-sm text-muted-foreground">CRM queue: {data.pending} pending · {data.failed} failed. Configure scheduled delivery retries as described in FUNNELS.md.</p>
-      </div>;
-    }))}
+
+    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <KpiCard label="Total funnels" value={cards.length} />
+      <KpiCard label="Published" value={publishedCount} />
+      <KpiCard label="Leads this month" value={leadsThisMonth} />
+      <KpiCard label="Avg completion rate" value={avgCompletion} />
+    </div>
+
+    {recentlyEdited.length > 0 && (
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="font-medium text-muted-foreground">Recently edited:</span>
+        {recentlyEdited.map((r) => (
+          <Link key={r.id} href={r.isDemo ? `/app/funnels/${r.id}/analytics` : `/app/funnels/${r.id}/builder`}
+            className="rounded-md border px-2 py-1 hover:bg-accent">
+            {r.clientName}
+          </Link>
+        ))}
+      </div>
+    )}
+
+    <FunnelFiltersBar current={filters} contractors={contractors} niches={niches} />
+
+    <FunnelDashboard groups={groups} grouped={grouped} hasAnyFunnels={cards.length > 0} />
   </div>;
 }

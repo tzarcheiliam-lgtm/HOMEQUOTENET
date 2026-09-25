@@ -4,6 +4,7 @@ import { funnelSchema, type FunnelConfig } from '@/lib/funnels/schema';
 import type { FunnelStatus, FunnelSummary } from '@/lib/funnels/builder';
 
 export type FunnelDashboardRow = FunnelSummary & {
+  contractorId: string | null;
   starts: number; leads: number; needsQualification: number; bookings: number;
 };
 
@@ -12,7 +13,7 @@ export async function listFunnelsForDashboard(): Promise<FunnelDashboardRow[]> {
   const supabase = await createClient();
   const { data: funnels } = await supabase
     .from('funnels')
-    .select('id, slug, status, is_demo, config, created_at, updated_at, contractor:contractors(name)')
+    .select('id, slug, status, is_demo, config, created_at, updated_at, contractor_id, contractor:contractors(name)')
     .order('updated_at', { ascending: false });
   if (!funnels?.length) return [];
   const ids = funnels.map((f) => f.id as string);
@@ -29,6 +30,7 @@ export async function listFunnelsForDashboard(): Promise<FunnelDashboardRow[]> {
       id: f.id, slug: f.slug, status: f.status as FunnelStatus, isDemo: f.is_demo,
       clientName: config.success ? config.data.clientName : f.slug,
       industry: config.success ? config.data.industry : '—',
+      contractorId: f.contractor_id,
       contractorName: Array.isArray(contractor) ? contractor[0]?.name ?? null : contractor?.name ?? null,
       createdAt: f.created_at, updatedAt: f.updated_at,
       starts: own.length,
@@ -37,6 +39,20 @@ export async function listFunnelsForDashboard(): Promise<FunnelDashboardRow[]> {
       bookings: own.filter((s) => s.booked_at).length,
     };
   });
+}
+
+/** Count of leads (contact submissions) across all funnels since the start of the current calendar month — used only for the dashboard's top summary tile. */
+export async function countFunnelLeadsThisMonth(): Promise<number> {
+  const supabase = await createClient();
+  const since = new Date();
+  since.setDate(1);
+  since.setHours(0, 0, 0, 0);
+  const { count } = await supabase
+    .from('funnel_sessions')
+    .select('id', { count: 'exact', head: true })
+    .not('contact_submitted_at', 'is', null)
+    .gte('contact_submitted_at', since.toISOString());
+  return count ?? 0;
 }
 
 export type BuilderFunnel = {
