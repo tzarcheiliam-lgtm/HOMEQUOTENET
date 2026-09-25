@@ -3,6 +3,8 @@
 
 export type UserRole = 'admin' | 'setter' | 'contractor' | 'caller';
 
+export type ContractorRole = 'owner' | 'staff';
+
 export type AccountStatus = 'pending' | 'active' | 'suspended' | 'disabled';
 
 export type LeadStatus =
@@ -31,6 +33,9 @@ export type AssignmentStatus =
   | 'assigned'
   | 'accepted'
   | 'contacted'
+  | 'no_answer'
+  | 'qualified'
+  | 'not_qualified'
   | 'appointment_set'
   | 'appointment_held'
   | 'estimate_given'
@@ -87,6 +92,8 @@ export interface Profile {
   email: string | null;
   phone: string | null;
   contractor_id: string | null;
+  contractor_role: ContractorRole | null;
+  can_export_company_data: boolean;
   is_active: boolean;
   account_status: AccountStatus;
   last_login_at: string | null;
@@ -271,6 +278,7 @@ export interface LeadActivity {
   type: ActivityType;
   body: string | null;
   metadata: Record<string, unknown>;
+  visibility: 'internal' | 'contractor';
   created_at: string;
 }
 
@@ -291,6 +299,7 @@ export interface LeadAssignment {
   is_exclusive: boolean;
   status: AssignmentStatus;
   assigned_by: string | null;
+  assigned_user_id: string | null;
   assigned_at: string;
   updated_at: string;
 }
@@ -521,6 +530,7 @@ export interface LeadRecipient {
   kind: LeadRecipientKind;
   contractor_id: string | null;
   is_active: boolean;
+  automatic_distribution_enabled: boolean;
   created_at: string;
   updated_at: string;
 }

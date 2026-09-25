@@ -61,6 +61,27 @@ export function UserActions({
               </Select>
             </div>
             <div className="space-y-1.5">
+              <Label htmlFor="contractor_role">Company access</Label>
+              <Select
+                id="contractor_role"
+                name="contractor_role"
+                defaultValue={user.contractor_role ?? 'staff'}
+                className="w-36"
+              >
+                <option value="owner">Owner</option>
+                <option value="staff">Staff</option>
+              </Select>
+            </div>
+            <label className="flex items-center gap-2 pb-2 text-sm">
+              <input
+                type="checkbox"
+                name="can_export_company_data"
+                defaultChecked={user.can_export_company_data}
+                className="size-4 accent-primary"
+              />
+              Company export
+            </label>
+            <div className="space-y-1.5">
               <Label htmlFor="contractor_id">Contractor company</Label>
               <Select
                 id="contractor_id"

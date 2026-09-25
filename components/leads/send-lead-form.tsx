@@ -35,6 +35,7 @@ export function SendLeadForm({
     undefined
   );
   const [resend, setResend] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const anySent = recipients.some((r) => r.lastSentAt);
   // Already-sent people are locked until "Send again" is on, and don't count.
@@ -54,6 +55,7 @@ export function SendLeadForm({
 
   const toggle = (id: string) =>
     setSelected((prev) => {
+      setConfirmed(false);
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -111,13 +113,27 @@ export function SendLeadForm({
               type="checkbox"
               name="resend"
               checked={resend}
-              onChange={(e) => setResend(e.target.checked)}
+              onChange={(e) => {
+                setResend(e.target.checked);
+                setConfirmed(false);
+              }}
               className="size-4 accent-primary"
             />
             Send again to people who already received this lead
           </label>
         )}
-        <Button type="submit" disabled={!canSend || pending || count === 0}>
+        <label className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+          <input
+            type="checkbox"
+            name="confirm_send"
+            value="confirmed"
+            checked={confirmed}
+            onChange={(e) => setConfirmed(e.target.checked)}
+            className="mt-0.5 size-4 accent-primary"
+          />
+          <span>I confirm this lead should be emailed to the selected recipient{count === 1 ? '' : 's'}.</span>
+        </label>
+        <Button type="submit" disabled={!canSend || pending || count === 0 || !confirmed}>
           <Send className="size-4" />
           {pending ? 'Sending…' : count > 1 ? `Send lead to ${count} people` : 'Send lead'}
         </Button>

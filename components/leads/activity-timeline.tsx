@@ -48,6 +48,7 @@ export function ActivityTimeline({
               <p className="text-sm">{a.body || a.type}</p>
               <p className="text-xs text-muted-foreground">
                 {actor} · {new Date(a.created_at).toLocaleString()}
+                {a.visibility === 'internal' ? ' · HQN internal' : ''}
               </p>
             </div>
           </li>

@@ -25,6 +25,9 @@ export async function sendLeadToRecipients(
   if (!leadId.success) return { ok: false, error: 'Missing lead' };
   const recipientIds = formData.getAll('recipient_ids').map(String).filter((id) => uuid.safeParse(id).success);
   if (recipientIds.length === 0) return { ok: false, error: 'Choose at least one recipient' };
+  if (formData.get('confirm_send') !== 'confirmed') {
+    return { ok: false, error: 'Confirm the selected recipients before sending' };
+  }
   const resend = formData.get('resend') === 'on';
 
   const db = createAdminClient();
@@ -118,7 +121,11 @@ export async function createRecipient(
   const parsed = recipientInput(formData);
   if (!parsed.success) return { error: parsed.error.errors[0].message };
   const supabase = await createClient();
-  const { error } = await supabase.from('lead_recipients').insert({ ...parsed.data, created_by: me.id });
+  const { error } = await supabase.from('lead_recipients').insert({
+    ...parsed.data,
+    automatic_distribution_enabled: formData.get('automatic_distribution_enabled') === 'on',
+    created_by: me.id,
+  });
   if (error) return { error: friendlyDbError(error.message) };
   revalidatePath('/app/lead-recipients');
   return { success: true };
@@ -136,7 +143,11 @@ export async function updateRecipient(
   const supabase = await createClient();
   const { error } = await supabase
     .from('lead_recipients')
-    .update({ ...parsed.data, is_active: formData.get('is_active') === 'on' })
+    .update({
+      ...parsed.data,
+      is_active: formData.get('is_active') === 'on',
+      automatic_distribution_enabled: formData.get('automatic_distribution_enabled') === 'on',
+    })
     .eq('id', id.data);
   if (error) return { error: friendlyDbError(error.message) };
   revalidatePath('/app/lead-recipients');
