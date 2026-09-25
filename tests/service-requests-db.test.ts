@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import pg from 'pg';
 
 /**
- * Growth-service requests (migration 0017) under real RLS, inside one
+ * Growth-service requests (migration 0018) under real RLS, inside one
  * transaction that always rolls back. Skipped unless SUPABASE_DB_URL is set.
  */
 const url = process.env.SUPABASE_DB_URL;
@@ -35,15 +35,18 @@ beforeAll(async () => {
   if (!url) return;
   await db.connect(); connected = true; await q('begin');
   const [t] = await q("select to_regclass('public.service_requests') as t");
-  if (!t.t) await q(readFileSync('supabase/migrations/0017_contractor_service_requests.sql', 'utf8'));
+  if (!t.t) await q(readFileSync('supabase/migrations/0018_contractor_service_requests.sql', 'utf8'));
   await q("insert into public.contractors(id,name) values ($1,'Company A (test)'), ($2,'Company B (test)')", [ids.companyA, ids.companyB]);
+  // With the contractor-permissions migration (0017) applied, contractor logins also need an owner/staff role.
+  const [col] = await q("select exists(select 1 from information_schema.columns where table_schema='public' and table_name='profiles' and column_name='contractor_role') as has");
+  const setRole = col.has ? ", contractor_role = case when $2 = 'contractor' then 'owner' end" : '';
   for (const [user, role, company] of [
     [ids.ownerA, 'contractor', ids.companyA], [ids.ownerB, 'contractor', ids.companyB],
     [ids.admin, 'admin', null], [ids.setter, 'setter', null],
   ]) {
     await q(`insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_user_meta_data, created_at, updated_at)
       values ($1, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', $2, 'x', now(), '{}', now(), now())`, [user, `${user}@growth.test`]);
-    await q("update public.profiles set role=$2, account_status='active', is_active=true, contractor_id=$3 where id=$1", [user, role, company]);
+    await q(`update public.profiles set role=$2, account_status='active', is_active=true, contractor_id=$3${setRole} where id=$1`, [user, role, company]);
   }
 }, 60000);
 afterAll(async () => { if (connected) { await q('rollback'); await db.end(); } });

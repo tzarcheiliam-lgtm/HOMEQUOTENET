@@ -5,7 +5,7 @@ about from inside the portal. **Version 1 only collects interest.** Nothing is
 purchased, charged or enrolled. A request is a note to the HQN team that a
 contractor wants to talk.
 
-Branch: `contractor-portal-upsells` · Migration: `0017_contractor_service_requests.sql`
+Branch: `contractor-portal-upsells` · Migration: `0018_contractor_service_requests.sql`
 
 ## What contractors see
 
@@ -54,6 +54,16 @@ status records `status_changed_at` and `status_changed_by`.
 Admins can also set a company **Website** on the contractor form. That field
 drives the website suggestion.
 
+**Email alert:** each new request also emails the internal HQN team, the same
+`LEAD_ALERT_EMAILS` list that gets new-lead alerts (defaults to Liam and
+Nadav). It goes through the existing HomeQuote Gmail connection after the
+response is sent, so the contractor never waits on it. The email carries the
+company, service, requester contact details, notes and a "Review request" link,
+and all contractor-entered text is escaped. It's best effort: if Gmail fails,
+the error is logged and the request still appears on the admin page. There's
+no retry queue. The contractor is never emailed. Code:
+`lib/growth/request-email.ts` (builder) and `lib/growth/notify.ts` (sender).
+
 ## Data and security
 
 `service_requests`: `id, contractor_id, requested_by, service, notes, status,
@@ -80,32 +90,35 @@ The only change to an existing table is the additive, nullable
 
 ## Migration requirements
 
-`supabase/migrations/0017_contractor_service_requests.sql` is additive and
+`supabase/migrations/0018_contractor_service_requests.sql` is additive and
 idempotent (`if not exists` / `drop … if exists`). **It has not been applied
-anywhere.** Apply it **before** deploying this branch, because the contractor
+to production yet.** On 2026-09-24 the RLS suite passed against the production
+database inside a transaction that rolled back, and a read-only check confirmed
+nothing was left behind. Apply it **before** deploying this branch, because the contractor
 form now saves `website` and the growth pages read `service_requests`:
 
 ```
-node --env-file=.env.local scripts/funnels.mjs migrate supabase/migrations/0017_contractor_service_requests.sql
+node --env-file=.env.local scripts/funnels.mjs migrate supabase/migrations/0018_contractor_service_requests.sql
 ```
 
 If the migration is missing, the dashboard hides the growth card and keeps
 working. `/app/growth` and contractor saves would fail.
 
-**Numbering:** check for a clash with any migration from the parallel
-roles/permissions work before merging. If both branches use `0017`, rename
-this file to the next free number; nothing depends on the name.
+**Numbering:** this is `0018` because the parallel contractor-permissions work
+uses `0017_contractor_portal_permissions.sql`. The two are independent: 0018
+uses only `is_admin()` / `auth_contractor_id()`, which 0017 leaves unchanged,
+so they can be applied in either order.
 
 ## Files
 
 New:
-- `supabase/migrations/0017_contractor_service_requests.sql`
-- `lib/growth/catalog.ts`, `lib/growth/recommend.ts`
+- `supabase/migrations/0018_contractor_service_requests.sql`
+- `lib/growth/catalog.ts`, `lib/growth/recommend.ts`, `lib/growth/request-email.ts`, `lib/growth/notify.ts`
 - `lib/validation/service-request.ts`, `lib/data/service-requests.ts`, `lib/actions/service-requests.ts`
 - `app/app/growth/page.tsx`, `app/app/growth/[service]/page.tsx`, `app/app/growth/loading.tsx`
 - `app/app/service-requests/page.tsx`
 - `components/growth/*`: views (data-free, previewable), cards, form, badges, status select, dashboard card
-- `tests/growth-services.test.ts`, `tests/service-request-actions.test.ts`, `tests/service-requests-db.test.ts`
+- `tests/growth-services.test.ts`, `tests/service-request-actions.test.ts`, `tests/service-request-email.test.ts`, `tests/service-requests-db.test.ts`
 - `docs/contractor-portal-upsells.md`, `docs/contractor-portal-upsells-screenshots/`
 
 Changed (small, additive):
@@ -119,10 +132,10 @@ Changed (small, additive):
 
 - `growth-services.test.ts`: catalog completeness, a match with the migration's constraints, a no-pricing/no-claims copy check, recommendation rules, validation (form tampering is ignored), and nav placement and role visibility.
 - `service-request-actions.test.ts`: identity comes from the session even when the form is tampered with; only `service_requests` is written; unlinked logins, unknown services, duplicate requests and raw-error hiding; admin-only status updates.
+- `service-request-email.test.ts`: email content, HTML escaping and header injection, internal-only recipients, and that failures never throw.
 - `service-requests-db.test.ts`: real RLS in a transaction that always rolls back (cross-company insert, spoofed requester, preset status, setter access, update/delete denial, status stamping, one-open-request rule, check constraints). Runs only when `SUPABASE_DB_URL` is set, like the other DB suites.
 
 ## Known gaps / follow-ups
 
-- **No admin notification yet.** New requests show on the admin page but don't send an email. The Gmail sender used for lead alerts could be reused; this needs a decision.
 - **No mobile navigation in the app.** The sidebar is `md:` and up only. This affects every contractor page, not just this feature. On phones, contractors reach services from the dashboard card. The layout was left alone to avoid conflicting with the roles work.
 - Admin-only internal notes on a request were left out. Contractors can read their own rows, so internal notes need a separate table.

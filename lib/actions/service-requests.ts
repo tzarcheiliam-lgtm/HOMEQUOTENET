@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { requireRole } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { getService } from '@/lib/growth/catalog';
+import { sendServiceRequestAlertSoon } from '@/lib/growth/notify';
 import { parseServiceRequest, statusUpdateSchema } from '@/lib/validation/service-request';
 
 export type ServiceRequestState =
@@ -30,18 +31,25 @@ export async function requestServiceInfo(
   if (!parsed.success) return { ok: false, error: parsed.error.errors[0].message };
 
   const supabase = await createClient();
-  const { error } = await supabase.from('service_requests').insert({
-    contractor_id: profile.contractor_id,
-    requested_by: profile.id,
-    service: parsed.data.service,
-    notes: parsed.data.notes,
-  });
+  const { data, error } = await supabase
+    .from('service_requests')
+    .insert({
+      contractor_id: profile.contractor_id,
+      requested_by: profile.id,
+      service: parsed.data.service,
+      notes: parsed.data.notes,
+    })
+    .select('id')
+    .single();
   if (error) {
     if (error.code === '23505') {
       return { ok: false, error: 'Your company already has an open request for this service. We’ll be in touch about it.' };
     }
     return { ok: false, error: 'Your request couldn’t be sent. Please try again.' };
   }
+
+  // Let the HQN team know (internal only; the contractor is never emailed).
+  if (data?.id) sendServiceRequestAlertSoon(data.id);
 
   revalidatePath('/app/growth');
   revalidatePath('/app');

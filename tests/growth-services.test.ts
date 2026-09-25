@@ -13,7 +13,7 @@ import { recommendService } from '@/lib/growth/recommend';
 import { parseServiceRequest, statusUpdateSchema } from '@/lib/validation/service-request';
 import { navItemsForRole } from '@/lib/nav';
 
-const migration = readFileSync('supabase/migrations/0017_contractor_service_requests.sql', 'utf8');
+const migration = readFileSync('supabase/migrations/0018_contractor_service_requests.sql', 'utf8');
 const form = (fields: Record<string, string>) => {
   const fd = new FormData();
   for (const [k, v] of Object.entries(fields)) fd.set(k, v);
@@ -33,7 +33,7 @@ describe('growth service catalog', () => {
     }
   });
 
-  it('matches the database constraints in migration 0017', () => {
+  it('matches the database constraints in migration 0018', () => {
     for (const slug of SERVICE_SLUGS) expect(migration).toContain(`'${slug}'`);
     for (const { value } of REQUEST_STATUSES) expect(migration).toContain(`'${value}'`);
     expect(REQUEST_STATUSES.map((s) => s.label)).toEqual(['New', 'Contacted', 'Proposal Sent', 'Accepted', 'Closed']);

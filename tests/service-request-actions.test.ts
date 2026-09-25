@@ -11,10 +11,12 @@ const state = vi.hoisted(() => ({
   updates: [] as { values: Record<string, unknown>; id: unknown }[],
   insertError: null as null | { code: string; message: string },
   tables: [] as string[],
+  alerts: [] as string[],
 }));
 
 vi.mock('server-only', () => ({}));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
+vi.mock('@/lib/growth/notify', () => ({ sendServiceRequestAlertSoon: (id: string) => state.alerts.push(id) }));
 vi.mock('@/lib/auth', () => ({
   requireRole: vi.fn(async (roles: string[]) => {
     const p = state.profile;
@@ -27,9 +29,14 @@ vi.mock('@/lib/supabase/server', () => ({
     from: (table: string) => {
       state.tables.push(table);
       return {
-        insert: async (row: Record<string, unknown>) => {
+        insert: (row: Record<string, unknown>) => {
           state.inserts.push(row);
-          return { error: state.insertError };
+          return {
+            select: () => ({
+              single: async () =>
+                state.insertError ? { data: null, error: state.insertError } : { data: { id: 'new-request-id' }, error: null },
+            }),
+          };
         },
         update: (values: Record<string, unknown>) => ({
           eq: async (_col: string, id: unknown) => {
@@ -65,6 +72,7 @@ beforeEach(() => {
   state.updates = [];
   state.insertError = null;
   state.tables = [];
+  state.alerts = [];
 });
 
 describe('requestServiceInfo', () => {
@@ -83,6 +91,8 @@ describe('requestServiceInfo', () => {
     expect(state.inserts).toEqual([
       { contractor_id: MY_COMPANY, requested_by: contractor.id, service: 'website', notes: 'Need a new site' },
     ]);
+    // The HQN team is alerted about the saved request.
+    expect(state.alerts).toEqual(['new-request-id']);
   });
 
   it('only writes the request row: no billing, sales or enrollment', async () => {
@@ -107,6 +117,7 @@ describe('requestServiceInfo', () => {
     state.insertError = { code: '23505', message: 'duplicate key value violates unique constraint' };
     const result = await requestServiceInfo(undefined, form({ service: 'website' }));
     expect(result).toMatchObject({ ok: false, error: expect.stringMatching(/already has an open request/) });
+    expect(state.alerts).toEqual([]);
   });
 
   it('hides raw database errors', async () => {

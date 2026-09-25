@@ -2,7 +2,7 @@
 // ("Grow Your Business"). Plain data shared by the contractor pages, the admin
 // review page, validation and tests. Keep copy factual: no prices, no promised
 // results, no testimonials. Slugs must match the check constraint in
-// supabase/migrations/0017_contractor_service_requests.sql.
+// supabase/migrations/0018_contractor_service_requests.sql.
 
 export const SERVICE_SLUGS = [
   'brochures',
