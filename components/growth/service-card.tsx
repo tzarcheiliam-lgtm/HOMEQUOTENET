@@ -3,6 +3,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { RequestDialog } from '@/components/growth/request-dialog';
+import { PriceTag } from '@/components/growth/price-tag';
 import { ServiceIcon } from '@/components/growth/service-icon';
 import type { Requester } from '@/components/growth/service-request-form';
 import { OPEN_REQUEST_STATUSES, requestStatusLabel, type GrowthService, type RequestStatus } from '@/lib/growth/catalog';
@@ -98,8 +99,8 @@ export function GrowthToolCard({
           </li>
         ))}
       </ul>
-      <div className="relative mt-6 space-y-3">
-        {service.startingAt && <p className="text-sm font-medium tabular-nums">{service.startingAt}</p>}
+      <div className="relative mt-6 space-y-4 border-t pt-5">
+        <PriceTag price={service.price} />
         <Cta service={service} requester={requester} requestStatus={requestStatus} variant={recommended ? 'solid' : 'outline'} />
       </div>
     </article>
@@ -128,7 +129,8 @@ export function MarketingServiceCard({
           <p className="text-sm text-muted-foreground">{service.tagline}</p>
         </div>
       </div>
-      <div className="mt-auto flex items-center justify-between gap-3">
+      <PriceTag price={service.price} className="mt-auto border-t pt-4" />
+      <div className="-mt-1 flex items-center justify-between gap-3">
         <Cta service={service} requester={requester} requestStatus={requestStatus} variant="link" />
         <Badges service={service} recommended={recommended} />
       </div>

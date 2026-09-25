@@ -4,7 +4,7 @@
 // here (and its slug to the service check constraint in a new migration).
 //
 // Copy rules: benefit-focused, no invented numbers or results, no
-// testimonials. Prices appear only if `startingAt` is set; none are today.
+// testimonials. Prices live only in `price`, never in the copy fields.
 // Slugs must match the check constraint in
 // supabase/migrations/0021_growth_tools_upsells.sql.
 
@@ -30,6 +30,52 @@ export const SERVICE_SLUGS = [
 
 export type ServiceSlug = (typeof SERVICE_SLUGS)[number];
 
+/**
+ * How a service is priced. Every card states its type, so contractors can
+ * tell a monthly tool from a one-time build at a glance.
+ * - monthly / one_time / per_campaign / per_pack: `amount` is a range or figure
+ * - starting_at: `amount` is the lowest price
+ * - custom_quote: priced per project, no amount
+ * - included: part of eligible HomeQuote plans, not sold separately
+ *
+ * Display only. Nothing here charges a contractor; the team confirms scope
+ * and price after a request. When a service gets a fixed Stripe Price, the
+ * type maps to Checkout mode: monthly = subscription, the rest = payment.
+ */
+export type PriceType = 'monthly' | 'one_time' | 'per_campaign' | 'per_pack' | 'starting_at' | 'custom_quote' | 'included';
+
+export interface ServicePrice {
+  type: PriceType;
+  /** e.g. "$399–$699". Required unless custom_quote or included. */
+  amount?: string;
+  /** One-time setup fee on top, e.g. "$500". */
+  setup?: string;
+  /** Short caveat under the price. */
+  note?: string;
+}
+
+/** The unit shown after the amount. */
+export const PRICE_UNITS: Record<PriceType, string> = {
+  monthly: '/mo',
+  one_time: 'one-time',
+  per_campaign: 'per campaign',
+  per_pack: 'per creative pack',
+  starting_at: '',
+  custom_quote: '',
+  included: '',
+};
+
+/** Plain-text price, e.g. "$399–$699/mo + $500 setup". For emails, admin and labels. */
+export function formatPrice(price: ServicePrice): string {
+  let main: string;
+  if (price.type === 'custom_quote') main = 'Custom quote';
+  else if (price.type === 'included') main = 'Included with eligible HomeQuote plans';
+  else if (price.type === 'starting_at') main = `Starting at ${price.amount}`;
+  else if (price.type === 'monthly') main = `${price.amount}/mo`;
+  else main = `${price.amount} ${PRICE_UNITS[price.type]}`;
+  return price.setup ? `${main} + ${price.setup} setup` : main;
+}
+
 /** featured = the hero card; core = growth tools; marketing = supporting services. */
 export type ServiceTier = 'featured' | 'core' | 'marketing';
 
@@ -49,8 +95,8 @@ export interface GrowthService {
   notesHint: string;
   /** Optional static badge. Only set when it's true (e.g. real popularity data). */
   badge?: 'most_popular';
-  /** Optional price line, e.g. "Starting at $X/mo". Unset = no price shown. */
-  startingAt?: string;
+  /** Shown on every active card. */
+  price: ServicePrice;
   /** Hidden from the page; kept so older requests still display. */
   retired?: boolean;
 }
@@ -72,11 +118,12 @@ export const GROWTH_SERVICES: GrowthService[] = [
     tier: 'featured',
     cta: 'Request AI Receptionist',
     notesHint: 'When do you miss the most calls? Which calendar do you book appointments in?',
+    price: { type: 'monthly', amount: '$399–$699', setup: '$500' },
   },
   {
     slug: 'lead_follow_up',
     name: 'Automated Follow-Up',
-    tagline: 'Every lead hears from you, even when you’re on a job.',
+    tagline: 'Keep every lead warm, even while you’re on a job.',
     description:
       'Text and email follow-up that runs on its own, from the first reply to the reminder before an estimate appointment.',
     benefits: [
@@ -89,6 +136,7 @@ export const GROWTH_SERVICES: GrowthService[] = [
     tier: 'core',
     cta: 'Request Setup',
     notesHint: 'How do you follow up with new leads today? Who on your team handles it?',
+    price: { type: 'monthly', amount: '$149–$299' },
   },
   {
     slug: 'crm_setup',
@@ -105,11 +153,12 @@ export const GROWTH_SERVICES: GrowthService[] = [
     tier: 'core',
     cta: 'Request Setup',
     notesHint: 'Which CRM do you use today, if any? What is frustrating about it?',
+    price: { type: 'included' },
   },
   {
     slug: 'custom_funnel',
     name: 'Custom Lead Funnel',
-    tagline: 'Your own homeowner form, built around how you sell.',
+    tagline: 'Your own branded homeowner form that asks the questions you need answered.',
     description:
       'A branded request form for your company that asks your qualifying questions, books on your calendar and routes by service area.',
     benefits: [
@@ -122,11 +171,12 @@ export const GROWTH_SERVICES: GrowthService[] = [
     tier: 'core',
     cta: 'Get Started',
     notesHint: 'Which services and ZIP codes should it cover? Which questions do you always ask?',
+    price: { type: 'one_time', amount: '$350–$750' },
   },
   {
     slug: 'website',
     name: 'Website & Landing Page',
-    tagline: 'A fast, mobile-ready page that turns visits into requests.',
+    tagline: 'High-converting pages built to turn traffic into leads.',
     description:
       'A high-converting contractor landing page or full site with lead forms and tracking, built to look great on a phone.',
     benefits: [
@@ -138,11 +188,12 @@ export const GROWTH_SERVICES: GrowthService[] = [
     tier: 'core',
     cta: 'Request Setup',
     notesHint: 'Do you have a website or domain today? Any sites you like the look of?',
+    price: { type: 'starting_at', amount: '$500' },
   },
   {
     slug: 'lead_reactivation',
     name: 'Old Lead Reactivation',
-    tagline: 'Turn the leads you already paid for into new conversations.',
+    tagline: 'Turn old leads you already paid for into new conversations.',
     description:
       'Campaigns that reach back out to past inquiries and estimates that went quiet, so old opportunities get a second look.',
     benefits: [
@@ -153,11 +204,12 @@ export const GROWTH_SERVICES: GrowthService[] = [
     tier: 'core',
     cta: 'Request This',
     notesHint: 'Roughly how many past leads do you have, and where are they stored?',
+    price: { type: 'per_campaign', amount: '$300–$750', note: 'Messaging usage may be billed separately.' },
   },
   {
     slug: 'call_tracking',
     name: 'Call & Lead Tracking',
-    tagline: 'Know exactly where every call and job comes from.',
+    tagline: 'See which marketing brings in calls, so you spend where it works.',
     description:
       'Tracking numbers and source tagging that tie each call and lead to where it came from and what happened next.',
     benefits: [
@@ -169,67 +221,74 @@ export const GROWTH_SERVICES: GrowthService[] = [
     tier: 'core',
     cta: 'Request Setup',
     notesHint: 'Where do your leads come from today? Which numbers or forms do you use?',
+    price: { type: 'monthly', amount: '$99–$199' },
   },
   {
     slug: 'brochures',
     name: 'Brochures & Sales Materials',
-    tagline: 'Leave homeowners with something clear and professional.',
+    tagline: 'Leave homeowners something that keeps you top of mind after the estimate.',
     description:
       'Printed and digital materials your crew can hand over at the appointment or send after it.',
     benefits: ['Brochure or leave-behind layout', 'Print-ready and shareable PDFs', 'Copy written around your services'],
     tier: 'marketing',
     cta: 'Request This',
     notesHint: 'Which services should it cover? Do you need print, digital or both?',
+    price: { type: 'one_time', amount: '$350–$750' },
   },
   {
     slug: 'brand_identity',
     name: 'Logo & Brand Identity',
-    tagline: 'One consistent look on trucks, signs, estimates and online.',
+    tagline: 'Look like the established company homeowners want to hire.',
     description: 'A new logo or a refresh, plus simple color and type rules so everything looks like the same company.',
     benefits: ['Logo concepts and final files', 'Color palette and typography', 'Short brand guide'],
     tier: 'marketing',
     cta: 'Request This',
     notesHint: 'Do you have a logo today? Anything you want to keep or change?',
+    price: { type: 'one_time', amount: '$500–$1,000+' },
   },
   {
     slug: 'social_ad_creative',
     name: 'Social Media Ad Creative',
-    tagline: 'Ad images, videos and copy made for Facebook and Instagram.',
+    tagline: 'Scroll-stopping ads built from your real projects.',
     description: 'Creative for your social ads, built from your real projects and services.',
     benefits: ['Ad image and short-video variations', 'Headlines and primary text', 'Sizes for feed, stories and reels'],
     tier: 'marketing',
     cta: 'Request This',
     notesHint: 'Are you running ads today? Which services or seasons do you want to promote?',
+    price: { type: 'per_pack', amount: '$250–$500' },
   },
   {
     slug: 'photo_video',
     name: 'Photo & Video Content',
-    tagline: 'Real photos and video of your finished work.',
+    tagline: 'Show homeowners the quality of your finished work.',
     description: 'Planned shoots of completed projects and your team at work, edited for everywhere you market.',
     benefits: ['Shoot planning and shot list', 'Edited project photos', 'Short edited video clips'],
     tier: 'marketing',
     cta: 'Request This',
     notesHint: 'Do you have finished projects we could shoot? Roughly where are they?',
+    price: { type: 'custom_quote' },
   },
   {
     slug: 'review_generation',
     name: 'Review Generation',
-    tagline: 'A simple, consistent way to ask happy customers for reviews.',
+    tagline: 'Ask every happy customer for a review at the right moment.',
     description: 'A repeatable process for requesting reviews after a job, with templates and timing that fit your projects.',
     benefits: ['Review request texts and emails', 'Timing tied to job completion', 'Direct links to your review profiles'],
     tier: 'marketing',
     cta: 'Request This',
     notesHint: 'Which review sites matter most to you? How do you ask for reviews today?',
+    price: { type: 'monthly', amount: '$99–$199' },
   },
   {
     slug: 'local_seo',
     name: 'Local SEO & Google Business Profile',
-    tagline: 'Keep your Google Business Profile complete and active.',
+    tagline: 'Show up where local homeowners are already searching.',
     description: 'A cleanup of your Google Business Profile and local listings: services, service area, categories and photos.',
     benefits: ['Profile audit and updates', 'Service and service-area setup', 'Consistency across local directories'],
     tier: 'marketing',
     cta: 'Request This',
     notesHint: 'Do you have access to your Google Business Profile? Which areas do you want to reach?',
+    price: { type: 'monthly', amount: '$500–$1,000+' },
   },
   {
     slug: 'landing_pages',
@@ -241,6 +300,7 @@ export const GROWTH_SERVICES: GrowthService[] = [
     cta: 'Request This',
     notesHint: 'Which service or offer should the page focus on?',
     retired: true,
+    price: { type: 'starting_at', amount: '$500' },
   },
 ];
 
