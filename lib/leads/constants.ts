@@ -44,14 +44,17 @@ export const LEAD_SOURCE_LABELS: Record<string, string> = Object.fromEntries(
 
 // Per-contractor assignment funnel statuses.
 export const ASSIGNMENT_STATUSES: { value: string; label: string }[] = [
-  { value: 'assigned', label: 'Assigned' },
+  { value: 'assigned', label: 'New' },
   { value: 'accepted', label: 'Accepted' },
   { value: 'contacted', label: 'Contacted' },
-  { value: 'appointment_set', label: 'Appointment Set' },
+  { value: 'no_answer', label: 'No Answer' },
+  { value: 'qualified', label: 'Qualified' },
+  { value: 'appointment_set', label: 'Appointment Booked' },
   { value: 'appointment_held', label: 'Appointment Held' },
   { value: 'estimate_given', label: 'Estimate Given' },
-  { value: 'sold', label: 'Sold' },
+  { value: 'sold', label: 'Won' },
   { value: 'lost', label: 'Lost' },
+  { value: 'not_qualified', label: 'Not Qualified' },
   { value: 'returned', label: 'Returned' },
 ];
 

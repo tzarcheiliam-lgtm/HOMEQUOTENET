@@ -3,7 +3,13 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { requireProfile, requireRole } from '@/lib/auth';
+import { requireRole } from '@/lib/auth';
+import {
+  leadIdForChildRecord,
+  requireAssignmentAccess,
+  requireCompanyAssignmentManager,
+  requireLeadAccess,
+} from '@/lib/contractor-access';
 import { resolvePricingAgreementId } from '@/lib/data/contractors';
 import { leadFormToObject, leadInputSchema } from '@/lib/validation/leads';
 import type { ActivityType, LeadStatus } from '@/lib/types';
@@ -26,7 +32,8 @@ async function recordActivity(
   leadId: string,
   type: ActivityType,
   body: string | null,
-  metadata: Record<string, unknown> = {}
+  metadata: Record<string, unknown> = {},
+  visibility: 'internal' | 'contractor' = 'internal'
 ) {
   const supabase = await createClient();
   const actorId = await currentUserId();
@@ -36,6 +43,7 @@ async function recordActivity(
     type,
     body,
     metadata,
+    visibility,
   });
 }
 
@@ -181,6 +189,7 @@ export async function bulkLeadAction(formData: FormData): Promise<void> {
     const status = action.slice('status:'.length) as LeadStatus;
     await supabase.from('leads').update({ status }).in('id', ids);
   } else if (action.startsWith('assign:')) {
+    if (profile.role !== 'admin') return;
     const contractorId = action.slice('assign:'.length);
     const actorId = await currentUserId();
     // Resolve the contractor's active agreement per lead vertical (H1).
@@ -219,10 +228,19 @@ export async function addNote(
   _prev: LeadFormState,
   formData: FormData
 ): Promise<LeadFormState> {
-  await requireProfile(); // staff or assigned contractor (RLS enforces scope)
   const id = str(formData, 'lead_id');
   const body = str(formData, 'body');
   if (!id || !body) return { error: 'Write a note first' };
+
+  let profile;
+  try {
+    profile = await requireLeadAccess(id);
+  } catch {
+    return { error: 'Lead not found or access denied' };
+  }
+  const visibility = profile.role === 'contractor'
+    ? 'contractor'
+    : formData.get('visibility') === 'contractor' ? 'contractor' : 'internal';
 
   const supabase = await createClient();
   const { error } = await supabase.from('lead_activities').insert({
@@ -230,6 +248,10 @@ export async function addNote(
     actor_id: await currentUserId(),
     type: 'note',
     body,
+    visibility,
+    metadata: profile.role === 'contractor'
+      ? { contractor_id: profile.contractor_id }
+      : {},
   });
   if (error) return { error: error.message };
 
@@ -241,10 +263,16 @@ export async function logContactAttempt(
   _prev: LeadFormState,
   formData: FormData
 ): Promise<LeadFormState> {
-  await requireRole(['admin', 'setter']);
   const id = str(formData, 'lead_id');
   if (!id) return { error: 'Missing lead id' };
   const outcome = str(formData, 'outcome') ?? 'Attempted contact';
+
+  let profile;
+  try {
+    profile = await requireLeadAccess(id);
+  } catch {
+    return { error: 'Lead not found or access denied' };
+  }
 
   const supabase = await createClient();
   const now = new Date().toISOString();
@@ -254,7 +282,25 @@ export async function logContactAttempt(
     actor_id: await currentUserId(),
     type: 'contact_attempt',
     body: outcome,
+    visibility: profile.role === 'contractor' ? 'contractor' : 'internal',
+    metadata: profile.role === 'contractor'
+      ? { contractor_id: profile.contractor_id }
+      : {},
   });
+
+  if (profile.role === 'contractor' && profile.contractor_id) {
+    const { data: assignment } = await supabase
+      .from('lead_assignments')
+      .select('id')
+      .eq('lead_id', id)
+      .eq('contractor_id', profile.contractor_id)
+      .maybeSingle();
+    if (assignment) {
+      await supabase.from('lead_assignments').update({
+        status: /no answer|voicemail/i.test(outcome) ? 'no_answer' : 'contacted',
+      }).eq('id', assignment.id);
+    }
+  }
 
   // Advance a brand-new lead to "contact attempted" and stamp last contact.
   await supabase
@@ -356,7 +402,7 @@ export async function assignLead(
   _prev: LeadFormState,
   formData: FormData
 ): Promise<LeadFormState> {
-  await requireRole(['admin', 'setter']);
+  await requireRole(['admin']);
   const id = str(formData, 'lead_id');
   if (!id) return { error: 'Missing lead id' };
 
@@ -428,11 +474,24 @@ export async function unassignLead(formData: FormData): Promise<void> {
 // Update an assignment's status. Allowed for staff or the owning contractor
 // (RLS enforces the contractor scope). Optionally advances the lead pipeline.
 export async function updateAssignmentStatus(formData: FormData): Promise<void> {
-  await requireProfile();
   const assignmentId = str(formData, 'assignment_id');
-  const leadId = str(formData, 'lead_id');
   const status = str(formData, 'status');
   if (!assignmentId || !status) return;
+
+  const allowed = new Set([
+    'assigned', 'accepted', 'contacted', 'no_answer', 'qualified',
+    'not_qualified', 'appointment_set', 'appointment_held',
+    'estimate_given', 'sold', 'lost', 'returned',
+  ]);
+  if (!allowed.has(status)) return;
+  let access;
+  try {
+    access = await requireAssignmentAccess(assignmentId);
+  } catch {
+    return;
+  }
+  const { profile, assignment } = access;
+  const leadId = assignment.lead_id;
 
   const supabase = await createClient();
   await supabase
@@ -448,21 +507,57 @@ export async function updateAssignmentStatus(formData: FormData): Promise<void> 
     sold: 'sold',
     lost: 'lost',
   };
-  if (leadId && mirror[status]) {
+  if (mirror[status]) {
     await supabase
       .from('leads')
       .update({ status: mirror[status] })
       .eq('id', leadId);
   }
 
-  if (leadId) {
-    await recordActivity(
-      leadId,
-      'status_change',
-      `Assignment status set to ${status}`
-    );
-    revalidateLead(leadId);
+  await recordActivity(
+    leadId,
+    'status_change',
+    `Assignment status set to ${status}`,
+    profile.role === 'contractor' ? { contractor_id: profile.contractor_id } : {},
+    profile.role === 'contractor' ? 'contractor' : 'internal'
+  );
+  revalidateLead(leadId);
+}
+
+export async function assignLeadToCompanyUser(formData: FormData): Promise<void> {
+  const assignmentId = str(formData, 'assignment_id');
+  const requestedUserId = str(formData, 'assigned_user_id');
+  if (!assignmentId) return;
+  let access;
+  try {
+    access = await requireCompanyAssignmentManager(assignmentId);
+  } catch {
+    return;
   }
+  const { profile, assignment } = access;
+  const supabase = await createClient();
+  let assignedUserId: string | null = null;
+  if (requestedUserId) {
+    const { data: target } = await supabase
+      .from('profiles')
+      .select('id, contractor_id, role, is_active')
+      .eq('id', requestedUserId)
+      .maybeSingle();
+    if (!target || target.role !== 'contractor' || !target.is_active ||
+        target.contractor_id !== assignment.contractor_id) return;
+    assignedUserId = target.id;
+  }
+  await supabase.from('lead_assignments')
+    .update({ assigned_user_id: assignedUserId })
+    .eq('id', assignment.id);
+  await recordActivity(
+    assignment.lead_id,
+    'assignment',
+    assignedUserId ? 'Lead assigned to a company team member' : 'Company user assignment cleared',
+    profile.role === 'contractor' ? { contractor_id: profile.contractor_id } : {},
+    profile.role === 'contractor' ? 'contractor' : 'internal'
+  );
+  revalidateLead(assignment.lead_id);
 }
 
 // --- attachments ------------------------------------------------------------
@@ -471,11 +566,15 @@ export async function addAttachment(
   _prev: LeadFormState,
   formData: FormData
 ): Promise<LeadFormState> {
-  await requireProfile();
   const id = str(formData, 'lead_id');
   const name = str(formData, 'name');
   const url = str(formData, 'url');
   if (!id || !name || !url) return { error: 'Name and URL are required' };
+  try {
+    await requireLeadAccess(id);
+  } catch {
+    return { error: 'Lead not found or access denied' };
+  }
 
   const supabase = await createClient();
   const { error } = await supabase.from('lead_attachments').insert({
@@ -491,13 +590,16 @@ export async function addAttachment(
 }
 
 export async function deleteAttachment(formData: FormData): Promise<void> {
-  await requireProfile();
   const attachmentId = str(formData, 'attachment_id');
-  const leadId = str(formData, 'lead_id');
   if (!attachmentId) return;
   const supabase = await createClient();
+  const { data: attachment } = await supabase
+    .from('lead_attachments').select('lead_id').eq('id', attachmentId).maybeSingle();
+  const leadId = attachment?.lead_id;
+  if (!leadId) return;
+  try { await requireLeadAccess(leadId); } catch { return; }
   await supabase.from('lead_attachments').delete().eq('id', attachmentId);
-  if (leadId) revalidateLead(leadId);
+  revalidateLead(leadId);
 }
 
 // --- appointments (basic) ---------------------------------------------------
@@ -506,12 +608,15 @@ export async function scheduleAppointment(
   _prev: LeadFormState,
   formData: FormData
 ): Promise<LeadFormState> {
-  await requireProfile();
   const assignmentId = str(formData, 'assignment_id');
-  const leadId = str(formData, 'lead_id');
   const scheduledAt = str(formData, 'scheduled_at');
   if (!assignmentId || !scheduledAt)
     return { error: 'Pick a date and time' };
+
+  let access;
+  try { access = await requireAssignmentAccess(assignmentId); }
+  catch { return { error: 'Assignment not found or access denied' }; }
+  const leadId = access.assignment.lead_id;
 
   const supabase = await createClient();
   const { error } = await supabase.from('appointments').insert({
@@ -548,11 +653,14 @@ export async function scheduleAppointment(
 export async function updateAppointmentStatus(
   formData: FormData
 ): Promise<void> {
-  await requireProfile();
   const appointmentId = str(formData, 'appointment_id');
-  const leadId = str(formData, 'lead_id');
   const status = str(formData, 'status');
   if (!appointmentId || !status) return;
+
+  let access;
+  try { access = await leadIdForChildRecord('appointments', appointmentId); }
+  catch { return; }
+  const leadId = access.assignment.lead_id;
 
   const supabase = await createClient();
   await supabase

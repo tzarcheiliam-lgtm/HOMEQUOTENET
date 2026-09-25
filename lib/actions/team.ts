@@ -96,6 +96,14 @@ function resolveContractorId(fd: FormData, role: UserRole): string | null {
   return role === 'contractor' ? str(fd, 'contractor_id') : null;
 }
 
+function contractorPermissions(fd: FormData, role: UserRole) {
+  const requested = str(fd, 'contractor_role');
+  return {
+    contractor_role: role === 'contractor' && requested === 'owner' ? 'owner' : role === 'contractor' ? 'staff' : null,
+    can_export_company_data: role === 'contractor' && fd.get('can_export_company_data') === 'on',
+  };
+}
+
 export async function createUser(
   _prev: TeamState,
   fd: FormData
@@ -135,6 +143,7 @@ export async function createUser(
       full_name: parsed.data.full_name,
       role,
       contractor_id: contractorId,
+      ...contractorPermissions(fd, role),
       account_status: activate ? 'active' : 'pending',
     })
     .eq('id', userId);
@@ -184,6 +193,7 @@ export async function inviteUser(
       full_name: parsed.data.full_name,
       role,
       contractor_id: contractorId,
+      ...contractorPermissions(fd, role),
       account_status: 'pending',
     })
     .eq('id', userId);
@@ -232,7 +242,7 @@ export async function changeUserRole(fd: FormData): Promise<void> {
   const supabase = await createClient();
   await supabase
     .from('profiles')
-    .update({ role, contractor_id: contractorId })
+    .update({ role, contractor_id: contractorId, ...contractorPermissions(fd, role) })
     .eq('id', userId);
 
   await logAudit('user.role', userId, { role, contractor_id: contractorId });

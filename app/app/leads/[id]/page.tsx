@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Pencil, Archive, ArchiveRestore, Trash2 } from 'lucide-react';
 import { requireProfile } from '@/lib/auth';
-import { getLead } from '@/lib/data/leads';
+import { getLead, listAssignableCompanyUsers } from '@/lib/data/leads';
 import { listContractorOptions } from '@/lib/data/contractors';
 import {
   archiveLead,
@@ -33,6 +33,7 @@ import { AssignmentManager } from '@/components/leads/assignment-manager';
 import { ActivityTimeline } from '@/components/leads/activity-timeline';
 import { LeadDistributionPanel } from '@/components/leads/lead-distribution-panel';
 import { getLeadDistribution, listRecipients } from '@/lib/data/lead-distribution';
+import { isContractorOwner } from '@/lib/permissions';
 
 export const metadata = { title: 'Lead · HomeQuote Network' };
 
@@ -64,6 +65,7 @@ export default async function LeadDetailPage({
   const { lead, assignments, activities, attachments } = detail;
   const isStaff = profile.role === 'admin' || profile.role === 'setter';
   const isAdmin = profile.role === 'admin';
+  const canAssignUsers = isAdmin || isContractorOwner(profile);
 
   const [contractors, distribution, recipients] = isStaff
     ? await Promise.all([
@@ -72,6 +74,7 @@ export default async function LeadDetailPage({
         listRecipients({ activeOnly: true }),
       ])
     : [[], null, []];
+  const companyUsers = canAssignUsers ? await listAssignableCompanyUsers() : [];
 
   const name =
     [lead.first_name, lead.last_name].filter(Boolean).join(' ') ||
@@ -286,9 +289,11 @@ export default async function LeadDetailPage({
                 leadId={lead.id}
                 assignments={assignments}
                 contractors={contractors}
-                canManage={isStaff}
+                canManage={isAdmin}
                 canUnassign={isAdmin}
                 isAdmin={isAdmin}
+                companyUsers={companyUsers}
+                canAssignUsers={canAssignUsers}
               />
             </CardContent>
           </Card>
@@ -299,8 +304,8 @@ export default async function LeadDetailPage({
               <CardTitle>Notes & activity</CardTitle>
             </CardHeader>
             <CardContent className="space-y-5">
-              {isStaff && <ContactForm leadId={lead.id} />}
-              <NoteForm leadId={lead.id} />
+              <ContactForm leadId={lead.id} />
+              <NoteForm leadId={lead.id} canChooseVisibility={isStaff} />
               <div className="border-t pt-4">
                 <ActivityTimeline activities={activities} />
               </div>

@@ -16,10 +16,12 @@ import {
   updateAssignmentStatus,
   scheduleAppointment,
   updateAppointmentStatus,
+  assignLeadToCompanyUser,
   type LeadFormState,
 } from '@/lib/actions/leads';
 import { OutcomesSection } from '@/components/leads/outcomes-section';
 import type { AssignmentDetail } from '@/lib/data/leads';
+import type { CompanyUserOption } from '@/lib/data/leads';
 import type { ContractorOption } from '@/lib/data/contractors';
 
 // Auto-submitting select for an assignment's status.
@@ -172,6 +174,8 @@ export function AssignmentManager({
   canManage,
   canUnassign,
   isAdmin,
+  companyUsers,
+  canAssignUsers,
 }: {
   leadId: string;
   assignments: AssignmentDetail[];
@@ -179,6 +183,8 @@ export function AssignmentManager({
   canManage: boolean; // staff: can assign new contractors
   canUnassign: boolean; // admin: can remove assignments
   isAdmin: boolean; // admin: can override commission, see commission amounts
+  companyUsers: CompanyUserOption[];
+  canAssignUsers: boolean;
 }) {
   const assignedIds = new Set(assignments.map((a) => a.contractor_id));
   const available = contractors.filter((c) => !assignedIds.has(c.id));
@@ -248,9 +254,24 @@ export function AssignmentManager({
                 <ScheduleAppointmentForm leadId={leadId} assignmentId={a.id} />
               </div>
 
+              {canAssignUsers && (
+                <form action={assignLeadToCompanyUser} className="mt-3 flex flex-wrap items-end gap-2 border-t pt-3">
+                  <input type="hidden" name="assignment_id" value={a.id} />
+                  <label className="space-y-1 text-xs text-muted-foreground">
+                    Assigned company user
+                    <Select name="assigned_user_id" defaultValue={a.assigned_user_id ?? ''} className="h-8 min-w-52 text-sm text-foreground">
+                      <option value="">Company queue</option>
+                      {companyUsers.filter((u) => u.contractor_id === a.contractor_id).map((u) => (
+                        <option key={u.id} value={u.id}>{u.full_name || u.email || 'Contractor user'}</option>
+                      ))}
+                    </Select>
+                  </label>
+                  <Button type="submit" size="sm" variant="outline">Assign user</Button>
+                </form>
+              )}
+
               {/* Estimate -> Sale -> Commission for this assignment */}
               <OutcomesSection
-                leadId={leadId}
                 assignmentId={a.id}
                 estimates={a.estimates ?? []}
                 sales={a.sales ?? []}

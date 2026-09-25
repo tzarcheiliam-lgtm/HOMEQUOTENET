@@ -73,6 +73,20 @@ export function RecipientForm({
           Active (shows up under Send lead)
         </label>
       )}
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          name="automatic_distribution_enabled"
+          defaultChecked={recipient?.automatic_distribution_enabled ?? false}
+          className="mt-0.5 size-4 accent-primary"
+        />
+        <span>
+          Eligible for automatic distribution
+          <span className="block text-xs text-muted-foreground">
+            Off by default. Only an HQN administrator can enable this.
+          </span>
+        </span>
+      </label>
       {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
       {state?.success && <p className="text-sm text-emerald-600">Saved.</p>}
       <Button type="submit" size="sm" disabled={pending}>

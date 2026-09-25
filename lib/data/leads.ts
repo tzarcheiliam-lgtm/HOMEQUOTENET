@@ -145,6 +145,26 @@ export interface LeadDetail {
   attachments: LeadAttachment[];
 }
 
+export interface CompanyUserOption {
+  id: string;
+  contractor_id: string;
+  full_name: string | null;
+  email: string | null;
+}
+
+/** RLS returns all contractor users to HQN staff and same-company users to owners. */
+export async function listAssignableCompanyUsers(): Promise<CompanyUserOption[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('profiles')
+    .select('id, contractor_id, full_name, email')
+    .eq('role', 'contractor')
+    .eq('is_active', true)
+    .not('contractor_id', 'is', null)
+    .order('full_name');
+  return (data ?? []) as CompanyUserOption[];
+}
+
 export async function getLead(id: string): Promise<LeadDetail | null> {
   const supabase = await createClient();
 

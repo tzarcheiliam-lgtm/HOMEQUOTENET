@@ -91,13 +91,11 @@ function SaleForm({
 }
 
 export function OutcomesSection({
-  leadId,
   assignmentId,
   estimates,
   sales,
   isAdmin,
 }: {
-  leadId: string;
   assignmentId: string;
   estimates: Estimate[];
   sales: Sale[];
@@ -126,13 +124,14 @@ export function OutcomesSection({
                       e.status}
                   </span>
                 </span>
-                <form action={deleteEstimate}>
-                  <input type="hidden" name="id" value={e.id} />
-                  <input type="hidden" name="lead_id" value={leadId} />
-                  <Button type="submit" variant="ghost" size="sm">
-                    <Trash2 className="size-4" />
-                  </Button>
-                </form>
+                {isAdmin && (
+                  <form action={deleteEstimate}>
+                    <input type="hidden" name="id" value={e.id} />
+                    <Button type="submit" variant="ghost" size="sm">
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </form>
+                )}
               </li>
             ))}
           </ul>
@@ -168,13 +167,14 @@ export function OutcomesSection({
                       : ''}
                   </span>
                 </span>
-                <form action={deleteSale}>
-                  <input type="hidden" name="id" value={s.id} />
-                  <input type="hidden" name="lead_id" value={leadId} />
-                  <Button type="submit" variant="ghost" size="sm">
-                    <Trash2 className="size-4" />
-                  </Button>
-                </form>
+                {isAdmin && (
+                  <form action={deleteSale}>
+                    <input type="hidden" name="id" value={s.id} />
+                    <Button type="submit" variant="ghost" size="sm">
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </form>
+                )}
               </li>
             ))}
           </ul>

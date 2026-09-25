@@ -3,7 +3,8 @@
 import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { requireProfile, requireRole } from '@/lib/auth';
+import { requireRole } from '@/lib/auth';
+import { leadIdForChildRecord, requireAssignmentAccess } from '@/lib/contractor-access';
 import { computeCommission } from '@/lib/outcomes/commission';
 import { resolvePricingAgreementId } from '@/lib/data/contractors';
 import type { PricingAgreement } from '@/lib/types';
@@ -35,7 +36,8 @@ async function currentUserId(): Promise<string | null> {
 async function logActivity(
   leadId: string,
   type: string,
-  body: string
+  body: string,
+  contractorId: string | null = null
 ) {
   const supabase = await createClient();
   await supabase.from('lead_activities').insert({
@@ -43,6 +45,8 @@ async function logActivity(
     actor_id: await currentUserId(),
     type,
     body,
+    visibility: contractorId ? 'contractor' : 'internal',
+    metadata: contractorId ? { contractor_id: contractorId } : {},
   });
 }
 
@@ -60,16 +64,6 @@ interface AssignmentRow {
   pricing_agreement_id: string | null;
 }
 
-async function getAssignment(assignmentId: string): Promise<AssignmentRow | null> {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from('lead_assignments')
-    .select('id, lead_id, contractor_id, pricing_agreement_id')
-    .eq('id', assignmentId)
-    .single();
-  return (data as AssignmentRow) ?? null;
-}
-
 // ============================================================================
 // ESTIMATES
 // ============================================================================
@@ -78,13 +72,15 @@ export async function addEstimate(
   _prev: OutcomeState,
   formData: FormData
 ): Promise<OutcomeState> {
-  await requireProfile(); // staff or owning contractor (RLS enforces scope)
   const assignmentId = str(formData, 'assignment_id');
   if (!assignmentId) return { error: 'Missing assignment' };
   const amount = num(formData, 'amount');
   if (amount === null) return { error: 'Enter an estimate amount' };
 
-  const assignment = await getAssignment(assignmentId);
+  let access;
+  try { access = await requireAssignmentAccess(assignmentId); }
+  catch { return { error: 'Assignment not found or access denied' }; }
+  const { profile, assignment } = access;
   const supabase = await createClient();
 
   const { error } = await supabase.from('estimates').insert({
@@ -118,7 +114,8 @@ export async function addEstimate(
     await logActivity(
       assignment.lead_id,
       'status_change',
-      `Estimate added: $${amount}`
+      `Estimate added: $${amount}`,
+      profile.role === 'contractor' ? profile.contractor_id : null
     );
     revalidateLead(assignment.lead_id);
   }
@@ -126,13 +123,14 @@ export async function addEstimate(
 }
 
 export async function deleteEstimate(formData: FormData): Promise<void> {
-  await requireProfile();
+  await requireRole(['admin']);
   const id = str(formData, 'id');
-  const leadId = str(formData, 'lead_id');
   if (!id) return;
+  let access;
+  try { access = await leadIdForChildRecord('estimates', id); } catch { return; }
   const supabase = await createClient();
   await supabase.from('estimates').delete().eq('id', id);
-  if (leadId) revalidateLead(leadId);
+  revalidateLead(access.assignment.lead_id);
 }
 
 // ============================================================================
@@ -143,14 +141,15 @@ export async function addSale(
   _prev: OutcomeState,
   formData: FormData
 ): Promise<OutcomeState> {
-  const profile = await requireProfile();
   const assignmentId = str(formData, 'assignment_id');
   if (!assignmentId) return { error: 'Missing assignment' };
   const amount = num(formData, 'amount');
   if (amount === null) return { error: 'Enter a sale amount' };
 
-  const assignment = await getAssignment(assignmentId);
-  if (!assignment) return { error: 'Assignment not found' };
+  let access;
+  try { access = await requireAssignmentAccess(assignmentId); }
+  catch { return { error: 'Assignment not found or access denied' }; }
+  const { profile, assignment } = access;
 
   const supabase = await createClient();
 
@@ -233,7 +232,8 @@ export async function addSale(
   await logActivity(
     assignment.lead_id,
     'status_change',
-    `Sale recorded: $${amount} (commission $${commissionAmount.toFixed(2)})`
+    `Sale recorded: $${amount} (commission $${commissionAmount.toFixed(2)})`,
+    profile.role === 'contractor' ? profile.contractor_id : null
   );
   revalidateLead(assignment.lead_id);
   return { success: true };
@@ -279,13 +279,14 @@ async function upsertBilling(
 }
 
 export async function deleteSale(formData: FormData): Promise<void> {
-  await requireProfile();
+  await requireRole(['admin']);
   const id = str(formData, 'id');
-  const leadId = str(formData, 'lead_id');
   if (!id) return;
+  let access;
+  try { access = await leadIdForChildRecord('sales', id); } catch { return; }
   const supabase = await createClient();
   await supabase.from('sales').delete().eq('id', id);
-  if (leadId) revalidateLead(leadId);
+  revalidateLead(access.assignment.lead_id);
 }
 
 // ============================================================================

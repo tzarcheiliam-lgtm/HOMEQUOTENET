@@ -52,19 +52,26 @@ export function UserForm({
         </div>
 
         {role === 'contractor' && (
-          <div className="space-y-1.5">
-            <Label htmlFor="contractor_id">Contractor company</Label>
-            <Select id="contractor_id" name="contractor_id" defaultValue="">
-              <option value="" disabled>
-                Select a company
-              </option>
-              {contractors.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
-          </div>
+          <>
+            <div className="space-y-1.5">
+              <Label htmlFor="contractor_id">Contractor company</Label>
+              <Select id="contractor_id" name="contractor_id" defaultValue="">
+                <option value="" disabled>Select a company</option>
+                {contractors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="contractor_role">Company access</Label>
+              <Select id="contractor_role" name="contractor_role" defaultValue="staff">
+                <option value="owner">Owner</option>
+                <option value="staff">Staff</option>
+              </Select>
+            </div>
+            <label className="flex items-center gap-2 text-sm sm:col-span-2">
+              <input type="checkbox" name="can_export_company_data" className="size-4 accent-primary" />
+              Allow export of this company’s data
+            </label>
+          </>
         )}
 
         {mode === 'create' && (
