@@ -77,7 +77,8 @@ describe('workflow planner and dry-run core', () => {
   });
 
   it('renders only canonical merge fields', () => {
-    expect(renderWorkflowTemplate('Hi {{lead.first_name}} in {{ lead.city }}', values)).toBe('Hi  Ana  in Encino');
+    // Values are trimmed, so padded data never produces double spaces.
+    expect(renderWorkflowTemplate('Hi {{lead.first_name}} in {{ lead.city }}', values)).toBe('Hi Ana in Encino');
   });
 });
 

@@ -525,6 +525,23 @@ export async function processWorkflowTick(options: { db?: WorkflowDb; workerId?:
   return { events: events?.length ?? 0, runs, failures };
 }
 
+/** Retention defaults (see migration 0027): logs 90 days, cleanly-dispatched events 180 days. */
+export const WORKFLOW_RETENTION = { logDays: 90, eventDays: 180, batch: 1000 } as const;
+
+/**
+ * Deletes one bounded batch of old workflow logs/events. Never throws: if the
+ * retention migration is not applied or the call fails, the tick carries on.
+ */
+export async function pruneWorkflowHistory(
+  db: WorkflowDb = createAdminClient()
+): Promise<{ logs_deleted: number; events_deleted: number } | { skipped: string }> {
+  const { data, error } = await db.rpc('prune_workflow_history', {
+    p_log_days: WORKFLOW_RETENTION.logDays, p_event_days: WORKFLOW_RETENTION.eventDays, p_limit: WORKFLOW_RETENTION.batch,
+  });
+  if (error) return { skipped: error.code === 'PGRST202' || /function/i.test(error.message) ? 'retention_not_installed' : 'retention_failed' };
+  return data as { logs_deleted: number; events_deleted: number };
+}
+
 export async function dryRunWorkflowEvent(
   input: unknown,
   options: { db?: WorkflowDb; workflowId?: string } = {}

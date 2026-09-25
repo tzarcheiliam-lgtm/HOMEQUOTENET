@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { equalSecret } from '@/lib/funnels/server';
-import { processWorkflowTick } from '@/lib/workflows/runtime.server';
+import { processWorkflowTick, pruneWorkflowHistory } from '@/lib/workflows/runtime.server';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -12,7 +12,8 @@ export async function POST(request: Request) {
   }
   try {
     const result = await processWorkflowTick();
-    return NextResponse.json(result, { status: result.failures ? 207 : 200 });
+    const retention = await pruneWorkflowHistory();
+    return NextResponse.json({ ...result, retention }, { status: result.failures ? 207 : 200 });
   } catch {
     return NextResponse.json({ error: 'Workflow processing unavailable' }, { status: 503 });
   }

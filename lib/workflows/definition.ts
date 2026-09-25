@@ -3,6 +3,7 @@ import { conditionField, conditionFieldsIn, workflowConditionGroupSchema, type W
 import {
   WORKFLOW_ACTIONS,
   WORKFLOW_ACTION_CONFIG_SCHEMAS,
+  mergeFieldsIn,
   workflowActionTypeSchema,
   type WorkflowAction,
   type WorkflowActionType,
@@ -150,9 +151,32 @@ export interface EnableIssue {
     | 'field_unavailable'
     | 'branching_not_supported'
     | 'assignment_required'
-    | 'network_only_action';
+    | 'network_only_action'
+    | 'variable_unavailable';
   message: string;
   stepKey?: string;
+}
+
+/**
+ * Which merge-field roots a trigger can actually supply at run time. Mirrors
+ * loadWorkflowEvaluationContext in runtime.server.ts: the lead is loaded for
+ * every event, the appointment only for appointment events, the estimate only
+ * for estimate.sent, the contractor only when the workflow or the event
+ * belongs to a contractor. homequote.* always comes from server config.
+ */
+export function mergeRootsForTrigger(type: WorkflowEventType, owner: { contractorId: string | null }): Set<string> {
+  const roots = new Set(['homequote', 'lead']);
+  if (type.startsWith('appointment.')) roots.add('appointment');
+  if (type === 'estimate.sent') roots.add('estimate');
+  if (owner.contractorId !== null || WORKFLOW_TRIGGERS[type].contractorScope === 'required') roots.add('contractor');
+  return roots;
+}
+
+function stringsIn(value: unknown): string[] {
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) return value.flatMap(stringsIn);
+  if (value && typeof value === 'object') return Object.values(value).flatMap(stringsIn);
+  return [];
 }
 
 export function validateWorkflowForEnable(def: WorkflowDefinition, owner: { contractorId: string | null }): EnableIssue[] {
@@ -181,6 +205,22 @@ export function validateWorkflowForEnable(def: WorkflowDefinition, owner: { cont
       (s.action.type === 'change_pipeline_stage' && s.action.config.pipeline === 'assignment');
     if (needsAssignment && !assignmentScoped) {
       issues.push({ code: 'assignment_required', message: `${s.action.type} needs a contractor-scoped trigger`, stepKey: s.key });
+    }
+    // Variables must be something this trigger can supply; otherwise they
+    // would silently render empty in every run.
+    const roots = mergeRootsForTrigger(def.trigger.type, owner);
+    const triggerLabel = WORKFLOW_TRIGGERS[def.trigger.type].label;
+    const fieldsUsed = new Set(stringsIn(s.action.config).flatMap(mergeFieldsIn));
+    if (s.action.type === 'wait' && s.action.config.mode === 'relative_to_field') fieldsUsed.add(s.action.config.field);
+    for (const field of fieldsUsed) {
+      const root = field.split('.')[0];
+      if (root !== 'event' && !roots.has(root)) {
+        issues.push({
+          code: 'variable_unavailable',
+          message: `Cannot enable workflow: {{${field}}} is not available for the ${triggerLabel} trigger.`,
+          stepKey: s.key,
+        });
+      }
     }
     // Tenant rule: a contractor's workflow cannot touch HomeQuote's network
     // pipeline or its internal team.

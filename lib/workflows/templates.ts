@@ -72,7 +72,7 @@ export const WORKFLOW_TEMPLATES: readonly WorkflowTemplate[] = [
       { key: 'follow_up_email', position: 2, stepType: 'action', action: { type: 'send_email', config: {
         to: { kind: 'lead' },
         subject: 'Following up on your project',
-        body: 'Hi {{lead.first_name}},\n\nWe tried to reach you about your project. Reply to this email or call {{homequote.phone}} and we will get you matched.\n\nHomeQuote' } } },
+        body: 'Hi {{lead.first_name}},\n\nWe tried to reach you about your project. Just reply to this email and we will get you matched.\nYou can also call us at {{homequote.phone}}.\n\nHomeQuote' } } },
       { key: 'wait_two_days', position: 3, stepType: 'action', action: { type: 'wait', config: days(2) } },
       { key: 'last_try_sms', position: 4, stepType: 'action',
         conditions: { match: 'all', conditions: [{ field: 'lead.status', operator: 'equals', value: 'contact_attempted' }] },

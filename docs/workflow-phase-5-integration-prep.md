@@ -22,6 +22,10 @@
 | M1 save bypass | fixed by Phase 4 (saving an enabled workflow re-runs `validateWorkflowForEnable`). |
 | Migration collision | renumbered to 0024/0025 (after applied 0023). |
 | Setter access | product decision: no Automations for setters — nav, page guards and `0020` RLS (`is_admin()`) all aligned; `0020` was never applied, so edited in place. |
+| Message rendering | `merge.ts` (the one renderer): `lead.first_name` → "there", `contractor.name` → "our team"; no gaps before punctuation; `appointment.scheduled_at` as "Friday, September 25 at 2:30 PM" in `DEFAULT_WORKFLOW_TIMEZONE`; `estimate.amount` as currency; a line using an unconfigured `homequote.*` value (e.g. `HOMEQUOTE_PHONE` unset) is omitted. |
+| Variable validation | `validateWorkflowForEnable` flags `variable_unavailable` ("Cannot enable workflow: {{appointment.scheduled_at}} is not available for the New lead trigger.") using `mergeRootsForTrigger`, which mirrors what the runtime loads per trigger; also covers waits anchored to an appointment time. |
+| Webhook SSRF | `lib/workflows/webhook-safety.server.ts`: HTTPS only, no credentials, internal hostnames refused, and a connection-time DNS `lookup` that refuses any resolved private/loopback/link-local/metadata/CGNAT/reserved address (incl. IPv4-mapped/NAT64 IPv6); no redirects. **Hookup into `actions.server.ts` pending** (file is being edited by the email-templates work). |
+| Retention | `0027_workflow_retention.sql` `prune_workflow_history()`: logs 90 days (finished/no run only), cleanly dispatched unreferenced events 180 days; runs/step runs never pruned (email delivery history cascades from step runs). Runs in ≤1000-row batches on every tick. |
 
 ## 0. Production reality (read first)
 
@@ -87,7 +91,7 @@ Phase 5 checklist:
 - [ ] Fix H1 (keep nullable keys: `jsonb_build_object` without strip, or strip only optional keys).
 - [ ] Conformance test: for each trigger, insert/update the source row in a rolled-back DB test and parse the emitted row with `eventFromRow` (use `tests/fixtures/workflow-events.ts` as the expected shape).
 - [ ] Emit `message.received` from the Phase 3 inbound path.
-- [ ] Decide "No Answer" wiring (§ 7): `logContactAttempt` does **not** change `leads.status`, so the No Answer template never fires from the normal "log attempt" button.
+- [x] "No Answer" wiring (§ 7): **correction** — `logContactAttempt` already advances `new → contact_attempted` (conditional update, since the initial commit); an earlier version of this doc wrongly said it didn't. Verified end to end in `tests/workflow-readiness-db.test.ts`.
 
 ## 3. Funnel → workflow
 
@@ -116,7 +120,7 @@ Risks: `appointment.completed` maps from `held` only; reschedules (status `resch
 - Contractor pipeline `lead_assignments.status`: `updateAssignmentStatus`, `scheduleAppointment`, `addEstimate`, `addSale`, booking RPCs.
 - One UI action can emit several **different** facts: `addEstimate` → `estimate.sent` + `assignment.status_changed` + `lead.status_changed`; `addSale` → `deal.won` + two status changes. These are not duplicates (distinct types, distinct keys) — but a tenant with workflows on each would message three times. Phase 5 guidance: templates and the UI should steer each journey to the single most specific trigger; the dry run already shows every matching workflow for an event.
 - Workflow-caused changes carry `actor_type='workflow'` + causation via `workflow_change_pipeline_stage` ✔ — Phase 5 must still enforce the loop rule (refuse a run whose causation chain contains the same workflow); not implemented in the runtime today.
-- **No Answer gap:** `logContactAttempt` records an activity but does not move `leads.status` (only `changeLeadStatus` does). Recommended fix (no contract change): have `logContactAttempt` advance `new → contact_attempted`, so `lead.status_changed` fires exactly once per real transition.
+- **No Answer (corrected):** `logContactAttempt` records the activity and, for staff, advances `new → contact_attempted` with a conditional update (`… where status = 'new'`), so `lead.status_changed` fires exactly once per real transition and repeat attempts emit nothing. Contractors cannot change the HomeQuote status (leads RLS is staff-only, by design); their attempt moves their own assignment to `no_answer`/`contacted` → `assignment.status_changed`, which is the trigger a contractor no-answer workflow should use (the shipped No Answer template is a HomeQuote workflow on `lead.status_changed`).
 
 ## 8. Phase 4 contract (what Phase 5 needs)
 
