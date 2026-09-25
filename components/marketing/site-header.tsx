@@ -116,78 +116,90 @@ export function SiteHeader({ industries }: { industries: NavLink[] }) {
   }, [open]);
 
   return (
-    <header
-      className={`sticky top-0 z-50 hq-glass transition-colors duration-300 ${
-        scrolled ? 'border-b border-[var(--hq-line)]' : 'border-b border-transparent'
-      }`}
-    >
-      <Container>
-        <div className="flex h-16 items-center justify-between gap-6 sm:h-20">
-          <Link
-            href="/"
-            className="-my-1 shrink-0 py-1.5"
-            aria-label={`${site.name} home`}
-            onClick={() => setOpen(false)}
-          >
-            <Wordmark />
-          </Link>
-
-          <nav
-            className="hidden items-center gap-4 lg:flex xl:gap-7"
-            aria-label="Primary"
-          >
-            <IndustriesMenu items={industries} />
-            {site.nav.map((item) => (
-              <a
-                key={item.href}
-                href={item.href}
-                className={`whitespace-nowrap py-2 text-sm font-medium text-[var(--hq-text-muted)] transition-colors hover:text-[var(--hq-text)] ${
-                  'wideOnly' in item ? 'hidden xl:inline' : ''
-                }`}
-              >
-                {item.label}
-              </a>
-            ))}
-          </nav>
-
-          <div className="hidden items-center gap-3 lg:flex">
+    <>
+      <header
+        className={`sticky top-0 z-50 hq-glass transition-colors duration-300 ${
+          scrolled
+            ? 'border-b border-[var(--hq-line)]'
+            : 'border-b border-transparent'
+        }`}
+      >
+        <Container>
+          <div className="flex h-16 items-center justify-between gap-6 sm:h-20">
             <Link
-              href="/sign-in"
-              className="whitespace-nowrap py-2 text-sm font-medium text-[var(--hq-text-muted)] transition-colors hover:text-[var(--hq-text)]"
+              href="/"
+              className="-my-1 shrink-0 py-1.5"
+              aria-label={`${site.name} home`}
+              onClick={() => setOpen(false)}
             >
-              Partner login
+              <Wordmark />
             </Link>
-            <Cta href={site.cta.primaryHref} size="md">
-              {site.cta.primaryShort}
-            </Cta>
-          </div>
 
-          {/*
+            <nav
+              className="hidden items-center gap-4 lg:flex xl:gap-7"
+              aria-label="Primary"
+            >
+              <IndustriesMenu items={industries} />
+              {site.nav.map((item) => (
+                <a
+                  key={item.href}
+                  href={item.href}
+                  className={`whitespace-nowrap py-2 text-sm font-medium text-[var(--hq-text-muted)] transition-colors hover:text-[var(--hq-text)] ${
+                    'wideOnly' in item ? 'hidden xl:inline' : ''
+                  }`}
+                >
+                  {item.label}
+                </a>
+              ))}
+            </nav>
+
+            <div className="hidden items-center gap-3 lg:flex">
+              <Link
+                href="/sign-in"
+                className="whitespace-nowrap py-2 text-sm font-medium text-[var(--hq-text-muted)] transition-colors hover:text-[var(--hq-text)]"
+              >
+                Partner login
+              </Link>
+              <Cta href={site.cta.primaryHref} size="md">
+                {site.cta.primaryShort}
+              </Cta>
+            </div>
+
+            {/*
             Hidden while the sheet is open. The sheet covers this button and
             carries its own close control, so leaving this one mounted would
             put a second "Close menu" button in the accessibility tree and in
             the tab order, underneath the overlay.
           */}
-          {open ? null : (
-            <button
-              type="button"
-              className="-mr-2 inline-flex size-10 items-center justify-center rounded-lg text-[var(--hq-text)] lg:hidden"
-              aria-expanded={false}
-              aria-controls="hq-mobile-nav"
-              aria-label="Open menu"
-              onClick={() => setOpen(true)}
-            >
-              <Menu className="size-5" />
-            </button>
-          )}
-        </div>
-      </Container>
+            {open ? null : (
+              <button
+                type="button"
+                className="-mr-2 inline-flex size-10 items-center justify-center rounded-lg text-[var(--hq-text)] lg:hidden"
+                aria-expanded={false}
+                aria-controls="hq-mobile-nav"
+                aria-label="Open menu"
+                onClick={() => setOpen(true)}
+              >
+                <Menu className="size-5" />
+              </button>
+            )}
+          </div>
+        </Container>
+      </header>
 
-      {/* Mobile sheet */}
+      {/*
+        Mobile sheet. Rendered as a sibling of <header>, not inside it: the
+        header's backdrop-filter (.hq-glass) makes it the containing block for
+        fixed-position descendants, which would squash the sheet into the
+        64px header bar instead of covering the viewport.
+      */}
       {open ? (
         <div
           id="hq-mobile-nav"
-          className="fixed inset-0 top-0 z-50 overflow-y-auto bg-[var(--hq-bg)] pb-10 lg:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Site menu"
+          className="fixed inset-0 z-[60] h-[100dvh] overflow-y-auto overscroll-contain bg-[var(--hq-bg)] pb-10 lg:hidden"
         >
           <Container>
             <div className="flex h-16 items-center justify-between sm:h-20">
@@ -205,10 +217,7 @@ export function SiteHeader({ industries }: { industries: NavLink[] }) {
               </button>
             </div>
 
-            <nav
-              className="mt-4 flex flex-col"
-              aria-label="Primary mobile"
-            >
+            <nav className="mt-4 flex flex-col" aria-label="Primary mobile">
               <div className="border-b border-[var(--hq-line)] py-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--hq-text-dim)]">
                   Industries
@@ -247,16 +256,13 @@ export function SiteHeader({ industries }: { industries: NavLink[] }) {
             </nav>
 
             <div className="mt-8">
-              <Cta
-                href={site.cta.primaryHref}
-                className="w-full"
-              >
+              <Cta href={site.cta.primaryHref} className="w-full">
                 {site.cta.primary}
               </Cta>
             </div>
           </Container>
         </div>
       ) : null}
-    </header>
+    </>
   );
 }
