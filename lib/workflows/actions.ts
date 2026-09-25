@@ -85,6 +85,9 @@ export const WORKFLOW_ACTION_CONFIG_SCHEMAS = {
     })
     .strict(),
   // Delivered through the existing Gmail connection (lib/emails/gmail.ts).
+  // Either inline subject/body, or a saved email_templates row (id) whose
+  // subject/html_body are rendered instead — existing workflows that already
+  // store inline subject/body keep working unchanged.
   send_email: z
     .object({
       to: z.discriminatedUnion('kind', [
@@ -92,10 +95,12 @@ export const WORKFLOW_ACTION_CONFIG_SCHEMAS = {
         // Existing lead_recipients rows (migration 0016).
         z.object({ kind: z.literal('recipients'), recipientIds: z.array(uuidSchema).min(1).max(20) }).strict(),
       ]),
-      subject: templatedText(200),
-      body: templatedText(10_000),
+      templateId: uuidSchema.optional(),
+      subject: templatedText(200).optional(),
+      body: templatedText(10_000).optional(),
     })
-    .strict(),
+    .strict()
+    .refine((c) => !!c.templateId || (!!c.subject && !!c.body), 'Choose a saved template or enter a subject and body'),
   // needs_domain: leads have no owner/assignee user column yet.
   assign_user: z
     .object({

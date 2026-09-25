@@ -6,6 +6,7 @@ import { WORKFLOW_ACTIONS, WORKFLOW_ACTION_CONFIG_SCHEMAS, type WorkflowAction, 
 import type { WorkflowEvent } from './events';
 import type { WorkflowEvaluationContext } from './planner';
 import { renderWorkflowTemplate as renderTemplate } from './merge';
+import { renderEmailTemplate, homequoteSystemValues, type EmailTemplateContext } from '@/lib/emails/variables';
 
 type WorkflowDb=ReturnType<typeof createAdminClient>;
 interface RuntimeActionContext { action:WorkflowAction; run:{id:string;workflowId:string;contractorId:string|null;leadId:string|null}; stepRun:{id:string;stepKey:string;attempt:number;idempotencyKey:string}; event:WorkflowEvent; now:Date }
@@ -16,6 +17,26 @@ const permanent=(code:string,message:string):WorkflowActionResult=>({outcome:'pe
 const escapeHtml=(value:string)=>value.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 const textHtml=(value:string)=>`<div style="font-family:Arial,sans-serif;white-space:pre-wrap">${escapeHtml(value)}</div>`;
 const renderWorkflowTemplate=(template:string,values:WorkflowEvaluationContext)=>renderTemplate(template,values,{phone:process.env.HOMEQUOTE_PHONE,siteUrl:process.env.NEXT_PUBLIC_SITE_URL});
+
+/** Bridges the workflow's raw row context into the email template library's field names (e.g. appointment.scheduled_at -> appointment.date/time). */
+function workflowValuesToEmailContext(values:WorkflowEvaluationContext):EmailTemplateContext{
+  const appt=values.appointment as {scheduled_at?:string;location?:string}|null;
+  const scheduledAt=appt?.scheduled_at?new Date(appt.scheduled_at):null;
+  return {
+    lead:values.lead,
+    contractor:values.contractor,
+    appointment:appt?{date:scheduledAt?scheduledAt.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'}):'',time:scheduledAt?scheduledAt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}):'',location:appt.location??''}:null,
+    homequote:homequoteSystemValues(),
+  };
+}
+
+/** Loads a saved template and renders subject/html/text against this run's values. Falls back to a temporary failure if the template is missing or inactive so a retry can surface the misconfiguration instead of silently sending blanks. */
+async function resolveTemplateEmail(db:WorkflowDb,templateId:string,values:WorkflowEvaluationContext):Promise<{subject:string;html:string;text:string}|null>{
+  const {data,error}=await db.from('email_templates').select('subject, html_body, text_body, is_active').eq('id',templateId).maybeSingle();
+  if(error||!data||!data.is_active) return null;
+  const emailContext=workflowValuesToEmailContext(values);
+  return {subject:renderEmailTemplate(data.subject,emailContext),html:renderEmailTemplate(data.html_body,emailContext),text:renderEmailTemplate(data.text_body,emailContext)};
+}
 async function recipientEmails(db:WorkflowDb,audience:{kind:'lead'}|{kind:'lead_alert_team'}|{kind:'recipients';recipientIds:string[]},values:WorkflowEvaluationContext){
   if(audience.kind==='lead'){const email=values.lead?.email;return typeof email==='string'&&email.trim()?[email.trim().toLowerCase()]:[]}
   if(audience.kind==='lead_alert_team') return leadAlertRecipients();
@@ -23,12 +44,13 @@ async function recipientEmails(db:WorkflowDb,audience:{kind:'lead'}|{kind:'lead_
   if(error) throw new Error('recipient lookup failed');
   return Array.from(new Set((data??[]).map((row:{email:string})=>row.email.trim().toLowerCase()).filter(Boolean)));
 }
-async function deliverWorkflowEmail(input:ExecuteWorkflowActionInput,audience:{kind:'lead'}|{kind:'lead_alert_team'}|{kind:'recipients';recipientIds:string[]},subjectTemplate:string,messageTemplate:string):Promise<WorkflowActionResult>{
+async function deliverWorkflowEmail(input:ExecuteWorkflowActionInput,audience:{kind:'lead'}|{kind:'lead_alert_team'}|{kind:'recipients';recipientIds:string[]},subjectTemplate:string,messageTemplate:string,resolvedHtml?:string):Promise<WorkflowActionResult>{
   const leadId=input.context.run.leadId;if(!leadId)return permanent('missing_lead','Workflow email needs a lead');
   let recipients:string[];try{recipients=await recipientEmails(input.db,audience,input.values)}catch{return temporary('recipient_lookup_failed','Could not load workflow email recipients')}
   if(!recipients.length)return {outcome:'skipped',reason:'missing_contact'};
   const subject=renderWorkflowTemplate(subjectTemplate,input.values),message=renderWorkflowTemplate(messageTemplate,input.values);
-  for(const recipient of recipients){const {error}=await input.db.from('lead_email_deliveries').insert({lead_id:leadId,kind:'workflow_email',workflow_step_run_id:input.context.stepRun.id,recipient_email:recipient,subject,message,html_message:textHtml(message)});if(error&&error.code!=='23505')return temporary('email_queue_failed','Could not queue workflow email')}
+  const htmlMessage=resolvedHtml??textHtml(message);
+  for(const recipient of recipients){const {error}=await input.db.from('lead_email_deliveries').insert({lead_id:leadId,kind:'workflow_email',workflow_step_run_id:input.context.stepRun.id,recipient_email:recipient,subject,message,html_message:htmlMessage});if(error&&error.code!=='23505')return temporary('email_queue_failed','Could not queue workflow email')}
   const {data:deliveries,error:loadError}=await input.db.from('lead_email_deliveries').select('id,status,provider_message_id').eq('workflow_step_run_id',input.context.stepRun.id);
   if(loadError||!deliveries?.length)return temporary('email_queue_failed','Could not load queued workflow email');
   const ids=deliveries.filter((row:{status:string})=>row.status!=='sent').map((row:{id:string})=>row.id);if(ids.length)await processLeadEmails({ids,db:input.db});
@@ -42,7 +64,15 @@ export async function executeWorkflowAction(input:ExecuteWorkflowActionInput):Pr
   if(definition.availability!=='ready')return {outcome:'skipped',reason:'unavailable_action'};
   if(definition.requiresConsent&&input.values.lead?.consent_granted!==true)return {outcome:'skipped',reason:'no_consent'};
   switch(action.type){
-    case 'send_email':{const c=WORKFLOW_ACTION_CONFIG_SCHEMAS.send_email.parse(action.config);return deliverWorkflowEmail(input,c.to,c.subject,c.body)}
+    case 'send_email':{
+      const c=WORKFLOW_ACTION_CONFIG_SCHEMAS.send_email.parse(action.config);
+      if(c.templateId){
+        const resolved=await resolveTemplateEmail(input.db,c.templateId,input.values);
+        if(!resolved)return temporary('email_template_unavailable','The saved email template is missing or inactive');
+        return deliverWorkflowEmail(input,c.to,resolved.subject,resolved.text,resolved.html);
+      }
+      return deliverWorkflowEmail(input,c.to,c.subject!,c.body!);
+    }
     case 'notify_team':{const c=WORKFLOW_ACTION_CONFIG_SCHEMAS.notify_team.parse(action.config);return deliverWorkflowEmail(input,c.audience,c.subject,c.message)}
     case 'change_pipeline_stage':{const c=WORKFLOW_ACTION_CONFIG_SCHEMAS.change_pipeline_stage.parse(action.config);const assignmentId=typeof input.values.assignment?.id==='string'?input.values.assignment.id:null;if(c.pipeline==='assignment'&&!assignmentId)return {outcome:'skipped',reason:'missing_assignment'};const {error}=await input.db.rpc('workflow_change_pipeline_stage',{p_pipeline:c.pipeline,p_lead:input.context.run.leadId,p_assignment:assignmentId,p_status:c.status,p_causation:input.context.event.id,p_correlation:input.context.event.correlationId??input.context.event.id});return error?permanent('pipeline_update_failed','Could not change pipeline stage'):{outcome:'success'}}
     case 'create_calendar_event':{const c=WORKFLOW_ACTION_CONFIG_SCHEMAS.create_calendar_event.parse(action.config);const assignmentId=typeof input.values.assignment?.id==='string'?input.values.assignment.id:null;if(!assignmentId||!input.context.run.leadId)return {outcome:'skipped',reason:'missing_assignment'};const {data,error}=await input.db.rpc('workflow_create_appointment',{p_lead:input.context.run.leadId,p_assignment:assignmentId,p_scheduled_at:new Date(input.context.now.getTime()+c.startsInMinutes*60000).toISOString(),p_location:c.location??null,p_notes:c.notes?renderWorkflowTemplate(c.notes,input.values):null,p_causation:input.context.event.id,p_correlation:input.context.event.correlationId??input.context.event.id});return error?permanent('appointment_create_failed','Could not create appointment'):{outcome:'success',output:{appointmentId:data}}}

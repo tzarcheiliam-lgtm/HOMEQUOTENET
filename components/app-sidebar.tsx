@@ -20,6 +20,7 @@ import {
   Sprout,
   Handshake,
   Workflow,
+  Mail,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -43,6 +44,7 @@ const ICONS: Record<string, LucideIcon> = {
   Sprout,
   Handshake,
   Workflow,
+  Mail,
 };
 
 export function AppSidebar({ items }: { items: NavItem[] }) {

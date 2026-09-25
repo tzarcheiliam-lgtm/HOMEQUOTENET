@@ -103,6 +103,12 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ['admin', 'contractor'],
   },
   {
+    label: 'Email Templates',
+    href: '/app/email-templates',
+    icon: 'Mail',
+    roles: ['admin', 'contractor'],
+  },
+  {
     label: 'Team',
     href: '/app/team',
     icon: 'ShieldCheck',
