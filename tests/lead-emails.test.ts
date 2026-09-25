@@ -229,6 +229,21 @@ describe('processLeadEmails (Ethan form scenario)', () => {
     expect(tables.lead_email_deliveries[0]).toMatchObject({ status: 'sent', attempts: 2 });
   });
 
+  it('delivers a workflow email through the existing Gmail outbox exactly once', async () => {
+    const sent: { toEmail: string; subject: string }[] = [];
+    const send: LeadEmailSender = async (message) => { sent.push(message); return { id: 'gmail-workflow-1' }; };
+    tables.lead_email_deliveries = [{
+      id: 'workflow-email-1', lead_id: 'lead-1', kind: 'workflow_email', intake_event_id: null,
+      is_repeat: false, recipient_name: null, recipient_email: 'dana@example.test', status: 'pending', attempts: 0,
+      subject: 'Your project', message: 'Thanks for reaching out.', html_message: '<p>Thanks for reaching out.</p>',
+    }];
+    const { db } = fakeDb(tables);
+    expect(await processLeadEmails({ db, send, ids: ['workflow-email-1'] })).toMatchObject({ sent: 1, failed: 0 });
+    expect(sent).toEqual([{ toEmail: 'dana@example.test', subject: 'Your project', message: 'Thanks for reaching out.', html: '<p>Thanks for reaching out.</p>', text: 'Thanks for reaching out.' }]);
+    expect(await processLeadEmails({ db, send, ids: ['workflow-email-1'] })).toMatchObject({ sent: 0, failed: 0 });
+    expect(sent).toHaveLength(1);
+  });
+
   it('without LEAD_ALERT_EMAILS, alerts go only to the confirmed Liam + Nadav addresses', async () => {
     delete process.env.LEAD_ALERT_EMAILS;
     expect(leadAlertRecipients()).toEqual(['tzarcheiliam@gmail.com', 'nsolachnek@gmail.com']);

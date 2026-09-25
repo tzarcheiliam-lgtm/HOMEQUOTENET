@@ -97,6 +97,12 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ['admin'],
   },
   {
+    label: 'Automations',
+    href: '/app/workflows',
+    icon: 'Workflow',
+    roles: ['admin', 'contractor'],
+  },
+  {
     label: 'Team',
     href: '/app/team',
     icon: 'ShieldCheck',

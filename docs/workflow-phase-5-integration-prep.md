@@ -4,13 +4,24 @@
 
 | | |
 |---|---|
-| Status | Preparation (audit + scaffolding). Nothing wired, no migration added. |
+| Status | Phase 5 started 2026-09-25: H1, H2 (+ run-side H2b) and M1 fixed; workflow migrations renumbered to `0024_workflow_runtime.sql` / `0025_workflow_management.sql`; Automations RLS made admin-only (setters excluded). Production apply + scheduler still pending explicit approval. |
 | Audited at | 2026-09-25, `main` @ `92f181e` plus the uncommitted Phase 2/4 working tree |
 | Authoritative | Phase 1 contract (`docs/workflow-automation-architecture.md`, `lib/workflows/{domain,conditions,wait,events,actions,idempotency,runs,logging,definition,templates}.ts`, migration `0020`) |
 | Provisional (uncommitted, audited read-only) | Phase 2: `0021_workflow_runtime.sql`, `lib/workflows/{runtime.server,actions.server,planner,evaluator,merge}.ts`, `app/api/workflows/tick`. Phase 4: `0022_workflow_management.sql`, `lib/actions/workflows.ts`, `lib/data/workflows.ts`, `app/app/workflows/**`, `components/workflows/**`, `lib/workflows/ui.ts` |
 | Scaffolding added | `tests/fixtures/workflow-events.ts`, `tests/workflow-phase5-fixtures.test.ts`, `scripts/workflow-health.mjs` |
 
 ---
+
+## Phase 5 progress log
+
+| Item | Resolution |
+|---|---|
+| H1 lead.created null-stripping | `0024` keeps nullable keys; `funnelSlug` only when present. Guarded by `tests/workflow-phase5-hardening-db.test.ts` (every emitter's rows parse via `eventFromRow`; mutation-checked). |
+| H2 poison events | event load moved inside the dispatch `try`; failures back off 1m→1h by attempt; `claim_workflow_events` stops at 10 attempts (dead-letter, visible in `workflow-health.mjs`). Unit + DB tests, mutation-checked. |
+| H2b poison runs | `claimAndExecuteWorkflowRuns` isolates each run; runtime errors back off (`waiting`), fail permanently after `MAX_RUN_RUNTIME_ERRORS` (5); tick reports them (HTTP 207). |
+| M1 save bypass | fixed by Phase 4 (saving an enabled workflow re-runs `validateWorkflowForEnable`). |
+| Migration collision | renumbered to 0024/0025 (after applied 0023). |
+| Setter access | product decision: no Automations for setters — nav, page guards and `0020` RLS (`is_admin()`) all aligned; `0020` was never applied, so edited in place. |
 
 ## 0. Production reality (read first)
 

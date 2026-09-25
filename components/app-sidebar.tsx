@@ -19,6 +19,7 @@ import {
   Send,
   Sprout,
   Handshake,
+  Workflow,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -41,6 +42,7 @@ const ICONS: Record<string, LucideIcon> = {
   Send,
   Sprout,
   Handshake,
+  Workflow,
 };
 
 export function AppSidebar({ items }: { items: NavItem[] }) {

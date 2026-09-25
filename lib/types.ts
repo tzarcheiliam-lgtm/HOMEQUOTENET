@@ -540,7 +540,7 @@ export interface LeadRecipient {
 export interface LeadEmailDelivery {
   id: string;
   lead_id: string;
-  kind: 'new_lead_alert' | 'qualified_lead';
+  kind: 'new_lead_alert' | 'qualified_lead' | 'workflow_email';
   is_repeat: boolean;
   recipient_id: string | null;
   recipient_name: string | null;

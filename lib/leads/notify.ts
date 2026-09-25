@@ -31,11 +31,14 @@ type Db = ReturnType<typeof createAdminClient>;
 interface DeliveryRow {
   id: string;
   lead_id: string;
-  kind: 'new_lead_alert' | 'qualified_lead';
+  kind: 'new_lead_alert' | 'qualified_lead' | 'workflow_email';
   intake_event_id: string | null;
   is_repeat: boolean;
   recipient_name: string | null;
   recipient_email: string | null;
+  subject: string | null;
+  message: string | null;
+  html_message: string | null;
   attempts: number;
 }
 
@@ -228,25 +231,33 @@ export async function processLeadEmails(
   const out: ProcessResult = { sent: 0, failed: 0, results: [] };
   for (const job of (jobs ?? []) as DeliveryRow[]) {
     try {
-      let sessionId: string | null = null;
-      if (job.intake_event_id) {
-        const { data: ev } = await db
-          .from('lead_intake_events')
-          .select('provider, external_lead_id')
-          .eq('id', job.intake_event_id)
-          .maybeSingle();
-        if (ev?.provider === 'website') sessionId = ev.external_lead_id;
-      }
-      const data = await loadLeadEmailData(db, job.lead_id, { sessionId, isRepeat: job.is_repeat });
       let to: string;
-      let built;
-      if (job.kind === 'new_lead_alert') {
-        to = leadAlertRecipients().join(', ');
-        built = buildNewLeadAlert(data, leadUrl(job.lead_id, opts.siteUrl));
-      } else {
-        if (!job.recipient_email || !EMAIL.test(job.recipient_email)) throw new Error('Recipient email is invalid');
+      let built: { subject: string; text: string; html: string };
+      if (job.kind === 'workflow_email') {
+        if (!job.recipient_email || !EMAIL.test(job.recipient_email) || !job.subject || !job.message || !job.html_message) {
+          throw new Error('Workflow email delivery is incomplete');
+        }
         to = job.recipient_email;
-        built = buildQualifiedLeadEmail(data, job.recipient_name);
+        built = { subject: job.subject, text: job.message, html: job.html_message };
+      } else {
+        let sessionId: string | null = null;
+        if (job.intake_event_id) {
+          const { data: ev } = await db
+            .from('lead_intake_events')
+            .select('provider, external_lead_id')
+            .eq('id', job.intake_event_id)
+            .maybeSingle();
+          if (ev?.provider === 'website') sessionId = ev.external_lead_id;
+        }
+        const data = await loadLeadEmailData(db, job.lead_id, { sessionId, isRepeat: job.is_repeat });
+        if (job.kind === 'new_lead_alert') {
+          to = leadAlertRecipients().join(', ');
+          built = buildNewLeadAlert(data, leadUrl(job.lead_id, opts.siteUrl));
+        } else {
+          if (!job.recipient_email || !EMAIL.test(job.recipient_email)) throw new Error('Recipient email is invalid');
+          to = job.recipient_email;
+          built = buildQualifiedLeadEmail(data, job.recipient_name);
+        }
       }
       const delivered = await send({ toEmail: to, subject: built.subject, message: built.text, html: built.html, text: built.text });
       // Gmail accepted it: never fall into the retry path from here, or the

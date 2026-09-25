@@ -504,10 +504,12 @@ grant execute on function public.emit_workflow_event(text,text,text,uuid,text,ti
 -- ===========================================================================
 -- ROW LEVEL SECURITY
 -- ===========================================================================
--- Reads: staff (admin + setter) see everything, like leads. A contractor login
--- sees only rows scoped to its own contractor_id — never NULL (HomeQuote) rows,
--- never another contractor's. Events and logs are staff-only: they carry
--- network-level detail about shared leads.
+-- Reads: admins see everything. Appointment setters have no Automations
+-- access (product decision 2026-09-25; nav, page guards and these policies
+-- move together). A contractor login sees only rows scoped to its own
+-- contractor_id — never NULL (HomeQuote) rows, never another contractor's.
+-- Events and logs are admin-only: they carry network-level detail about
+-- shared leads.
 -- Writes: definitions are admin-only; runtime tables have no write policies
 -- (service role only), like every other outbox/queue in this schema.
 alter table public.workflows          enable row level security;
@@ -519,7 +521,7 @@ alter table public.workflow_logs      enable row level security;
 
 drop policy if exists workflows_select on public.workflows;
 create policy workflows_select on public.workflows for select
-  using (public.is_staff() or (contractor_id is not null and contractor_id = public.auth_contractor_id()));
+  using (public.is_admin() or (contractor_id is not null and contractor_id = public.auth_contractor_id()));
 drop policy if exists workflows_insert on public.workflows;
 create policy workflows_insert on public.workflows for insert with check (public.is_admin());
 drop policy if exists workflows_update on public.workflows;
@@ -530,7 +532,7 @@ create policy workflows_delete on public.workflows for delete using (public.is_a
 
 drop policy if exists workflow_steps_select on public.workflow_steps;
 create policy workflow_steps_select on public.workflow_steps for select
-  using (public.is_staff() or exists (
+  using (public.is_admin() or exists (
     select 1 from public.workflows w
     where w.id = workflow_steps.workflow_id
       and w.contractor_id is not null and w.contractor_id = public.auth_contractor_id()
@@ -540,18 +542,18 @@ create policy workflow_steps_write on public.workflow_steps for all
   using (public.is_admin()) with check (public.is_admin());
 
 drop policy if exists workflow_events_select on public.workflow_events;
-create policy workflow_events_select on public.workflow_events for select using (public.is_staff());
+create policy workflow_events_select on public.workflow_events for select using (public.is_admin());
 
 drop policy if exists workflow_runs_select on public.workflow_runs;
 create policy workflow_runs_select on public.workflow_runs for select
-  using (public.is_staff() or (contractor_id is not null and contractor_id = public.auth_contractor_id()));
+  using (public.is_admin() or (contractor_id is not null and contractor_id = public.auth_contractor_id()));
 
 drop policy if exists workflow_step_runs_select on public.workflow_step_runs;
 create policy workflow_step_runs_select on public.workflow_step_runs for select
-  using (public.is_staff() or (contractor_id is not null and contractor_id = public.auth_contractor_id()));
+  using (public.is_admin() or (contractor_id is not null and contractor_id = public.auth_contractor_id()));
 
 drop policy if exists workflow_logs_select on public.workflow_logs;
-create policy workflow_logs_select on public.workflow_logs for select using (public.is_staff());
+create policy workflow_logs_select on public.workflow_logs for select using (public.is_admin());
 
 comment on table public.workflow_events is
   'Canonical workflow domain-event ledger. Insert only through emit_workflow_event(); idempotency_key dedupes webhooks, retries and refreshes. See docs/workflow-automation-architecture.md.';

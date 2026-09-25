@@ -194,7 +194,7 @@ suite('workflow data model (rolled back)', { timeout: 60_000 }, () => {
     expect(await q('select lead_id from public.workflow_runs where id=$1', [run.id])).toEqual([{ lead_id: null }]);
   });
 
-  it('RLS: contractors see only their own workflows and runs; staff see all; nobody writes runtime rows', async () => {
+  it('RLS: contractors see only their own workflows and runs; admins see all; setters see none; nobody writes runtime rows', async () => {
     const view = (user: string) => as(user, async () => ({
       workflows: (await q('select id from public.workflows where id = any($1)', [[ids.hqWorkflow, ids.poolWorkflow, ids.fenceWorkflow, ids.template]])).map((r) => r.id).sort(),
       steps: (await q('select count(*)::int as n from public.workflow_steps where workflow_id=$1', [ids.hqWorkflow]))[0].n,
@@ -204,10 +204,12 @@ suite('workflow data model (rolled back)', { timeout: 60_000 }, () => {
     }));
     expect(await view(ids.poolUser)).toEqual({ workflows: [ids.poolWorkflow], steps: 0, runs: [ids.poolCo], events: 0, logs: 0 });
     expect(await view(ids.fenceUser)).toEqual({ workflows: [ids.fenceWorkflow], steps: 0, runs: [], events: 0, logs: 0 });
-    const setter = await view(ids.setter);
-    expect(setter.workflows).toHaveLength(4);
-    expect(setter.runs).toEqual(expect.arrayContaining([null, ids.poolCo]));
-    expect(setter.events).toBeGreaterThan(0);
+    // Appointment setters have no Automations access at any layer.
+    expect(await view(ids.setter)).toEqual({ workflows: [], steps: 0, runs: [], events: 0, logs: 0 });
+    const admin = await view(ids.admin);
+    expect(admin.workflows).toHaveLength(4);
+    expect(admin.runs).toEqual(expect.arrayContaining([null, ids.poolCo]));
+    expect(admin.events).toBeGreaterThan(0);
 
     // Writes: contractors and setters cannot define workflows; nobody but the
     // service role can write runtime rows or call the event entry point.

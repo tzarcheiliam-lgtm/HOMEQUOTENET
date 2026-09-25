@@ -4,10 +4,10 @@
 
 | | |
 |---|---|
-| Status | Phase 1 complete: architecture, data model, shared contracts. No engine, no UI, no providers. |
-| Database | `supabase/migrations/0020_workflow_automation_foundation.sql` |
+| Status | Phase 4 management UI complete on the Phase 1/2 runtime. Phase 3 SMS remains preparation-only in this checkout, so SMS workflows stay disabled. |
+| Database | `supabase/migrations/0020_workflow_automation_foundation.sql`, `0024_workflow_runtime.sql`, `0025_workflow_management.sql` |
 | TypeScript contract | `lib/workflows/` (import from `@/lib/workflows`) |
-| Tests | `tests/workflows-contract.test.ts` (pure), `tests/workflows-db.test.ts` (real DB, rolled back) |
+| Tests | `tests/workflows-contract.test.ts`, `tests/workflow-runtime.test.ts` (pure); `tests/workflows-db.test.ts`, `tests/workflow-runtime-db.test.ts` (real DB, rolled back) |
 
 ---
 
@@ -18,12 +18,12 @@
         │  emit_workflow_event()  ← one entry point, idempotent
         ▼
  workflow_events  (ledger + dispatch queue)
-        │  dispatcher (Phase 2): enabled workflows with trigger_type = event.type
+        │  dispatcher: enabled workflows with trigger_type = event.type
         │  that can see the event's tenant, trigger_config filter, entry conditions,
         │  reentry policy
         ▼
  workflow_runs  (one per workflow per event; definition snapshot)
-        │  executor (Phase 2): steps in order
+        │  executor: steps in order
         ▼
  workflow_step_runs  (one per step; retry + wait state; effect idempotency key)
         │  action handler → existing system (Gmail outbox, leads.status, appointments…)
@@ -32,6 +32,26 @@
 ```
 
 **TRIGGER → optional CONDITIONS → one or more ACTIONS.** A trigger *is* an event type; there is one vocabulary for both.
+
+### Phase 2 runtime
+
+- `supabase/migrations/0024_workflow_runtime.sql` installs canonical table emitters, event leases, atomic `FOR UPDATE SKIP LOCKED` claim functions, workflow action RPCs, and the workflow-email extension to the existing Gmail outbox.
+- `lib/workflows/runtime.server.ts` matches events, snapshots definitions, enforces tenant/reentry/causation rules, executes ordered steps, resumes durable waits and retries, handles exit events, and exposes side-effect-free dry runs.
+- `lib/workflows/evaluator.ts` and `planner.ts` implement the Phase 1 condition and matching contracts. `actions.server.ts` handles only ready actions and returns `unavailable_action` for Phase 3/domain-blocked actions.
+- `POST /api/workflows/tick` is the bounded scheduled worker endpoint, protected by `WORKFLOW_CRON_SECRET`. It processes both undispatched events and due runs.
+- Pausing/disabling a workflow affects future matching only. Existing runs execute their immutable `definition_snapshot`.
+- Branch definitions remain enable-time blocked. SMS, inbound messaging, tasks, tags, and lead-owner assignment remain explicitly unavailable rather than gaining parallel placeholder domains.
+
+### Phase 4 management UI
+
+- `/app/workflows` is the RLS-scoped dashboard for workflow status, trigger/account filters, run totals, recent outcome, and lightweight success metrics.
+- `/app/workflows/new` creates a disabled blank definition or clones one of `WORKFLOW_TEMPLATES`. No template behavior is hardcoded into the UI.
+- `/app/workflows/[id]` is a step builder derived from `WORKFLOW_TRIGGERS`, `CONDITION_FIELDS`, `CONDITION_OPERATORS`, and `WORKFLOW_ACTIONS`. It supports flat AND conditions, ready-action config editors, canonical merge fields, all Phase 2 wait modes, safe up/down reordering, and explicit unavailable states.
+- Dry runs call `dryRunWorkflowEvent()` with a real saved event. The frontend never synthesizes results and the action path is never invoked.
+- Run and step history live at `/app/workflows/[id]/runs` and `/app/workflows/runs/[runId]`, using canonical run/step states and sanitized `workflow_logs`.
+- Migration `0025_workflow_management.sql` supplies admin-only, transactional definition writes. Saves use optimistic version checks; duplication creates new ids and starts disabled; archive disables the workflow without deleting runs or logs. Existing runs retain their immutable definition snapshots.
+- Existing RLS remains authoritative: admins can read all workflow data (Appointment setters have no Automations access at any layer); contractors see only rows with their own `contractor_id`; only admins receive management controls and every server action rechecks the role.
+- The mobile builder uses Overview / Trigger / Conditions / Steps jump sections, full-width primary actions, stacked step cards, and the dashboard shell now exposes navigation on small screens.
 
 ## 2. Findings about the existing app that shaped this design
 
@@ -86,7 +106,7 @@ contractors 1─* workflows 1─* workflow_steps (self-ref parent, same workflow
 workflow_logs → workflow / run / step run / event
 ```
 
-Delete behavior: deleting a contractor cascades its workflows, runs and step runs (events it scoped become `contractor_id NULL`, staff-only). Deleting a lead sets `lead_id NULL` on events and runs (history kept, deletion never blocked). A workflow with runs cannot be deleted directly — archive it (`archived_at`, `enabled=false`).
+Delete behavior: deleting a contractor cascades its workflows, runs and step runs (events it scoped become `contractor_id NULL`, admin-only). Deleting a lead sets `lead_id NULL` on events and runs (history kept, deletion never blocked). A workflow with runs cannot be deleted directly — archive it (`archived_at`, `enabled=false`).
 
 ### Tenant guards (triggers)
 
@@ -292,16 +312,16 @@ Handlers return `WorkflowActionResult`:
 
 | Table | Select | Insert / Update / Delete |
 |---|---|---|
-| workflows | staff; contractor: own rows only (never NULL/HomeQuote rows, never other contractors) | admin |
-| workflow_steps | staff; contractor: steps of own workflows | admin |
-| workflow_events | staff | service role only |
-| workflow_runs | staff; contractor: own rows | service role only |
-| workflow_step_runs | staff; contractor: own rows | service role only |
-| workflow_logs | staff | service role only |
+| workflows | admin; contractor: own rows only (never NULL/HomeQuote rows, never other contractors) | admin |
+| workflow_steps | admin; contractor: steps of own workflows | admin |
+| workflow_events | admin | service role only |
+| workflow_runs | admin; contractor: own rows | service role only |
+| workflow_step_runs | admin; contractor: own rows | service role only |
+| workflow_logs | admin | service role only |
 
 - `emit_workflow_event` is `security definer`, revoked from `public/anon/authenticated`, granted to `service_role` only (same as `distribute_lead`, `claim_*`).
 - Tenant of runs, step runs and logs is **derived by trigger**, never trusted from the caller.
-- Events and logs are staff-only because they describe network-level facts about shared leads.
+- Events and logs are admin-only because they describe network-level facts about shared leads.
 - Logs carry ids and codes only; `workflowLogEntrySchema` rejects keys that look like contact data, message bodies or secrets (`email`, `phone*`, `*token*`, `body`, `name`, …).
 - Contractors cannot author workflows yet (admin-only writes). Opening self-serve authoring later is a deliberate RLS change plus the `network_only_action` rules above.
 - Nothing weakens existing policies; no existing object is altered.

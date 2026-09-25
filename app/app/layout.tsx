@@ -4,6 +4,7 @@ import { navItemsForRole, ROLE_LABELS } from '@/lib/nav';
 import { AppSidebar } from '@/components/app-sidebar';
 import { signOutAction } from '@/lib/actions/auth';
 import { Button } from '@/components/ui/button';
+import { MobileAppNav } from '@/components/mobile-app-nav';
 
 export default async function AppLayout({
   children,
@@ -27,12 +28,12 @@ export default async function AppLayout({
 
       {/* Main column */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-16 items-center justify-between border-b px-6">
-          <span className="text-sm text-muted-foreground">
+        <header className="flex min-h-16 items-center justify-between gap-3 border-b px-3 sm:px-6">
+          <div className="flex items-center gap-3"><MobileAppNav items={items} /><span className="hidden text-sm text-muted-foreground sm:inline">
             {ROLE_LABELS[profile.role]}
-          </span>
+          </span></div>
           <div className="flex items-center gap-3">
-            <span className="text-sm font-medium">
+            <span className="hidden text-sm font-medium sm:inline">
               {profile.full_name || profile.email}
             </span>
             <form action={signOutAction}>
@@ -42,7 +43,7 @@ export default async function AppLayout({
             </form>
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        <main className="min-w-0 flex-1 overflow-y-auto p-3 sm:p-6">{children}</main>
       </div>
     </div>
   );
