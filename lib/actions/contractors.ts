@@ -38,6 +38,7 @@ const contractorSchema = z.object({
   phone: z.string().nullable(),
   status: z.enum(['active', 'paused', 'inactive']),
   notes: z.string().nullable(),
+  website: z.string().max(300, 'Website is too long').nullable(),
 });
 
 export async function createContractor(
@@ -53,6 +54,7 @@ export async function createContractor(
     phone: strOrNull(formData.get('phone')),
     status: formData.get('status') ?? 'active',
     notes: strOrNull(formData.get('notes')),
+    website: strOrNull(formData.get('website')),
   });
   if (!parsed.success) return { error: parsed.error.errors[0].message };
 
@@ -66,6 +68,7 @@ export async function createContractor(
       phone: parsed.data.phone,
       status: parsed.data.status,
       notes: parsed.data.notes,
+      website: parsed.data.website,
       service_areas: parseServiceAreas(formData.get('service_areas')),
     })
     .select('id')
@@ -93,6 +96,7 @@ export async function updateContractor(
     phone: strOrNull(formData.get('phone')),
     status: formData.get('status') ?? 'active',
     notes: strOrNull(formData.get('notes')),
+    website: strOrNull(formData.get('website')),
   });
   if (!parsed.success) return { error: parsed.error.errors[0].message };
 
@@ -106,6 +110,7 @@ export async function updateContractor(
       phone: parsed.data.phone,
       status: parsed.data.status,
       notes: parsed.data.notes,
+      website: parsed.data.website,
       service_areas: parseServiceAreas(formData.get('service_areas')),
     })
     .eq('id', id);

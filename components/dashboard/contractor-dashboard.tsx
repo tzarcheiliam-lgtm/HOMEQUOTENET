@@ -32,6 +32,8 @@ import type {
   DashActivity,
 } from '@/lib/data/contractor-dashboard';
 import type { ActivityType } from '@/lib/types';
+import { GrowthDashboardCard } from '@/components/growth/growth-dashboard-card';
+import type { Recommendation } from '@/lib/growth/recommend';
 
 const money = (n: number) =>
   `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
@@ -144,9 +146,12 @@ function ActivityItem({ a }: { a: DashActivity }) {
 export function ContractorDashboard({
   data,
   name,
+  growth,
 }: {
   data: Data;
   name: string | null;
+  /** Optional services card; omitted when growth data is unavailable. */
+  growth?: { recommendation: Recommendation | null; openRequests: number } | null;
 }) {
   return (
     <div className="mx-auto max-w-7xl space-y-8">
@@ -358,6 +363,14 @@ export function ContractorDashboard({
               )}
             </CardContent>
           </Card>
+
+          {/* Optional services: last in the rail, below the lead workflow */}
+          {growth && (
+            <GrowthDashboardCard
+              recommendation={growth.recommendation}
+              openRequests={growth.openRequests}
+            />
+          )}
         </div>
       </section>
     </div>

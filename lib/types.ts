@@ -137,6 +137,8 @@ export interface Contractor {
   service_areas: string[];
   status: string;
   notes: string | null;
+  /** Added in 0018; used to suggest website services sparingly. */
+  website: string | null;
   created_at: string;
   updated_at: string;
 }

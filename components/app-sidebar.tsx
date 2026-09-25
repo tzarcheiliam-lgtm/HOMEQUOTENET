@@ -17,6 +17,8 @@ import {
   ArrowDownToLine,
   Phone,
   Send,
+  Sprout,
+  Handshake,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -37,6 +39,8 @@ const ICONS: Record<string, LucideIcon> = {
   ArrowDownToLine,
   Phone,
   Send,
+  Sprout,
+  Handshake,
 };
 
 export function AppSidebar({ items }: { items: NavItem[] }) {
