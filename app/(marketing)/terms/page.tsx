@@ -1,12 +1,11 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { site } from '@/content/site';
-import {
-  LegalPage,
-  LegalSection,
-  ReviewNote,
-} from '@/components/marketing/legal';
+import { LegalPage, LegalSection } from '@/components/marketing/legal';
 import { baseOpenGraph, defaultOgImage } from '@/lib/site-metadata';
+
+/** Bump this whenever the copy below changes materially. */
+const LAST_UPDATED = 'September 25, 2026';
 
 export const metadata: Metadata = {
   title: 'Terms of Service',
@@ -28,21 +27,13 @@ export const metadata: Metadata = {
   },
 };
 
-// Standard lead-gen terms template — have counsel review before launch.
 export default function TermsPage() {
   return (
     <LegalPage
       title="Terms of Service"
-      updated={String(new Date().getFullYear())}
-      intro={`These terms govern use of the ${site.name} website, homeowner quote requests, and contractor applications.`}
+      updated={LAST_UPDATED}
+      intro={`These terms govern use of the ${site.name} website, homeowner quote requests, and contractor applications. The terms that govern a specific contractor partnership are set out in that contractor's individual partner agreement, not on this page.`}
     >
-      <ReviewNote>
-        This page is a general template and is not legal advice. Have an attorney
-        review it for your jurisdiction before relying on it. The terms that
-        govern a contractor partnership are set out in that contractor&rsquo;s
-        individual partner agreement, not on this page.
-      </ReviewNote>
-
       <div className="mt-10">
         <LegalSection heading="1. The service">
           <p>
@@ -142,7 +133,25 @@ export default function TermsPage() {
           </p>
         </LegalSection>
 
-        <LegalSection heading="9. Contact">
+        <LegalSection heading="9. Changes to these terms">
+          <p>
+            We may update these terms from time to time. Changes take effect
+            when posted here with a new &ldquo;Last updated&rdquo; date.
+            Continued use of the website after an update means you accept the
+            revised terms.
+          </p>
+        </LegalSection>
+
+        <LegalSection heading="10. Governing law">
+          <p>
+            These terms are governed by the laws of the State of California,
+            without regard to its conflict-of-laws rules, and any dispute
+            arising from them or from use of the website will be brought in a
+            state or federal court located in California.
+          </p>
+        </LegalSection>
+
+        <LegalSection heading="11. Contact">
           <p>
             Questions about these terms? Email{' '}
             <strong>{site.contact.email}</strong>.

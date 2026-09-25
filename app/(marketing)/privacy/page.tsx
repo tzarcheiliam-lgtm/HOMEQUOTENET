@@ -1,12 +1,11 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { site } from '@/content/site';
-import {
-  LegalPage,
-  LegalSection,
-  ReviewNote,
-} from '@/components/marketing/legal';
+import { LegalPage, LegalSection } from '@/components/marketing/legal';
 import { baseOpenGraph, defaultOgImage } from '@/lib/site-metadata';
+
+/** Bump this whenever the copy below changes materially. */
+const LAST_UPDATED = 'September 25, 2026';
 
 export const metadata: Metadata = {
   title: 'Privacy Policy',
@@ -28,21 +27,13 @@ export const metadata: Metadata = {
   },
 };
 
-// NOTE: This is a standard lead-generation privacy policy template. Have counsel
-// review and replace the contact details / company specifics before launch.
 export default function PrivacyPage() {
   return (
     <LegalPage
       title="Privacy Policy"
-      updated={String(new Date().getFullYear())}
+      updated={LAST_UPDATED}
       intro={`How ${site.name} collects, uses, and shares information — both from homeowners who request quotes and from contractors who apply to receive booked appointments.`}
     >
-      <ReviewNote>
-        This page is a general template and is not legal advice. Replace the
-        placeholder contact addresses below and have an attorney review it for
-        your jurisdiction before relying on it.
-      </ReviewNote>
-
       <div className="mt-10">
         <LegalSection heading="Who we are">
           <p>
@@ -126,6 +117,25 @@ export default function PrivacyPage() {
           </p>
         </LegalSection>
 
+        <LegalSection heading="Cookies & tracking">
+          <p>
+            Our website and forms use cookies and similar technologies (including
+            advertising pixels from platforms such as Meta) to measure which
+            campaigns and pages drive requests and to attribute a booked
+            appointment back to its source. You can block cookies in your
+            browser settings; doing so may affect how our forms function.
+          </p>
+        </LegalSection>
+
+        <LegalSection heading="Data retention">
+          <p>
+            We keep homeowner request and contractor application records for as
+            long as needed to deliver and support the appointment, resolve
+            disputes under a partner agreement, and meet our accounting, tax, and
+            legal obligations, after which we delete or de-identify the data.
+          </p>
+        </LegalSection>
+
         <LegalSection heading="Your choices & rights">
           <p>
             Depending on where you live (for example, California residents under
@@ -142,10 +152,15 @@ export default function PrivacyPage() {
             you submitted. We will verify and process your request within the
             timeframe required by applicable law.
           </p>
-          <ReviewNote>
-            Replace <strong>{site.contact.email}</strong> in{' '}
-            <code>content/site.ts</code> with a real, monitored privacy inbox.
-          </ReviewNote>
+        </LegalSection>
+
+        <LegalSection heading="Changes to this policy">
+          <p>
+            We may update this policy as our practices change. We will post the
+            revised policy here with a new &ldquo;Last updated&rdquo; date; if a
+            change is material, we will provide additional notice where required
+            by law.
+          </p>
         </LegalSection>
 
         <LegalSection heading="Contact">

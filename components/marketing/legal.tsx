@@ -64,15 +64,3 @@ export function LegalSection({
     </section>
   );
 }
-
-/** Flags a placeholder that must be replaced before launch. */
-export function ReviewNote({ children }: { children: ReactNode }) {
-  return (
-    <p className="rounded-xl border border-[var(--hq-warn)]/35 bg-[var(--hq-warn)]/10 px-4 py-3 text-sm leading-6 text-[var(--hq-text-muted)]">
-      <strong className="font-semibold text-[var(--hq-warn)]">
-        Needs review:
-      </strong>{' '}
-      {children}
-    </p>
-  );
-}
