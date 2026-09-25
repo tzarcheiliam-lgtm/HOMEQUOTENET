@@ -1,6 +1,7 @@
 import { ArrowRight, CalendarCheck, Check, CircleCheck, MailCheck, PhoneIncoming, Sparkles, UserCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { RequestDialog } from '@/components/growth/request-dialog';
+import { PriceTag } from '@/components/growth/price-tag';
 import { ServiceIcon } from '@/components/growth/service-icon';
 import type { Requester } from '@/components/growth/service-request-form';
 import { OPEN_REQUEST_STATUSES, requestStatusLabel, type GrowthService, type RequestStatus } from '@/lib/growth/catalog';
@@ -77,13 +78,12 @@ export function FeaturedServiceCard({
               </li>
             ))}
           </ul>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-1">
-            <RequestDialog service={service} requester={requester} trigger={trigger} />
-            {service.startingAt ? (
-              <span className="text-sm font-medium text-white/80">{service.startingAt}</span>
-            ) : (
-              <span className="text-sm text-white/60">No charge to request. We’ll walk you through setup.</span>
-            )}
+          <div className="space-y-5 border-t border-white/10 pt-6">
+            <PriceTag price={service.price} tone="inverse" size="lg" />
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <RequestDialog service={service} requester={requester} trigger={trigger} />
+              <span className="text-sm text-white/60">No charge to request. We’ll confirm scope and price with you first.</span>
+            </div>
           </div>
         </div>
 

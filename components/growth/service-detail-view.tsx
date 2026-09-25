@@ -5,6 +5,7 @@ import { OPEN_REQUEST_STATUSES, type GrowthService } from '@/lib/growth/catalog'
 import { PageHeader } from '@/components/ui/page-header';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { PriceTag } from '@/components/growth/price-tag';
 import { ServiceIcon } from '@/components/growth/service-icon';
 import { RequestStatusBadge } from '@/components/growth/request-status-badge';
 import { ServiceRequestForm } from '@/components/growth/service-request-form';
@@ -33,6 +34,7 @@ export function ServiceDetailView({
             <ServiceIcon service={service.slug} tone="strong" />
             <p className="font-medium">{service.tagline}</p>
             <p className="text-sm leading-relaxed text-muted-foreground">{service.description}</p>
+            <PriceTag price={service.price} className="border-y py-4" />
             <div className="space-y-2">
               <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">What you get</h2>
               <ul className="space-y-2">
@@ -43,7 +45,7 @@ export function ServiceDetailView({
                   </li>
                 ))}
               </ul>
-              <p className="text-xs text-muted-foreground">Exact scope is agreed with you before any work starts.</p>
+              <p className="text-xs text-muted-foreground">Exact scope and price are agreed with you before any work starts.</p>
             </div>
           </CardContent>
         </Card>

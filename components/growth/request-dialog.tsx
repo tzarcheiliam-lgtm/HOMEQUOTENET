@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { PriceTag } from '@/components/growth/price-tag';
 import { ServiceIcon } from '@/components/growth/service-icon';
 import { ServiceRequestForm, type Requester } from '@/components/growth/service-request-form';
 import type { GrowthService } from '@/lib/growth/catalog';
@@ -56,6 +57,7 @@ export function RequestDialog({
               </li>
             ))}
           </ul>
+          <PriceTag price={service.price} className="rounded-lg bg-muted/50 px-4 py-3" />
           <ServiceRequestForm
             key={session}
             service={service}

@@ -5,6 +5,7 @@ import {
   GROWTH_SERVICES,
   REQUEST_STATUSES,
   SERVICE_SLUGS,
+  formatPrice,
   getService,
   isRequestStatus,
   isRequestableService,
@@ -79,12 +80,32 @@ describe('Growth Tools catalog', () => {
     expect(REQUEST_STATUSES.map((s) => s.label)).toEqual(['New', 'Contacted', 'In Progress', 'Completed', 'Declined']);
   });
 
-  it('shows no invented prices, results or popularity', () => {
+  it('prices every active service with the agreed figures and a clear type', () => {
+    const shown = Object.fromEntries(ACTIVE_SERVICES.map((s) => [s.slug, formatPrice(s.price)]));
+    expect(shown).toEqual({
+      ai_receptionist: '$399–$699/mo + $500 setup',
+      lead_follow_up: '$149–$299/mo',
+      crm_setup: 'Included with eligible HomeQuote plans',
+      custom_funnel: '$350–$750 one-time',
+      website: 'Starting at $500',
+      lead_reactivation: '$300–$750 per campaign',
+      call_tracking: '$99–$199/mo',
+      brochures: '$350–$750 one-time',
+      brand_identity: '$500–$1,000+ one-time',
+      social_ad_creative: '$250–$500 per creative pack',
+      photo_video: 'Custom quote',
+      review_generation: '$99–$199/mo',
+      local_seo: '$500–$1,000+/mo',
+    });
+    expect(getService('lead_reactivation')!.price.note).toBe('Messaging usage may be billed separately.');
     for (const s of GROWTH_SERVICES) {
-      expect(s.startingAt).toBeUndefined();
-      expect(s.badge).toBeUndefined();
+      expect(Boolean(s.price.amount)).toBe(!['custom_quote', 'included'].includes(s.price.type));
     }
-    const copy = JSON.stringify(GROWTH_SERVICES);
+  });
+
+  it('shows no invented results or popularity, and keeps prices out of the copy', () => {
+    for (const s of GROWTH_SERVICES) expect(s.badge).toBeUndefined();
+    const copy = JSON.stringify(GROWTH_SERVICES.map((s) => ({ ...s, price: undefined })));
     expect(copy).not.toMatch(/\$\s?\d|\d\s?%|guarantee|\bdouble\b|\btriple\b|\bROI\b|#1|best in|proven|testimonial/i);
   });
 

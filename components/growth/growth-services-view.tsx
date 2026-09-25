@@ -22,6 +22,9 @@ function Hero() {
         Add-ons the HomeQuote team sets up for you, so more of the leads you already get turn into booked
         appointments and signed work.
       </p>
+      <p className="text-sm text-muted-foreground">
+        Requesting is free. Our team confirms scope and final price with you before anything is billed.
+      </p>
     </header>
   );
 }
