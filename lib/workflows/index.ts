@@ -22,5 +22,7 @@ export * from './runs';
 export * from './logging';
 export * from './definition';
 export * from './templates';
-export * from './evaluator';
-export * from './planner';
+// Phase 2 (evaluator/planner/runtime/merge — the execution engine) is still
+// in progress and not yet committed; do not re-add these exports until those
+// files are committed to main, or the production build breaks (this file is
+// isomorphic and pulled into every build that imports @/lib/workflows).
