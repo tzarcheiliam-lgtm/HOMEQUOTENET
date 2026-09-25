@@ -12,11 +12,18 @@ const state = vi.hoisted(() => ({
   insertError: null as null | { code: string; message: string },
   tables: [] as string[],
   alerts: [] as string[],
+  resent: [] as string[],
 }));
 
 vi.mock('server-only', () => ({}));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
-vi.mock('@/lib/growth/notify', () => ({ sendServiceRequestAlertSoon: (id: string) => state.alerts.push(id) }));
+vi.mock('@/lib/growth/notify', () => ({
+  sendServiceRequestAlertSoon: (id: string) => state.alerts.push(id),
+  sendServiceRequestAlert: async (id: string) => {
+    state.resent.push(id);
+    return { sent: true };
+  },
+}));
 vi.mock('@/lib/auth', () => ({
   requireRole: vi.fn(async (roles: string[]) => {
     const p = state.profile;
@@ -49,7 +56,7 @@ vi.mock('@/lib/supabase/server', () => ({
   }),
 }));
 
-import { requestServiceInfo, updateServiceRequestStatus } from '@/lib/actions/service-requests';
+import { requestServiceInfo, retryServiceRequestEmail, updateServiceRequestStatus } from '@/lib/actions/service-requests';
 
 const MY_COMPANY = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const OTHER_COMPANY = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -73,6 +80,7 @@ beforeEach(() => {
   state.insertError = null;
   state.tables = [];
   state.alerts = [];
+  state.resent = [];
 });
 
 describe('requestServiceInfo', () => {
@@ -80,16 +88,18 @@ describe('requestServiceInfo', () => {
     const result = await requestServiceInfo(
       undefined,
       form({
-        service: 'website',
-        notes: 'Need a new site',
+        service: 'ai_receptionist',
+        notes: 'We miss calls on weekends',
+        source: 'growth_page',
         contractor_id: OTHER_COMPANY,
         requested_by: 'someone-else',
-        status: 'accepted',
+        status: 'completed',
+        notification_status: 'sent',
       })
     );
-    expect(result).toEqual({ ok: true, serviceName: 'Website creation or redesign', contactEmail: 'owner@example.test' });
+    expect(result).toEqual({ ok: true, serviceName: 'AI Receptionist', contactEmail: 'owner@example.test' });
     expect(state.inserts).toEqual([
-      { contractor_id: MY_COMPANY, requested_by: contractor.id, service: 'website', notes: 'Need a new site' },
+      { contractor_id: MY_COMPANY, requested_by: contractor.id, service: 'ai_receptionist', notes: 'We miss calls on weekends', source: 'growth_page' },
     ]);
     // The HQN team is alerted about the saved request.
     expect(state.alerts).toEqual(['new-request-id']);
@@ -107,10 +117,13 @@ describe('requestServiceInfo', () => {
     expect(state.inserts).toEqual([]);
   });
 
-  it('rejects an unknown service without touching the database', async () => {
-    const result = await requestServiceInfo(undefined, form({ service: 'gift_card' }));
-    expect(result).toMatchObject({ ok: false });
+  it('rejects an unknown or retired service without touching the database', async () => {
+    for (const service of ['gift_card', 'landing_pages']) {
+      const result = await requestServiceInfo(undefined, form({ service }));
+      expect(result).toMatchObject({ ok: false });
+    }
     expect(state.inserts).toEqual([]);
+    expect(state.alerts).toEqual([]);
   });
 
   it('explains a duplicate open request instead of failing silently', async () => {
@@ -137,8 +150,8 @@ describe('updateServiceRequestStatus', () => {
 
   it('lets an admin move a request to a known status', async () => {
     state.profile = { ...contractor, role: 'admin', contractor_id: null };
-    await updateServiceRequestStatus(form({ id, status: 'proposal_sent' }));
-    expect(state.updates).toEqual([{ values: { status: 'proposal_sent' }, id }]);
+    await updateServiceRequestStatus(form({ id, status: 'in_progress' }));
+    expect(state.updates).toEqual([{ values: { status: 'in_progress' }, id }]);
   });
 
   it('ignores unknown statuses', async () => {
@@ -148,7 +161,28 @@ describe('updateServiceRequestStatus', () => {
   });
 
   it('blocks contractors from changing status', async () => {
-    await expect(updateServiceRequestStatus(form({ id, status: 'accepted' }))).rejects.toThrow(/REDIRECT/);
+    await expect(updateServiceRequestStatus(form({ id, status: 'completed' }))).rejects.toThrow(/REDIRECT/);
     expect(state.updates).toEqual([]);
+  });
+});
+
+describe('retryServiceRequestEmail', () => {
+  const id = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+
+  it('lets an admin resend the team email', async () => {
+    state.profile = { ...contractor, role: 'admin', contractor_id: null };
+    await retryServiceRequestEmail(form({ id }));
+    expect(state.resent).toEqual([id]);
+  });
+
+  it('ignores a malformed id', async () => {
+    state.profile = { ...contractor, role: 'admin', contractor_id: null };
+    await retryServiceRequestEmail(form({ id: 'nope' }));
+    expect(state.resent).toEqual([]);
+  });
+
+  it('is admin-only', async () => {
+    await expect(retryServiceRequestEmail(form({ id }))).rejects.toThrow(/REDIRECT/);
+    expect(state.resent).toEqual([]);
   });
 });

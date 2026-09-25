@@ -25,17 +25,18 @@ export function ServiceDetailView({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <PageHeader title={service.name} backHref="/app/growth" backLabel="Grow Your Business" />
+      <PageHeader title={service.name} backHref="/app/growth" backLabel="Growth Tools" />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
         <Card className="lg:col-span-2">
           <CardContent className="space-y-5">
-            <ServiceIcon service={service.slug} />
-            <p className="text-sm leading-relaxed">{service.description}</p>
+            <ServiceIcon service={service.slug} tone="strong" />
+            <p className="font-medium">{service.tagline}</p>
+            <p className="text-sm leading-relaxed text-muted-foreground">{service.description}</p>
             <div className="space-y-2">
-              <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Typically includes</h2>
+              <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">What you get</h2>
               <ul className="space-y-2">
-                {service.deliverables.map((d) => (
+                {service.benefits.map((d) => (
                   <li key={d} className="flex gap-2 text-sm">
                     <Check aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                     {d}
@@ -49,9 +50,9 @@ export function ServiceDetailView({
 
         <Card className="lg:col-span-3">
           <CardHeader>
-            <CardTitle className="text-base">Request info</CardTitle>
+            <CardTitle className="text-base">{service.cta}</CardTitle>
             <p className="text-sm text-muted-foreground">
-              Tell us a little about what you need and a HomeQuote team member will follow up to talk it through.
+              We already have your account details. Add anything useful and our team will reach out to get it set up.
             </p>
           </CardHeader>
           <CardContent>
@@ -74,7 +75,8 @@ export function ServiceDetailView({
             ) : (
               <ServiceRequestForm
                 service={service}
-                requester={{ ...requester, company: company.name }}
+                requester={{ ...requester, company: company.name, contractorId: company.id }}
+                source="service_page"
               />
             )}
           </CardContent>

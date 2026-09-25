@@ -1,8 +1,11 @@
 // Admin review list for growth-service requests. Data-free so it can be previewed.
 import Link from 'next/link';
-import { Handshake } from 'lucide-react';
+import { Handshake, MailWarning, RotateCw } from 'lucide-react';
 import type { AdminServiceRequest } from '@/lib/data/service-requests';
-import { REQUEST_STATUSES, getService, type RequestStatus } from '@/lib/growth/catalog';
+import { REQUEST_SOURCE_LABELS, REQUEST_STATUSES, getService, type RequestStatus } from '@/lib/growth/catalog';
+import { retryServiceRequestEmail } from '@/lib/actions/service-requests';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Card } from '@/components/ui/card';
 import { PageHeader } from '@/components/ui/page-header';
@@ -37,8 +40,17 @@ export function ServiceRequestsView({
     <div className="space-y-6">
       <PageHeader
         title="Service Requests"
-        description="Contractors asking about growth services. Requests are interest only: nothing is purchased or billed."
+        description="Growth Tools upsell requests from contractors. Nothing is purchased or billed until your team sets it up."
       />
+
+      {requests.some((r) => r.notification_status === 'failed') && (
+        <div role="status" className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          <MailWarning aria-hidden className="mt-0.5 size-4 shrink-0" />
+          <p>
+            Some team email alerts didn’t send. The requests are saved below; use <strong>Resend email</strong> to try again.
+          </p>
+        </div>
+      )}
 
       <nav aria-label="Filter by status" className="flex flex-wrap gap-2">
         {tabs.map((t) => {
@@ -67,7 +79,7 @@ export function ServiceRequestsView({
           description={
             status
               ? 'Try another status filter.'
-              : 'When a contractor asks about a service from Grow Your Business, it shows up here.'
+              : 'When a contractor requests a Growth Tool, it shows up here.'
           }
         />
       ) : (
@@ -79,6 +91,7 @@ export function ServiceRequestsView({
                 <TableHead>Service</TableHead>
                 <TableHead>Notes</TableHead>
                 <TableHead>Submitted</TableHead>
+                <TableHead>Team email</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
@@ -111,6 +124,10 @@ export function ServiceRequestsView({
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
                       {fmtDateTime(r.created_at)}
+                      {r.source && <span className="block">{REQUEST_SOURCE_LABELS[r.source] ?? r.source}</span>}
+                    </TableCell>
+                    <TableCell>
+                      <EmailStatus request={r} />
                     </TableCell>
                     <TableCell>
                       <RequestStatusSelect
@@ -126,6 +143,37 @@ export function ServiceRequestsView({
           </Table>
         </Card>
       )}
+    </div>
+  );
+}
+
+/** Whether the HQN team email went out, with a resend for anything unconfirmed. */
+function EmailStatus({ request: r }: { request: AdminServiceRequest }) {
+  if (r.notification_status === 'sent') {
+    return (
+      <div className="space-y-1">
+        <Badge variant="success">Sent</Badge>
+        {r.notified_at && <span className="block text-xs text-muted-foreground">{fmtDateTime(r.notified_at)}</span>}
+      </div>
+    );
+  }
+  const failed = r.notification_status === 'failed';
+  return (
+    <div className="space-y-1.5">
+      <Badge variant={failed ? 'warning' : 'muted'} title={r.notification_error ?? undefined}>
+        {failed ? 'Failed' : r.notification_status === 'sending' ? 'Sending' : 'Not confirmed'}
+      </Badge>
+      {failed && r.notification_error && (
+        <span className="block max-w-[14rem] truncate text-xs text-muted-foreground" title={r.notification_error}>
+          {r.notification_error}
+        </span>
+      )}
+      <form action={retryServiceRequestEmail}>
+        <input type="hidden" name="id" value={r.id} />
+        <Button type="submit" variant="outline" size="sm" className="h-7">
+          <RotateCw aria-hidden className="size-3.5" /> Resend email
+        </Button>
+      </form>
     </div>
   );
 }
