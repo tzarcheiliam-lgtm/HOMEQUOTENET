@@ -1,6 +1,11 @@
 # HomeQuote lead funnels
 
-Public experience: `/estimate/[slug]`. Admin reporting: `/app/funnels` (admin only).
+Public experience: `/estimate/[slug]`. Admin dashboard + no-code builder:
+`/app/funnels` (admin only) — Create funnel, Edit (visual builder with a live
+mobile preview), Duplicate, Publish/Unpublish/Archive, Copy link, search.
+Architecture and how to extend it: `docs/funnel-builder-architecture.md`.
+`scripts/funnels.mjs` (below) still works for scripted/CI publishing; both
+write the same `funnels.config`.
 The sample `/estimate/pool-remodeling-demo` is explicitly a demo. It stores progress
 and submission timestamps (discarding contact PII) but never creates a homeowner lead, calls a CRM,
 or confirms a real appointment. Do not send paid traffic to the demo.
@@ -283,9 +288,11 @@ implementation was found in this repository. No pixel ID is configured for the d
 ## Verification
 
 ```powershell
-node --env-file=.env.local node_modules/vitest/vitest.mjs run tests/funnels.test.ts tests/funnel-ghl.test.ts tests/funnel-delivery.test.ts tests/funnel-pool-masters.test.ts tests/funnels-db.test.ts tests/funnels-house-db.test.ts tests/funnel-calendly-db.test.ts
+node --env-file=.env.local node_modules/vitest/vitest.mjs run tests/funnels.test.ts tests/funnel-ghl.test.ts tests/funnel-delivery.test.ts tests/funnel-pool-masters.test.ts tests/funnels-db.test.ts tests/funnels-house-db.test.ts tests/funnel-calendly-db.test.ts tests/funnel-builder.test.ts tests/funnel-builder-db.test.ts
 # Ethan funnel end to end (fixture data, removed afterwards), with a local dev server:
 node --env-file=.env.local scripts/test-pool-masters-browser.mjs
+# One-time (and after editing a template source file): populate "Create funnel -> Start from"
+node --env-file=.env.local scripts/seed-funnel-templates.mjs
 npx tsc --noEmit
 npm run lint
 npm run build

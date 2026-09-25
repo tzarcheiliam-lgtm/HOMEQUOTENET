@@ -7,9 +7,18 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { calendlyEmbedUrl, consentText, contactSchema, visibleQuestions, type FunnelConfig, type Session } from '@/lib/funnels/schema';
+import { previewAdvance } from '@/lib/funnels/builder';
 import { trackFunnel } from '@/lib/funnels/tracking';
 
-export function FunnelExperience({ slug, initialConfig, demo }: { slug: string; initialConfig: FunnelConfig; demo: boolean }) {
+/**
+ * `previewMode` (used only by the funnel builder's live preview, never the
+ * public /estimate route) skips the network entirely: no session is created,
+ * no lead is ever saved. Step navigation is simulated locally with
+ * `previewAdvance`, the same rules the real PATCH endpoint enforces.
+ * `jumpToStep` lets the builder's step list open any step directly, bypassing
+ * the "answer earlier questions first" gate that a real visitor faces.
+ */
+export function FunnelExperience({ slug, initialConfig, demo, previewMode, jumpToStep }: { slug: string; initialConfig: FunnelConfig; demo: boolean; previewMode?: boolean; jumpToStep?: string }) {
   const [config, setConfig] = useState(initialConfig);
   const [session, setSession] = useState<Session | null>(null);
   const [busy, setBusy] = useState(false);
@@ -20,8 +29,15 @@ export function FunnelExperience({ slug, initialConfig, demo }: { slug: string; 
   const initialized = useRef(false);
   const heading = useRef<HTMLHeadingElement>(null);
   const endpoint = `/api/funnels/${slug}/session`;
+  // Live edits (headline/options/branding text) show immediately; the visitor's
+  // place in the funnel is untouched so typing never jumps the preview back to step 1.
+  useEffect(() => { if (previewMode) setConfig(initialConfig); }, [previewMode, initialConfig]);
 
   const start = useCallback(async () => {
+    if (previewMode) {
+      setSession({ id: 'preview', answers: {}, current_step: config.questions[0].id, version: 0, qualified: null, contact_submitted_at: null, booked_at: null, attribution: {} });
+      return;
+    }
     setError(''); setBusy(true);
     try {
       const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
@@ -31,11 +47,35 @@ export function FunnelExperience({ slug, initialConfig, demo }: { slug: string; 
       setConfig(data.config); setSession(data.session);
     } catch (e) { setError(e instanceof Error ? e.message : 'Please try again.'); }
     finally { setBusy(false); }
-  }, [endpoint]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [endpoint, previewMode]);
   useEffect(() => { if (!initialized.current) { initialized.current = true; void start(); } }, [start]);
+  useEffect(() => {
+    if (!previewMode || !jumpToStep || !session) return;
+    // Preview the happy path: qualified from 'qualification' on; a real visitor
+    // only ever reaches 'calendar'/'thanks' after contact_submitted_at is set.
+    const qualifiedFrom = ['qualification', 'contact', 'calendar', 'thanks'].includes(jumpToStep);
+    const submitted = ['calendar', 'thanks'].includes(jumpToStep);
+    setSession(s => s && { ...s, current_step: jumpToStep, qualified: qualifiedFrom ? true : s.qualified, booked_at: null, contact_submitted_at: submitted ? new Date().toISOString() : null });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewMode, jumpToStep]);
 
   const save = useCallback(async (body: Record<string, unknown>) => {
     if (!session || busy) return;
+    if (previewMode) {
+      setError('');
+      if ('contact' in body) {
+        const nextStep = session.qualified && config.calendarUrl ? 'calendar' : 'thanks';
+        setSession({ ...session, contact_submitted_at: new Date().toISOString(), current_step: nextStep });
+        return;
+      }
+      if ('simulateBooking' in body) { setSession({ ...session, booked_at: new Date().toISOString() }); return; }
+      if ('calendarViewed' in body || 'calendlyBooking' in body) return;
+      const result = previewAdvance(config, { answers: session.answers, step: session.current_step, qualified: session.qualified }, body as { answer?: { question: string; value: string } } | { step: string });
+      if ('error' in result) { setError(result.error); return; }
+      setSession({ ...session, answers: result.answers, current_step: result.step, qualified: result.qualified, version: session.version + 1 });
+      return;
+    }
     setBusy(true); setError('');
     try {
       const res = await fetch(endpoint, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, version: session.version }) });
@@ -43,7 +83,7 @@ export function FunnelExperience({ slug, initialConfig, demo }: { slug: string; 
       setSession(data.session);
     } catch (e) { setError(e instanceof Error ? e.message : 'Please try again.'); }
     finally { setBusy(false); }
-  }, [session, busy, endpoint]);
+  }, [session, busy, endpoint, previewMode, config]);
 
   const step = session?.current_step ?? config.questions[0].id;
   const questions = visibleQuestions(config, session?.answers ?? {});
@@ -63,25 +103,26 @@ export function FunnelExperience({ slug, initialConfig, demo }: { slug: string; 
     try { setTracking(localStorage.getItem(`hqn-measurement:${session.id}`) === 'yes'); } catch { /* Measurement remains off. */ }
   }, [session?.id]);
   useEffect(() => {
-    if (!session || !tracking || demo) return;
+    if (!session || !tracking || demo || previewMode) return;
     trackFunnel(session.id, slug, 'ViewContent', config.trackingPixels.metaPixelId);
     if (session.contact_submitted_at) trackFunnel(session.id, slug, 'Lead', config.trackingPixels.metaPixelId);
     if (session.booked_at) trackFunnel(session.id, slug, 'Schedule', config.trackingPixels.metaPixelId);
-  }, [session, tracking, config, slug, demo]);
+  }, [session, tracking, config, slug, demo, previewMode]);
   useEffect(() => {
-    if (!session?.contact_submitted_at || !config.calendarUrl || step !== 'calendar') return;
+    if (previewMode || !session?.contact_submitted_at || !config.calendarUrl || step !== 'calendar') return;
     void fetch(endpoint, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: session.version, calendarViewed: true }) });
     const timer = setInterval(async () => {
       try { const res = await fetch(endpoint); if (res.ok) { const data = await res.json(); setSession(data.session); } } catch { /* A later poll retries. */ }
     }, 10000);
     return () => clearInterval(timer);
-  }, [session?.contact_submitted_at, session?.version, config.calendarUrl, step, endpoint]);
+  }, [previewMode, session?.contact_submitted_at, session?.version, config.calendarUrl, step, endpoint]);
 
   // Calendly reports a completed booking to the embedding page via postMessage.
   // Only messages from calendly.com are accepted; the server re-checks the session.
+  // Preview never loads real calendly.com, so there is nothing to listen for.
   const calendly = config.calendarProvider === 'calendly';
   useEffect(() => {
-    if (!calendly || step !== 'calendar' || !session?.contact_submitted_at || session.booked_at) return;
+    if (previewMode || !calendly || step !== 'calendar' || !session?.contact_submitted_at || session.booked_at) return;
     function onMessage(event: MessageEvent) {
       if (event.origin !== 'https://calendly.com' || event.data?.event !== 'calendly.event_scheduled') return;
       const eventUri = event.data.payload?.event?.uri; const inviteeUri = event.data.payload?.invitee?.uri;
@@ -89,7 +130,7 @@ export function FunnelExperience({ slug, initialConfig, demo }: { slug: string; 
     }
     addEventListener('message', onMessage);
     return () => removeEventListener('message', onMessage);
-  }, [calendly, step, session?.contact_submitted_at, session?.booked_at, save]);
+  }, [previewMode, calendly, step, session?.contact_submitted_at, session?.booked_at, save]);
   // Keep the first prefill so later polls never change the iframe src (which would reload it).
   const prefill = useRef<Session['prefill']>(undefined);
   if (session?.prefill && !prefill.current) prefill.current = session.prefill;
@@ -123,7 +164,8 @@ export function FunnelExperience({ slug, initialConfig, demo }: { slug: string; 
         <div className="funnel-brand">{config.clientLogo && <Image src={config.clientLogo} alt="" width={44} height={44} unoptimized />}<span>{config.clientName}<small>YOUR NEXT HOME PROJECT</small></span></div>
         <span className="funnel-secure"><LockKeyhole size={14} /> Private & secure</span>
       </header>
-      {demo && <div className="funnel-demo">Interactive demo · No contractor is contacted and no appointment is booked.</div>}
+      {demo && !previewMode && <div className="funnel-demo">Interactive demo · No contractor is contacted and no appointment is booked.</div>}
+      {previewMode && <div className="funnel-demo">Live preview · Nothing here is saved.</div>}
       <div className="funnel-progress-copy"><span>{config.industry}</span><span>{done ? 'Complete' : `${current} of ${total}`}</span></div>
       <div className="funnel-progress" role="progressbar" aria-label="Your progress" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done ? total : current}><span style={{ width: `${(done ? 1 : current / total) * 100}%` }} /></div>
       <div className="funnel-toolbar">{session && !session.contact_submitted_at && (index > 0 || ['qualification', 'contact'].includes(step))
@@ -160,7 +202,13 @@ export function FunnelExperience({ slug, initialConfig, demo }: { slug: string; 
           <label className="funnel-consent"><input type="checkbox" name="consent" required /><span>{consentText(config)} <a href="/privacy" target="_blank" rel="noreferrer">Privacy policy</a> · <a href="/terms" target="_blank" rel="noreferrer">Terms</a></span></label>
           <Button type="submit" className="funnel-primary" disabled={busy}>{busy ? 'Saving your request…' : demo ? 'Preview the next step' : session?.qualified && config.calendarUrl ? 'Choose my estimate time' : 'Request my free estimate'}<ArrowRight size={18} /></Button>
         </form>}
-        {step === 'calendar' && !done && calendarUrl && <div className="funnel-calendar">
+        {step === 'calendar' && !done && calendarUrl && previewMode && <div className="funnel-calendar">
+          <p className="funnel-description">{calendly ? 'Your request is saved. Pick the day and time that works for you.' : 'Pick the day and time that works for you.'}</p>
+          <div className="funnel-preview-calendar">{calendly ? 'Calendly' : 'GHL'} calendar embeds here for a real visitor.<br />{calendarUrl.toString()}</div>
+          <Button className="funnel-primary" onClick={() => void save({ simulateBooking: true })}>Preview: simulate a booking</Button>
+          <p>Booking confirmation will appear here after the calendar confirms your appointment. If no times work, the team has your request and can follow up.</p>
+        </div>}
+        {step === 'calendar' && !done && calendarUrl && !previewMode && <div className="funnel-calendar">
           <p className="funnel-description">{calendly ? 'Your request is saved. Pick the day and time that works for you.' : 'Pick the day and time that works for you.'}</p>
           <iframe title={`Book an estimate with ${config.clientName}`} src={calendlySrc ?? calendarUrl.toString()} referrerPolicy="strict-origin-when-cross-origin" allow="payment" />
           <p>Booking confirmation will appear here after the calendar confirms your appointment. If no times work, the team has your request and can follow up.</p>
