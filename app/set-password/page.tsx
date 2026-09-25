@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import type { Metadata } from 'next';
 import { createClient } from '@/lib/supabase/server';
 import { setPasswordAction } from '@/lib/actions/auth';
 import { SetPasswordForm } from '@/components/password-forms';
@@ -10,7 +11,10 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 
-export const metadata = { title: 'Set password · HomeQuote Network' };
+export const metadata: Metadata = {
+  title: 'Set password · HomeQuote Network',
+  robots: { index: false, follow: false },
+};
 
 /**
  * Reached from an invitation or reset email via /auth/callback, which has

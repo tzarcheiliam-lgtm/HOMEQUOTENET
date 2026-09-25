@@ -48,6 +48,7 @@ function OrganizationJsonLd() {
     '@type': 'Organization',
     name: site.name,
     url: site.url,
+    logo: `${site.url}/images/brand/homequote-network-logo.png`,
     founder: { '@type': 'Person', name: site.founder },
     parentOrganization: { '@type': 'Organization', name: site.operator },
     areaServed: homeContent.markets.areas.map((area) => ({
@@ -65,10 +66,28 @@ function OrganizationJsonLd() {
   );
 }
 
+/** WebSite schema, so search results can key off a single canonical site entity. */
+function WebSiteJsonLd() {
+  const json = {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: site.name,
+    url: site.url,
+  };
+
+  return (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(json) }}
+    />
+  );
+}
+
 export default function HomePage() {
   return (
     <>
       <OrganizationJsonLd />
+      <WebSiteJsonLd />
       <FaqJsonLd items={homeContent.faq} />
 
       <Hero

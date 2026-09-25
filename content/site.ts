@@ -16,7 +16,7 @@ export const site = {
     'Qualified booked appointments for home-service contractors. Pay per appointment we set on your calendar.',
 
   /** Default <title> and link-preview title for any route without its own. */
-  defaultTitle: 'HomeQuote | Qualified Contractor Leads',
+  defaultTitle: 'HomeQuote Network | Qualified Contractor Leads',
   /** Default meta / Open Graph description for any route without its own. */
   description:
     'HomeQuote Network delivers qualified homeowner leads and booked estimate appointments to remodeling, roofing, fencing, HVAC and pool contractors across Southern California.',

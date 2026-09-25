@@ -1,7 +1,11 @@
+import type { Metadata } from 'next';
 import { ForgotPasswordForm } from '@/components/password-forms';
 import { forgotPasswordAction } from '@/lib/actions/auth';
 
-export const metadata = { title: 'Reset password · HomeQuote Network' };
+export const metadata: Metadata = {
+  title: 'Reset password · HomeQuote Network',
+  robots: { index: false, follow: false },
+};
 
 export default function ForgotPasswordPage() {
   return (

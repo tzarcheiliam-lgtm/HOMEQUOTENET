@@ -1,7 +1,11 @@
+import type { Metadata } from 'next';
 import { AuthForm } from '@/components/auth-form';
 import { signInAction } from '@/lib/actions/auth';
 
-export const metadata = { title: 'Sign in · HomeQuote Network' };
+export const metadata: Metadata = {
+  title: 'Sign in · HomeQuote Network',
+  robots: { index: false, follow: false },
+};
 
 const NOTICES: Record<string, string> = {
   link_expired:

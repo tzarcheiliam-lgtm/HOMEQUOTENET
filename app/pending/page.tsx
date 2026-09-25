@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import type { Metadata } from 'next';
 import { signOutAction } from '@/lib/actions/auth';
 import { Button } from '@/components/ui/button';
 import {
@@ -9,7 +10,10 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 
-export const metadata = { title: 'Pending approval · HomeQuote Network' };
+export const metadata: Metadata = {
+  title: 'Pending approval · HomeQuote Network',
+  robots: { index: false, follow: false },
+};
 
 export default function PendingPage() {
   return (
