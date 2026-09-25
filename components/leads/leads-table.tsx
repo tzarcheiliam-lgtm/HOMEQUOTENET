@@ -20,6 +20,9 @@ import {
   leadStatusVariant,
 } from '@/lib/leads/constants';
 import { bulkLeadAction } from '@/lib/actions/leads';
+import { CallTextActions } from '@/components/leads/lead-quick-actions';
+import { LeadCards } from '@/components/leads/lead-cards';
+import { formatLeadAge } from '@/lib/leads/display';
 import type { LeadListRow } from '@/lib/data/leads';
 import type { ContractorOption } from '@/lib/data/contractors';
 
@@ -55,8 +58,14 @@ export function LeadsTable({
     );
   }
 
+  const mobileCards = (
+    <div className="md:hidden">
+      <LeadCards rows={rows} readOnly={readOnly} />
+    </div>
+  );
+
   const table = (
-    <Card className="p-0">
+    <Card className="hidden overflow-hidden p-0 md:block">
       <Table>
         <TableHeader>
           <TableRow>
@@ -71,13 +80,12 @@ export function LeadsTable({
                 />
               </TableHead>
             )}
-            <TableHead>Name</TableHead>
-            <TableHead>Service</TableHead>
-            <TableHead>Source</TableHead>
+            <TableHead>Lead</TableHead>
+            <TableHead>Service &amp; location</TableHead>
             <TableHead>Status</TableHead>
-            <TableHead>City</TableHead>
-            <TableHead>Contractors</TableHead>
-            <TableHead>Created</TableHead>
+            <TableHead>Contractor</TableHead>
+            <TableHead>Received</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -86,8 +94,17 @@ export function LeadsTable({
               [r.first_name, r.last_name].filter(Boolean).join(' ') ||
               r.phone ||
               'Unnamed lead';
+            const age = formatLeadAge(r.created_at);
+            const isFresh =
+              !readOnly &&
+              r.status === 'new' &&
+              age !== null &&
+              !age.includes('day');
             return (
-              <TableRow key={r.id}>
+              <TableRow
+                key={r.id}
+                className={isFresh ? 'bg-primary/[0.03]' : undefined}
+              >
                 {!readOnly && (
                   <TableCell>
                     <input
@@ -108,35 +125,47 @@ export function LeadsTable({
                   >
                     {name}
                   </Link>
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {r.vertical_name ?? '—'}
-                  {r.sub_service_name ? ` · ${r.sub_service_name}` : ''}
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {r.source ? LEAD_SOURCE_LABELS[r.source] ?? r.source : '—'}
-                </TableCell>
-                <TableCell>
-                  <Badge variant={leadStatusVariant(r.status)}>
-                    {LEAD_STATUSES.find((s) => s.value === r.status)?.label ??
-                      r.status}
-                  </Badge>
-                  {!readOnly && r.qualification_status === 'needs_qualification' && (
-                    <Badge variant="warning" className="ml-1.5">
-                      Needs qualification
-                    </Badge>
+                  {r.source && (
+                    <p className="text-xs text-muted-foreground">
+                      {LEAD_SOURCE_LABELS[r.source] ?? r.source}
+                    </p>
                   )}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
-                  {r.city ?? '—'}
+                  <p className="text-foreground/90">
+                    {r.vertical_name ?? '—'}
+                    {r.sub_service_name ? ` · ${r.sub_service_name}` : ''}
+                  </p>
+                  <p className="text-xs">{r.city ?? r.zip ?? ''}</p>
+                </TableCell>
+                <TableCell>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Badge variant={leadStatusVariant(r.status)}>
+                      {LEAD_STATUSES.find((s) => s.value === r.status)?.label ??
+                        r.status}
+                    </Badge>
+                    {!readOnly && r.qualification_status === 'needs_qualification' && (
+                      <Badge variant="warning">Needs Qualification</Badge>
+                    )}
+                  </div>
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {r.assignment_count === 0
-                    ? '—'
-                    : r.contractor_names.join(', ') || `${r.assignment_count}`}
+                    ? 'Unassigned'
+                    : r.contractor_names.join(', ') || `${r.assignment_count} assigned`}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
-                  {new Date(r.created_at).toLocaleDateString()}
+                  <span title={new Date(r.created_at).toLocaleString()}>
+                    {age ? `${age} ago` : new Date(r.created_at).toLocaleDateString()}
+                  </span>
+                </TableCell>
+                <TableCell>
+                  <div className="flex justify-end gap-1.5">
+                    <CallTextActions phone={r.phone} size="sm" />
+                    <Button asChild size="sm" variant="ghost">
+                      <Link href={`/app/leads/${r.id}`}>Open</Link>
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             );
@@ -146,12 +175,19 @@ export function LeadsTable({
     </Card>
   );
 
-  if (readOnly) return table;
+  if (readOnly) {
+    return (
+      <>
+        {mobileCards}
+        {table}
+      </>
+    );
+  }
 
   return (
     <form action={bulkLeadAction} className="space-y-3">
-      {/* Bulk action bar */}
-      <div className="flex flex-wrap items-center gap-3 rounded-md border bg-muted/40 px-3 py-2">
+      {/* Bulk action bar (desktop only — mobile uses per-card actions) */}
+      <div className="hidden flex-wrap items-center gap-3 rounded-md border bg-muted/40 px-3 py-2 md:flex">
         <span className="text-sm text-muted-foreground">
           {selected.size} selected
         </span>
@@ -188,6 +224,7 @@ export function LeadsTable({
         </Button>
       </div>
 
+      {mobileCards}
       {table}
     </form>
   );

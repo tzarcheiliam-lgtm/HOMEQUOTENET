@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { Pencil, Archive, ArchiveRestore, Trash2 } from 'lucide-react';
+import { Pencil, Archive, ArchiveRestore, Trash2, ChevronDown } from 'lucide-react';
 import { requireProfile } from '@/lib/auth';
 import { getLead, listAssignableCompanyUsers } from '@/lib/data/leads';
 import { listContractorOptions } from '@/lib/data/contractors';
@@ -13,8 +13,11 @@ import {
 import {
   LEAD_STATUS_LABELS,
   LEAD_SOURCE_LABELS,
+  QUALIFICATION_STATUS_LABELS,
   leadStatusVariant,
+  qualificationVariant,
 } from '@/lib/leads/constants';
+import { displayValue, formatLeadAge, humanizeToken } from '@/lib/leads/display';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -32,6 +35,9 @@ import { AttachmentForm } from '@/components/leads/attachment-form';
 import { AssignmentManager } from '@/components/leads/assignment-manager';
 import { ActivityTimeline } from '@/components/leads/activity-timeline';
 import { LeadDistributionPanel } from '@/components/leads/lead-distribution-panel';
+import { ContactCard } from '@/components/leads/contact-card';
+import { ProjectSummaryCard } from '@/components/leads/project-summary-card';
+import { CallTextActions } from '@/components/leads/lead-quick-actions';
 import { getLeadDistribution, listRecipients } from '@/lib/data/lead-distribution';
 import { isContractorOwner } from '@/lib/permissions';
 
@@ -81,14 +87,17 @@ export default async function LeadDetailPage({
     lead.phone ||
     'Unnamed lead';
 
-  const locationSummary =
-    [lead.vertical?.name, lead.city].filter(Boolean).join(' · ') || undefined;
+  const serviceSummary =
+    [lead.vertical?.name, lead.sub_service?.name].filter(Boolean).join(' · ') ||
+    undefined;
+  const locationSummary = [lead.zip, lead.city].filter(Boolean).join(' · ') || undefined;
+  const age = formatLeadAge(lead.created_at);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-20 md:pb-0">
       <PageHeader
         title={name}
-        description={locationSummary}
+        description={[serviceSummary, locationSummary].filter(Boolean).join('  ·  ')}
         backHref="/app/leads"
         backLabel="Leads"
       >
@@ -99,7 +108,17 @@ export default async function LeadDetailPage({
             {LEAD_STATUS_LABELS[lead.status]}
           </Badge>
         )}
+        <Badge variant={qualificationVariant(lead.qualification_status)}>
+          {QUALIFICATION_STATUS_LABELS[lead.qualification_status]}
+        </Badge>
         {lead.archived_at && <Badge variant="muted">Archived</Badge>}
+        {age && (
+          <span className="text-xs text-muted-foreground">Received {age} ago</span>
+        )}
+
+        <div className="hidden md:block">
+          <CallTextActions phone={lead.phone} size="sm" />
+        </div>
 
         {isStaff && (
           <>
@@ -138,82 +157,80 @@ export default async function LeadDetailPage({
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Left: lead info */}
         <div className="space-y-6 lg:col-span-1">
-          <Card>
-            <CardHeader>
-              <CardTitle>Contact & property</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Row label="Phone" value={lead.phone} />
-              <Row label="Email" value={lead.email} />
-              <Row label="Address" value={lead.address} />
-              <Row
-                label="Location"
-                value={[lead.city, lead.state, lead.zip]
-                  .filter(Boolean)
-                  .join(', ')}
-              />
-            </CardContent>
-          </Card>
+          <ContactCard
+            phone={lead.phone}
+            email={lead.email}
+            address={lead.address}
+            city={lead.city}
+            state={lead.state}
+            zip={lead.zip}
+          />
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Service</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Row label="Vertical" value={lead.vertical?.name} />
-              <Row label="Sub-service" value={lead.sub_service?.name} />
-              <Row label="Description" value={lead.project_description} />
-            </CardContent>
-          </Card>
+          <ProjectSummaryCard
+            verticalName={lead.vertical?.name}
+            subServiceName={lead.sub_service?.name}
+            budgetRange={lead.budget_range}
+            timeline={lead.timeline}
+            zip={lead.zip}
+            description={lead.project_description}
+          />
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Attribution</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Row
-                label="Source"
-                value={
-                  lead.source
-                    ? LEAD_SOURCE_LABELS[lead.source] ?? lead.source
-                    : null
-                }
-              />
-              <Row label="Campaign" value={lead.campaign} />
-              <Row label="Ad set" value={lead.ad_set} />
-              <Row label="Ad name" value={lead.ad_name} />
-              <Row label="UTM source" value={lead.utm_source} />
-              <Row label="UTM medium" value={lead.utm_medium} />
-              <Row label="UTM campaign" value={lead.utm_campaign} />
-            </CardContent>
-          </Card>
+          {/* Attribution — internal HomeQuote routing detail, staff only */}
+          {isStaff && (
+            <Card>
+              <details>
+                <summary className="flex cursor-pointer list-none items-center justify-between px-6 py-1 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+                  Attribution
+                  <ChevronDown className="size-4 text-muted-foreground transition-transform [details[open]_&]:rotate-180" />
+                </summary>
+                <CardContent className="pt-4">
+                  <Row
+                    label="Source"
+                    value={
+                      lead.source
+                        ? LEAD_SOURCE_LABELS[lead.source] ?? lead.source
+                        : null
+                    }
+                  />
+                  <Row label="Campaign" value={lead.campaign} />
+                  <Row label="Ad set" value={lead.ad_set} />
+                  <Row label="Ad name" value={lead.ad_name} />
+                  <Row label="UTM source" value={lead.utm_source} />
+                  <Row label="UTM medium" value={lead.utm_medium} />
+                  <Row label="UTM campaign" value={lead.utm_campaign} />
+                </CardContent>
+              </details>
+            </Card>
+          )}
 
-          {/* Consent (TCPA) */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Consent</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Row
-                label="Consent to contact"
-                value={
-                  <Badge variant={lead.consent_granted ? 'success' : 'muted'}>
-                    {lead.consent_granted ? 'Granted' : 'Not on file'}
-                  </Badge>
-                }
-              />
-              <Row
-                label="When"
-                value={
-                  lead.consent_at
-                    ? new Date(lead.consent_at).toLocaleString()
-                    : null
-                }
-              />
-              <Row label="Source" value={lead.consent_source} />
-              <Row label="Disclosure" value={lead.consent_disclosure} />
-            </CardContent>
-          </Card>
+          {/* Consent (TCPA) — staff only; contractors don't need this detail */}
+          {isStaff && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Consent</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Row
+                  label="Consent to contact"
+                  value={
+                    <Badge variant={lead.consent_granted ? 'success' : 'muted'}>
+                      {lead.consent_granted ? 'Granted' : 'Not on file'}
+                    </Badge>
+                  }
+                />
+                <Row
+                  label="When"
+                  value={
+                    lead.consent_at
+                      ? new Date(lead.consent_at).toLocaleString()
+                      : null
+                  }
+                />
+                <Row label="Source" value={lead.consent_source} />
+                <Row label="Disclosure" value={lead.consent_disclosure} />
+              </CardContent>
+            </Card>
+          )}
 
           {/* Economics — admin only */}
           {isAdmin && (
@@ -237,23 +254,45 @@ export default async function LeadDetailPage({
 
         {/* Right: workflow */}
         <div className="space-y-6 lg:col-span-2">
-          {/* Qualification */}
+          {/* Qualification — a clear 2-step workflow for staff */}
           <Card>
             <CardHeader>
               <CardTitle>Qualification</CardTitle>
             </CardHeader>
             <CardContent>
               {isStaff ? (
-                <QualificationForm lead={lead} />
+                <div className="space-y-4">
+                  <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1.5">
+                      <span className="flex size-5 items-center justify-center rounded-full bg-muted font-semibold text-foreground">
+                        1
+                      </span>
+                      Review the lead
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="flex size-5 items-center justify-center rounded-full bg-muted font-semibold text-foreground">
+                        2
+                      </span>
+                      Confirm qualification
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="flex size-5 items-center justify-center rounded-full bg-muted font-semibold text-foreground">
+                        3
+                      </span>
+                      Send below
+                    </span>
+                  </div>
+                  <QualificationForm lead={lead} />
+                </div>
               ) : (
                 <div>
                   <Row
                     label="Qualified"
                     value={lead.qualified ? 'Yes' : 'No'}
                   />
-                  <Row label="Budget" value={lead.budget_range} />
-                  <Row label="Timeline" value={lead.timeline} />
-                  <Row label="Urgency" value={lead.urgency} />
+                  <Row label="Budget" value={displayValue(lead.budget_range && humanizeToken(lead.budget_range))} />
+                  <Row label="Timeline" value={displayValue(lead.timeline && humanizeToken(lead.timeline))} />
+                  <Row label="Urgency" value={displayValue(lead.urgency && humanizeToken(lead.urgency))} />
                 </div>
               )}
             </CardContent>
@@ -353,6 +392,13 @@ export default async function LeadDetailPage({
           </Card>
         </div>
       </div>
+
+      {/* Sticky mobile action bar */}
+      {lead.phone && (
+        <div className="fixed inset-x-0 bottom-0 z-40 flex gap-2 border-t bg-background/95 p-3 backdrop-blur md:hidden">
+          <CallTextActions phone={lead.phone} size="default" className="flex-1 [&>*]:flex-1" />
+        </div>
+      )}
     </div>
   );
 }
