@@ -60,7 +60,7 @@ export const NAV_ITEMS: NavItem[] = [
   // Optional growth services for contractors. Listed after the lead workflow
   // so leads and appointments stay first.
   {
-    label: 'Grow Your Business',
+    label: 'Growth Tools',
     href: '/app/growth',
     icon: 'Sprout',
     roles: ['contractor'],

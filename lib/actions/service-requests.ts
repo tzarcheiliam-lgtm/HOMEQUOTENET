@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { requireRole } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { getService } from '@/lib/growth/catalog';
-import { sendServiceRequestAlertSoon } from '@/lib/growth/notify';
+import { sendServiceRequestAlert, sendServiceRequestAlertSoon } from '@/lib/growth/notify';
 import { parseServiceRequest, statusUpdateSchema } from '@/lib/validation/service-request';
 
 export type ServiceRequestState =
@@ -13,8 +13,8 @@ export type ServiceRequestState =
   | undefined;
 
 /**
- * A contractor asks HomeQuote for information about a growth service.
- * Collects interest only: nothing is purchased, billed or enrolled.
+ * A contractor requests a Growth Tools service. Records the request and emails
+ * the HQN team; nothing is purchased, billed or enrolled from here.
  *
  * The company and requesting user always come from the signed-in profile,
  * never from the form. RLS rejects any row for another company as well.
@@ -38,6 +38,7 @@ export async function requestServiceInfo(
       requested_by: profile.id,
       service: parsed.data.service,
       notes: parsed.data.notes,
+      source: parsed.data.source,
     })
     .select('id')
     .single();
@@ -48,7 +49,8 @@ export async function requestServiceInfo(
     return { ok: false, error: 'Your request couldn’t be sent. Please try again.' };
   }
 
-  // Let the HQN team know (internal only; the contractor is never emailed).
+  // Email the HQN team after the response. The request is already saved, so an
+  // email failure is recorded on the request for admins, never shown here.
   if (data?.id) sendServiceRequestAlertSoon(data.id);
 
   revalidatePath('/app/growth');
@@ -61,7 +63,7 @@ export async function requestServiceInfo(
   };
 }
 
-/** Admin: move a request through New → Contacted → Proposal Sent → Accepted / Closed. */
+/** Admin: move a request through New → Contacted → In Progress → Completed / Declined. */
 export async function updateServiceRequestStatus(formData: FormData): Promise<void> {
   await requireRole(['admin']);
   const parsed = statusUpdateSchema.safeParse({ id: formData.get('id'), status: formData.get('status') });
@@ -72,5 +74,14 @@ export async function updateServiceRequestStatus(formData: FormData): Promise<vo
     .update({ status: parsed.data.status })
     .eq('id', parsed.data.id);
   if (error) throw new Error('The status couldn’t be updated. Try again.');
+  revalidatePath('/app/service-requests');
+}
+
+/** Admin: send (or resend) the HQN team email for a request whose email failed or never went out. */
+export async function retryServiceRequestEmail(formData: FormData): Promise<void> {
+  await requireRole(['admin']);
+  const id = statusUpdateSchema.shape.id.safeParse(formData.get('id'));
+  if (!id.success) return;
+  await sendServiceRequestAlert(id.data);
   revalidatePath('/app/service-requests');
 }

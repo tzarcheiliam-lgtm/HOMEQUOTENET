@@ -1,6 +1,6 @@
 import 'server-only';
 import { createClient } from '@/lib/supabase/server';
-import type { RequestStatus, ServiceSlug } from '@/lib/growth/catalog';
+import type { RequestSource, RequestStatus, ServiceSlug } from '@/lib/growth/catalog';
 import { recommendService, type Recommendation } from '@/lib/growth/recommend';
 import type { Profile } from '@/lib/types';
 
@@ -12,6 +12,12 @@ export interface ServiceRequest {
   notes: string | null;
   status: RequestStatus;
   status_changed_at: string | null;
+  source: RequestSource | null;
+  /** Whether the HQN team email went out (see lib/growth/notify.ts). */
+  notification_status: 'pending' | 'sending' | 'sent' | 'failed';
+  notification_attempts: number;
+  notification_error: string | null;
+  notified_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -76,7 +82,7 @@ export async function countServiceRequestsByStatus(): Promise<Record<RequestStat
   const supabase = await createClient();
   const { data, error } = await supabase.from('service_requests').select('status');
   if (error) throw new Error('Could not load service requests.');
-  const counts: Record<RequestStatus, number> = { new: 0, contacted: 0, proposal_sent: 0, accepted: 0, closed: 0 };
-  for (const row of data ?? []) counts[row.status as RequestStatus] += 1;
+  const counts: Record<RequestStatus, number> = { new: 0, contacted: 0, in_progress: 0, completed: 0, declined: 0 };
+  for (const row of data ?? []) if (row.status in counts) counts[row.status as RequestStatus] += 1;
   return counts;
 }

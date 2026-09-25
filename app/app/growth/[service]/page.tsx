@@ -12,7 +12,7 @@ export async function generateMetadata({ params }: { params: Promise<{ service: 
 export default async function GrowthServicePage({ params }: { params: Promise<{ service: string }> }) {
   const { service: slug } = await params;
   const service = getService(slug);
-  if (!service) notFound();
+  if (!service || service.retired) notFound();
 
   const profile = await requireRole(['contractor']);
   const { company, requests } = await getGrowthContext(profile);

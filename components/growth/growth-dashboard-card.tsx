@@ -19,12 +19,12 @@ export function GrowthDashboardCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Grow your business</CardTitle>
+        <CardTitle className="text-base">Growth Tools</CardTitle>
         <CardAction>
           <Link
             href="/app/growth"
             className="rounded-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
-            aria-label="All growth services"
+            aria-label="All Growth Tools"
           >
             <ArrowUpRight className="size-4" />
           </Link>
@@ -32,7 +32,7 @@ export function GrowthDashboardCard({
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-sm text-muted-foreground">
-          Optional help with your website, marketing materials, reviews and follow-up.
+          AI receptionist, automated follow-up, lead tracking and more, set up by the HomeQuote team.
         </p>
         {suggested && (
           <Link
@@ -49,7 +49,7 @@ export function GrowthDashboardCard({
           </p>
         )}
         <Link href="/app/growth" className="inline-flex text-sm font-medium text-primary hover:underline">
-          Explore services
+          Explore Growth Tools
         </Link>
       </CardContent>
     </Card>
