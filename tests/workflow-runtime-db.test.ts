@@ -23,7 +23,10 @@ beforeAll(async () => {
   }
   // Applying inside the transaction validates every function, trigger and
   // referenced schema object without leaving the shared database changed.
-  await q(readFileSync('supabase/migrations/0024_workflow_runtime.sql', 'utf8'));
+  // Install inside the rolled-back transaction only when the database doesn't
+  // have it yet; re-applying to live tables from parallel test files deadlocks.
+  const [{ applied: runtimeApplied }] = await q("select to_regproc('public.claim_workflow_events') is not null as applied");
+  if (!runtimeApplied) await q(readFileSync('supabase/migrations/0024_workflow_runtime.sql', 'utf8'));
   await q("insert into public.contractors(id,name) values($1,'Workflow runtime test')", [contractor]);
 }, 60_000);
 

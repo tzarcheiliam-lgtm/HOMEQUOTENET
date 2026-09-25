@@ -92,7 +92,7 @@ suite('workflow data model (rolled back)', { timeout: 60_000 }, () => {
     const [row] = await q('select dispatch_status, contractor_id from public.workflow_events where id=$1', [leadEvent]);
     expect(row).toEqual({ dispatch_status: 'pending', contractor_id: null });
     // Unknown event names never enter the ledger.
-    expect((await failure(`select public.emit_workflow_event('lead.deleted','k-x','lead',$1,'test:x')`, [ids.lead]))?.code).toBe('23514');
+    expect((await failure(`select public.emit_workflow_event('lead.deleted','lead.deleted|lead:x','lead',$1,'test:x')`, [ids.lead]))?.code).toBe('23514');
   });
 
   it('creates at most one run per workflow per event', async () => {
@@ -116,8 +116,8 @@ suite('workflow data model (rolled back)', { timeout: 60_000 }, () => {
     expect(again.status).toBe('pending');
     // once_per_entity: dedupe_key is unique forever.
     const { dedupeKey } = runKeys('once_per_entity', 'lead', ids.lead);
-    const e2 = await emit('lead.created', 'lead.created|test:dup|2', 'lead', ids.lead, null, ids.lead);
-    const e3 = await emit('lead.created', 'lead.created|test:dup|3', 'lead', ids.lead, null, ids.lead);
+    const e2 = await emit('lead.created', `lead.created|lead:${ids.lead}:dup2`, 'lead', ids.lead, null, ids.lead);
+    const e3 = await emit('lead.created', `lead.created|lead:${ids.lead}:dup3`, 'lead', ids.lead, null, ids.lead);
     await q(newRun(ids.hqWorkflow, e2, { dedupe_key: dedupeKey }).sql, newRun(ids.hqWorkflow, e2, { dedupe_key: dedupeKey }).values);
     const dup = newRun(ids.hqWorkflow, e3, { dedupe_key: dedupeKey });
     expect((await failure(dup.sql, dup.values))?.code).toBe('23505');
@@ -125,7 +125,7 @@ suite('workflow data model (rolled back)', { timeout: 60_000 }, () => {
 
   it('takes the tenant from the workflow and refuses cross-tenant runs', async () => {
     // Caller lies about contractor_id -> overwritten from the workflow.
-    const e = await emit('lead.assigned', 'lead.assigned|test:tenant|1', 'lead_assignment', ids.assignment, ids.poolCo, ids.lead);
+    const e = await emit('lead.assigned', `lead.assigned|assignment:${ids.assignment}:tenant1`, 'lead_assignment', ids.assignment, ids.poolCo, ids.lead);
     const r = newRun(ids.poolWorkflow, e, { entity_type: 'lead_assignment', entity_id: ids.assignment, contractor_id: ids.fenceCo });
     const [run] = await q(r.sql, r.values);
     expect(run.contractor_id).toBe(ids.poolCo);
@@ -133,7 +133,7 @@ suite('workflow data model (rolled back)', { timeout: 60_000 }, () => {
     const cross = newRun(ids.fenceWorkflow, e, { entity_type: 'lead_assignment', entity_id: ids.assignment });
     expect((await failure(cross.sql, cross.values))?.message).toMatch(/different tenant/);
     // ...nor on a Fence-scoped event about a lead Fence Co was never assigned.
-    const fenceEvent = await emit('lead.assigned', 'lead.assigned|test:tenant|2', 'lead_assignment', ids.assignment, ids.fenceCo, ids.lead);
+    const fenceEvent = await emit('lead.assigned', `lead.assigned|assignment:${ids.assignment}:tenant2`, 'lead_assignment', ids.assignment, ids.fenceCo, ids.lead);
     const unassigned = newRun(ids.fenceWorkflow, fenceEvent, { entity_type: 'lead_assignment', entity_id: ids.assignment });
     expect((await failure(unassigned.sql, unassigned.values))?.message).toMatch(/not assigned/);
     // Event type must match the workflow trigger; templates never run.
@@ -187,7 +187,7 @@ suite('workflow data model (rolled back)', { timeout: 60_000 }, () => {
   });
 
   it('does not block deleting a lead that workflows referenced', async () => {
-    const e = await emit('lead.created', 'lead.created|test:delete|1', 'lead', ids.otherLead, null, ids.otherLead);
+    const e = await emit('lead.created', `lead.created|lead:${ids.otherLead}:delete1`, 'lead', ids.otherLead, null, ids.otherLead);
     const r = newRun(ids.hqWorkflow, e, { lead_id: ids.otherLead, entity_id: ids.otherLead });
     const [run] = await q(r.sql, r.values);
     expect(await failure('delete from public.leads where id=$1', [ids.otherLead])).toBeNull();

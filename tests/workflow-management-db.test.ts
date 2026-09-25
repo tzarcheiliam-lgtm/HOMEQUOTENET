@@ -20,7 +20,10 @@ beforeAll(async () => {
   await db.connect(); connected = true; await q('begin');
   const [foundation] = await q("select to_regclass('public.workflow_runs') as t");
   if (!foundation.t) await q(readFileSync('supabase/migrations/0020_workflow_automation_foundation.sql', 'utf8'));
-  await q(readFileSync('supabase/migrations/0025_workflow_management.sql', 'utf8'));
+  // Install inside the rolled-back transaction only when the database doesn't
+  // have it yet; re-applying to live tables from parallel test files deadlocks.
+  const [{ applied: managementApplied }] = await q("select to_regproc('public.save_workflow_definition') is not null as applied");
+  if (!managementApplied) await q(readFileSync('supabase/migrations/0025_workflow_management.sql', 'utf8'));
   await q(`insert into auth.users(id,instance_id,aud,role,email,encrypted_password,email_confirmed_at,raw_user_meta_data,created_at,updated_at)
     values($1,'00000000-0000-0000-0000-000000000000','authenticated','authenticated',$2,'x',now(),'{}',now(),now())`, [admin, `${admin}@workflow-ui.test`]);
   await q("update public.profiles set role='admin',account_status='active' where id=$1", [admin]);
