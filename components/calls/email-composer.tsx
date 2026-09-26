@@ -9,6 +9,7 @@ import {
   buildProspectEmailHtml,
   MORE_INFO_TEMPLATE_KEY,
 } from '@/lib/emails/template';
+import { renderEmailTemplate, type EmailTemplateContext } from '@/lib/emails/variables';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -16,14 +17,26 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 
+export interface ProspectLibraryTemplate {
+  key: string;
+  category: string;
+  name: string;
+  subject: string;
+  textBody: string;
+}
+
 export function EmailComposer({
   prospects,
   gmailConnected,
   logoUrl,
+  libraryTemplates = [],
+  homequote,
 }: {
   prospects: EmailProspectOption[];
   gmailConnected: boolean;
   logoUrl: string;
+  libraryTemplates?: ProspectLibraryTemplate[];
+  homequote?: EmailTemplateContext['homequote'];
 }) {
   const [state, action, pending] = useActionState<SendEmailState, FormData>(sendProspectEmail, undefined);
   const [prospectId, setProspectId] = useState('');
@@ -48,7 +61,8 @@ export function EmailComposer({
 
   const chooseTemplate = (value: string) => {
     setTemplate(value);
-    if (value === MORE_INFO_TEMPLATE_KEY && selected) {
+    if (!selected) return;
+    if (value === MORE_INFO_TEMPLATE_KEY) {
       const draft = buildMoreInfoAfterCallEmail(
         selected,
         contactName,
@@ -56,6 +70,19 @@ export function EmailComposer({
       );
       setSubject(draft.subject);
       setMessage(draft.message);
+      return;
+    }
+    const library = libraryTemplates.find((t) => t.key === value);
+    if (library) {
+      const context: EmailTemplateContext = {
+        contractor: { name: selected.company_name, contact_name: contactName, email: contactEmail },
+        homequote,
+      };
+      // The library's text_body ends with its own "— HomeQuote Network" sign-off;
+      // strip it here since buildProspectEmailHtml below adds Liam's own signature.
+      const body = library.textBody.replace(/\n\n—\n[\s\S]*$/, '');
+      setSubject(renderEmailTemplate(library.subject, context));
+      setMessage(renderEmailTemplate(body, context));
     }
   };
   const htmlPreview = message ? buildProspectEmailHtml(message, logoUrl) : '';
@@ -111,6 +138,20 @@ export function EmailComposer({
             <Select id="email-template" name="template_key" value={template} onChange={(event) => chooseTemplate(event.target.value)} disabled={!selected} required>
               <option value="" disabled>Choose a template…</option>
               <option value={MORE_INFO_TEMPLATE_KEY}>More info after our call</option>
+              {Object.entries(
+                libraryTemplates.reduce<Record<string, ProspectLibraryTemplate[]>>((byCategory, t) => {
+                  (byCategory[t.category] ??= []).push(t);
+                  return byCategory;
+                }, {})
+              ).map(([category, templates]) => (
+                <optgroup key={category} label={category}>
+                  {templates.map((t) => (
+                    <option key={t.key} value={t.key}>
+                      {t.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
             </Select>
           </div>
 

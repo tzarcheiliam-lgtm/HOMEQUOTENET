@@ -1,8 +1,12 @@
 import { Mail, PlugZap } from 'lucide-react';
 import { requireCallWorkspace } from '@/lib/auth';
 import { listEmailProspects } from '@/lib/data/emails';
+import { listEmailTemplates } from '@/lib/data/email-templates';
 import { getGmailConnectionStatus } from '@/lib/emails/gmail';
 import { emailLogoUrl } from '@/lib/emails/template';
+import { homequoteSystemValues } from '@/lib/emails/variables';
+
+const PROSPECT_TEMPLATE_CATEGORIES = ['Contractor Sales', 'Contractor Onboarding'];
 import { buttonVariants } from '@/components/ui/button';
 import { CallsSubnav } from '@/components/calls/calls-subnav';
 import { EmailComposer } from '@/components/calls/email-composer';
@@ -25,10 +29,13 @@ export default async function EmailsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const me = await requireCallWorkspace();
-  const [prospects, gmail] = await Promise.all([listEmailProspects(), getGmailConnectionStatus()]);
+  const [prospects, gmail, allTemplates] = await Promise.all([listEmailProspects(), getGmailConnectionStatus(), listEmailTemplates()]);
   const params = await searchParams;
   const gmailResult = Array.isArray(params.gmail) ? params.gmail[0] : params.gmail;
   const logoUrl = emailLogoUrl(process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000');
+  const libraryTemplates = allTemplates
+    .filter((t) => t.isActive && PROSPECT_TEMPLATE_CATEGORIES.includes(t.category))
+    .map((t) => ({ key: t.key, category: t.category, name: t.name, subject: t.subject, textBody: t.textBody }));
 
   return (
     <div className="space-y-6">
@@ -61,6 +68,8 @@ export default async function EmailsPage({
         prospects={prospects}
         gmailConnected={gmail.connected}
         logoUrl={logoUrl}
+        libraryTemplates={libraryTemplates}
+        homequote={homequoteSystemValues()}
       />
     </div>
   );

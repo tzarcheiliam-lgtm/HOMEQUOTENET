@@ -5,11 +5,7 @@ import { z } from 'zod';
 import { requireCallWorkspace } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import {
-  buildProspectEmailHtml,
-  emailLogoUrl,
-  MORE_INFO_TEMPLATE_KEY,
-} from '@/lib/emails/template';
+import { buildProspectEmailHtml, emailLogoUrl } from '@/lib/emails/template';
 import { gmailOAuthConfig, sendGmailMessage } from '@/lib/emails/gmail';
 
 export type SendEmailState =
@@ -21,7 +17,11 @@ const schema = z.object({
   prospect_id: z.string().uuid('Choose a company'),
   recipient_name: z.string().trim().min(1, 'Enter the name of the person you spoke with').max(120),
   recipient_email: z.string().trim().email('Enter a valid recipient email').max(254),
-  template_key: z.literal(MORE_INFO_TEMPLATE_KEY),
+  // MORE_INFO_TEMPLATE_KEY's dynamic draft, or any email_templates.key from
+  // the library (Contractor Sales / Contractor Onboarding) -- both just land
+  // in prospect_email_logs.template_key as a label; the actual subject/body
+  // sent is whatever the composer put in the subject/message fields below.
+  template_key: z.string().trim().min(1).max(100).regex(/^[a-z][a-z0-9_]*$/),
   subject: z
     .string()
     .trim()
