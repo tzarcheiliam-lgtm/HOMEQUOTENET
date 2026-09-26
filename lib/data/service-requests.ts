@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import type { RequestSource, RequestStatus, ServiceSlug } from '@/lib/growth/catalog';
 import { recommendService, type Recommendation } from '@/lib/growth/recommend';
 import type { Profile } from '@/lib/types';
+import type { PaymentStatus, PriceInterval } from '@/lib/billing/pricing';
 
 export interface ServiceRequest {
   id: string;
@@ -18,13 +19,22 @@ export interface ServiceRequest {
   notification_attempts: number;
   notification_error: string | null;
   notified_at: string | null;
+  /** Price set by an admin (lib/billing/pricing.ts); null until then. */
+  price_cents: number | null;
+  price_interval: PriceInterval | null;
+  setup_fee_cents: number | null;
+  price_description: string | null;
+  priced_at: string | null;
+  payment_status: PaymentStatus;
+  stripe_subscription_id: string | null;
+  paid_at: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export interface GrowthContext {
   /** The signed-in contractor's company; null when the login isn't linked to one. */
-  company: { id: string; name: string; website: string | null } | null;
+  company: { id: string; name: string; website: string | null; stripe_customer_id: string | null } | null;
   requests: ServiceRequest[];
   recommendation: Recommendation | null;
 }
@@ -37,7 +47,7 @@ export async function getGrowthContext(profile: Profile): Promise<GrowthContext>
   if (!profile.contractor_id) return { company: null, requests: [], recommendation: null };
   const supabase = await createClient();
   const [companyRes, requestsRes] = await Promise.all([
-    supabase.from('contractors').select('id, name, website').eq('id', profile.contractor_id).maybeSingle(),
+    supabase.from('contractors').select('id, name, website, stripe_customer_id').eq('id', profile.contractor_id).maybeSingle(),
     supabase
       .from('service_requests')
       .select('*')

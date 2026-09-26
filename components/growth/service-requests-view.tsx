@@ -2,8 +2,12 @@
 import Link from 'next/link';
 import { Handshake, MailWarning, RotateCw } from 'lucide-react';
 import type { AdminServiceRequest } from '@/lib/data/service-requests';
-import { REQUEST_SOURCE_LABELS, REQUEST_STATUSES, getService, type RequestStatus } from '@/lib/growth/catalog';
+import { REQUEST_SOURCE_LABELS, REQUEST_STATUSES, formatPrice, getService, type RequestStatus } from '@/lib/growth/catalog';
 import { retryServiceRequestEmail } from '@/lib/actions/service-requests';
+import { clearServiceRequestPrice } from '@/lib/actions/billing';
+import { PRICE_LOCKED_STATUSES, formatQuote } from '@/lib/billing/pricing';
+import { PaymentStatusBadge } from '@/components/billing/payment-status-badge';
+import { SetPriceDialog } from '@/components/billing/set-price-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -40,7 +44,7 @@ export function ServiceRequestsView({
     <div className="space-y-6">
       <PageHeader
         title="Service Requests"
-        description="Growth Tools upsell requests from contractors. Nothing is purchased or billed until your team sets it up."
+        description="Growth Tools requests from contractors. Set a price and the contractor can pay for it on Stripe from their portal. Nothing is charged until they do."
       />
 
       {requests.some((r) => r.notification_status === 'failed') && (
@@ -92,6 +96,7 @@ export function ServiceRequestsView({
                 <TableHead>Notes</TableHead>
                 <TableHead>Submitted</TableHead>
                 <TableHead>Team email</TableHead>
+                <TableHead>Price &amp; payment</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
@@ -130,6 +135,9 @@ export function ServiceRequestsView({
                       <EmailStatus request={r} />
                     </TableCell>
                     <TableCell>
+                      <PriceCell request={r} companyName={companyName} serviceName={serviceName} />
+                    </TableCell>
+                    <TableCell>
                       <RequestStatusSelect
                         requestId={r.id}
                         status={r.status}
@@ -142,6 +150,43 @@ export function ServiceRequestsView({
             </TableBody>
           </Table>
         </Card>
+      )}
+    </div>
+  );
+}
+
+/** The price an admin set, the Stripe payment state, and the set / change / remove controls. */
+function PriceCell({ request: r, companyName, serviceName }: { request: AdminServiceRequest; companyName: string; serviceName: string }) {
+  const service = getService(r.service);
+  const locked = PRICE_LOCKED_STATUSES.includes(r.payment_status);
+  const priced = r.price_cents !== null && r.price_interval !== null;
+  return (
+    <div className="min-w-[11rem] space-y-1.5">
+      {priced && (
+        <p className="text-sm font-medium tabular-nums">
+          {formatQuote({ price_cents: r.price_cents!, price_interval: r.price_interval!, setup_fee_cents: r.setup_fee_cents })}
+        </p>
+      )}
+      {r.payment_status !== 'none' && <PaymentStatusBadge status={r.payment_status} />}
+      {r.paid_at && <span className="block text-xs text-muted-foreground">Paid {fmtDateTime(r.paid_at)}</span>}
+      {!locked && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <SetPriceDialog
+            requestId={r.id}
+            companyName={companyName}
+            serviceName={serviceName}
+            suggested={service ? formatPrice(service.price) : 'no listed price'}
+            current={r}
+          />
+          {priced && (
+            <form action={clearServiceRequestPrice}>
+              <input type="hidden" name="id" value={r.id} />
+              <Button type="submit" variant="ghost" size="sm" className="h-7 text-muted-foreground">
+                Remove
+              </Button>
+            </form>
+          )}
+        </div>
       )}
     </div>
   );
