@@ -208,6 +208,7 @@ describe('startServiceCheckout (contractor)', () => {
     expect(s.line_items.map((i) => i.price_data.unit_amount)).toEqual([49900, 50000]);
     expect(s.metadata).toEqual({ service_request_id: REQUEST_ID, contractor_id: COMPANY, service: 'ai_receptionist' });
     expect(s.subscription_data.billing_mode).toEqual({ type: 'flexible' });
+    expect((s as unknown as { managed_payments: unknown }).managed_payments).toEqual({ enabled: false });
     expect(state.company.stripe_customer_id).toBe('cus_new');
     expect(state.adminUpdates).toContainEqual({ stripe_checkout_session_id: 'cs_new' });
   });

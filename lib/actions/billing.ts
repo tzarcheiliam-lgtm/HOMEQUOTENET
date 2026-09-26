@@ -246,6 +246,9 @@ export async function startServiceCheckout(_prev: BillingActionState, formData: 
         mode: quote.price_interval === 'month' ? 'subscription' : 'payment',
         customer,
         client_reference_id: row.id,
+        // HomeQuote is the seller of its own services, so Stripe's merchant-of-record
+        // Managed Payments (on by default for this account) doesn't apply.
+        managed_payments: { enabled: false },
         line_items: checkoutLineItems(quote, serviceName, company?.name ?? 'your company'),
         metadata,
         success_url: siteUrl('/app/growth?checkout=success#your-requests'),
