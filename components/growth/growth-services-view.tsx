@@ -1,5 +1,5 @@
 // The contractor's Growth Tools page. Data-free so it can be previewed.
-import { Building2 } from 'lucide-react';
+import { Building2, CircleCheck, CreditCard } from 'lucide-react';
 import type { GrowthContext } from '@/lib/data/service-requests';
 import { getService, servicesByTier, type RequestStatus, type ServiceSlug } from '@/lib/growth/catalog';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -9,6 +9,9 @@ import { RequestStatusBadge } from '@/components/growth/request-status-badge';
 import { ServiceIcon } from '@/components/growth/service-icon';
 import { UpsellViewTracker } from '@/components/growth/upsell-view-tracker';
 import type { Requester } from '@/components/growth/service-request-form';
+import { ManageBillingButton, PayButton } from '@/components/billing/pay-buttons';
+import { PaymentStatusBadge } from '@/components/billing/payment-status-badge';
+import { PAYABLE_STATUSES, formatQuote } from '@/lib/billing/pricing';
 
 const fmtDate = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
@@ -45,7 +48,12 @@ export function GrowthServicesView({
   requests,
   recommendation,
   requester,
-}: GrowthContext & { requester: { name: string; email: string | null } }) {
+  checkout,
+}: GrowthContext & {
+  requester: { name: string; email: string | null };
+  /** Set when returning from Stripe Checkout. */
+  checkout?: 'success' | 'canceled';
+}) {
   if (!company) {
     return (
       <div className="mx-auto max-w-7xl space-y-8">
@@ -68,6 +76,7 @@ export function GrowthServicesView({
     recommended: recommendation?.service === slug,
   });
 
+  const payable = requests.filter((r) => PAYABLE_STATUSES.includes(r.payment_status) && r.price_cents !== null);
   const [featured] = servicesByTier('featured');
   const core = servicesByTier('core');
   const marketing = servicesByTier('marketing');
@@ -76,6 +85,25 @@ export function GrowthServicesView({
     <div className="mx-auto max-w-7xl space-y-12 pb-8">
       <UpsellViewTracker contractorId={company.id} />
       <Hero />
+
+      {checkout === 'success' && (
+        <div role="status" className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+          <CircleCheck aria-hidden className="mt-0.5 size-4 shrink-0" />
+          <p>Thanks! Your payment was received. It can take a minute to show below, and our team will be in touch to get started.</p>
+        </div>
+      )}
+      {payable.length > 0 && (
+        <a
+          href="#your-requests"
+          className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950 transition-colors hover:bg-amber-100"
+        >
+          <CreditCard aria-hidden className="size-4 shrink-0" />
+          <span>
+            <strong>{payable.length === 1 ? 'Your price is ready.' : `${payable.length} prices are ready.`}</strong> Review and pay below to get
+            started.
+          </span>
+        </a>
+      )}
 
       {featured && <FeaturedServiceCard service={featured} requester={who} requestStatus={latest.get(featured.slug)} />}
 
@@ -110,11 +138,14 @@ export function GrowthServicesView({
       </section>
 
       <section id="your-requests" aria-labelledby="requests-heading" className="space-y-5">
-        <SectionHeading
-          id="requests-heading"
-          title="Your requests"
-          description="Everything you’ve asked about, and where it stands with our team."
-        />
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <SectionHeading
+            id="requests-heading"
+            title="Your requests"
+            description="Everything you’ve asked about, and where it stands with our team."
+          />
+          {company.stripe_customer_id && <ManageBillingButton />}
+        </div>
         {requests.length === 0 ? (
           <p className="rounded-2xl border border-dashed p-6 text-center text-sm text-muted-foreground">
             You haven’t requested anything yet. Pick a tool above and we’ll take it from there.
@@ -130,7 +161,23 @@ export function GrowthServicesView({
                     <span className="block text-sm font-medium">{svc?.name ?? r.service}</span>
                     <span className="text-xs text-muted-foreground">Requested {fmtDate(r.created_at)}</span>
                   </span>
-                  <RequestStatusBadge status={r.status} />
+                  {r.price_cents !== null && r.price_interval !== null ? (
+                    <span className="flex basis-full flex-wrap items-center gap-2 pl-12 sm:basis-auto sm:justify-end sm:pl-0">
+                      <span className="text-sm font-semibold tabular-nums">
+                        {formatQuote({ price_cents: r.price_cents, price_interval: r.price_interval, setup_fee_cents: r.setup_fee_cents })}
+                      </span>
+                      {PAYABLE_STATUSES.includes(r.payment_status) ? (
+                        <PayButton requestId={r.id} label={r.payment_status === 'failed' ? 'Try payment again' : 'Review & pay'} />
+                      ) : (
+                        <PaymentStatusBadge status={r.payment_status} />
+                      )}
+                    </span>
+                  ) : (
+                    <RequestStatusBadge status={r.status} />
+                  )}
+                  {r.price_description && PAYABLE_STATUSES.includes(r.payment_status) && (
+                    <p className="basis-full pl-12 text-xs text-muted-foreground">{r.price_description}</p>
+                  )}
                 </li>
               );
             })}
