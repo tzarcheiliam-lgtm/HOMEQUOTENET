@@ -24,3 +24,8 @@ export function siteUrl(path: string): string {
   const base = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
   return new URL(path, base.endsWith('/') ? base : `${base}/`).toString();
 }
+
+/** The page a price email links to. Works for any signed-in contractor of the company. */
+export function payPageUrl(requestId: string): string {
+  return siteUrl(`/app/pay/${encodeURIComponent(requestId)}`);
+}

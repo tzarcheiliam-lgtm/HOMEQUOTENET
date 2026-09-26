@@ -18,7 +18,7 @@ import {
   type PaymentStatus,
   type Quote,
 } from '@/lib/billing/pricing';
-import { siteUrl, stripe } from '@/lib/billing/stripe';
+import { payPageUrl, siteUrl, stripe } from '@/lib/billing/stripe';
 
 export type BillingActionState = { ok: true; message: string } | { ok: false; error: string } | undefined;
 
@@ -111,7 +111,7 @@ export async function setServiceRequestPrice(_prev: BillingActionState, formData
         serviceName: getService(row.service)?.name ?? row.service,
         quote,
       },
-      siteUrl(PORTAL_PATH),
+      payPageUrl(id),
     );
     await sendGmailMessage({
       toEmail: requester.email,
@@ -251,8 +251,8 @@ export async function startServiceCheckout(_prev: BillingActionState, formData: 
         managed_payments: { enabled: false },
         line_items: checkoutLineItems(quote, serviceName, company?.name ?? 'your company'),
         metadata,
-        success_url: siteUrl('/app/growth?checkout=success#your-requests'),
-        cancel_url: siteUrl('/app/growth?checkout=canceled#your-requests'),
+        success_url: `${payPageUrl(row.id)}?checkout=success`,
+        cancel_url: `${payPageUrl(row.id)}?checkout=canceled`,
         ...(quote.price_interval === 'month'
           ? {
               subscription_data: {

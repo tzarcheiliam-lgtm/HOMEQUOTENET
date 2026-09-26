@@ -5,9 +5,11 @@ import type { AdminServiceRequest } from '@/lib/data/service-requests';
 import { REQUEST_SOURCE_LABELS, REQUEST_STATUSES, formatPrice, getService, type RequestStatus } from '@/lib/growth/catalog';
 import { retryServiceRequestEmail } from '@/lib/actions/service-requests';
 import { clearServiceRequestPrice } from '@/lib/actions/billing';
-import { PRICE_LOCKED_STATUSES, formatQuote } from '@/lib/billing/pricing';
+import { PAYABLE_STATUSES, PRICE_LOCKED_STATUSES, formatQuote } from '@/lib/billing/pricing';
 import { PaymentStatusBadge } from '@/components/billing/payment-status-badge';
 import { SetPriceDialog } from '@/components/billing/set-price-dialog';
+import { CopyPayLink } from '@/components/billing/copy-pay-link';
+import { payPageUrl } from '@/lib/billing/stripe';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -178,6 +180,7 @@ function PriceCell({ request: r, companyName, serviceName }: { request: AdminSer
             suggested={service ? formatPrice(service.price) : 'no listed price'}
             current={r}
           />
+          {priced && PAYABLE_STATUSES.includes(r.payment_status) && <CopyPayLink url={payPageUrl(r.id)} />}
           {priced && (
             <form action={clearServiceRequestPrice}>
               <input type="hidden" name="id" value={r.id} />

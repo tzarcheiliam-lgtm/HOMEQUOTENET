@@ -43,6 +43,7 @@ vi.mock('@/lib/emails/gmail', () => ({
 }));
 vi.mock('@/lib/billing/stripe', () => ({
   siteUrl: (p: string) => `https://homequote.test${p}`,
+  payPageUrl: (id: string) => `https://homequote.test/app/pay/${id}`,
   stripe: () => ({
     customers: { create: vi.fn(async () => ({ id: 'cus_new' })) },
     checkout: {
@@ -168,6 +169,8 @@ describe('setServiceRequestPrice (admin)', () => {
     });
     expect(state.expired).toEqual(['cs_old']); // the old price can't be paid any more
     expect(state.emails).toEqual([expect.objectContaining({ toEmail: 'ethan@pm.test', subject: 'Your HomeQuote price for AI Receptionist' })]);
+    // The email opens this request's pay page, not the general Growth Tools page.
+    expect((state.emails[0] as unknown as { message: string }).message).toContain(`https://homequote.test/app/pay/${REQUEST_ID}`);
   });
 
   it('does not email unless asked', async () => {
@@ -204,6 +207,10 @@ describe('startServiceCheckout (contractor)', () => {
       subscription_data: { billing_mode: { type: string } };
     };
     expect(s.mode).toBe('subscription');
+    expect(s).toMatchObject({
+      success_url: `https://homequote.test/app/pay/${REQUEST_ID}?checkout=success`,
+      cancel_url: `https://homequote.test/app/pay/${REQUEST_ID}?checkout=canceled`,
+    });
     expect(s.customer).toBe('cus_new');
     expect(s.line_items.map((i) => i.price_data.unit_amount)).toEqual([49900, 50000]);
     expect(s.metadata).toEqual({ service_request_id: REQUEST_ID, contractor_id: COMPANY, service: 'ai_receptionist' });

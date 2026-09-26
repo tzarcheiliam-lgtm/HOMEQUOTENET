@@ -96,3 +96,33 @@ export async function countServiceRequestsByStatus(): Promise<Record<RequestStat
   for (const row of data ?? []) if (row.status in counts) counts[row.status as RequestStatus] += 1;
   return counts;
 }
+
+export interface PayPageRequest {
+  id: string;
+  contractor_id: string;
+  service: ServiceSlug;
+  price_cents: number | null;
+  price_interval: PriceInterval | null;
+  setup_fee_cents: number | null;
+  price_description: string | null;
+  payment_status: PaymentStatus;
+  paid_at: string | null;
+  contractor: { name: string } | null;
+}
+
+/**
+ * One request for the /app/pay/[id] page. RLS scopes it: a contractor only
+ * finds their own company's requests; admins find any. Null when not visible.
+ */
+export async function getPayPageRequest(id: string): Promise<PayPageRequest | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('service_requests')
+    .select(
+      'id, contractor_id, service, price_cents, price_interval, setup_fee_cents, price_description, payment_status, paid_at, contractor:contractors(name)'
+    )
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw new Error('Could not load this payment.');
+  return (data as unknown as PayPageRequest | null) ?? null;
+}
