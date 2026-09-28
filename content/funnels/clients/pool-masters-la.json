@@ -1,6 +1,7 @@
 {
   "version": 1,
   "clientName": "Pool Masters LA",
+  "clientLogo": "/images/brand/poolmasters-logo.png",
   "industry": "Pool construction & remodeling",
   "serviceArea": {
     "label": "Los Angeles & Ventura County",

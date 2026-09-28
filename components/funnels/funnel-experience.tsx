@@ -24,6 +24,7 @@ export function FunnelExperience({ slug, initialConfig, demo, previewMode, jumpT
   const [session, setSession] = useState<Session | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [wideLogo, setWideLogo] = useState(false);
   const [zip, setZip] = useState('');
   const [checking, setChecking] = useState(true);
   const [tracking, setTracking] = useState(false);
@@ -162,7 +163,7 @@ export function FunnelExperience({ slug, initialConfig, demo, previewMode, jumpT
   return <main className="hqn-funnel" style={{ '--funnel-primary': config.primaryColor, '--funnel-secondary': config.secondaryColor } as CSSProperties}>
     <div className="funnel-shell">
       <header className="funnel-header">
-        <div className="funnel-brand">{config.clientLogo && <Image src={config.clientLogo} alt="" width={44} height={44} unoptimized />}<span>{config.clientName}<small>YOUR NEXT HOME PROJECT</small></span></div>
+        <div className="funnel-brand">{config.clientLogo && <Image src={config.clientLogo} alt="" width={44} height={44} unoptimized className={wideLogo ? 'funnel-logo-wide' : undefined} onLoad={e => setWideLogo(e.currentTarget.naturalWidth > e.currentTarget.naturalHeight * 1.3)} />}<span>{config.clientName}<small>YOUR NEXT HOME PROJECT</small></span></div>
         <span className="funnel-secure"><LockKeyhole size={14} /> Private & secure</span>
       </header>
       {demo && !previewMode && <div className="funnel-demo">Interactive demo · No contractor is contacted and no appointment is booked.</div>}
