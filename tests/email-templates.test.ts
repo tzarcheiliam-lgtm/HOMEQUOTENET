@@ -20,8 +20,13 @@ describe('renderEmailTemplate', () => {
   });
 
   it('renders unknown or missing fields as empty string, never leaves the token or throws', () => {
-    expect(renderEmailTemplate('Hi {{lead.first_name}}!', {})).toBe('Hi !');
     expect(renderEmailTemplate('{{not.a.real.field}}', {})).toBe('');
+  });
+
+  it('never leaves a gap before punctuation when a field is missing ("Hi ," -> "Hi,")', () => {
+    expect(renderEmailTemplate('Hi {{lead.first_name}},', {})).toBe('Hi,');
+    expect(renderEmailTemplate('Hi {{lead.first_name}}!', {})).toBe('Hi!');
+    expect(renderEmailTemplate('in {{lead.city}}.', {})).toBe('in.');
   });
 
   it('derives homequote.portal_url from site_url when not set explicitly', () => {
@@ -56,9 +61,9 @@ describe('email template library', () => {
     for (const key of keys) expect(key).toMatch(/^[a-z][a-z0-9_]*$/);
   });
 
-  it('seeds exactly 48 branded rows with rendered HTML and text bodies', () => {
+  it('seeds exactly 49 branded rows with rendered HTML and text bodies', () => {
     const rows = buildEmailTemplateSeedRows('https://homequotenet.com');
-    expect(rows).toHaveLength(48);
+    expect(rows).toHaveLength(49);
     for (const row of rows) {
       expect(row.html_body).toContain('<div');
       expect(row.text_body.length).toBeGreaterThan(0);

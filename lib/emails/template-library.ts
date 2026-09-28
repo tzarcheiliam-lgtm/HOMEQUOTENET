@@ -42,6 +42,21 @@ export const EMAIL_TEMPLATE_LIBRARY: EmailTemplateSeed[] = [
     ],
   },
   {
+    key: 'pool_masters_homeowner_request_received',
+    category: 'Homeowner Follow-Up',
+    name: 'Pool Masters — Request Received',
+    subject: 'We received your Pool Masters request',
+    description: 'Pool Masters LA funnel only: automatic acknowledgment sent right after a homeowner submits the funnel. Not an appointment confirmation — only says a confirmed appointment when the CRM has one.',
+    contractorVisible: false,
+    paragraphs: [
+      'Hi {{lead.first_name}},',
+      'Thank you for submitting your project information.',
+      'We received your request and will be in touch shortly to review the details and confirm the next steps for your estimate.',
+      'If we need any additional information, someone from our team will contact you.',
+      'Thank you,\nPool Masters LA / HomeQuote',
+    ],
+  },
+  {
     key: 'homeowner_no_answer',
     category: 'Homeowner Follow-Up',
     name: "Lead Didn't Answer",

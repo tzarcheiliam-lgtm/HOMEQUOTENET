@@ -124,9 +124,20 @@ function resolve(context: EmailTemplateContext, field: string): string {
   return '';
 }
 
-/** Substitutes {{root.key}} tokens; unknown/unresolvable tokens render as ''. */
+const EMPTY = '\u0000';
+
+/**
+ * Substitutes {{root.key}} tokens; unknown/unresolvable tokens render as ''.
+ * A missing value never leaves a gap before punctuation ("Hi ," -> "Hi,") or a
+ * double space mid-sentence, matching the same cleanup already used for
+ * workflow message rendering (lib/workflows/merge.ts).
+ */
 export function renderEmailTemplate(text: string, context: EmailTemplateContext): string {
-  return text.replace(TOKEN, (_match, field: string) => resolve(context, field));
+  const rendered = text.replace(TOKEN, (_match, field: string) => resolve(context, field) || EMPTY);
+  return rendered
+    .replace(/[ \t]*\u0000[ \t]*(?=[,.!?;:)])/g, '')
+    .replace(/([ \t])\u0000[ \t]+/g, '$1')
+    .replace(/\u0000/g, '');
 }
 
 export function homequoteSystemValues(): Required<NonNullable<EmailTemplateContext['homequote']>> {

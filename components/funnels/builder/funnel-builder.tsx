@@ -113,7 +113,9 @@ export function FunnelBuilder({
             <div className="mt-2 space-y-1 border-t pt-2">
               <button className={`block w-full rounded-md px-2 py-1.5 text-left text-sm ${selected.kind === 'fixed' && selected.id === 'qualification' ? 'bg-accent' : ''}`} onClick={() => setSelected({ kind: 'fixed', id: 'qualification' })}>Qualification</button>
               <button className={`block w-full rounded-md px-2 py-1.5 text-left text-sm ${selected.kind === 'fixed' && selected.id === 'contact' ? 'bg-accent' : ''}`} onClick={() => setSelected({ kind: 'fixed', id: 'contact' })}>Contact info</button>
-              {config.calendarUrl && <button className={`block w-full rounded-md px-2 py-1.5 text-left text-sm ${selected.kind === 'fixed' && selected.id === 'calendar' ? 'bg-accent' : ''}`} onClick={() => setSelected({ kind: 'fixed', id: 'calendar' })}>Calendar</button>}
+              <button className={`block w-full rounded-md px-2 py-1.5 text-left text-sm ${selected.kind === 'fixed' && selected.id === 'calendar' ? 'bg-accent' : ''} ${config.calendarUrl ? '' : 'text-muted-foreground'}`} onClick={() => setSelected({ kind: 'fixed', id: 'calendar' })}>
+                {config.calendarUrl ? 'Calendar' : '+ Add calendar step'}
+              </button>
               <button className={`block w-full rounded-md px-2 py-1.5 text-left text-sm ${selected.kind === 'fixed' && selected.id === 'thanks' ? 'bg-accent' : ''}`} onClick={() => setSelected({ kind: 'fixed', id: 'thanks' })}>Thank you</button>
             </div>
           </CardContent>
@@ -151,6 +153,7 @@ export function FunnelBuilder({
           {selected.kind === 'fixed' && selected.id === 'calendar' && (
             <Card><CardContent className="space-y-3 p-4">
               <h3 className="text-sm font-semibold">Calendar</h3>
+              {!config.calendarUrl && <p className="text-xs text-muted-foreground">Optional — qualified visitors book a time before the thank-you screen. Choose a provider and paste a URL below to add it; leave it blank to skip straight to the thank-you screen.</p>}
               <Field label="Provider">
                 <Select value={config.calendarProvider} onChange={e => patch({ ...config, calendarProvider: e.target.value as 'ghl' | 'calendly' })}>
                   <option value="ghl">GoHighLevel (embedded calendar, server-confirmed)</option>
@@ -160,7 +163,7 @@ export function FunnelBuilder({
               <Field label="Calendar URL"><Input value={config.calendarUrl ?? ''} onChange={e => patch({ ...config, calendarUrl: e.target.value })} placeholder="https://…" /></Field>
               {config.calendarProvider === 'ghl' && <Field label="Calendar ID (GHL)"><Input value={config.calendarId ?? ''} onChange={e => patch({ ...config, calendarId: e.target.value })} /></Field>}
               <Field label="Headline"><Input value={config.calendarHeadline ?? ''} onChange={e => patch({ ...config, calendarHeadline: e.target.value })} placeholder="Choose a time for your free estimate" /></Field>
-              <Button variant="outline" size="sm" onClick={() => patch({ ...config, calendarUrl: undefined, calendarId: undefined })}>Remove calendar step</Button>
+              {config.calendarUrl && <Button variant="outline" size="sm" onClick={() => { patch({ ...config, calendarUrl: undefined, calendarId: undefined }); setSelected({ kind: 'fixed', id: 'qualification' }); }}>Remove calendar step</Button>}
             </CardContent></Card>
           )}
           {selected.kind === 'fixed' && selected.id === 'thanks' && (
