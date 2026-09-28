@@ -364,6 +364,64 @@ stance, see §13/PROJECT_STATUS.md).
 - Live example funnels referenced in commit history: Pool Masters LA (GHL +
   Calendly), the HomeQuote house pool funnel (private multi-contractor
   sharing).
+- **Calendar is not a stage in an array** — there is no funnel-stage list to
+  add/remove entries from. Its presence is entirely computed from
+  `config.calendarUrl` being set (`calendarProvider`/`calendarId`/
+  `calendarHeadline` ride along). The builder (`components/funnels/builder/
+  funnel-builder.tsx`) previously only rendered the "Calendar" sidebar button
+  when `config.calendarUrl` was already truthy, so once removed there was no
+  way back into the panel to re-add it short of creating a new funnel — that
+  bug is fixed (2026-09-28): the sidebar entry now always renders (labeled
+  "+ Add calendar step" when unset) and opens the same settings panel either
+  way. No migration was needed since nothing about storage changed.
+
+### 9a. Pool Masters LA homeowner acknowledgment email (2026-09-28)
+
+The Pool Masters LA funnel (`/estimate/pool-masters-la`, contractor-routed,
+not house) automatically emails the homeowner a "request received"
+acknowledgment right after a successful submission — explicitly **not** an
+appointment confirmation (that copy is reserved for when the CRM has a real
+confirmed booking). Built entirely on existing infrastructure, no new email
+system and no migration:
+- **Template**: `email_templates` row `pool_masters_homeowner_request_received`
+  (`lib/emails/template-library.ts`), admin-only (`contractor_visible:
+  false`), category `Homeowner Follow-Up`. Kept as its own distinct key
+  rather than folded into the general `homeowner_new_lead_confirmation`
+  template, since `email_templates` has no per-client scoping column.
+- **Trigger**: a `lead.created` workflow (`lib/workflows/`) scoped two ways
+  for isolation from every other funnel — `contractor_id` = Pool Masters'
+  own contractor row (tenancy already restricts a contractor-owned workflow
+  to its own events), and a belt-and-suspenders condition on
+  `event.payload.funnelSlug equals 'pool-masters-la'` (the event payload
+  already carries `funnelSlug`, set by `emit_lead_workflow_events()` in
+  `0024_workflow_runtime.sql` from `leads.consent_source = 'funnel:<slug>'`).
+  One `send_email` step, `to: { kind: 'lead' }`, referencing the template
+  above by id.
+- **Dedup / no double-send**: entirely existing machinery — `emit_workflow_event`
+  idempotency key `lead.created|lead:<id>` (one event per lead row, not per
+  submission attempt), `workflow_runs` unique `(workflow_id, trigger_event_id)`
+  with `reentry_policy = once_per_event`, and `lead_email_deliveries`' unique
+  index on `(workflow_step_run_id, recipient_email)`. A retried/duplicate
+  contact POST never reaches the lead-creation path a second time either —
+  `app/api/funnels/[slug]/session/route.ts` short-circuits once
+  `contact_submitted_at` is already set.
+- **Failure isolation**: `send_email` failures never block lead creation —
+  they only fail the workflow step (retried, visible in
+  `/app/workflows/[id]/runs`), which runs after the lead row already exists.
+- **First-name fallback**: `lib/emails/variables.ts` `renderEmailTemplate` was
+  fixed (2026-09-28) to close whitespace/punctuation gaps left by an empty
+  merge field ("Hi ," -> "Hi,"), mirroring the cleanup `lib/workflows/merge.ts`
+  already did for workflow message rendering. This applies to every
+  template, not just this one.
+- **Setup script**: `scripts/seed-pool-masters-ack-workflow.mjs` creates and
+  enables the workflow (idempotent; run after `scripts/seed-email-templates.ts`).
+  It writes directly to `workflows`/`workflow_steps` (like
+  `scripts/funnels.mjs publish`) because `create_workflow_definition()` is a
+  SECURITY DEFINER RPC gated on an authenticated admin session
+  (`is_admin()` via `auth.uid()`), which a service-role script never has —
+  **run by a person with `SUPABASE_DB_URL`, not automation. Not yet run
+  against production as of this writing**; until it is, Part 1 above ships
+  in code but the workflow row does not exist live.
 
 ## 10. Workflow Automations
 
@@ -526,6 +584,39 @@ Two **separate** billing systems in this codebase — do not conflate them:
   `0027_workflow_retention.sql`). Both are applied and safe, but the naming
   is a footgun for anyone assuming filenames are unique — check actual file
   contents/highest number, not just the prefix, before adding `0029`.
+- **`supabase_migrations.schema_migrations` is out of sync with the live schema**
+  (found 2026-09-28): `0020`, `0024`, `0025`, `0026`, `0027` (both), and `0029`
+  are **not** recorded as applied, even though their tables/functions/columns
+  demonstrably exist and work in production (verified directly: `pg_proc`
+  shows `create_workflow_definition`, `save_workflow_definition`,
+  `set_workflow_enabled`, `workflow_replace_steps`, `emit_workflow_event`,
+  `claim_workflow_events`, `claim_workflow_runs` all present with correct
+  grants). Only `0001–0019, 0021–0023, 0028` are tracked. Likely cause: these
+  were applied by running the `.sql` file directly rather than through
+  `scripts/funnels.mjs migrate` / `scripts/apply-migrations.mjs`, which are
+  what insert the tracking row. Not yet reconciled — anyone trusting that
+  table to answer "is X applied?" will get a wrong answer for these six.
+- **Workflow edit/toggle/duplicate/archive actions crashed to a generic
+  "Action not allowed" page on any unexpected error** (fixed 2026-09-28,
+  `lib/actions/workflows.ts` + `app/app/workflows/[id]/page.tsx`).
+  `toggleWorkflowAction`, `duplicateWorkflowAction`, and
+  `archiveWorkflowAction` had no `try/catch` at all (unlike
+  `saveWorkflowAction`, which already handled this correctly) — any thrown
+  error (including `getWorkflow()`'s own `throw new Error('Workflow steps are
+  unavailable')` on a genuine query failure) propagated uncaught to
+  `app/app/error.tsx`, whose static "Action not allowed" heading and Next's
+  production error-message redaction together produced the exact
+  digest-only crash screen. Same root shape existed on the page's own
+  `getWorkflow`/`listWorkflowEvents`/`listEmailTemplates` load. Both now catch,
+  rethrow Next's internal `redirect()`/`notFound()` control-flow errors via
+  `unstable_rethrow` (so real redirects still work), and turn genuine failures
+  into either a friendly `enable_error` message on the workflow page or, for a
+  load failure, an inline "We couldn't load this workflow" card instead of a
+  full-page crash. `archiveWorkflowAction` additionally used to ignore its
+  RPC's `{error}` entirely (a silent-failure bug in the other direction) —
+  now checked. Could not reproduce the *specific* incident live (no browser
+  auth access in this environment), so this is a verified structural fix for
+  every unhandled-error path in that file, not a confirmed single root cause.
 - **Root docs are stale relative to the code.** Notably:
   - `PROJECT_STATUS.md` still lists only migrations `0001`–`0005` as "applied
     to the live database" and describes the `caller` role/Phase 8 calling

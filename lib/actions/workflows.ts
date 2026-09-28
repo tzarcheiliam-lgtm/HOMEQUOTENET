@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
+import { redirect, unstable_rethrow } from 'next/navigation';
 import { requireRole } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -83,41 +83,59 @@ export async function toggleWorkflowAction(formData: FormData) {
   await requireRole(['admin']);
   const id = String(formData.get('workflow_id'));
   const enable = String(formData.get('enabled')) === 'true';
-  const workflow = await getWorkflow(id);
-  if (!workflow) redirect('/app/workflows?error=not-found');
-  if (enable) {
-    const issues = validateWorkflowForEnable(workflow, { contractorId: workflow.contractorId }).map((issue) => issue.message);
-    const sender = await senderIssue(workflow, workflow.contractorId); if (sender) issues.push(sender);
-    if (issues.length) redirect(`/app/workflows/${id}?enable_error=${encodeURIComponent(issues.join('|'))}`);
+  try {
+    const workflow = await getWorkflow(id);
+    if (!workflow) redirect('/app/workflows?error=not-found');
+    if (enable) {
+      const issues = validateWorkflowForEnable(workflow, { contractorId: workflow.contractorId }).map((issue) => issue.message);
+      const sender = await senderIssue(workflow, workflow.contractorId); if (sender) issues.push(sender);
+      if (issues.length) redirect(`/app/workflows/${id}?enable_error=${encodeURIComponent(issues.join('|'))}`);
+    }
+    const db = await createClient();
+    const { error } = await db.rpc('set_workflow_enabled', { p_workflow_id: id, p_enabled: enable, p_expected_version: workflow.version });
+    if (error) redirect(`/app/workflows/${id}?enable_error=${encodeURIComponent('The workflow changed. Refresh and try again.')}`);
+  } catch (error) {
+    unstable_rethrow(error); // let redirect()/notFound() propagate untouched
+    redirect(`/app/workflows/${id}?enable_error=${encodeURIComponent('Could not update this workflow. Please try again.')}`);
   }
-  const db = await createClient();
-  const { error } = await db.rpc('set_workflow_enabled', { p_workflow_id: id, p_enabled: enable, p_expected_version: workflow.version });
-  if (error) redirect(`/app/workflows/${id}?enable_error=${encodeURIComponent('The workflow changed. Refresh and try again.')}`);
   revalidatePath('/app/workflows'); revalidatePath(`/app/workflows/${id}`);
   redirect(`/app/workflows/${id}`);
 }
 
 export async function duplicateWorkflowAction(formData: FormData) {
   const profile = await requireRole(['admin']);
-  const source = await getWorkflow(String(formData.get('workflow_id')));
-  if (!source) redirect('/app/workflows?error=not-found');
-  const definition = parseWorkflowDefinition({
-    name: `${source.name} Copy`, description: source.description, trigger: source.trigger,
-    conditions: source.conditions, exitEvents: source.exitEvents, reentryPolicy: source.reentryPolicy, steps: source.steps,
-  });
-  const db = await createClient();
-  const { data, error } = await db.rpc('create_workflow_definition', {
-    p_definition: definition, p_contractor_id: source.contractorId, p_template_key: source.templateKey,
-    p_source_template_id: source.id, p_actor: profile.id,
-  });
-  if (error || !data) redirect(`/app/workflows/${source.id}?error=duplicate`);
-  revalidatePath('/app/workflows'); redirect(`/app/workflows/${data}`);
+  const id = String(formData.get('workflow_id'));
+  try {
+    const source = await getWorkflow(id);
+    if (!source) redirect('/app/workflows?error=not-found');
+    const definition = parseWorkflowDefinition({
+      name: `${source.name} Copy`, description: source.description, trigger: source.trigger,
+      conditions: source.conditions, exitEvents: source.exitEvents, reentryPolicy: source.reentryPolicy, steps: source.steps,
+    });
+    const db = await createClient();
+    const { data, error } = await db.rpc('create_workflow_definition', {
+      p_definition: definition, p_contractor_id: source.contractorId, p_template_key: source.templateKey,
+      p_source_template_id: source.id, p_actor: profile.id,
+    });
+    if (error || !data) redirect(`/app/workflows/${source.id}?enable_error=${encodeURIComponent('Could not duplicate this workflow. Please try again.')}`);
+    revalidatePath('/app/workflows'); redirect(`/app/workflows/${data}`);
+  } catch (error) {
+    unstable_rethrow(error);
+    redirect(`/app/workflows/${id}?enable_error=${encodeURIComponent('Could not duplicate this workflow. Please try again.')}`);
+  }
 }
 
 export async function archiveWorkflowAction(formData: FormData) {
   await requireRole(['admin']);
-  const db = await createClient();
-  await db.rpc('archive_workflow', { p_workflow_id: String(formData.get('workflow_id')) });
+  const id = String(formData.get('workflow_id'));
+  try {
+    const db = await createClient();
+    const { error } = await db.rpc('archive_workflow', { p_workflow_id: id });
+    if (error) redirect(`/app/workflows/${id}?enable_error=${encodeURIComponent('Could not archive this workflow. Please try again.')}`);
+  } catch (error) {
+    unstable_rethrow(error);
+    redirect(`/app/workflows/${id}?enable_error=${encodeURIComponent('Could not archive this workflow. Please try again.')}`);
+  }
   revalidatePath('/app/workflows'); redirect('/app/workflows');
 }
 
