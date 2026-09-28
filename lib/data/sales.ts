@@ -41,6 +41,7 @@ export async function getSalesDashboard(): Promise<SalesDashboard> {
       .from('sales')
       .select(
         `amount, commission_amount, sale_status,
+         contractor:contractors(name), source_label, vertical_label,
          assignment:lead_assignments(
            contractor:contractors(name),
            lead:leads(source, vertical:verticals(name))
@@ -92,17 +93,17 @@ export async function getSalesDashboard(): Promise<SalesDashboard> {
       assignmentsCount > 0 ? (salesCount / assignmentsCount) * 100 : 0,
     revenueByContractor: sumBy(
       won,
-      (r) => r.assignment?.contractor?.name ?? 'Unknown',
+      (r) => r.assignment?.contractor?.name ?? r.contractor?.name ?? 'Unknown',
       (r) => Number(r.amount) || 0
     ),
     revenueByVertical: sumBy(
       won,
-      (r) => r.assignment?.lead?.vertical?.name ?? 'Unassigned',
+      (r) => r.assignment?.lead?.vertical?.name ?? r.vertical_label ?? 'Unassigned',
       (r) => Number(r.amount) || 0
     ),
     revenueBySource: sumBy(
       won,
-      (r) => r.assignment?.lead?.source ?? 'Unknown',
+      (r) => r.assignment?.lead?.source ?? r.source_label ?? 'Unknown',
       (r) => Number(r.amount) || 0
     ),
   };
@@ -138,4 +139,37 @@ export async function listBillingEvents(): Promise<BillingRow[]> {
       lead_name: leadName,
     };
   });
+}
+
+export interface ManualSaleRow {
+  id: string;
+  sale_date: string;
+  customer_name: string | null;
+  contractor_name: string | null;
+  amount: number;
+  commission_amount: number;
+  sale_status: string;
+  notes: string | null;
+}
+
+export async function listManualSales(): Promise<ManualSaleRow[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('sales')
+    .select('id, sale_date, customer_name, amount, commission_amount, sale_status, notes, contractor:contractors(name)')
+    .eq('is_manual', true)
+    .order('sale_date', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(100);
+  type Row = Omit<ManualSaleRow, 'contractor_name'> & { contractor: { name: string } | null };
+  return ((data ?? []) as unknown as Row[]).map((r) => ({
+    id: r.id,
+    sale_date: r.sale_date,
+    customer_name: r.customer_name,
+    contractor_name: r.contractor?.name ?? null,
+    amount: Number(r.amount) || 0,
+    commission_amount: Number(r.commission_amount) || 0,
+    sale_status: r.sale_status,
+    notes: r.notes,
+  }));
 }

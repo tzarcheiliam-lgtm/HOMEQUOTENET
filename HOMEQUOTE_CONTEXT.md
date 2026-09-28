@@ -324,6 +324,12 @@ Homeowner lead lifecycle (`Lead.status` in `lib/types.ts`): `new` →
   §12, which is contractors paying HomeQuote for Growth Tools).
 - Outcomes: `appointments` → `estimates` → `sales`, with commission
   calculation in `lib/outcomes/commission.ts`.
+- Manual sales: admins can add sales by hand from `/app/sales` ("Add sale",
+  `addManualSale` in `lib/actions/outcomes.ts`). These rows have
+  `sales.is_manual = true`, no `assignment_id`, and carry their own
+  `contractor_id` / `customer_name` / `source_label` / `vertical_label`
+  (migration `0030_manual_sales.sql`). The dashboard breakdowns fall back to
+  those labels; manual sales are listed (and deletable) on the Sales page.
 
 ## 9. Funnel / Form Builder
 

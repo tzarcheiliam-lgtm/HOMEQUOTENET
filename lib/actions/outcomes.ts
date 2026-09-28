@@ -323,3 +323,50 @@ export async function deleteBillingEvent(formData: FormData): Promise<void> {
   revalidatePath('/app/billing');
   revalidatePath('/app/sales');
 }
+
+// ============================================================================
+// MANUAL SALES (admin only, Sales page) -- not tied to a lead assignment
+// ============================================================================
+
+export async function addManualSale(_prev: OutcomeState, formData: FormData): Promise<OutcomeState> {
+  await requireRole(['admin']);
+  const amount = num(formData, 'amount');
+  if (amount === null || amount <= 0) return { error: 'Enter a sale amount greater than 0' };
+  const customer = str(formData, 'customer_name');
+  const contractorId = str(formData, 'contractor_id');
+  if (!customer && !contractorId) return { error: 'Enter a customer name or choose a contractor' };
+  const commission = num(formData, 'commission_amount');
+  const date = str(formData, 'sale_date');
+
+  const supabase = await createClient();
+  const { error } = await supabase.from('sales').insert({
+    assignment_id: null,
+    is_manual: true,
+    contractor_id: contractorId,
+    customer_name: customer,
+    source_label: str(formData, 'source_label'),
+    vertical_label: str(formData, 'vertical_label'),
+    amount,
+    sale_status: str(formData, 'sale_status') ?? 'won',
+    commission_amount: commission ?? 0,
+    commission_type: commission === null ? null : 'manual',
+    commission_is_override: commission !== null,
+    ...(date ? { sale_date: date, closed_at: date } : {}),
+    notes: str(formData, 'notes'),
+    created_by: await currentUserId(),
+  });
+  if (error) return { error: error.message };
+  revalidatePath('/app/sales');
+  revalidatePath('/app');
+  return { success: true };
+}
+
+export async function deleteManualSale(formData: FormData): Promise<void> {
+  await requireRole(['admin']);
+  const id = str(formData, 'id');
+  if (!id) return;
+  const supabase = await createClient();
+  await supabase.from('sales').delete().eq('id', id).eq('is_manual', true);
+  revalidatePath('/app/sales');
+  revalidatePath('/app');
+}
