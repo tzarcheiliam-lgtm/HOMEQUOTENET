@@ -4,7 +4,7 @@ type Pixel = ((...args: unknown[]) => void) & { queue?: unknown[][]; callMethod?
 declare global { interface Window { fbq?: Pixel; _fbq?: Pixel; hqnPixels?: Set<string> } }
 const emitted = new Set<string>();
 /** Stable IDs can also be used by a future CAPI integration for deduplication. No PII. */
-export function trackFunnel(sessionId: string, slug: string, event: 'ViewContent' | 'Lead' | 'Schedule', pixelId?: string) {
+export function trackFunnel(sessionId: string, slug: string, event: 'PageView' | 'ViewContent' | 'Lead' | 'Schedule', pixelId?: string) {
   const eventId = `${sessionId}:${event}`;
   try { if (localStorage.getItem(`hqn-event:${eventId}`)) return; } catch { /* Memory fallback. */ }
   if (emitted.has(eventId)) return;

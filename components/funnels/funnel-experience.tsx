@@ -106,6 +106,7 @@ export function FunnelExperience({ slug, initialConfig, demo, previewMode, jumpT
   }, [session?.id]);
   useEffect(() => {
     if (!session || !tracking || demo || previewMode) return;
+    trackFunnel(session.id, slug, 'PageView', config.trackingPixels.metaPixelId);
     trackFunnel(session.id, slug, 'ViewContent', config.trackingPixels.metaPixelId);
     if (session.contact_submitted_at) trackFunnel(session.id, slug, 'Lead', config.trackingPixels.metaPixelId);
     if (session.booked_at) trackFunnel(session.id, slug, 'Schedule', config.trackingPixels.metaPixelId);
