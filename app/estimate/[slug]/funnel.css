@@ -5,3 +5,5 @@
 @media(min-width:768px){.hqn-funnel{padding-top:20px}.funnel-screen{padding-top:36px}.funnel-answer{min-height:70px}.funnel-header{padding-bottom:36px}}
 @media(max-width:390px){.hqn-funnel{padding-left:18px;padding-right:18px}.funnel-secure{display:none}.funnel-brand{font-size:16px}.funnel-toolbar>span:last-child{font-size:10px}}
 @media(prefers-reduced-motion:reduce){.hqn-funnel *{animation:none!important;transition:none!important}}
+
+.funnel-form textarea{min-height:140px;background:#fff;border:1px solid #ccd9e7;border-radius:10px;font-size:16px;padding:14px 15px;box-shadow:none;width:100%;resize:vertical;line-height:1.5}.funnel-form input:not([type=checkbox]):focus-visible,.funnel-form textarea:focus-visible{outline:3px solid color-mix(in srgb,var(--funnel-primary) 40%,transparent);border-color:var(--funnel-primary)}.funnel-optional{font-size:12px;color:#5b6f85;margin:-8px 0 0}

@@ -6,7 +6,8 @@ import { ArrowLeft, ArrowRight, Check, CheckCircle2, ClipboardList, LockKeyhole,
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { calendlyEmbedUrl, consentText, contactSchema, visibleQuestions, type FunnelConfig, type Session } from '@/lib/funnels/schema';
+import { Textarea } from '@/components/ui/textarea';
+import { DEFAULT_PLACEHOLDERS, MAX_ANSWER_LENGTH, calendlyEmbedUrl, consentText, contactSchema, isRequired, isTextQuestion, validateAnswer, visibleQuestions, type FunnelConfig, type Session } from '@/lib/funnels/schema';
 import { previewAdvance } from '@/lib/funnels/builder';
 import { trackFunnel } from '@/lib/funnels/tracking';
 
@@ -184,6 +185,25 @@ export function FunnelExperience({ slug, initialConfig, demo, previewMode, jumpT
         {question?.type === 'zip' && <form className="funnel-form" onSubmit={e => { e.preventDefault(); void save({ answer: { question: question.id, value: zip } }); }}>
           <Label htmlFor="project-zip">Project ZIP code</Label><div className="funnel-zip"><MapPin size={21} /><Input id="project-zip" name="zip" autoComplete="postal-code" inputMode="numeric" pattern="[0-9]{5}" maxLength={5} required value={zip} onChange={e => { setZip(e.target.value.replace(/\D/g, '')); setError(''); }} placeholder="e.g. 91301" /></div>
           <Button className="funnel-primary" type="submit" disabled={busy || !session}>Check my project <ArrowRight size={18} /></Button>
+        </form>}
+        {question && isTextQuestion(question) && <form className="funnel-form" noValidate onSubmit={e => {
+          e.preventDefault();
+          const checked = validateAnswer(question, zip);
+          if (!checked.ok) { setError(checked.error); return; }
+          void save({ answer: { question: question.id, value: checked.value } });
+        }}>
+          <Label htmlFor="funnel-answer" className="sr-only">{question.headline}{isRequired(question) ? '' : ' (optional)'}</Label>
+          {question.type === 'long_text'
+            ? <Textarea id="funnel-answer" name="answer" rows={5} maxLength={MAX_ANSWER_LENGTH} value={zip} placeholder={question.placeholder ?? DEFAULT_PLACEHOLDERS.long_text} aria-invalid={!!error} onChange={e => { setZip(e.target.value); setError(''); }} />
+            : <Input id="funnel-answer" name={question.type === 'address' ? 'address' : 'answer'} aria-invalid={!!error} value={zip} onChange={e => { setZip(e.target.value); setError(''); }}
+              placeholder={question.placeholder ?? DEFAULT_PLACEHOLDERS[question.type]}
+              type={question.type === 'email' ? 'email' : question.type === 'phone' ? 'tel' : 'text'}
+              inputMode={question.type === 'email' ? 'email' : question.type === 'phone' ? 'tel' : question.type === 'number' ? 'decimal' : undefined}
+              autoComplete={question.type === 'address' ? 'street-address' : question.type === 'email' ? 'email' : question.type === 'phone' ? 'tel' : 'off'}
+              autoCapitalize={question.type === 'email' ? 'none' : question.type === 'address' ? 'words' : undefined}
+              enterKeyHint="next" maxLength={question.type === 'address' ? 300 : question.type === 'email' ? 254 : 200} />}
+          {!isRequired(question) && <p className="funnel-optional">Optional — leave blank to skip.</p>}
+          <Button className="funnel-primary" type="submit" disabled={busy || !session}>Continue <ArrowRight size={18} /></Button>
         </form>}
         {step === 'qualification' && <div className="funnel-result">
           {checking ? <div className="funnel-checking" role="status"><span /> Reviewing your answers and {config.serviceArea.label}</div> : <>

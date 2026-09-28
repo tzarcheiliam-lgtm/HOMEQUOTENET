@@ -13,11 +13,18 @@ export const conditionSchema = z.object({
   operator: z.enum(['equals', 'in', 'not_equals']),
   values: z.array(z.string().max(100)).min(1).max(100),
 });
+// 'choice' is the original multiple-choice type (kept as-is so stored configs never change);
+// the typed-answer kinds below let the homeowner type a response instead of picking a card.
+export const TEXT_QUESTION_TYPES = ['short_text', 'long_text', 'address', 'number', 'email', 'phone'] as const;
+export const QUESTION_TYPES = ['choice', 'zip', ...TEXT_QUESTION_TYPES] as const;
 export const questionSchema = z.object({
   id: key,
-  type: z.enum(['choice', 'zip']),
+  type: z.enum(QUESTION_TYPES),
   headline: text,
   description: z.string().max(300).optional(),
+  // Typed questions only. `required` is unset on every existing question and means "required".
+  placeholder: z.string().trim().max(120).optional(),
+  required: z.boolean().optional(),
   // featured: visually emphasized card (e.g. high-ticket services). Order is the array order.
   options: z.array(z.object({ value: z.string().regex(/^[a-z0-9_]{1,50}$/), label: text, detail: z.string().max(120).optional(), featured: z.boolean().optional() })).max(20).default([]),
   showWhen: z.array(conditionSchema).max(10).default([]),
@@ -72,11 +79,12 @@ export const funnelSchema = z.object({
 export type FunnelConfig = z.infer<typeof funnelSchema>;
 export type Question = FunnelConfig['questions'][number];
 export type Answers = Record<string, string>;
+const usPhone = (v: string) => /^(1)?[2-9]\d{2}[2-9]\d{6}$/.test(v.replace(/\D/g, ''));
 export const contactSchema = z.object({
   firstName: z.string().trim().min(1, 'Enter your first name').max(80),
   lastName: z.string().trim().min(1, 'Enter your last name').max(80),
   email: z.string().trim().email('Enter a valid email address').max(254),
-  phone: z.string().trim().refine(v => /^(1)?[2-9]\d{2}[2-9]\d{6}$/.test(v.replace(/\D/g, '')), 'Enter a valid US phone number'),
+  phone: z.string().trim().refine(usPhone, 'Enter a valid US phone number'),
   consent: z.literal(true, { errorMap: () => ({ message: 'Please agree to be contacted about your project' }) }),
   website: z.string().max(0).default(''),
 });
@@ -98,18 +106,58 @@ export function matches(condition: z.infer<typeof conditionSchema>, answers: Ans
 export function visibleQuestions(config: FunnelConfig, answers: Answers) {
   return config.questions.filter(q => q.showWhen.every(c => matches(c, answers)));
 }
+export type TextQuestionType = (typeof TEXT_QUESTION_TYPES)[number];
+export const isTextQuestion = (q: Pick<Question, 'type'>): q is Question & { type: TextQuestionType } => (TEXT_QUESTION_TYPES as readonly string[]).includes(q.type);
+/** Existing questions have no `required` flag and were always required. */
+export const isRequired = (q: Pick<Question, 'required'>) => q.required !== false;
+/** Skipped optional questions are stored as '' so "skipped" is distinguishable from "not reached yet". */
+export const isAnswered = (answers: Answers, id: string) => answers[id] !== undefined;
+export const DEFAULT_PLACEHOLDERS: Record<TextQuestionType, string> = {
+  short_text: 'Type your answer', long_text: 'Tell us a little more…', address: '123 Main St, Los Angeles, CA 90001',
+  number: 'e.g. 1500', email: 'name@example.com', phone: '(555) 123-4567',
+};
+const MAX_LENGTH: Record<TextQuestionType, number> = { short_text: 200, long_text: 2000, address: 300, number: 20, email: 254, phone: 30 };
+export const MAX_ANSWER_LENGTH = 2000;
+const MISSING: Record<TextQuestionType, string> = {
+  short_text: 'Enter your answer to continue.', long_text: 'Enter your answer to continue.', address: 'Enter the property address to continue.',
+  number: 'Enter a number to continue.', email: 'Enter your email address to continue.', phone: 'Enter your phone number to continue.',
+};
+
+/**
+ * The single answer validator: the public funnel form, the PATCH route and the builder preview all
+ * call it so they can never disagree. Returns the normalized value to store. Address validation is
+ * deliberately permissive (non-empty, sane length) — real addresses come in too many shapes to police.
+ */
+export function validateAnswer(q: Question, raw: string): { ok: true; value: string } | { ok: false; error: string } {
+  const input = typeof raw === 'string' ? raw : '';
+  if (q.type === 'choice') return q.options.some(o => o.value === input) ? { ok: true, value: input } : { ok: false, error: 'Choose one of the options.' };
+  if (q.type === 'zip') return /^\d{5}$/.test(input) ? { ok: true, value: input } : { ok: false, error: 'Enter a valid five-digit ZIP code.' };
+  const type = q.type as TextQuestionType;
+  // Control characters never belong in an answer; only long text keeps line breaks.
+  const value = (type === 'long_text' ? input.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '') : input.replace(/[\u0000-\u001F\u007F]+/g, ' ')).trim();
+  if (!value) return isRequired(q) ? { ok: false, error: MISSING[type] } : { ok: true, value: '' };
+  if (value.length > MAX_LENGTH[type]) return { ok: false, error: `Please keep this under ${MAX_LENGTH[type]} characters.` };
+  if (type === 'email') return z.string().email().safeParse(value).success ? { ok: true, value: value.toLowerCase() } : { ok: false, error: 'Enter a valid email address.' };
+  if (type === 'phone') return usPhone(value) ? { ok: true, value } : { ok: false, error: 'Enter a valid US phone number.' };
+  if (type === 'number') {
+    const numeric = value.replace(/[,\s]/g, '');
+    return /^-?\d+(\.\d+)?$/.test(numeric) ? { ok: true, value: numeric } : { ok: false, error: 'Enter a valid number.' };
+  }
+  return { ok: true, value };
+}
 /** Prune answers to branches that no longer apply, in topological question order. */
 export function sanitizeAnswers(config: FunnelConfig, input: Answers): Answers {
   const result: Answers = {};
   for (const q of config.questions) {
     if (!q.showWhen.every(c => matches(c, result))) continue;
-    const value = input[q.id];
-    if (q.type === 'zip' ? /^\d{5}$/.test(value ?? '') : q.options.some(o => o.value === value)) result[q.id] = value;
+    if (input[q.id] === undefined) continue;
+    const checked = validateAnswer(q, input[q.id]);
+    if (checked.ok) result[q.id] = checked.value;
   }
   return result;
 }
 export function qualify(config: FunnelConfig, answers: Answers): boolean | null {
-  if (visibleQuestions(config, answers).some(q => !answers[q.id])) return null;
+  if (visibleQuestions(config, answers).some(q => !isAnswered(answers, q.id))) return null;
   const zip = answers[config.questions.find(q => q.type === 'zip')!.id];
   return inServiceArea(config, zip) && config.qualificationRules.every(rule => matches(rule, answers));
 }

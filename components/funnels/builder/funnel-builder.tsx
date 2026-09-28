@@ -11,9 +11,9 @@ import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { FunnelExperience } from '@/components/funnels/funnel-experience';
-import { funnelSchema, type FunnelConfig, type Question } from '@/lib/funnels/schema';
+import { DEFAULT_PLACEHOLDERS, funnelSchema, isRequired, isTextQuestion, type FunnelConfig, type Question } from '@/lib/funnels/schema';
 import {
-  addOption, addQuestion, duplicateQuestion, moveOption, moveQuestion, removeOption, removeQuestion,
+  STEP_TYPE_PRESETS, addOption, addQuestion, changeQuestionType, duplicateQuestion, moveOption, moveQuestion, removeOption, removeQuestion,
   updateQuestion, type FunnelStatus,
 } from '@/lib/funnels/builder';
 import { saveFunnelConfig, saveFunnelRouting } from '@/lib/actions/funnel-builder';
@@ -103,6 +103,12 @@ export function FunnelBuilder({
             <div className="flex gap-2 px-1 pt-1">
               <Button size="sm" variant="outline" className="flex-1" onClick={() => patch(addQuestion(config, 'choice'))}><Plus className="mr-1 size-3.5" /> Choice</Button>
               {!config.questions.some(q => q.type === 'zip') && <Button size="sm" variant="outline" onClick={() => patch(addQuestion(config, 'zip'))}>+ ZIP</Button>}
+            </div>
+            <div className="px-1 pt-1">
+              <Select aria-label="Add a typed-answer question" value="" onChange={e => { if (e.target.value) patch(addQuestion(config, e.target.value as Question['type'])); }}>
+                <option value="">+ Add typed question…</option>
+                {STEP_TYPE_PRESETS.filter(t => t.value !== 'choice' && t.value !== 'zip').map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </Select>
             </div>
             <div className="mt-2 space-y-1 border-t pt-2">
               <button className={`block w-full rounded-md px-2 py-1.5 text-left text-sm ${selected.kind === 'fixed' && selected.id === 'qualification' ? 'bg-accent' : ''}`} onClick={() => setSelected({ kind: 'fixed', id: 'qualification' })}>Qualification</button>
@@ -221,9 +227,24 @@ function StepSettings({ question, allQuestions, onChange }: { question: Question
   const earlier = allQuestions.slice(0, allQuestions.findIndex(q => q.id === question.id));
   return (
     <Card><CardContent className="space-y-3 p-4">
-      <h3 className="text-sm font-semibold">Step: {question.type === 'zip' ? 'ZIP code' : 'Choice'}</h3>
+      <h3 className="text-sm font-semibold">Step: {STEP_TYPE_PRESETS.find(t => t.value === question.type)?.label ?? question.type}</h3>
+      <Field label="Question Type">
+        <Select value={question.type} disabled={question.type === 'zip'} onChange={e => onChange(q => changeQuestionType(q, e.target.value as Question['type']))}>
+          {STEP_TYPE_PRESETS.filter(t => t.value !== 'zip' || question.type === 'zip').map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+        </Select>
+      </Field>
       <Field label="Headline"><Input value={question.headline} onChange={e => onChange(q => ({ ...q, headline: e.target.value }))} /></Field>
       <Field label="Supporting text (optional)"><Textarea value={question.description ?? ''} onChange={e => onChange(q => ({ ...q, description: e.target.value || undefined }))} /></Field>
+      {isTextQuestion(question) && (
+        <div className="space-y-3">
+          <Field label="Placeholder (optional)"><Input value={question.placeholder ?? ''} placeholder={DEFAULT_PLACEHOLDERS[question.type]} maxLength={120} onChange={e => onChange(q => ({ ...q, placeholder: e.target.value || undefined }))} /></Field>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={isRequired(question)} onChange={e => onChange(q => ({ ...q, required: e.target.checked }))} />
+            Required — the visitor can&apos;t continue without answering
+          </label>
+          <p className="text-xs text-muted-foreground">The answer is typed by the visitor and saved with the lead{question.type === 'address' ? ', and copied into the CRM Address field' : ''}. Use the &ldquo;Supporting text&rdquo; above for help text.</p>
+        </div>
+      )}
       {question.type === 'choice' && (
         <div className="space-y-2">
           <p className="text-xs font-medium text-muted-foreground">Options</p>

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { z } from 'zod';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { calendlyUri, captureAttribution, consentText, contactSchema, funnelSchema, qualify, sanitizeAnswers, visibleQuestions, type FunnelConfig, type Session } from '@/lib/funnels/schema';
+import { MAX_ANSWER_LENGTH, calendlyUri, captureAttribution, consentText, contactSchema, funnelSchema, isAnswered, qualify, sanitizeAnswers, validateAnswer, visibleQuestions, type FunnelConfig, type Session } from '@/lib/funnels/schema';
 import { verifyCalendlyBooking } from '@/lib/funnels/calendly';
 import { cookieName, getFunnel, getSession, hash, newToken, publicSession, readBody, sameOrigin } from '@/lib/funnels/server';
 import { after } from 'next/server';
@@ -63,7 +63,7 @@ export async function GET(_request: Request, context: Context) {
 
 const updateSchema = z.object({
   version: z.number().int().nonnegative(),
-  answer: z.object({ question: z.string().max(50), value: z.string().max(100) }).optional(),
+  answer: z.object({ question: z.string().max(50), value: z.string().max(MAX_ANSWER_LENGTH) }).optional(),
   step: z.string().max(50).optional(),
   contact: contactSchema.optional(),
   calendarViewed: z.boolean().optional(),
@@ -101,14 +101,14 @@ export async function PATCH(request: Request, context: Context) {
     if (body.answer) {
       const q = visibleQuestions(config, answers).find(q => q.id === body.answer!.question);
       if (!q || q.id !== s.current_step) return reply({ error: 'Please answer the current question.' }, 422);
-      const updated = sanitizeAnswers(config, { ...answers, [q.id]: body.answer.value });
-      if (!updated[q.id]) return reply({ error: q.type === 'zip' ? 'Enter a valid five-digit ZIP code.' : 'Choose one of the options.' }, 422);
-      answers = updated; completed = q.id;
+      const checked = validateAnswer(q, body.answer.value);
+      if (!checked.ok) return reply({ error: checked.error }, 422);
+      answers = sanitizeAnswers(config, { ...answers, [q.id]: checked.value }); completed = q.id;
       const visible = visibleQuestions(config, answers);
       nextStep = visible[visible.findIndex(item => item.id === q.id) + 1]?.id ?? 'qualification';
     } else if (body.step) {
       const visible = visibleQuestions(config, answers);
-      const firstMissing = visible.findIndex(q => !answers[q.id]);
+      const firstMissing = visible.findIndex(q => !isAnswered(answers, q.id));
       const index = visible.findIndex(q => q.id === body.step);
       if (index >= 0 && (firstMissing < 0 || index <= firstMissing)) nextStep = body.step;
       else if (body.step === 'contact' && qualify(config, answers) !== null && !(qualify(config, answers) === false && config.unqualifiedAction === 'stop')) nextStep = 'contact';

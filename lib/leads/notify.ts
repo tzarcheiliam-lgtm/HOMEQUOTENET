@@ -161,7 +161,7 @@ export async function loadLeadEmailData(
     .join(' · ') || null;
 
   const extras: LeadEmailAnswer[] = Object.entries(answers)
-    .filter(([id]) => !NAMED.has(id))
+    .filter(([id, value]) => !NAMED.has(id) && value !== '')
     .map(([id, value]) => ({ label: questionLabel(config, id), value: answerLabel(config, id, value) }));
 
   const name = [lead.first_name, lead.last_name].filter(Boolean).join(' ') || 'Name not provided';

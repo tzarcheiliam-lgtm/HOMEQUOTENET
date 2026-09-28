@@ -8,7 +8,7 @@
 // funnel_step_options / funnel_logic_rules table: a step IS a `questions[]`
 // entry, an option IS `question.options[]`, branching logic IS `showWhen`.
 // See docs/funnel-builder-architecture.md.
-import { funnelSchema, qualify, sanitizeAnswers, visibleQuestions, type Answers, type FunnelConfig, type Question } from './schema';
+import { funnelSchema, isAnswered, isTextQuestion, qualify, sanitizeAnswers, validateAnswer, visibleQuestions, type Answers, type FunnelConfig, type Question } from './schema';
 
 /** Question ids and option values share this pattern (lib/funnels/schema.ts `key`/option regex). */
 const ID_PATTERN = /^[a-z][a-z0-9_]{0,49}$/;
@@ -47,13 +47,20 @@ export function blankFunnelConfig(clientName: string, industry: string): FunnelC
   });
 }
 
+const NEW_TEXT_HEADLINES = {
+  short_text: 'Briefly describe your project', long_text: 'Tell us more about what you’d like done', address: 'What is the property address?',
+  number: 'Enter a number', email: 'What is your email address?', phone: 'What is the best phone number to reach you?',
+} as const;
+
 /** A new question appended to the end, with a unique id. */
 export function addQuestion(config: FunnelConfig, type: Question['type']): FunnelConfig {
   const used = new Set(config.questions.map(q => q.id));
-  const id = uniqueId(type === 'zip' ? 'zip' : 'question', used);
+  const id = uniqueId(type === 'choice' ? 'question' : type, used);
   const question: Question = type === 'zip'
     ? { id, type: 'zip', headline: 'Where is your project located?', description: 'Enter the ZIP code of the property.', options: [], showWhen: [] }
-    : { id, type: 'choice', headline: 'New question', options: [{ value: 'option_1', label: 'Option 1' }, { value: 'option_2', label: 'Option 2' }], showWhen: [] };
+    : type === 'choice'
+      ? { id, type: 'choice', headline: 'New question', options: [{ value: 'option_1', label: 'Option 1' }, { value: 'option_2', label: 'Option 2' }], showWhen: [] }
+      : { id, type, headline: NEW_TEXT_HEADLINES[type], options: [], showWhen: [], required: true };
   return { ...config, questions: [...config.questions, question] };
 }
 export function removeQuestion(config: FunnelConfig, id: string): FunnelConfig {
@@ -108,11 +115,30 @@ export function moveOption(question: Question, value: string, direction: 'up' | 
   return { ...question, options };
 }
 
-/** Human labels for the step-type picker; the engine only stores 'choice' | 'zip'. */
-export const STEP_TYPE_PRESETS = [
-  { value: 'choice' as const, label: 'Choice (single-select cards)' },
-  { value: 'zip' as const, label: 'ZIP code (exactly one per funnel)' },
+/** Labels for the Question Type picker. `zip` is offered only on the funnel's one ZIP step. */
+export const STEP_TYPE_PRESETS: { value: Question['type']; label: string }[] = [
+  { value: 'choice', label: 'Multiple Choice' },
+  { value: 'short_text', label: 'Short Text' },
+  { value: 'long_text', label: 'Long Text' },
+  { value: 'address', label: 'Address' },
+  { value: 'number', label: 'Number' },
+  { value: 'email', label: 'Email' },
+  { value: 'phone', label: 'Phone' },
+  { value: 'zip', label: 'ZIP code (exactly one per funnel)' },
 ];
+
+/**
+ * Switch a question's input type. Options are kept (just hidden) when moving to a typed question so
+ * switching back loses nothing; a typed question moving to choice gets starter options if it has none.
+ */
+export function changeQuestionType(question: Question, type: Question['type']): Question {
+  if (type === question.type) return question;
+  const next: Question = { ...question, type };
+  if (type === 'choice' && !next.options.length) next.options = [{ value: 'option_1', label: 'Option 1' }, { value: 'option_2', label: 'Option 2' }];
+  // A placeholder written for one input kind is wrong for another.
+  if (!isTextQuestion(next) || next.type !== question.type) next.placeholder = undefined;
+  return next;
+}
 
 /**
  * Mirrors the step-navigation half of app/api/funnels/[slug]/session/route.ts
@@ -127,14 +153,14 @@ export function previewAdvance(config: FunnelConfig, state: PreviewState,
   if ('answer' in body && body.answer) {
     const q = visibleQuestions(config, answers).find(item => item.id === body.answer!.question);
     if (!q || q.id !== state.step) return { error: 'That is not the current question.' };
-    const updated = sanitizeAnswers(config, { ...answers, [q.id]: body.answer.value });
-    if (!updated[q.id]) return { error: q.type === 'zip' ? 'Enter a valid five-digit ZIP code.' : 'Choose one of the options.' };
-    answers = updated;
+    const checked = validateAnswer(q, body.answer.value);
+    if (!checked.ok) return { error: checked.error };
+    answers = sanitizeAnswers(config, { ...answers, [q.id]: checked.value });
     const visible = visibleQuestions(config, answers);
     nextStep = visible[visible.findIndex(item => item.id === q.id) + 1]?.id ?? 'qualification';
   } else if ('step' in body) {
     const visible = visibleQuestions(config, answers);
-    const firstMissing = visible.findIndex(q => !answers[q.id]);
+    const firstMissing = visible.findIndex(q => !isAnswered(answers, q.id));
     const index = visible.findIndex(q => q.id === body.step);
     const qualified = qualify(config, answers);
     if (index >= 0 && (firstMissing < 0 || index <= firstMissing)) nextStep = body.step;

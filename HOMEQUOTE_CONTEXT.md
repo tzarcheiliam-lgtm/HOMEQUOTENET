@@ -1,0 +1,685 @@
+# HomeQuote Network — Technical Context
+
+> Shared source of truth for Liam, Nadav, Claude Code, Codex, and future
+> contributors. Written from direct inspection of the codebase on 2026-09-27
+> (latest commit at time of writing: `7e83887`). Where this contradicts an
+> older root doc (README.md, PROJECT_STATUS.md, CODEX_HANDOFF.md, FUNNELS.md,
+> etc.), **this file and the actual code are correct** — those docs are kept
+> for history but have drifted. Specific contradictions are called out in
+> §13/§15.
+
+---
+
+## 1. Product Overview
+
+HomeQuote Network is a contractor lead-generation operating system for home
+services (pools, HVAC, roofing, fencing, general contractors, etc.):
+
+- **Public marketing site** (`app/(marketing)/`) attracts contractors to a
+  pay-per-qualified-lead offer, and separately runs **homeowner-facing lead
+  funnels** (`/estimate/[slug]`) that capture and qualify project leads.
+- **Internal CRM** (`app/app/*`) is where HomeQuote staff distribute leads to
+  contractors, track the funnel (appointment → estimate → sale → billing),
+  manage pricing agreements, and run a **cold-calling workspace** where
+  partners (callers/setters) prospect contractor businesses by phone.
+- A **workflow automation engine** (trigger → conditions → ordered steps) lets
+  admins (and, per-step, contractors) automate lead/appointment/deal-driven
+  actions: emails, tags, pipeline changes, webhooks, SMS (contract only, not
+  wired to a live provider).
+- A **Growth Tools** upsell system lets contractors request paid services
+  (website, CRM setup, ad creative, etc.); admins price the request and the
+  contractor pays via **Stripe Checkout**.
+- The company's own cold-calling/sales-prospecting workflow (calling pool
+  contractors to sign them up as HomeQuote partners) is a *separate* system
+  from the homeowner lead pipeline — see §7 for why this matters.
+
+## 2. Tech Stack
+
+- **Next.js** `15.6.0-canary.59` (App Router, Turbopack dev), **React** 19.1.0
+- **TypeScript** 5.8, strict-ish; **Tailwind CSS v4** (`@tailwindcss/postcss`)
+- **shadcn/ui**-style components (`components.json`, Radix UI primitives via
+  `radix-ui` package, `lucide-react` icons)
+- **Supabase**: Postgres + Auth + Row Level Security (`@supabase/ssr`,
+  `@supabase/supabase-js`)
+- **Stripe** (`stripe` npm package v22) for Growth Tools billing (Checkout
+  Sessions + webhook), not for the core lead business
+- **Zod** for all input/schema validation (funnels, workflows, billing forms,
+  applications)
+- **Vitest** for unit/integration tests (some hit a *real* Supabase DB inside
+  rolled-back transactions — see §13), **Playwright** installed as a dev dep
+- Deploys to **Vercel**; a durable workflow scheduler runs via **GitHub
+  Actions** cron (`/api/workflows/tick` every 5 minutes), not Vercel Cron
+  (chosen so it works on the Hobby plan and can't fail a deploy)
+- Package name: `homequote-network`, version `0.1.0`, private
+
+## 3. Repository Structure
+
+```
+app/
+  (marketing)/        Public site: home, industry pages, /apply, /privacy, /terms
+  api/                 Route handlers (see §4)
+  app/                 The authenticated CRM (App Router, requires a profile)
+  auth/, sign-in/, sign-up/, set-password/, forgot-password/, pending/
+  estimate/[slug]/     Public homeowner lead funnel runtime
+lib/
+  actions/             'use server' Server Actions — one file per domain area
+  auth.ts              getProfile/requireProfile/requireRole/requireCallWorkspace
+  permissions.ts       Small pure RBAC predicates (see §5)
+  nav.ts               NAV_ITEMS (single source for sidebar + role gating)
+  types.ts             Hand-maintained TS types mirroring the DB schema
+  supabase/            client.ts (browser), server.ts (SSR), admin.ts (service
+                       role), middleware.ts (session refresh, used by middleware.ts)
+  workflows/           The automation engine — domain, definitions, conditions,
+                       evaluator, planner, runtime, actions, webhook safety (§10)
+  emails/               Gmail send + two rendering paths: lib/emails/template.ts
+                       (prospect follow-up, hand-built) and
+                       lib/emails/template-library.ts (DB-backed template
+                       library used by workflows + Calls > Emails)
+  billing/              Stripe client, pricing/quote logic, webhook handler,
+                       price-ready email (§12)
+  funnels/               Funnel schema/validation, builder, delivery, GHL +
+                       Calendly integrations, tracking (§9)
+  calls/, leads/, prospecting/, growth/, integrations/, messaging/,
+  applications/, outcomes/, validation/, data/   Domain-specific helpers,
+                       largely paired 1:1 with an actions/ file and a
+                       supabase table
+components/            UI grouped by domain (billing, calls, contractors,
+                       dashboard, emails, funnels, growth, integrations,
+                       leads, marketing, team, workflows) + components/ui
+                       (shared primitives: PageHeader, KpiCard, EmptyState,
+                       StatusBadge, ConfirmAction, Table, Card, etc.)
+supabase/migrations/    28 sequential SQL files, 0001 → 0028 (see §6)
+content/                Marketing copy/data (per-niche site content)
+scripts/                Seeders, migration helpers, prospecting import, QA (§ below)
+tests/                  Vitest suites: pure logic + live-DB suites (see §13)
+docs/                   workflow-automation-architecture.md and similar design docs
+middleware.ts           Delegates to lib/supabase/middleware.ts (session refresh)
+```
+
+## 4. Routes
+
+### Marketing (public, `app/(marketing)/`)
+`/` (home), `/pool-contractors`, `/hvac`, `/roofing`, `/fencing`,
+`/general-contractors`, `/lead-standards`, `/apply` (contractor application
+form), `/privacy`, `/terms`. Dark theme scoped to a `.hq` wrapper so it never
+touches the CRM's light shadcn tokens. Copy lives in `content/` so a new
+vertical/niche is a content file, not a rewrite (see MARKETING_SITE.md, still
+broadly accurate).
+
+### Public homeowner funnel
+`/estimate/[slug]` — the visual funnel runtime (multi-step qualification form →
+contact capture → calendar booking). Config-driven per funnel; see §9.
+
+### Auth
+`/sign-in`, `/sign-up`, `/forgot-password`, `/set-password`, `/pending`
+(account exists but not yet activated by an admin), `/auth/callback` (Supabase
+auth callback route handler).
+
+### Internal CRM (`app/app/*`, all behind `requireProfile()`/`requireRole()`)
+- `/app` — role-aware dashboard
+- `/app/leads`, `/app/leads/new`, `/app/leads/[id]`, `/app/leads/[id]/edit`
+- `/app/contractors`, `/app/contractors/new`, `/app/contractors/[id]`
+- `/app/lead-recipients` — who qualified leads can be sent to (admin)
+- `/app/calls`, `/app/calls/[id]`, `/app/calls/new`, `/app/calls/logs`,
+  `/app/calls/appointments`, `/app/calls/emails` — the partner cold-calling
+  workspace (admin/caller/setter only)
+- `/app/appointments`, `/app/service-requests`
+- `/app/growth`, `/app/growth/[service]` — Growth Tools catalog (contractor)
+- `/app/sales`, `/app/billing`, `/app/analytics` (admin)
+- `/app/pay/[id]` — the pay page a priced Growth Tools request links to (§12)
+- `/app/funnels`, `/app/funnels/new`, `/app/funnels/[id]`,
+  `/app/funnels/[id]/builder`, `/app/funnels/[id]/analytics` — no-code funnel
+  builder (admin)
+- `/app/workflows`, `/app/workflows/new`, `/app/workflows/[id]`,
+  `/app/workflows/[id]/runs`, `/app/workflows/runs`,
+  `/app/workflows/runs/[runId]` — automation builder + run history
+- `/app/email-templates`, `/app/email-templates/new`,
+  `/app/email-templates/[id]` — the reusable template library
+- `/app/team`, `/app/team/new`, `/app/team/[id]` (admin)
+- `/app/integrations`, `/app/integrations/meta` (admin)
+- `/app/lead-intake`, `/app/audit` (admin)
+
+### API (`app/api/**`, route handlers, not Server Actions)
+- `POST /api/calls/refresh` — triggers a Refresh Prospects run (Google Places)
+- `GET/POST /api/funnels/[slug]/session`, `POST /api/funnels/[slug]/booking` —
+  funnel session state + booking confirmation callback
+- `POST /api/funnels/deliver` — cron-style delivery worker for funnel-captured
+  leads (Bearer `FUNNEL_CRON_SECRET`)
+- `POST /api/integrations/[provider]/intake` — generic lead intake endpoint
+  for connectors
+- `POST /api/integrations/meta/webhook` — Meta (Facebook/Instagram) lead ads
+  webhook, HMAC-verified
+- `GET /api/integrations/gmail/oauth/start`, `GET
+  /api/integrations/gmail/oauth/callback` — Gmail OAuth for the Calls > Emails
+  sender identity
+- `POST /api/stripe/webhook` — Stripe webhook (Checkout + subscription events)
+- `POST /api/workflows/tick` — the workflow scheduler tick (Bearer
+  `WORKFLOW_CRON_SECRET`), called every 5 min by the GitHub Actions workflow
+  `.github/workflows/workflow-tick.yml`
+
+### middleware.ts
+Tiny wrapper: every request except static assets goes through
+`updateSession()` in `lib/supabase/middleware.ts`, which refreshes the
+Supabase auth session cookie. It does **not** do role-based route gating —
+that happens in `requireProfile`/`requireRole` inside layouts/pages/actions.
+
+## 5. Roles & Permissions
+
+Four roles in `public.user_role` (originally `admin`/`setter`/`contractor` in
+`0001_initial_schema.sql`; `caller` added by
+`0007_contractor_prospecting.sql` via `alter type ... add value`):
+
+| Role | Purpose | Notes |
+|---|---|---|
+| `admin` | HomeQuote staff, full access | `isHqnAdministrator()` also checks `is_active` |
+| `setter` | Appointment setter — five working sections (leads, contractors, calls, appointments, calling workspace) | No Automations/workflow access (explicit product decision, 2026-09-25 — nav, page guards and RLS all move together, see §15/memory) |
+| `contractor` | Signed contractor; scoped to their own `contractor_id` | Has `contractor_role`: `owner` or `staff` (0017) — owners can manage their own team and export data if `can_export_company_data` |
+| `caller` | Cold-calling partner, contractor-prospecting only | Never sees homeowner CRM; home path is `/app/calls` (`homePathFor()`) |
+
+Enforcement is layered (see setter/RBAC memory note — "the four layers that
+must move together"):
+1. **`lib/nav.ts`** — `NAV_ITEMS[].roles` decides what's in the sidebar
+2. **`lib/auth.ts`** — `requireRole([...])` / `requireCallWorkspace()` guard
+   pages and layouts server-side (redirect to `/app` or `/sign-in`)
+3. **`lib/permissions.ts`** — pure predicates used inside pages/actions:
+   `isHqnAdministrator`, `isContractorOwner`, `isContractorStaff`,
+   `canManageCompanyTeam`, `canManageRecipients`, `canManageDistribution`,
+   `canPermanentlyDeleteLeads`, `canViewInternalNotes`,
+   `canExportCompanyData`, `belongsToCompany`
+4. **Postgres RLS** — the real boundary; every table has explicit `select`
+   policies keyed off helper functions `public.is_admin()`,
+   `public.is_staff()`, `public.is_call_agent()` (added 0011: `role in
+   ('caller','setter')`), and `public.auth_contractor_id()`
+
+`caller`/`setter` reads of `email_templates` were widened in
+`0027_email_templates_call_workspace.sql` specifically so Calls > Emails could
+use the shared template library — writes stayed admin-only.
+
+## 6. Database & Supabase
+
+Postgres via Supabase, RLS on every table, service-role bypass used only from
+trusted server code (`lib/supabase/admin.ts`). 28 sequential migrations,
+`0001` → `0028`, applied in order. **Naming collision to be aware of**: there
+are two files both named `0027_*` — `0027_email_templates_call_workspace.sql`
+and `0027_workflow_retention.sql`. Both are applied; the duplicate number is a
+historical filename mistake, not evidence one didn't run. Before adding a new
+migration, check the actual highest number present (currently 28) rather than
+trusting any single number in prose.
+
+Key schema areas, by migration:
+- **0001** — core schema: `profiles`, `contractors`, `pricing_agreements`,
+  `leads`, `lead_assignments`, `appointments`, `estimates`, `sales`,
+  `billing_events`, roles `admin`/`setter`/`contractor`. Leads are many-to-many
+  with contractors via `lead_assignments`; the sales funnel lives on the
+  *assignment*, not the lead.
+- **0002–0005** — outcomes/commission, team management, integration
+  framework, hardening
+- **0006** — `contractor_applications` (marketing site `/apply` form)
+- **0007** — contractor prospecting: adds `caller` role,
+  `contractor_prospects`, `prospect_call_attempts` (append-only),
+  `prospect_sales_appointments` — the *cold-calling* system, deliberately
+  distinct from homeowner `leads`/`appointments`
+- **0008–0010** — prospect refresh (Google Places sourcing), prospect email
+  logs, Gmail connection storage, HTML email bodies
+- **0011** — setter call-workspace access + `is_call_agent()`
+- **0012–0019** — lead funnels (schema, private/house sharing, GHL API
+  delivery, Calendly bookings), lead review/distribution
+  (`qualification_status`, `lead_recipients`), contractor portal permissions
+  (`contractor_role`), contractor service requests, no-code funnel builder
+- **0020** — workflow automation foundation (see §10)
+- **0021** — Growth Tools upsells (`service_requests` service catalog)
+- **0022–0023** — RLS fix (contractor activity visibility on shared leads),
+  funnel status trigger fix
+- **0024–0025** — workflow runtime + management UI support tables
+- **0026** — `email_templates` + `email_template_sends` (reusable template
+  library)
+- **0027** (both files) — widen template-library read access to callers/setters;
+  workflow run/event retention/pruning
+- **0028** — Stripe billing columns on `service_requests`
+  (`price_cents`/`price_interval`/`setup_fee_cents`/`payment_status`/
+  `stripe_checkout_session_id`/`stripe_subscription_id`/`paid_at`), a
+  `stripe_customer_id` on `contractors`, and a service-role-only
+  `stripe_events` table for webhook idempotency
+
+RLS conventions worth internalizing:
+- Runtime/queue tables (`workflow_events`, `workflow_runs`,
+  `workflow_step_runs`, `funnel_deliveries`, `lead_email_deliveries`,
+  `stripe_events`) generally have **no write policies at all** — only the
+  service role writes them, mirroring an outbox/queue pattern.
+- `contractor_id IS NULL` is the recurring convention for "HomeQuote network
+  level" (house funnels, network workflows, unassigned events) — visible only
+  to staff, never to a contractor login.
+- Several tables use Postgres triggers as a second guard beyond RLS/app
+  checks (e.g. `guard_workflow_run()` enforces tenant/entity/event
+  consistency at the DB layer, not just in TypeScript).
+
+## 7. Prospecting / Calling System
+
+This is **not** the homeowner lead funnel — it is HomeQuote's own outbound
+sales motion for signing up contractor partners (mostly pool remodelers today).
+Lives at `/app/calls` (admin/caller/setter).
+
+- `contractor_prospects` — company_name, phone/website/email, location,
+  primary_services, rating, `disposition` (new → calling → …→
+  appointment_booked / not_interested / do_not_call), assignment
+  (`assigned_to`/`assigned_at`/`assigned_by`), sourcing metadata
+  (`niche`, `external_source`/`external_id` from Google Places, `maps_url`).
+- `prospect_call_attempts` — append-only call log, tracks disposition
+  transitions, callback/appointment times.
+- `prospect_sales_appointments` — a sales call *with* a contractor prospect
+  (status: scheduled/confirmed/rescheduled/completed/no_show/cancelled) —
+  distinct from homeowner `appointments`.
+- `prospect_email_logs` — one row per manually reviewed outbound email
+  (Calls > Emails), finalized `sent` only after a Gmail provider message id
+  comes back, or `failed` with the provider error; never marked sent on a
+  failed request.
+- `lib/prospecting/` — `catalog.ts` (niche/category catalog), `google-places.ts`
+  (Places API v1 client), `run.ts` (Refresh Prospects run: dedupe, batching,
+  assignment to active admin/caller profiles).
+- `lib/calls/` — `rules.ts` (disposition/outcome rules, required fields per
+  outcome, do-not-call enforcement), `metrics.ts` (caller metrics defined
+  once), `import.ts` (CSV import via `scripts/import-prospects.ts`),
+  `redirect.ts` (validated `?next=` handling for sign-in).
+- Views in the UI are just filters over one table: My list / Liam's / Nadav's
+  / All / New / Callbacks due / Interested / Booked / Do not call.
+- `caller`/`admin` are the only assignable roles for prospects
+  (`CALL_ASSIGNEE_ROLES`, shared by refresh, tabs, and manual assignment —
+  history: this used to disagree between `lib/prospecting/run.ts` and
+  `lib/data/prospects.ts` and caused a real assignment bug, fixed and covered
+  by `tests/calls-callers.test.ts`).
+- Manual email sending (`/app/calls/emails`) now uses the shared
+  `lib/emails/template-library.ts` (as of `7e83887`), not a bespoke template;
+  Gmail OAuth (`lib/emails/gmail.ts`, `gmail-message.ts`, `token-crypto.ts`
+  for AES-256-GCM refresh-token encryption) is the only send transport.
+
+## 8. Lead & Appointment Flow
+
+Homeowner lead lifecycle (`Lead.status` in `lib/types.ts`): `new` →
+`contact_attempted` → `qualified` → `assigned` → `appointment_set` →
+`appointment_completed` → `estimate_sent` → `sold` / `lost` / `cancelled`.
+
+- A lead is **never owned by one contractor** — it's distributed through
+  `lead_assignments` (many-to-many); each assignment tracks its own
+  `AssignmentStatus` funnel (assigned → accepted → contacted → qualified/
+  not_qualified → appointment_set → appointment_held → estimate_given → sold
+  / lost / returned).
+- Qualification is two-layered: an automatic funnel check
+  (`qualify()` in `lib/funnels/schema.ts`, based on service area + branching
+  qualification rules) sets `qualified`/`qualified_at`, but
+  `qualification_status` (`needs_qualification`/`qualified`/`not_qualified`,
+  added 0016) is a **separate human-review gate** the automatic check never
+  sets — a lead can pass the funnel's logic and still wait for staff review
+  before distribution.
+- Attribution is captured extensively: UTM params, platform/campaign/ad_set/
+  ad ids, `external_lead_id`, `integration_id`, referrer, landing page.
+- TCPA consent fields (`consent_granted`, `consent_at`, `consent_source`,
+  `consent_disclosure`) are stored per lead.
+- Distribution: `lead_recipients` (team_member or contractor) with
+  `automatic_distribution_enabled`; `lead_email_deliveries` tracks
+  new_lead_alert / qualified_lead / workflow_email sends with attempts/status.
+- Monetization: `pricing_agreements` (contractor × vertical × model: per_lead
+  / per_appointment / revenue_share / hybrid / subscription) drive
+  `billing_events` (this is HomeQuote's outbound billing *to contractors* for
+  leads/appointments — separate system from the inbound Stripe billing in
+  §12, which is contractors paying HomeQuote for Growth Tools).
+- Outcomes: `appointments` → `estimates` → `sales`, with commission
+  calculation in `lib/outcomes/commission.ts`.
+
+## 9. Funnel / Form Builder
+
+`lib/funnels/schema.ts` defines a Zod-validated `FunnelConfig`: branded
+config (client name/logo/colors), industry, service-area (ZIP codes or ZIP
+prefixes), an ordered list of branching `questions` (choice or zip type, with
+`showWhen` conditions referencing earlier questions), `qualificationRules`,
+qualified/review messaging, calendar integration (`ghl` embedded calendar or
+`calendly` inline embed), thank-you page, optional SEO overrides, Meta pixel
+id, and a `trust` block (rating, license, financing, warranty, years in
+business, testimonial, photo — governed by the "no invented proof" compliance
+stance, see §13/PROJECT_STATUS.md).
+
+- **Question types** (`questionSchema.type` in `lib/funnels/schema.ts`): `choice` (multiple choice, the original), `zip` (exactly one per funnel), and typed-answer kinds `short_text`, `long_text`, `address`, `number`, `email`, `phone`. Typed questions take optional `placeholder` and `required` (unset = required, so old configs are unchanged). All answer validation goes through `validateAnswer()`, shared by the public form, the session PATCH route and the builder preview. Skipped optional questions are stored as `''` (use `isAnswered`, not truthiness). Answers stay in `funnel_sessions.answers` like every other answer; an `address` answer is also copied to `leads.address` on new-lead creation (migration `0029_funnel_address_question.sql`, `save_funnel_session`).
+- **No-code builder** at `/app/funnels/[id]/builder` (admin) — `lib/funnels/
+  builder.ts`, `components/funnels/builder/*`.
+- **Runtime** at `/estimate/[slug]` — session state persisted server-side
+  (`app/api/funnels/[slug]/session`), booking confirmed via
+  `app/api/funnels/[slug]/booking`.
+- **Delivery**: `lib/funnels/delivery.ts` + `POST /api/funnels/deliver`
+  (cron-style, `FUNNEL_CRON_SECRET`) — turns captured leads into `leads` rows
+  and/or forwards to GoHighLevel (`lib/funnels/ghl.ts`,
+  `GHL_POOL_MASTERS_TOKEN`) per-funnel, plus Calendly booking verification
+  (`lib/funnels/calendly.ts`, `CALENDLY_API_TOKEN`).
+- **House vs. private funnels**: a "house" (HomeQuote-owned) funnel can share
+  a lead with multiple partner contractors (0013); a contractor-specific
+  funnel does not.
+- Webhook targets for outbound CRM delivery are restricted to an explicit
+  hostname allowlist (`FUNNEL_WEBHOOK_HOSTS`), separate from — and older/
+  simpler than — the workflow engine's SSRF-hardened `postWebhook()` (§10).
+- Analytics: `lib/funnels/analytics.ts` + `/app/funnels/[id]/analytics`.
+- Live example funnels referenced in commit history: Pool Masters LA (GHL +
+  Calendly), the HomeQuote house pool funnel (private multi-contractor
+  sharing).
+
+## 10. Workflow Automations
+
+A general trigger → conditions → ordered-steps automation engine, built in
+Phases 1–5 (see §15 for the commit trail) and hardened for production in
+`a2bb664`. Source of truth doc: `docs/workflow-automation-architecture.md`.
+
+**Shape**: `workflow_events` (canonical idempotent domain-event ledger + fan-
+out queue) → `workflows` (trigger + conditions + policies, versioned) →
+`workflow_steps` (ordered, tree-capable: action or branch) → `workflow_runs`
+(one execution of one workflow for one event, with a `definition_snapshot` so
+live runs are unaffected by later edits) → `workflow_step_runs` (per-step
+execution/retry state) → `workflow_logs` (append-only, ids/codes only, no PII
+or secrets by design).
+
+- **Triggers** (`trigger_type`): `lead.created`, `lead.status_changed`,
+  `lead.qualification_changed`, `lead.assigned`, `assignment.status_changed`,
+  `appointment.booked/cancelled/completed/no_show`, `estimate.sent`,
+  `deal.won`, `deal.lost`, `task.completed`, `message.received`.
+- **Actions** (`action_type`): `send_sms`, `send_email`, `assign_user`,
+  `change_pipeline_stage`, `create_task`, `add_tag`, `remove_tag`, `wait`,
+  `send_webhook`, `notify_team`, `create_calendar_event`, `stop_workflow`.
+- **Availability contract** (`lib/workflows/domain.ts`): every trigger/action/
+  field is tagged `ready` (fully wired), `contract_only` (shape final, no
+  live provider — this is where `send_sms` sits: `lib/messaging/` has a
+  contract, mock provider, opt-out/segment logic, but no live SMS provider is
+  connected), or `needs_domain` (no backing table yet — tasks, tags, lead
+  owner, inbound messages). The engine refuses to **enable** a workflow using
+  anything not `ready`.
+- **Tenancy**: `contractor_id = NULL` means a HomeQuote/network-level
+  workflow (sees every event, staff-only); a contractor's own workflow only
+  sees its own events. Enforced in the DB by trigger
+  (`guard_workflow_run()`), not just in application code — a contractor
+  workflow literally cannot attach to another contractor's event.
+- **Idempotency has three layers**: `workflow_events.idempotency_key`
+  (unique — same webhook/retry/refresh maps to the same event row),
+  `workflow_runs` unique `(workflow_id, trigger_event_id)` plus a
+  `dedupe_key`/`concurrency_key` for `reentry_policy` (`once_per_event` /
+  `once_per_entity` / `one_active_per_entity`), and
+  `workflow_step_runs.idempotency_key` (`<run>:<step>:<iteration>`) passed to
+  every side-effecting handler so a retried step never double-sends.
+- **Scheduler**: `processWorkflowTick()` in `lib/workflows/runtime.server.ts`,
+  invoked by `POST /api/workflows/tick` (Bearer `WORKFLOW_CRON_SECRET`),
+  called every 5 minutes by GitHub Actions (`.github/workflows/
+  workflow-tick.yml`) — chosen over Vercel Cron because Vercel Hobby only
+  allows daily crons and a scheduler failure must never fail a deploy. Due
+  runs are found via `resume_at`/lease (`locked_by`/`locked_until`) so no
+  in-process `setTimeout` is used — restart-safe.
+- **Retention/pruning**: `pruneWorkflowHistory()` runs on every tick
+  alongside `processWorkflowTick()` (added in `0027_workflow_retention.sql` +
+  `a2bb664`) — this closes out what the project memory called "still open."
+- **SSRF protection on `send_webhook`** (`lib/workflows/webhook-safety.server.ts`)
+  is fully implemented: HTTPS-only, credential-in-URL rejected, blocks
+  loopback/private/link-local/CGNAT/metadata/multicast/reserved ranges (IPv4
+  and IPv6, including IPv4-mapped/NAT64 embedded addresses), a custom DNS
+  `lookup` re-validates every resolved address **at connection time** (not
+  just pre-check) to defeat DNS rebinding, and redirects are never followed.
+  This closes out the other "still open" item from the project memory note —
+  **the webhook SSRF hookup is done**, not open.
+- **Email rendering**: workflow `send_email` steps can reference a saved
+  `email_templates` row by id (`workflow_steps.action_config->>'templateId'`)
+  instead of inline subject/body — this is the "second email renderer" that
+  the memory note flagged as open; it now exists as
+  `lib/emails/template-library.ts` (29KB, built in `f3b50e1`) and is also used
+  directly from Calls > Emails (`7e83887`). Delivery still goes through the
+  single existing Gmail connection (`lib/emails/gmail.ts`) — there is no
+  second send transport, only a second template/rendering source.
+- **UI**: `/app/workflows` (list + create), `/app/workflows/[id]` (builder,
+  `components/workflows/workflow-builder.tsx`, `create-workflow-form.tsx`,
+  `dry-run-panel.tsx` for testing a workflow against a simulated event),
+  `/app/workflows/[id]/runs` and `/app/workflows/runs/[runId]` (history/debug).
+- **Health check script**: `scripts/workflow-health.mjs`.
+
+## 11. Integrations
+
+- **Meta (Facebook/Instagram) Lead Ads** — `lib/integrations/meta.ts`,
+  webhook at `app/api/integrations/meta/webhook`, HMAC-signature verified
+  (`tests/meta-signature.test.ts`). Settings UI at `/app/integrations/meta`.
+- **Generic lead intake** — `app/api/integrations/[provider]/intake`,
+  `lib/integrations/intake.ts`, authenticated per-integration
+  (`tests/intake-auth.test.ts`), logs every attempt to `lead_intake_events`
+  (received/created/duplicate/error) before creating a `Lead`.
+- **Google Places API (New)** — prospect sourcing (`GOOGLE_PLACES_API_KEY`);
+  degrades gracefully (explains what's missing, invents nothing) if unset.
+- **Gmail (OAuth)** — the single outbound email transport for both the Calls
+  workspace and (indirectly, for now) the email template library; refresh
+  tokens are AES-256-GCM encrypted at rest (`GMAIL_TOKEN_ENCRYPTION_KEY`).
+- **GoHighLevel (GHL)** — per-funnel Private Integration token
+  (`GHL_POOL_MASTERS_TOKEN`) for lead delivery to a contractor's own CRM.
+- **Calendly** — booking verification/appointment time capture for funnels
+  configured with `calendarProvider: 'calendly'` (`CALENDLY_API_TOKEN`).
+- **Stripe** — see §12. Distinct integration surface from the above; it is
+  inbound (contractor → HomeQuote), not lead delivery.
+- **SMS/messaging** — `lib/messaging/` has a full contract (types, mock
+  provider, opt-out handling, segment logic, webhook-result shape) but is
+  `contract_only`: no live SMS provider is connected.
+  `MESSAGING_MODE`/`MESSAGING_TEST_ALLOWLIST` env-gate it, and `mode='live'`
+  is refused outside `VERCEL_ENV=production` so a copied `.env` can't
+  accidentally text a real homeowner.
+
+## 12. Billing
+
+Two **separate** billing systems in this codebase — do not conflate them:
+
+1. **HomeQuote → contractor** (outbound, non-Stripe): `pricing_agreements` +
+   `billing_events` (per_lead/per_appointment/revenue_share/hybrid/
+   subscription) — how HomeQuote charges contractors for leads/appointments.
+   This predates Stripe integration and has no payment processor attached in
+   the code (manual/invoiced, per `BillingStatus`: pending/invoiced/paid/
+   void/overdue/waived).
+2. **Contractor → HomeQuote, Growth Tools** (inbound, Stripe): built very
+   recently (`60e6422` → `7e83887`). Flow:
+   - Contractor requests a Growth Tools service (`/app/growth`) →
+     `service_requests` row (`status: new`).
+   - Admin sets a price (`setServiceRequestPrice` in `lib/actions/billing.ts`,
+     `/app/service-requests`) — one-time or monthly, optional setup fee
+     (setup fee only valid with monthly). Writing a price is blocked once the
+     request is already paid/in-progress (`PRICE_LOCKED_STATUSES`). Setting a
+     new price expires any unfinished Stripe Checkout Session for the old one.
+   - Optionally emails the contractor a "price ready" email
+     (`lib/billing/price-email.ts`) linking to `payPageUrl(requestId)` =
+     `/app/pay/[id]`.
+   - Contractor opens `/app/pay/[id]` (any signed-in contractor of that
+     company can pay — `components/billing/pay-view.tsx`,
+     `pay-buttons.tsx`) and pays via a **Stripe Checkout Session**
+     (`lib/billing/pricing.ts` `checkoutLineItems()` builds line items
+     server-side from the DB row — amounts are never trusted from the
+     browser). Managed Payments was explicitly turned **off** on this
+     Checkout flow (`b6c2e75`).
+   - `POST /api/stripe/webhook` verifies `Stripe-Signature` against
+     `STRIPE_WEBHOOK_SECRET`, claims the event id in `stripe_events` (insert,
+     unique-violation = duplicate = no-op — real idempotency, not just a
+     signature check), then `handleStripeEvent()`
+     (`lib/billing/webhook.ts`) updates `service_requests.payment_status`
+     from `checkout.session.completed/async_payment_succeeded/
+     async_payment_failed/expired` and `customer.subscription.
+     created/updated/deleted`. Out-of-order events are handled explicitly
+     (a late "still processing" event never overwrites an already-confirmed
+     `paid`/`active` status). On handler failure the event is released so
+     Stripe retries (returns 500), never silently swallowed.
+   - `payment_status` state machine: `none` → `awaiting_payment` →
+     (`processing` | `paid` | `active` | `past_due` | `canceled` | `failed`).
+     Payment moves an untouched request (`new`/`contacted`) straight to
+     `in_progress`.
+   - Stripe customer id cached per contractor (`contractors.stripe_customer_id`,
+     unique, admin-write-only column via existing RLS on `contractors`).
+   - **Gap**: `.env.example` does **not** list `STRIPE_SECRET_KEY` or
+     `STRIPE_WEBHOOK_SECRET` even though `lib/billing/stripe.ts` and
+     `app/api/stripe/webhook/route.ts` require them — this should be added to
+     `.env.example` (names only) in a follow-up; not fixed as part of this
+     inspection since changing files beyond this doc was out of scope.
+
+## 13. Current Known Issues
+
+- **`.env.example` is missing Stripe variables** (`STRIPE_SECRET_KEY`,
+  `STRIPE_WEBHOOK_SECRET`) despite the billing feature depending on them —
+  see §12.
+- **Duplicate migration number**: two files are both named `0027_*`
+  (`0027_email_templates_call_workspace.sql`,
+  `0027_workflow_retention.sql`). Both are applied and safe, but the naming
+  is a footgun for anyone assuming filenames are unique — check actual file
+  contents/highest number, not just the prefix, before adding `0029`.
+- **Root docs are stale relative to the code.** Notably:
+  - `PROJECT_STATUS.md` still lists only migrations `0001`–`0005` as "applied
+    to the live database" and describes the `caller` role/Phase 8 calling
+    workspace as new/pending bootstrap — the repo has 28 migrations and the
+    calling workspace, workflow engine, funnel builder, Growth Tools, and
+    Stripe billing have all since shipped. Treat `PROJECT_STATUS.md`'s phase
+    checklist as historical, not current.
+  - `README.md`'s "Three roles" line predates the `caller` role (0007) and
+    the workflow/Growth Tools/Stripe systems entirely.
+  - Prior project memory calling "webhook SSRF hookup" and "second email
+    renderer" open items — both are implemented (see §10). Update any
+    external tracking that still lists them as open.
+- **Root has stray debug artifacts** not part of the app: `.next-qa-debug/`,
+  `jsQR.js`, `qr-decode.html`, `qr-enhanced.png` are untracked files sitting at
+  repo root per `git status` — likely scratch work from an unrelated
+  debugging session; worth cleaning up or `.gitignore`-ing so they don't get
+  committed by accident.
+- **Some tests require a live database.** Files named `*-db.test.ts` (e.g.
+  `tests/calls-rls.test.ts`, `tests/workflow-runtime-db.test.ts`,
+  `tests/billing-db.test.ts`) run real RLS policies against the configured
+  Supabase project inside a rolled-back transaction (`SUPABASE_DB_URL`).
+  Without that env var these suites are effectively untestable locally by a
+  new contributor — flag this expectation up front rather than assuming
+  `npm run test` alone is a full check.
+- **Two email-rendering code paths coexist** (`lib/emails/template.ts` for
+  the original hand-built prospect follow-up, `lib/emails/template-library.ts`
+  for the new DB-backed library). This is intentional per commit history
+  (workflow send_email + Calls > Emails both moved to the library; the
+  original template.ts is still used at minimum for tests/legacy paths) but
+  is a two-system situation a new contributor should understand before
+  "fixing" what looks like duplication.
+- **HQN production data drift**: per project memory, production
+  `profiles.contractor_role` has drift relative to migrations — verify
+  against the live Supabase project (not just migration files) before
+  assuming schema parity in production.
+
+## 14. Current Development Priorities
+
+Based on the most recent commits and the explicit "Next" markers in
+PROJECT_STATUS.md / commit messages (treat as directional, not exhaustive —
+this file does not track a live backlog):
+
+- Reporting depth and revenue reconciliation across the two billing systems
+  (§12) — PROJECT_STATUS.md's "Next" line, still plausible given the recent
+  Stripe work only covers Growth Tools, not the core lead-fee billing.
+- Broader Stripe billing hardening: `.env.example` gap (§13), and likely a
+  Stripe customer/billing portal or refund path is not yet built (only
+  Checkout + webhook were inspected — no portal/refund code was found).
+- Workflow engine: promoting more `contract_only` capabilities (notably
+  `send_sms`) to `ready` would require connecting a live SMS provider — the
+  contract, mock provider, and opt-out/consent logic already exist and are
+  tested (`lib/messaging/`).
+  `task`/`message` entity types and `needs_domain` fields (tasks, tags, lead
+  owner, inbound messages) have no backing tables yet — building those is a
+  prerequisite for workflow actions like `create_task`/`add_tag` to leave
+  `needs_domain` status.
+- Root-doc cleanup: PROJECT_STATUS.md, README.md, and CODEX_HANDOFF.md should
+  be refreshed or superseded by this file so future sessions don't anchor on
+  stale phase checklists.
+
+## 15. Recent Important Changes
+
+(Selected from `git log`, most recent first; full history in `git log
+--oneline`.)
+
+- `7e83887` (2026-09-26/27) — Calls > Emails now sends through the shared
+  email template library instead of its own template.
+- `bc50726` — Growth Tools price emails link to a `/app/pay/[id]` page.
+- `b6c2e75` — Managed Payments turned off on the Growth Tools Stripe Checkout.
+- `c27700f` (merge) / `60e6422` — Stripe billing lands: admins set a price on
+  a service request, contractors pay via Stripe Checkout
+  (`0028_stripe_service_billing.sql`).
+- `836f35c` — idempotent seed script for the default email template library
+  (`scripts/seed-email-templates.ts`).
+- `dda5a88` (merge) / `cd64185` — Growth Tools cards show pricing.
+- `f3b50e1` — reusable email template library (`0026_email_templates.sql`),
+  with workflow `send_email` + manual-send support.
+- `f956f93` — Terms of Service / Privacy Policy copy finalized (legal).
+- `a2bb664` — **workflow production-readiness pass**: rendering fixes,
+  variable validation, webhook SSRF protection, retention/pruning
+  (`0027_workflow_retention.sql`). This is the commit that resolves the
+  "webhook SSRF hookup ... still open" item from prior project memory.
+- `762cee6` — funnels dashboard redesigned for scale.
+- `50b8c69` — SEO fix: search-result branding, deindexed auth pages.
+- `a4e42cb` — premium lead list/detail UX + JSON-safe data normalization.
+- `0eb38be` — workflow DB test suites run against the *applied production
+  schema* (not just a local assumption of it).
+- `646551a` — GitHub Actions scheduler wired up for `/api/workflows/tick`
+  (`.github/workflows/workflow-tick.yml`) + a migration-apply script
+  (`scripts/apply-migrations.mjs`).
+- `03d4922` — workflows Phase 2 runtime + Phase 4 management UI + Phase 5
+  hardening (large combined commit).
+- `92f181e` — RLS fix: restored per-contractor activity visibility on shared
+  (house) leads — an example of a real regression caught and fixed at the DB
+  policy layer (`0022_restore_contractor_activity_visibility.sql`).
+- `f74b4bc` — messaging Phase 3: SMS contracts/mock provider (still
+  `contract_only`, no live provider — see §10/§11).
+- `31f8852` — migration renumbered `0017` → `0020` to resolve a collision
+  (note: a second, un-renumbered `0027` collision still exists today, §13).
+- `4fab589` / `0596df3` / `fe12534` — contractor portal: owner/staff
+  permissions, Growth Tools request flow, team-notification emails on new
+  service requests.
+- `4340f07` / `d9f362c` and surrounding — funnels send leads to GoHighLevel
+  via API v2; Pool Masters LA funnel with Calendly.
+- `312cb81` — Appointment Setters given their five working sections (the RBAC
+  decision referenced throughout §5/§10).
+
+Across `2026-09-01` → `2026-09-27` there are 58 commits — the workflow engine,
+funnel builder, Growth Tools portal, email template library, and Stripe
+billing were **all** built inside this one-month window. Assume the codebase
+moves fast and re-verify assumptions against current code rather than
+last week's summary.
+
+## 16. Rules for Future AI/Developers
+
+1. Read this file before making significant changes.
+2. Inspect the current implementation before assuming how a feature works.
+3. Do not remove or rewrite working functionality unnecessarily.
+4. Preserve existing authentication and RLS protections.
+5. Do not expose secrets or credentials.
+6. Before creating a new migration, inspect existing migration numbers/naming.
+7. Test role-specific behavior after auth/RLS changes.
+8. Test desktop and mobile after major UI changes.
+9. Clearly distinguish implemented vs planned features.
+10. Update this file whenever a meaningful architectural, feature,
+    integration, route, role, database, or workflow change is made.
+
+## 17. Handoff for Nadav
+
+- This file (`HOMEQUOTE_CONTEXT.md`) is the intended starting point for
+  understanding the current system — read it before the older root docs
+  (README.md, PROJECT_STATUS.md, CODEX_HANDOFF.md, FUNNELS.md,
+  MARKETING_SITE.md, LEAD_DISTRIBUTION.md). Those are kept for history and
+  contain useful detail (especially FUNNELS.md and MARKETING_SITE.md, which
+  were broadly still accurate at inspection time) but have drifted on
+  phase/migration status — see §13 for the specific contradictions found.
+- The **two billing systems** (§12) are the easiest thing to get confused
+  about in this codebase: `pricing_agreements`/`billing_events` is HomeQuote
+  billing contractors for leads (no Stripe involved); the new Stripe Checkout
+  flow is contractors paying HomeQuote for Growth Tools services. They share
+  no code path other than both touching the `contractors` table.
+- The **calling/prospecting system** (§7, `/app/calls`) is HomeQuote's own
+  outbound sales motion (recruiting contractor partners) — it is a
+  completely separate data model from the homeowner `leads` pipeline (§8)
+  even though both involve "calling people" conceptually. Don't assume a
+  `Lead` and a `ContractorProspect` are related.
+- The workflow automation engine (§10) is the newest, most architecturally
+  dense part of the codebase (idempotency at three layers, DB-enforced
+  tenancy, SSRF-hardened webhooks). If you're asked to add a new trigger,
+  action, or entity type, start by reading
+  `docs/workflow-automation-architecture.md` and `lib/workflows/domain.ts` —
+  the `Availability` contract (`ready`/`contract_only`/`needs_domain`) exists
+  specifically to stop half-built capabilities from being enabled in
+  production.
+- Before starting any work: confirm the current highest migration number in
+  `supabase/migrations/` by listing files (not by trusting this document or
+  any other doc's stated number), and confirm what's actually applied to the
+  live Supabase project versus just present as a file — PROJECT_STATUS.md
+  shows this can silently drift.
+- Test suite has two tiers: pure-logic vitest files run anywhere; `*-db.test.ts`
+  files need `SUPABASE_DB_URL` (and generally `.env.local`) pointed at the
+  real project and run inside rolled-back transactions. Ask Liam for DB
+  access if you need to run the full suite.
