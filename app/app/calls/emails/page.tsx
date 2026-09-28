@@ -6,7 +6,13 @@ import { getGmailConnectionStatus } from '@/lib/emails/gmail';
 import { emailLogoUrl } from '@/lib/emails/template';
 import { homequoteSystemValues } from '@/lib/emails/variables';
 
-const PROSPECT_TEMPLATE_CATEGORIES = ['Contractor Sales', 'Contractor Onboarding'];
+const PROSPECT_TEMPLATE_CATEGORIES = [
+  'Contractor Sales',
+  'Contractor Onboarding',
+  'Homeowner Follow-Up',
+  'Estimate Follow-Up',
+  'Appointments',
+];
 import { buttonVariants } from '@/components/ui/button';
 import { CallsSubnav } from '@/components/calls/calls-subnav';
 import { EmailComposer } from '@/components/calls/email-composer';
@@ -41,7 +47,7 @@ export default async function EmailsPage({
     <div className="space-y-6">
       <PageHeader
         title="Emails"
-        description="Review and personally send a follow-up to one contractor at a time."
+        description="Review and personally send a follow-up to one contractor or homeowner at a time."
       >
         {me.role === 'admin' ? (
           <a href="/api/integrations/gmail/oauth/start" className={buttonVariants({ variant: gmail.connected ? 'outline' : 'default' })}>

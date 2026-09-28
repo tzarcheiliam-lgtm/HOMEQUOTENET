@@ -14,8 +14,9 @@ export type SendEmailState =
   | undefined;
 
 const schema = z.object({
-  prospect_id: z.string().uuid('Choose a company'),
-  recipient_name: z.string().trim().min(1, 'Enter the name of the person you spoke with').max(120),
+  // Empty when emailing someone who isn't a contractor prospect (e.g. a homeowner).
+  prospect_id: z.union([z.literal(''), z.string().uuid('Choose a valid company')]),
+  recipient_name: z.string().trim().min(1, 'Enter the recipient name').max(120),
   recipient_email: z.string().trim().email('Enter a valid recipient email').max(254),
   // MORE_INFO_TEMPLATE_KEY's dynamic draft, or any email_templates.key from
   // the library (Contractor Sales / Contractor Onboarding) -- both just land
@@ -63,6 +64,7 @@ export async function sendProspectEmail(
         .filter(Boolean)
     )
   ).slice(0, 5);
+  if (!input.prospect_id) return sendWithoutProspect(input);
   const supabase = await createClient();
   const { data: prospect } = await supabase
     .from('contractor_prospects')
@@ -170,5 +172,24 @@ export async function sendProspectEmail(
       error: `Contact saved, but email was not sent: ${message}`,
       contactSaved: true,
     };
+  }
+}
+
+// Homeowner / non-prospect send. prospect_email_logs.prospect_id is NOT NULL, so
+// there is no per-company activity row to write; the message still goes out from
+// the shared Gmail account (which keeps its own Sent copy).
+async function sendWithoutProspect(input: z.infer<typeof schema>): Promise<SendEmailState> {
+  try {
+    const html = buildProspectEmailHtml(input.message, emailLogoUrl(process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'));
+    await sendGmailMessage({
+      toEmail: input.recipient_email.toLowerCase(),
+      subject: input.subject,
+      message: input.message,
+      html,
+    });
+    revalidatePath('/app/calls/emails');
+    return { ok: true, message: `Email sent to ${input.recipient_email}` };
+  } catch (error) {
+    return { ok: false, error: `Email was not sent: ${(error as Error).message || 'Unknown Gmail error'}`, contactSaved: false };
   }
 }

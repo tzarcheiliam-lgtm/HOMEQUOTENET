@@ -61,8 +61,8 @@ export function EmailComposer({
 
   const chooseTemplate = (value: string) => {
     setTemplate(value);
-    if (!selected) return;
     if (value === MORE_INFO_TEMPLATE_KEY) {
+      if (!selected) return;
       const draft = buildMoreInfoAfterCallEmail(
         selected,
         contactName,
@@ -74,8 +74,10 @@ export function EmailComposer({
     }
     const library = libraryTemplates.find((t) => t.key === value);
     if (library) {
+      const [firstName, ...rest] = contactName.trim().split(/\s+/).filter(Boolean);
       const context: EmailTemplateContext = {
-        contractor: { name: selected.company_name, contact_name: contactName, email: contactEmail },
+        contractor: { name: selected?.company_name ?? '', contact_name: contactName, email: contactEmail },
+        lead: { first_name: firstName ?? '', last_name: rest.join(' '), email: contactEmail },
         homequote,
       };
       // The library's text_body ends with its own "— HomeQuote Network" sign-off;
@@ -95,9 +97,9 @@ export function EmailComposer({
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="email-prospect">Contractor company</Label>
-            <Select id="email-prospect" name="prospect_id" value={prospectId} onChange={(event) => chooseProspect(event.target.value)} required>
-              <option value="" disabled>Choose a company…</option>
+            <Label htmlFor="email-prospect">Contractor company (optional)</Label>
+            <Select id="email-prospect" name="prospect_id" value={prospectId} onChange={(event) => chooseProspect(event.target.value)}>
+              <option value="">No company (e.g. homeowner email)</option>
               {prospects.map((prospect) => (
                 <option key={prospect.id} value={prospect.id}>{prospect.company_name}</option>
               ))}
@@ -105,9 +107,9 @@ export function EmailComposer({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="recipient-name">Person you spoke with</Label>
+            <Label htmlFor="recipient-name">Recipient name</Label>
             <Input id="recipient-name" name="recipient_name" value={contactName} onChange={(event) => setContactName(event.target.value)} maxLength={120} autoComplete="name" required />
-            <p className="text-xs text-muted-foreground">Saved to the company record when you send, including if Gmail returns an error.</p>
+            <p className="text-xs text-muted-foreground">When a company is selected, this is saved to the company record when you send, including if Gmail returns an error.</p>
           </div>
 
           <div className="space-y-1.5">
@@ -135,7 +137,7 @@ export function EmailComposer({
 
           <div className="space-y-1.5">
             <Label htmlFor="email-template">Template</Label>
-            <Select id="email-template" name="template_key" value={template} onChange={(event) => chooseTemplate(event.target.value)} disabled={!selected} required>
+            <Select id="email-template" name="template_key" value={template} onChange={(event) => chooseTemplate(event.target.value)} required>
               <option value="" disabled>Choose a template…</option>
               <option value={MORE_INFO_TEMPLATE_KEY}>More info after our call</option>
               {Object.entries(
@@ -175,7 +177,7 @@ export function EmailComposer({
             <Textarea id="email-message" name="message" value={message} onChange={(event) => setMessage(event.target.value)} className="min-h-80 leading-6" maxLength={20_000} required />
           </div>
 
-          {selected && template && htmlPreview ? (
+          {template && htmlPreview ? (
             <div className="space-y-2">
               <Label>Sent-email preview</Label>
               <div className="overflow-hidden rounded-md border bg-white shadow-sm">
@@ -200,7 +202,7 @@ export function EmailComposer({
           ) : null}
 
           <div className="flex justify-end border-t pt-4">
-            <Button type="submit" disabled={pending || !gmailConnected || !selected || !template || selected.disposition === 'do_not_call'}>
+            <Button type="submit" disabled={pending || !gmailConnected || !template || selected?.disposition === 'do_not_call'}>
               <Send className="size-4" aria-hidden="true" />
               {pending ? 'Sending…' : 'Send email'}
             </Button>
