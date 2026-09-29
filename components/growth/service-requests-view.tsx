@@ -58,7 +58,7 @@ export function ServiceRequestsView({
         </div>
       )}
 
-      <nav aria-label="Filter by status" className="flex flex-wrap gap-2">
+      <nav aria-label="Filter by status" className="no-scrollbar -mx-3 flex gap-2 overflow-x-auto px-3 sm:mx-0 sm:flex-wrap sm:px-0">
         {tabs.map((t) => {
           const active = t.value === status;
           return (
@@ -67,7 +67,7 @@ export function ServiceRequestsView({
               href={t.value ? `/app/service-requests?status=${t.value}` : '/app/service-requests'}
               aria-current={active ? 'page' : undefined}
               className={cn(
-                'inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                'inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50',
                 active ? 'border-primary bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-accent hover:text-accent-foreground'
               )}
             >
@@ -90,7 +90,7 @@ export function ServiceRequestsView({
         />
       ) : (
         <Card className="p-0">
-          <Table>
+          <Table stack>
             <TableHeader>
               <TableRow>
                 <TableHead>Company</TableHead>
@@ -121,25 +121,25 @@ export function ServiceRequestsView({
                           'Requester removed'}
                       </span>
                     </TableCell>
-                    <TableCell className="whitespace-nowrap">{serviceName}</TableCell>
-                    <TableCell>
+                    <TableCell label="Service" className="lg:whitespace-nowrap">{serviceName}</TableCell>
+                    <TableCell label="Notes">
                       {r.notes ? (
                         <p className="max-w-sm whitespace-pre-wrap break-words text-sm">{r.notes}</p>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
                     </TableCell>
-                    <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                    <TableCell label="Submitted" className="text-xs text-muted-foreground lg:whitespace-nowrap">
                       {fmtDateTime(r.created_at)}
                       {r.source && <span className="block">{REQUEST_SOURCE_LABELS[r.source] ?? r.source}</span>}
                     </TableCell>
-                    <TableCell>
+                    <TableCell label="Team email">
                       <EmailStatus request={r} />
                     </TableCell>
-                    <TableCell>
+                    <TableCell label="Price">
                       <PriceCell request={r} companyName={companyName} serviceName={serviceName} />
                     </TableCell>
-                    <TableCell>
+                    <TableCell label="Status">
                       <RequestStatusSelect
                         requestId={r.id}
                         status={r.status}
@@ -184,7 +184,7 @@ function PriceCell({ request: r, companyName, serviceName }: { request: AdminSer
           {priced && (
             <form action={clearServiceRequestPrice}>
               <input type="hidden" name="id" value={r.id} />
-              <Button type="submit" variant="ghost" size="sm" className="h-7 text-muted-foreground">
+              <Button type="submit" variant="ghost" size="sm" className="h-10 text-muted-foreground lg:h-7">
                 Remove
               </Button>
             </form>

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Plus } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { requireCallWorkspace } from '@/lib/auth';
 import {
   getCallerDashboard,
@@ -89,7 +90,7 @@ export default async function CallsPage({
         {isAdmin ? (
           <>
             <RefreshProspectsDialog assignees={callers} />
-            <Link href="/app/calls/new" className={buttonVariants()}>
+            <Link href="/app/calls/new" className={cn(buttonVariants(), 'max-lg:hidden')}>
               <Plus className="size-4" aria-hidden="true" /> Add prospect
             </Link>
           </>

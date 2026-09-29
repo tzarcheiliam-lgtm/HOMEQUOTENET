@@ -2,50 +2,10 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import {
-  LayoutDashboard,
-  Users,
-  Inbox,
-  Building2,
-  CalendarDays,
-  Receipt,
-  DollarSign,
-  BarChart3,
-  ShieldCheck,
-  ScrollText,
-  Plug,
-  ArrowDownToLine,
-  Phone,
-  Send,
-  Sprout,
-  Handshake,
-  Workflow,
-  Mail,
-  type LucideIcon,
-} from 'lucide-react';
+import { LayoutDashboard } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { NavItem } from '@/lib/nav';
-
-const ICONS: Record<string, LucideIcon> = {
-  LayoutDashboard,
-  Users,
-  Inbox,
-  Building2,
-  CalendarDays,
-  Receipt,
-  DollarSign,
-  BarChart3,
-  ShieldCheck,
-  ScrollText,
-  Plug,
-  ArrowDownToLine,
-  Phone,
-  Send,
-  Sprout,
-  Handshake,
-  Workflow,
-  Mail,
-};
+import { NAV_ICONS } from '@/components/nav-icons';
 
 export function AppSidebar({ items }: { items: NavItem[] }) {
   const pathname = usePathname();
@@ -53,7 +13,7 @@ export function AppSidebar({ items }: { items: NavItem[] }) {
   return (
     <nav className="flex flex-col gap-1 p-3">
       {items.map((item) => {
-        const Icon = ICONS[item.icon] ?? LayoutDashboard;
+        const Icon = NAV_ICONS[item.icon] ?? LayoutDashboard;
         const active =
           item.href === '/app'
             ? pathname === '/app'

@@ -8,7 +8,28 @@ import { Button } from '@/components/ui/button';
 import { LeadsTable } from '@/components/leads/leads-table';
 import { LeadFiltersBar } from '@/components/leads/lead-filters';
 import { PageHeader } from '@/components/ui/page-header';
+import { cn } from '@/lib/utils';
 import type { LeadStatus } from '@/lib/types';
+
+const QUICK_VIEWS: { label: string; href: string; match: (f: LeadFilters) => boolean }[] = [
+  {
+    label: 'All',
+    href: '/app/leads',
+    match: (f) => !f.qualification_status && !f.status && !f.assigned,
+  },
+  {
+    label: 'Needs qualification',
+    href: '/app/leads?review=needs_qualification',
+    match: (f) => f.qualification_status === 'needs_qualification',
+  },
+  { label: 'New leads', href: '/app/leads?status=new', match: (f) => f.status === 'new' },
+  {
+    label: 'Unassigned',
+    href: '/app/leads?assigned=unassigned',
+    match: (f) => f.assigned === 'unassigned',
+  },
+  { label: 'Qualified', href: '/app/leads?status=qualified', match: (f) => f.status === 'qualified' },
+];
 
 export const metadata = { title: 'Leads · HomeQuote Network' };
 
@@ -72,7 +93,7 @@ export default async function LeadsPage({
         title="Leads"
         description={`${rows.length} lead${rows.length === 1 ? '' : 's'} shown.`}
       >
-        <Button asChild>
+        <Button asChild className="max-lg:hidden">
           <Link href="/app/leads/new">
             <Plus className="size-4" /> New lead
           </Link>
@@ -80,38 +101,29 @@ export default async function LeadsPage({
       </PageHeader>
 
       {/* Quick views for the setter workflow */}
-      <div className="flex flex-wrap gap-2 text-sm">
-        <Link
-          href="/app/leads"
-          className="rounded-md border px-3 py-1 hover:bg-accent"
-        >
-          All
-        </Link>
-        <Link
-          href="/app/leads?review=needs_qualification"
-          className="rounded-md border px-3 py-1 hover:bg-accent"
-        >
-          Needs qualification
-        </Link>
-        <Link
-          href="/app/leads?status=new"
-          className="rounded-md border px-3 py-1 hover:bg-accent"
-        >
-          New leads
-        </Link>
-        <Link
-          href="/app/leads?assigned=unassigned"
-          className="rounded-md border px-3 py-1 hover:bg-accent"
-        >
-          Unassigned
-        </Link>
-        <Link
-          href="/app/leads?status=qualified"
-          className="rounded-md border px-3 py-1 hover:bg-accent"
-        >
-          Qualified
-        </Link>
-      </div>
+      <nav
+        aria-label="Quick views"
+        className="no-scrollbar -mx-3 flex gap-2 overflow-x-auto px-3 text-sm sm:mx-0 sm:px-0 lg:flex-wrap"
+      >
+        {QUICK_VIEWS.map((v) => {
+          const active = v.match(filters);
+          return (
+            <Link
+              key={v.label}
+              href={v.href}
+              aria-current={active ? 'page' : undefined}
+              className={cn(
+                'flex min-h-10 shrink-0 items-center rounded-full border px-4 font-medium transition-colors lg:min-h-0 lg:rounded-md lg:px-3 lg:py-1',
+                active
+                  ? 'border-primary bg-primary text-primary-foreground'
+                  : 'bg-background hover:bg-accent'
+              )}
+            >
+              {v.label}
+            </Link>
+          );
+        })}
+      </nav>
 
       <LeadFiltersBar
         verticals={verticals}

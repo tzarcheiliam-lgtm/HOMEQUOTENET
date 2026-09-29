@@ -30,13 +30,13 @@ export function FunnelCard({ row, view, pinned, onTogglePin }: {
     : <p className="text-sm text-muted-foreground">No responses yet</p>;
 
   return (
-    <Card className="transition-shadow hover:shadow-md">
+    <Card className="min-w-0 transition-shadow hover:shadow-md">
       {/* Column layout by default so the action buttons never squeeze against three stat cells on a narrow phone; list view widens back to a row at sm+. */}
       <CardContent className={cn('flex flex-col gap-3 p-4', view === 'list' && 'sm:flex-row sm:items-center sm:justify-between')}>
         <div className={cn('flex min-w-0 flex-1 flex-col gap-3', view === 'list' && 'sm:flex-row sm:items-center sm:gap-6')}>
           <div className="min-w-0 flex-1 space-y-1">
             <div className="flex flex-wrap items-center gap-2">
-              <button type="button" onClick={() => onTogglePin(row.id)} aria-label={pinned ? 'Unpin funnel' : 'Pin funnel'} className="shrink-0 text-muted-foreground hover:text-amber-500">
+              <button type="button" onClick={() => onTogglePin(row.id)} aria-label={pinned ? 'Unpin funnel' : 'Pin funnel'} className="-m-2 shrink-0 p-2 text-muted-foreground hover:text-amber-500">
                 <Star className={cn('size-4', pinned && 'fill-amber-400 text-amber-500')} />
               </button>
               <h3 className="truncate text-sm font-semibold">{row.clientName}</h3>

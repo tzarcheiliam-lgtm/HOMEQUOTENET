@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { Trash2, Wallet, CheckCircle2, Receipt } from 'lucide-react';
+import { ConfirmAction } from '@/components/ui/confirm-action';
+import { MobileCard } from '@/components/mobile/mobile-card';
 import { requireRole } from '@/lib/auth';
 import { listBillingEvents } from '@/lib/data/sales';
 import { updateBillingEvent, deleteBillingEvent } from '@/lib/actions/outcomes';
@@ -34,16 +36,16 @@ export default async function BillingPage() {
   const totalPaid = rows.reduce((s, r) => s + (r.amount_paid || 0), 0);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 lg:space-y-6">
       <PageHeader
         title="Billing"
         description="Commission billing per contractor and assignment."
       />
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:gap-4">
         <KpiCard label="Outstanding" value={money(totalOwed)} icon={Wallet} accent="money" />
         <KpiCard label="Collected" value={money(totalPaid)} icon={CheckCircle2} accent="money" />
-        <KpiCard label="Billing events" value={rows.length} icon={Receipt} />
+        <KpiCard className="max-sm:col-span-2" label="Billing events" value={rows.length} icon={Receipt} />
       </section>
 
       {rows.length === 0 ? (
@@ -53,7 +55,79 @@ export default async function BillingPage() {
           description="A billing event is created automatically when a sale is recorded on an assignment."
         />
       ) : (
-        <Card className="p-0">
+        <>
+        <ul className="space-y-3 lg:hidden">
+          {rows.map((b) => (
+            <li key={b.id}>
+              <MobileCard>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-base font-semibold">{b.contractor_name ?? '—'}</p>
+                    <p className="truncate text-sm text-muted-foreground">
+                      {b.lead_id ? (
+                        <Link href={`/app/leads/${b.lead_id}`} className="hover:underline">
+                          {b.lead_name}
+                        </Link>
+                      ) : (
+                        b.lead_name
+                      )}
+                      {' · '}
+                      {b.event_type}
+                    </p>
+                  </div>
+                  <p className="shrink-0 text-lg font-semibold tabular-nums">{money(b.amount || 0)}</p>
+                </div>
+                <form action={updateBillingEvent} className="mt-3 grid grid-cols-2 gap-3 border-t pt-3">
+                  <input type="hidden" name="id" value={b.id} />
+                  <label className="space-y-1 text-xs font-medium text-muted-foreground">
+                    Owed
+                    <Input name="amount" type="number" inputMode="decimal" step="0.01" defaultValue={b.amount} className="text-foreground" />
+                  </label>
+                  <label className="space-y-1 text-xs font-medium text-muted-foreground">
+                    Paid
+                    <Input name="amount_paid" type="number" inputMode="decimal" step="0.01" defaultValue={b.amount_paid} className="text-foreground" />
+                  </label>
+                  <label className="space-y-1 text-xs font-medium text-muted-foreground">
+                    Due
+                    <Input name="due_date" type="date" defaultValue={b.due_date ?? ''} className="text-foreground" />
+                  </label>
+                  <label className="space-y-1 text-xs font-medium text-muted-foreground">
+                    Status
+                    <Select name="status" defaultValue={b.status} className="text-foreground">
+                      {BILLING_STATUSES.map((s) => (
+                        <option key={s.value} value={s.value}>
+                          {s.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </label>
+                  <Button type="submit" className="col-span-2">
+                    Save changes
+                  </Button>
+                </form>
+                {/* Outside the save form: ConfirmAction renders a form of its own. */}
+                <div className="mt-2">
+                  <ConfirmAction
+                    action={deleteBillingEvent}
+                    fields={{ id: b.id }}
+                    triggerLabel={
+                      <>
+                        <Trash2 className="size-4" aria-hidden="true" /> Delete event
+                      </>
+                    }
+                    triggerVariant="ghost"
+                    triggerClassName="w-full text-destructive"
+                    title="Delete this billing event?"
+                    description="The event is removed from the contractor's billing. This cannot be undone."
+                    confirmLabel="Delete"
+                    destructive
+                  />
+                </div>
+              </MobileCard>
+            </li>
+          ))}
+        </ul>
+        <Card className="hidden p-0 lg:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -116,6 +190,7 @@ export default async function BillingPage() {
             </TableBody>
           </Table>
         </Card>
+        </>
       )}
     </div>
   );

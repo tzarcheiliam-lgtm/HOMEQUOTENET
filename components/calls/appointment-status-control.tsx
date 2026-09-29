@@ -13,9 +13,9 @@ export function AppointmentStatusControl({
   status: SalesAppointmentStatus;
 }) {
   return (
-    <form action={setSalesAppointmentStatus} className="flex items-center gap-2">
+    <form action={setSalesAppointmentStatus} className="flex w-full items-center gap-2 lg:w-auto">
       <input type="hidden" name="id" value={id} />
-      <Select name="status" defaultValue={status} aria-label="Appointment status" className="h-8 w-auto">
+      <Select name="status" defaultValue={status} aria-label="Appointment status" className="min-w-0 flex-1 lg:h-8 lg:w-auto lg:flex-none">
         {SALES_APPOINTMENT_STATUSES.map((s) => (
           <option key={s.value} value={s.value}>
             {s.label}

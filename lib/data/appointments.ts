@@ -9,6 +9,13 @@ export interface AppointmentRow {
   lead_id: string | null;
   lead_name: string;
   contractor_name: string | null;
+  /** Homeowner details for the phone cards (call / directions / project). */
+  lead_phone: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  project: string | null;
 }
 
 /** Appointments visible to the current user (RLS scopes by role). */
@@ -19,7 +26,8 @@ export async function listAppointments(): Promise<AppointmentRow[]> {
     .select(
       `id, scheduled_at, status, location,
        assignment:lead_assignments(
-         lead:leads(id, first_name, last_name, phone),
+         lead:leads(id, first_name, last_name, phone, address, city, state, zip,
+           vertical:verticals(name), sub_service:sub_services(name)),
          contractor:contractors(name)
        )`
     )
@@ -39,6 +47,13 @@ export async function listAppointments(): Promise<AppointmentRow[]> {
       lead_id: lead?.id ?? null,
       lead_name: leadName,
       contractor_name: a.assignment?.contractor?.name ?? null,
+      lead_phone: lead?.phone ?? null,
+      address: lead?.address ?? null,
+      city: lead?.city ?? null,
+      state: lead?.state ?? null,
+      zip: lead?.zip ?? null,
+      project:
+        [lead?.vertical?.name, lead?.sub_service?.name].filter(Boolean).join(' · ') || null,
     };
   });
 }

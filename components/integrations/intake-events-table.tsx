@@ -30,7 +30,7 @@ export function IntakeEventsTable({
 }) {
   return (
     <Card className="p-0">
-      <Table>
+      <Table stack>
         <TableHeader>
           <TableRow>
             <TableHead>Received</TableHead>
@@ -44,16 +44,16 @@ export function IntakeEventsTable({
         <TableBody>
           {rows.map((e) => (
             <TableRow key={e.id}>
-              <TableCell className="whitespace-nowrap text-muted-foreground">
+              <TableCell label="Received" className="whitespace-nowrap text-muted-foreground">
                 {new Date(e.received_at).toLocaleString()}
               </TableCell>
               {showProvider && (
-                <TableCell className="capitalize">{e.provider}</TableCell>
+                <TableCell label="Source" className="capitalize">{e.provider}</TableCell>
               )}
-              <TableCell className="text-muted-foreground">
+              <TableCell label="Platform" className="text-muted-foreground">
                 {e.platform ?? '—'}
               </TableCell>
-              <TableCell>
+              <TableCell label="Lead">
                 <span className="font-medium">
                   {e.full_name || e.email || e.phone || '—'}
                 </span>
@@ -63,12 +63,12 @@ export function IntakeEventsTable({
                   </span>
                 )}
               </TableCell>
-              <TableCell>
+              <TableCell label="Status">
                 <Badge variant={STATUS_VARIANT[e.status] ?? 'muted'}>
                   {e.status}
                 </Badge>
               </TableCell>
-              <TableCell className="text-sm">
+              <TableCell label="Result" className="text-sm">
                 {e.lead_id ? (
                   <Link
                     href={`/app/leads/${e.lead_id}`}

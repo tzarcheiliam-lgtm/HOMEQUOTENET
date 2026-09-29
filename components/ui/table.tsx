@@ -1,10 +1,21 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 
-function Table({ className, ...props }: React.ComponentProps<'table'>) {
+/**
+ * `stack` makes this a ResponsiveTable: below lg each row becomes a card and
+ * each <TableCell label="…"> shows its label beside its value (rules in
+ * globals.css, keyed on data-stack). Use it for simple lists; screens that
+ * need real mobile actions get purpose-built cards instead.
+ */
+function Table({
+  className,
+  stack,
+  ...props
+}: React.ComponentProps<'table'> & { stack?: boolean }) {
   return (
     <div className="relative w-full overflow-x-auto">
       <table
+        data-stack={stack ? '' : undefined}
         className={cn('w-full caption-bottom text-sm', className)}
         {...props}
       />
@@ -51,9 +62,17 @@ function TableHead({ className, ...props }: React.ComponentProps<'th'>) {
   );
 }
 
-function TableCell({ className, ...props }: React.ComponentProps<'td'>) {
+function TableCell({
+  className,
+  label,
+  ...props
+}: React.ComponentProps<'td'> & { label?: string }) {
   return (
-    <td className={cn('px-4 py-3 align-middle', className)} {...props} />
+    <td
+      data-label={label}
+      className={cn('px-4 py-3 align-middle', className)}
+      {...props}
+    />
   );
 }
 

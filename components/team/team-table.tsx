@@ -49,7 +49,7 @@ export function TeamTable({ rows }: { rows: UserRow[] }) {
 
   return (
     <form action={bulkUserAction} className="space-y-3">
-      <div className="flex flex-wrap items-center gap-3 rounded-md border bg-muted/40 px-3 py-2">
+      <div className="flex flex-wrap items-center gap-3 rounded-md border bg-muted/40 px-3 py-2 max-lg:[&>select]:flex-1">
         <span className="text-sm text-muted-foreground">
           {selected.size} selected
         </span>
@@ -68,7 +68,7 @@ export function TeamTable({ rows }: { rows: UserRow[] }) {
       </div>
 
       <Card className="p-0">
-        <Table>
+        <Table stack>
           <TableHeader>
             <TableRow>
               <TableHead className="w-10">
@@ -91,7 +91,7 @@ export function TeamTable({ rows }: { rows: UserRow[] }) {
           <TableBody>
             {rows.map((u) => (
               <TableRow key={u.id}>
-                <TableCell>
+                <TableCell data-select>
                   <input
                     type="checkbox"
                     name="ids"
@@ -102,7 +102,7 @@ export function TeamTable({ rows }: { rows: UserRow[] }) {
                     aria-label={`Select ${u.full_name ?? u.email}`}
                   />
                 </TableCell>
-                <TableCell>
+                <TableCell className="max-lg:pr-10">
                   <Link
                     href={`/app/team/${u.id}`}
                     className="font-medium hover:underline"
@@ -113,19 +113,19 @@ export function TeamTable({ rows }: { rows: UserRow[] }) {
                     {u.email}
                   </span>
                 </TableCell>
-                <TableCell>
+                <TableCell label="Role">
                   <Badge variant="secondary">{ROLE_LABELS[u.role]}</Badge>
                 </TableCell>
-                <TableCell>
+                <TableCell label="Status">
                   <StatusBadge status={u.account_status} />
                 </TableCell>
-                <TableCell className="text-muted-foreground">
+                <TableCell label="Contractor" className="text-muted-foreground">
                   {u.contractor_name ?? '—'}
                 </TableCell>
-                <TableCell className="text-muted-foreground">
+                <TableCell label="Last login" className="text-muted-foreground">
                   {fmtDate(u.last_login_at)}
                 </TableCell>
-                <TableCell className="text-muted-foreground">
+                <TableCell label="Created" className="text-muted-foreground">
                   {fmtDate(u.created_at)}
                 </TableCell>
               </TableRow>

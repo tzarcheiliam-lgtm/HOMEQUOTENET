@@ -8,6 +8,7 @@ export interface DashLead {
   assignment_id: string;
   lead_id: string;
   name: string;
+  phone: string | null;
   city: string | null;
   vertical: string | null;
   status: string; // assignment status
@@ -122,6 +123,7 @@ export async function getContractorDashboard(): Promise<ContractorDashboard> {
     assignment_id: a.id,
     lead_id: a.lead?.id,
     name: leadName(a.lead),
+    phone: a.lead?.phone ?? null,
     city: a.lead?.city ?? null,
     vertical: a.lead?.vertical?.name ?? null,
     status: a.status,

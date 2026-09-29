@@ -80,7 +80,7 @@ export function FunnelDashboard({ groups, grouped, hasAnyFunnels }: { groups: Fu
         return (
           <section key={group.key} className="space-y-3">
             {grouped && <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{group.label} · {group.rows.length}</h2>}
-            <div className={cn(view === 'grid' ? 'grid gap-3 sm:grid-cols-2 xl:grid-cols-3' : 'flex flex-col gap-2')}>
+            <div className={cn(view === 'grid' ? 'grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3' : 'flex flex-col gap-2')}>
               {rows.map((row) => <FunnelCard key={row.id} row={row} view={view} pinned={pinned.has(row.id)} onTogglePin={togglePin} />)}
             </div>
           </section>

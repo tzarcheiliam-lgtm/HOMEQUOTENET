@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { Phone, ExternalLink, PhoneOff, AlarmClock, CalendarCheck } from 'lucide-react';
 import { requireCallWorkspace } from '@/lib/auth';
-import { getProspect, listCallers } from '@/lib/data/prospects';
+import { getProspect, listCallers, nextProspectIdFor } from '@/lib/data/prospects';
 import { clearDoNotCall } from '@/lib/actions/prospects';
 import { isDialable } from '@/lib/calls/rules';
 import { buttonVariants } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import { ConfirmAction } from '@/components/ui/confirm-action';
 import { CallsSubnav } from '@/components/calls/calls-subnav';
 import { DispositionBadge, SalesAppointmentBadge } from '@/components/calls/disposition-badge';
 import { OutcomeForm } from '@/components/calls/outcome-form';
+import { CallWorkspace } from '@/components/calls/call-workspace';
 import { CallScript } from '@/components/calls/call-script';
 import { ActivityTimeline } from '@/components/calls/activity-timeline';
 import { AssignControl } from '@/components/calls/assign-control';
@@ -54,6 +55,8 @@ export default async function ProspectPage({
   const dnc = p.disposition === 'do_not_call';
   const tel = isDialable(p) ? telHref(p.phone) : null;
   const site = siteHref(p.website);
+  // Skip-ahead target for the phone action bar. One small indexed query.
+  const nextId = dnc ? null : await nextProspectIdFor(me, p.id);
   const nextAppt = appointments.find((a) =>
     ['scheduled', 'confirmed', 'rescheduled'].includes(a.status)
   );
@@ -69,7 +72,7 @@ export default async function ProspectPage({
         backLabel="Back to call list"
       >
         {tel ? (
-          <a href={tel} className={cn(buttonVariants({ size: 'lg' }), 'gap-2')}>
+          <a href={tel} className={cn(buttonVariants({ size: 'lg' }), 'gap-2 max-lg:hidden')}>
             <Phone className="size-4" aria-hidden="true" />
             Call {fmtPhone(p.phone)}
           </a>
@@ -77,7 +80,7 @@ export default async function ProspectPage({
           <span
             className={cn(
               buttonVariants({ size: 'lg', variant: 'outline' }),
-              'pointer-events-none gap-2 opacity-60'
+              'pointer-events-none gap-2 opacity-60 max-lg:hidden'
             )}
             aria-disabled="true"
           >
@@ -87,7 +90,29 @@ export default async function ProspectPage({
         )}
       </PageHeader>
 
-      <CallsSubnav />
+      <div className="hidden lg:block">
+        <CallsSubnav />
+      </div>
+
+      {/* Phone: the number is the hero, one tap to dial. */}
+      <div className="flex items-center justify-between gap-3 rounded-xl border bg-card p-3 lg:hidden">
+        <div className="min-w-0">
+          {tel ? (
+            <a href={tel} className="text-2xl font-semibold tabular-nums tracking-tight">
+              {fmtPhone(p.phone)}
+            </a>
+          ) : (
+            <p className="text-2xl font-semibold tabular-nums tracking-tight text-muted-foreground line-through">
+              {fmtPhone(p.phone)}
+            </p>
+          )}
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {p.call_attempt_count} {p.call_attempt_count === 1 ? 'attempt' : 'attempts'} · last{' '}
+            {fmtRelative(p.last_contacted_at).toLowerCase()}
+          </p>
+        </div>
+        <DispositionBadge value={p.disposition} />
+      </div>
 
       {dnc ? (
         <div
@@ -113,14 +138,17 @@ export default async function ProspectPage({
         </div>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-5">
-        {/* Record + log form */}
-        <div className="space-y-6 lg:col-span-3">
+      <CallWorkspace
+        tel={tel}
+        dnc={dnc}
+        nextHref={nextId ? `/app/calls/${nextId}` : '/app/calls?view=mine'}
+        historyCount={attempts.length + emails.length}
+        info={
           <Card>
             <CardHeader className="pb-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <CardTitle className="text-base">Prospect</CardTitle>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <DispositionBadge value={p.disposition} />
                   {isAdmin ? (
                     <AssignControl prospectId={p.id} assignedTo={p.assigned_to} callers={callers} />
@@ -129,7 +157,7 @@ export default async function ProspectPage({
               </div>
             </CardHeader>
             <CardContent>
-              <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm lg:gap-x-6">
                 <Row label="Phone">
                   <span className={cn('tabular-nums', dnc && 'line-through')}>
                     {fmtPhone(p.phone)}
@@ -167,7 +195,7 @@ export default async function ProspectPage({
                     '—'
                   )}
                 </Row>
-                <Row label="Services" className="sm:col-span-2">
+                <Row label="Services" className="col-span-2">
                   {p.primary_services.length > 0 ? p.primary_services.join(', ') : '—'}
                   {p.is_pool_cleaning_only ? (
                     <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">
@@ -216,7 +244,7 @@ export default async function ProspectPage({
                   <Row label="Follow-up">{fmtDateTime(p.follow_up_at)}</Row>
                 ) : null}
                 {nextAppt ? (
-                  <Row label="Sales appointment" className="sm:col-span-2">
+                  <Row label="Sales appointment" className="col-span-2">
                     <span className="inline-flex flex-wrap items-center gap-2">
                       <CalendarCheck className="size-3.5 text-emerald-700" aria-hidden="true" />
                       {fmtDateTime(nextAppt.scheduled_at, nextAppt.time_zone)}
@@ -228,14 +256,15 @@ export default async function ProspectPage({
                   </Row>
                 ) : null}
                 {p.notes ? (
-                  <Row label="Notes" className="sm:col-span-2">
+                  <Row label="Notes" className="col-span-2">
                     <span className="whitespace-pre-wrap">{p.notes}</span>
                   </Row>
                 ) : null}
               </dl>
             </CardContent>
           </Card>
-
+        }
+        log={
           <OutcomeForm
             prospectId={p.id}
             disposition={p.disposition}
@@ -243,14 +272,10 @@ export default async function ProspectPage({
             bestContactMethod={p.best_contact_method}
             isDnc={dnc}
           />
-        </div>
-
-        {/* Script + history */}
-        <div className="space-y-6 lg:col-span-2">
-          <CallScript />
-          <ActivityTimeline attempts={attempts} emails={emails} />
-        </div>
-      </div>
+        }
+        script={<CallScript />}
+        history={<ActivityTimeline attempts={attempts} emails={emails} />}
+      />
     </div>
   );
 }

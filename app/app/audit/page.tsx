@@ -58,7 +58,7 @@ export default async function AuditPage() {
         />
       ) : (
         <Card className="p-0">
-          <Table>
+          <Table stack>
             <TableHeader>
               <TableRow>
                 <TableHead>When</TableHead>
@@ -70,16 +70,16 @@ export default async function AuditPage() {
             <TableBody>
               {logs.map((l) => (
                 <TableRow key={l.id}>
-                  <TableCell className="whitespace-nowrap text-muted-foreground">
+                  <TableCell label="When" className="whitespace-nowrap text-muted-foreground">
                     {new Date(l.created_at).toLocaleString()}
                   </TableCell>
-                  <TableCell>
+                  <TableCell label="Action">
                     <Badge variant="secondary">{label(l.action)}</Badge>
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
+                  <TableCell label="By" className="text-muted-foreground">
                     {l.actor_name ?? 'System'}
                   </TableCell>
-                  <TableCell>
+                  <TableCell label="Target">
                     {l.target_user_id ? (
                       <Link
                         href={`/app/team/${l.target_user_id}`}

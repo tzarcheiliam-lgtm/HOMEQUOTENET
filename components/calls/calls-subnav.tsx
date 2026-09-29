@@ -15,7 +15,7 @@ const ITEMS = [
 export function CallsSubnav() {
   const pathname = usePathname();
   return (
-    <nav aria-label="Calling workspace" className="flex gap-1 border-b">
+    <nav aria-label="Calling workspace" className="no-scrollbar -mx-3 flex gap-1 overflow-x-auto border-b px-3 sm:mx-0 sm:px-0">
       {ITEMS.map((item) => {
         const active = item.exact
           ? pathname === item.href || /^\/app\/calls\/[0-9a-f-]{36}$/.test(pathname)
@@ -26,7 +26,7 @@ export function CallsSubnav() {
             href={item.href}
             aria-current={active ? 'page' : undefined}
             className={cn(
-              '-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors',
+              '-mb-px flex min-h-11 shrink-0 items-center whitespace-nowrap border-b-2 px-3 text-sm font-medium transition-colors lg:min-h-0 lg:py-2',
               active
                 ? 'border-primary text-foreground'
                 : 'border-transparent text-muted-foreground hover:text-foreground'

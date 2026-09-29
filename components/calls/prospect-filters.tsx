@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Card } from '@/components/ui/card';
+import { MobileFilters, SheetField } from '@/components/mobile/mobile-filters';
+import { buildFilterChips } from '@/components/mobile/filter-chips';
 import { CALL_SORTS, DISPOSITIONS, type CallView } from '@/lib/calls/constants';
 import type { CallerOption, ProspectFilters as Filters } from '@/lib/data/prospects';
 
@@ -25,8 +27,137 @@ export function ProspectFilters({
   isAdmin: boolean;
   options: { cities: string[]; counties: string[]; services: string[]; niches: string[] };
 }) {
+  const label = (list: { value: string; label: string }[], v: string) =>
+    list.find((x) => x.value === v)?.label ?? v;
+  const callerName = (v: string) =>
+    v === 'unassigned' ? 'Unassigned' : (callers.find((c) => c.id === v)?.name ?? 'Caller');
+  const values = {
+    caller: current.caller,
+    disposition: current.disposition,
+    city: current.city,
+    county: current.county,
+    service: current.service,
+    niche: current.niche,
+    callback: current.callback,
+    sort: current.sort,
+  };
+  const chips = buildFilterChips(
+    '/app/calls',
+    { view, q: current.q, ...values },
+    [
+      { key: 'q', label: (v) => `"${v}"` },
+      { key: 'caller', label: callerName },
+      { key: 'disposition', label: (v) => label(DISPOSITIONS, v) },
+      { key: 'city', label: (v) => v },
+      { key: 'county', label: (v) => `${v} County` },
+      { key: 'service', label: (v) => v },
+      { key: 'niche', label: (v) => v },
+      {
+        key: 'callback',
+        label: (v) =>
+          ({ due: 'Callback due', upcoming: 'Callback upcoming', any: 'Has callback' })[v] ?? null,
+      },
+      { key: 'sort', label: (v) => `Sort: ${label(CALL_SORTS, v)}` },
+    ]
+  );
+
   return (
-    <Card className="sticky top-0 z-10 p-3 shadow-sm">
+    <>
+    <MobileFilters
+      action="/app/calls"
+      q={current.q}
+      searchPlaceholder="Search company, phone, city…"
+      carry={{ view }}
+      fieldValues={values}
+      chips={chips}
+      clearHref={`/app/calls?view=${view}`}
+    >
+      {isAdmin ? (
+        <SheetField label="Caller" htmlFor="m-caller">
+          <Select id="m-caller" name="caller" defaultValue={current.caller ?? ''}>
+            <option value="">All callers</option>
+            <option value="unassigned">Unassigned</option>
+            {callers.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
+        </SheetField>
+      ) : null}
+      <SheetField label="Status" htmlFor="m-disposition">
+        <Select id="m-disposition" name="disposition" defaultValue={current.disposition ?? ''}>
+          <option value="">All statuses</option>
+          {DISPOSITIONS.map((d) => (
+            <option key={d.value} value={d.value}>
+              {d.label}
+            </option>
+          ))}
+        </Select>
+      </SheetField>
+      <SheetField label="Callback" htmlFor="m-callback">
+        <Select id="m-callback" name="callback" defaultValue={current.callback ?? ''}>
+          <option value="">Any callback state</option>
+          <option value="due">Callback due</option>
+          <option value="upcoming">Callback upcoming</option>
+          <option value="any">Has callback</option>
+        </Select>
+      </SheetField>
+      <SheetField label="City" htmlFor="m-city">
+        <Select id="m-city" name="city" defaultValue={current.city ?? ''}>
+          <option value="">All cities</option>
+          {options.cities.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </Select>
+      </SheetField>
+      <SheetField label="County" htmlFor="m-county">
+        <Select id="m-county" name="county" defaultValue={current.county ?? ''}>
+          <option value="">All counties</option>
+          {options.counties.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </Select>
+      </SheetField>
+      <SheetField label="Service" htmlFor="m-service">
+        <Select id="m-service" name="service" defaultValue={current.service ?? ''}>
+          <option value="">All services</option>
+          {options.services.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </Select>
+      </SheetField>
+      {options.niches.length > 0 ? (
+        <SheetField label="Niche" htmlFor="m-niche">
+          <Select id="m-niche" name="niche" defaultValue={current.niche ?? ''}>
+            <option value="">All niches</option>
+            {options.niches.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </Select>
+        </SheetField>
+      ) : null}
+      <SheetField label="Sort by" htmlFor="m-sort">
+        <Select id="m-sort" name="sort" defaultValue={current.sort ?? ''}>
+          <option value="">Default sort</option>
+          {CALL_SORTS.map((s) => (
+            <option key={s.value} value={s.value}>
+              {s.label}
+            </option>
+          ))}
+        </Select>
+      </SheetField>
+    </MobileFilters>
+
+    <Card className="sticky top-0 z-10 hidden p-3 shadow-sm lg:block">
       <form method="get" className="grid gap-2 md:grid-cols-12">
         <input type="hidden" name="view" value={view} />
 
@@ -129,5 +260,6 @@ export function ProspectFilters({
         </div>
       </form>
     </Card>
+    </>
   );
 }

@@ -34,12 +34,13 @@ async function SetterDashboard({ name }: { name: string | null }) {
   ]);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-5 lg:space-y-8">
       <PageHeader
+        showTitleOnMobile
         title={`Welcome${name ? `, ${name}` : ''}`}
         description="Leads to work and appointments to set."
       />
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:gap-4">
         <KpiCard label="Leads to qualify" value={toQualify} icon={Inbox} />
         <KpiCard label="Qualified" value={qualified} icon={BadgeCheck} />
         <KpiCard

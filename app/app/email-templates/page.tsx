@@ -32,7 +32,7 @@ export default async function EmailTemplatesPage() {
         }
       >
         {profile.role === 'admin' && (
-          <div className="flex gap-2">
+          <div className="flex w-full flex-wrap gap-2 lg:w-auto">
             <form action={seedDefaultEmailTemplatesAction}>
               <Button type="submit" variant="outline">
                 Restore default templates
@@ -58,18 +58,18 @@ export default async function EmailTemplatesPage() {
         Array.from(grouped.entries()).map(([category, items]) => (
           <div key={category} className="space-y-3">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{category}</h2>
-            <div className="grid gap-3 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
               {items.map((t) => (
                 <Card key={t.id} className={!t.isActive ? 'opacity-60' : undefined}>
                   <CardContent className="space-y-3 p-4">
-                    <div className="flex items-start justify-between gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
-                        <Link href={`/app/email-templates/${t.id}`} className="truncate text-sm font-semibold hover:underline">
+                        <Link href={`/app/email-templates/${t.id}`} className="block truncate py-1.5 text-sm font-semibold hover:underline lg:py-0">
                           {t.name}
                         </Link>
                         <p className="mt-0.5 truncate text-xs text-muted-foreground">{t.subject}</p>
                       </div>
-                      <div className="flex shrink-0 gap-1.5">
+                      <div className="flex flex-wrap gap-1.5 sm:shrink-0 sm:justify-end">
                         {t.isSystem && <Badge variant="outline">System</Badge>}
                         {t.contractorVisible && <Badge variant="outline">Contractor</Badge>}
                         <Badge variant={t.isActive ? 'success' : 'muted'}>{t.isActive ? 'Active' : 'Inactive'}</Badge>

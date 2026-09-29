@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Card } from '@/components/ui/card';
+import { MobileCard } from '@/components/mobile/mobile-card';
 import { PageHeader } from '@/components/ui/page-header';
 import { EmptyState } from '@/components/ui/empty-state';
 import {
@@ -65,7 +66,7 @@ export default async function CallLogsPage({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 lg:space-y-6">
       <PageHeader
         title="Call logs"
         description="A permanent record of every call. Entries cannot be edited or deleted."
@@ -73,9 +74,9 @@ export default async function CallLogsPage({
       <CallsSubnav />
 
       <Card className="p-3">
-        <form method="get" className="grid gap-2 md:grid-cols-12">
+        <form method="get" className="grid grid-cols-2 gap-2 lg:grid-cols-12">
           {isAdmin ? (
-            <Select name="caller" defaultValue={filters.caller ?? ''} aria-label="Caller" className="md:col-span-2">
+            <Select name="caller" defaultValue={filters.caller ?? ''} aria-label="Caller" className="col-span-2 lg:col-span-2">
               <option value="">All callers</option>
               {callers.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -89,23 +90,23 @@ export default async function CallLogsPage({
             type="date"
             defaultValue={filters.date_from ?? ''}
             aria-label="From date"
-            className="md:col-span-2"
+            className="lg:col-span-2"
           />
           <Input
             name="date_to"
             type="date"
             defaultValue={filters.date_to ?? ''}
             aria-label="To date"
-            className="md:col-span-2"
+            className="lg:col-span-2"
           />
           <Input
             name="prospect"
             defaultValue={filters.prospect ?? ''}
             placeholder="Company name"
             aria-label="Prospect"
-            className={isAdmin ? 'md:col-span-2' : 'md:col-span-3'}
+            className={isAdmin ? 'col-span-2 lg:col-span-2' : 'col-span-2 lg:col-span-3'}
           />
-          <Select name="outcome" defaultValue={filters.outcome ?? ''} aria-label="Outcome" className={isAdmin ? 'md:col-span-2' : 'md:col-span-3'}>
+          <Select name="outcome" defaultValue={filters.outcome ?? ''} aria-label="Outcome" className={isAdmin ? 'col-span-2 lg:col-span-2' : 'col-span-2 lg:col-span-3'}>
             <option value="">All outcomes</option>
             <option value="interested_any">Interested or follow-up</option>
             <option value="booked">Appointment booked</option>
@@ -118,8 +119,8 @@ export default async function CallLogsPage({
               </option>
             ))}
           </Select>
-          <div className="flex gap-2 md:col-span-2 md:justify-end">
-            <Button type="submit" size="sm" className="flex-1 md:flex-none">
+          <div className="col-span-2 flex gap-2 lg:col-span-2 lg:justify-end">
+            <Button type="submit" size="sm" className="flex-1 lg:flex-none">
               Apply
             </Button>
             <Button asChild type="button" variant="outline" size="sm">
@@ -136,7 +137,40 @@ export default async function CallLogsPage({
           description="Outcomes saved from a prospect record appear here, newest first."
         />
       ) : (
-        <Card className="p-0">
+        <>
+        <ul className="space-y-3 lg:hidden">
+          {result.rows.map((r) => (
+            <li key={r.id}>
+              <MobileCard className="space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <Link
+                      href={`/app/calls/${r.prospect_id}`}
+                      className="block truncate py-1 text-base font-semibold hover:underline"
+                    >
+                      {r.company_name}
+                    </Link>
+                    <p className="text-xs text-muted-foreground tabular-nums">
+                      {fmtDateTime(r.created_at)} · call #{r.attempt_number}
+                      {isAdmin && r.caller_name ? ` · ${r.caller_name}` : ''}
+                    </p>
+                  </div>
+                  <DispositionBadge value={r.outcome as ProspectDisposition} />
+                </div>
+                {r.notes ? <p className="line-clamp-4 text-sm text-muted-foreground">{r.notes}</p> : null}
+                {r.callback_at || r.appointment_at ? (
+                  <p className="flex flex-wrap gap-x-4 text-xs">
+                    {r.callback_at ? <span>Callback {fmtDateTime(r.callback_at)}</span> : null}
+                    {r.appointment_at ? (
+                      <span className="text-emerald-700">Appt {fmtDateTime(r.appointment_at)}</span>
+                    ) : null}
+                  </p>
+                ) : null}
+              </MobileCard>
+            </li>
+          ))}
+        </ul>
+        <Card className="hidden p-0 lg:block">
           <div className="overflow-x-auto">
             <Table className="min-w-[900px]">
               <TableHeader>
@@ -183,14 +217,15 @@ export default async function CallLogsPage({
             </Table>
           </div>
         </Card>
+        </>
       )}
 
       {pages > 1 ? (
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
           <span className="tabular-nums">{result.total} entries</span>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-4">
             {result.page > 1 ? (
-              <Link href={pageHref(result.page - 1)} className="hover:underline">
+              <Link href={pageHref(result.page - 1)} className="flex min-h-11 items-center hover:underline">
                 Previous
               </Link>
             ) : null}
@@ -198,7 +233,7 @@ export default async function CallLogsPage({
               Page {result.page} of {pages}
             </span>
             {result.page < pages ? (
-              <Link href={pageHref(result.page + 1)} className="hover:underline">
+              <Link href={pageHref(result.page + 1)} className="flex min-h-11 items-center hover:underline">
                 Next
               </Link>
             ) : null}

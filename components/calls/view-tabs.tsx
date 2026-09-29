@@ -20,7 +20,7 @@ export function ViewTabs({
   return (
     <nav
       aria-label="Saved views"
-      className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 [scrollbar-width:thin]"
+      className="no-scrollbar -mx-3 flex gap-1.5 overflow-x-auto px-3 pb-1 sm:mx-0 sm:px-0"
     >
       {views.map((v) => {
         const active = v.value === current;
@@ -31,7 +31,7 @@ export function ViewTabs({
             href={`/app/calls?view=${v.value}`}
             aria-current={active ? 'page' : undefined}
             className={cn(
-              'inline-flex shrink-0 items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors',
+              'inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors lg:min-h-0 lg:rounded-md lg:px-3',
               active
                 ? 'border-primary bg-primary text-primary-foreground'
                 : 'border-transparent bg-muted/60 text-muted-foreground hover:bg-accent hover:text-accent-foreground'

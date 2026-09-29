@@ -346,3 +346,166 @@ select:has(option[value=''][disabled]:checked) {
     @apply bg-background text-foreground;
   }
 }
+
+/*
+  ---break---
+*/
+
+/*
+  Mobile / touch foundation for the CRM.
+
+  - --mnav-h is the height of the fixed bottom navigation *without* the home
+    indicator inset; pages that pin their own action bar sit above it (or, on
+    focused workspaces, replace it).
+  - .pb-safe / .pt-safe / .px-safe read the notch and home-indicator insets
+    (needs viewport-fit=cover, set in app/layout.tsx) so the layout also works
+    as a PWA, Electron shell or native wrapper.
+*/
+:root {
+  --mnav-h: 3.75rem;
+  --mheader-h: 3.5rem;
+}
+
+@layer utilities {
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+  .px-safe {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+  /* Clears the fixed mobile bottom nav (and the home indicator). */
+  .pb-mnav {
+    padding-bottom: calc(var(--mnav-h) + env(safe-area-inset-bottom) + 1rem);
+  }
+  /* Clears a pinned action bar on pages that hide the bottom nav. */
+  .pb-mbar {
+    padding-bottom: calc(4.5rem + env(safe-area-inset-bottom) + 1rem);
+  }
+  .bottom-mnav {
+    bottom: calc(var(--mnav-h) + env(safe-area-inset-bottom));
+  }
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Never let one wide child create sideways page scroll on a phone. */
+@media (max-width: 1023px) {
+  html,
+  body {
+    overflow-x: clip;
+  }
+  /* Long unbroken strings (emails, URLs) wrap instead of pushing the layout. */
+  main {
+    overflow-wrap: anywhere;
+  }
+  /* Tap highlight off; the pressed state is ours. */
+  a,
+  button,
+  summary,
+  [role='button'] {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/*
+  ResponsiveTable (see components/ui/table.tsx): a table marked
+  `data-stack` turns into a list of cards below md. Each <td label="…">
+  renders its label to the left of its value. Cells without a label are
+  treated as full-width (titles, action rows). Desktop is untouched.
+*/
+@media (max-width: 1023px) {
+  table[data-stack] {
+    display: block;
+    min-width: 0 !important;
+  }
+  table[data-stack] thead {
+    display: none;
+  }
+  table[data-stack] tbody {
+    display: block;
+  }
+  table[data-stack] tr {
+    display: block;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border);
+  }
+  table[data-stack] tbody tr:last-child {
+    border-bottom: 0;
+  }
+  table[data-stack] td {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.25rem 0;
+    text-align: right;
+    min-width: 0;
+  }
+  table[data-stack] td[data-label]::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    text-align: left;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--muted-foreground);
+  }
+  table[data-stack] td:not([data-label]) {
+    display: block;
+    text-align: left;
+  }
+  table[data-stack] tr {
+    position: relative;
+  }
+  table[data-stack] td:empty {
+    display: none;
+  }
+  /* Row-selection checkbox: pinned to the card corner, with a real hit area. */
+  table[data-stack] td[data-select] {
+    position: absolute;
+    top: 0;
+    right: 0;
+    padding: 0.75rem;
+    display: block;
+  }
+  table[data-stack] td[data-select] input {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+}
+
+/*
+  Phone layout safety nets.
+
+  1. A bare `grid` has one implicit auto-sized column, so a long unbroken child
+     (a truncated title, an email) stretches it past the viewport. Give it a
+     shrinkable track in the base layer; any grid-cols-* utility still wins.
+  2. Checkboxes and radios are 16px by default; give touch users a real target.
+  3. Text links inside stacked-table cards get a tappable height.
+*/
+@layer base {
+  @media (max-width: 1023px) {
+    main .grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+}
+@media (max-width: 1023px) {
+  main input[type='checkbox'],
+  main input[type='radio'] {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+  table[data-stack] td a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.25rem;
+  }
+}

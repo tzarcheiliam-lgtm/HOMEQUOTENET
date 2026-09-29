@@ -33,7 +33,7 @@ export function Pagination({
     );
 
   return (
-    <div className="flex items-center justify-between text-sm text-muted-foreground">
+    <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
       <span className="tabular-nums">
         {from}{'–'}{to} of {total}
       </span>
@@ -45,7 +45,7 @@ export function Pagination({
         >
           <ChevronLeft className="size-4" /> Previous
         </Link>
-        <span className="tabular-nums">
+        <span className="hidden tabular-nums sm:inline">
           Page {page} of {pages}
         </span>
         <Link

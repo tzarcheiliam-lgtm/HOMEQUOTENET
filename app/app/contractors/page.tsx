@@ -32,7 +32,7 @@ export default async function ContractorsPage() {
   const contractors = await listContractors();
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 lg:space-y-6">
       <PageHeader
         title="Contractors"
         description={
@@ -42,7 +42,7 @@ export default async function ContractorsPage() {
         }
       >
         {canManage ? (
-          <Button asChild>
+          <Button asChild className="max-lg:hidden">
             <Link href="/app/contractors/new">
               <Plus className="size-4" /> New contractor
             </Link>
@@ -71,7 +71,7 @@ export default async function ContractorsPage() {
         />
       ) : (
         <Card className="p-0">
-          <Table>
+          <Table stack>
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
@@ -94,17 +94,17 @@ export default async function ContractorsPage() {
                       {c.name}
                     </Link>
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
+                  <TableCell label="Contact" className="text-muted-foreground">
                     {c.contact_name || c.email || c.phone || '—'}
                   </TableCell>
-                  <TableCell>
+                  <TableCell label="Status">
                     <Badge variant={STATUS_VARIANT[c.status] ?? 'muted'}>
                       {c.status}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-center">{c.vertical_count}</TableCell>
+                  <TableCell label="Verticals" className="text-center">{c.vertical_count}</TableCell>
                   {canManage ? (
-                    <TableCell className="text-center">
+                    <TableCell label="Agreements" className="text-center">
                       {c.agreement_count}
                     </TableCell>
                   ) : null}

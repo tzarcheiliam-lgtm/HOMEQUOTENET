@@ -780,3 +780,33 @@ last week's summary.
   files need `SUPABASE_DB_URL` (and generally `.env.local`) pointed at the
   real project and run inside rolled-back transactions. Ask Liam for DB
   access if you need to run the full suite.
+
+---
+
+## Mobile UI layer (added 2026-09-29)
+
+The CRM has a phone/tablet layout below the `lg` breakpoint (1024px); at `lg`
+and up the original sidebar + table desktop layout is unchanged.
+
+- **Chrome:** `components/mobile/mobile-shell.tsx` (`MobileChrome`) renders the
+  compact top bar, fixed bottom nav, "More" sheet and `<main>`. Nav lists come
+  from `mobileNavForRole()` in `lib/nav.ts`, derived from `NAV_ITEMS` (+ the
+  calling-workspace sub-pages), so role visibility is still decided in one place.
+  Focused record routes (`/app/calls/<uuid>`, `/app/leads/<id>`) hide the bottom
+  nav and pin an action bar instead (`isFocusedRoute`).
+- **Primitives:** `components/ui/bottom-sheet.tsx`; `Dialog` is a bottom sheet
+  below `sm`; `Button/Input/Select` are 44px tall below `lg`; `Card` is denser;
+  `Table stack` + `TableCell label` = ResponsiveTable (CSS in globals.css).
+- **Shared mobile parts:** `mobile-card.tsx`, `mobile-action-bar.tsx`
+  (`ActionBarItem`), `mobile-filters.tsx` + `filter-chips.ts` (search + filter
+  sheet + chips; plain GET forms, URL stays the source of truth).
+- **Phone-specific views** (rendered next to the desktop table, `lg:hidden`):
+  `calls/prospect-cards`, `leads/lead-cards`, `appointments/appointment-cards`
+  (Today/Upcoming/Past tabs via `?tab=`), billing cards, sales-appointment and
+  call-log cards. Call detail uses `calls/call-workspace.tsx` (tabs + action bar).
+- **Gotchas:** `<main>` only has `overflow-y-auto` from `lg` (a scroll container
+  there breaks `position: sticky`). `viewport-fit=cover` is set in
+  `app/app/layout.tsx` only. Don't import non-component values (class strings)
+  from `'use client'` files into server components; use `mobile-card.tsx`.
+- Homeowner appointments have no `confirmed` status in the schema; "Confirm" is
+  therefore not offered there (sales appointments have it).

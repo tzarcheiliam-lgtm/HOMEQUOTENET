@@ -8,6 +8,8 @@ import {
   FileText,
   ArrowRight,
   ArrowUpRight,
+  Phone,
+  MapPin,
   MessageSquare,
   PhoneCall,
   CalendarClock,
@@ -27,6 +29,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ASSIGNMENT_STATUSES } from '@/lib/leads/constants';
+import { buttonVariants } from '@/components/ui/button';
+import { telHref } from '@/lib/leads/lead-emails';
+import { cn } from '@/lib/utils';
 import type {
   ContractorDashboard as Data,
   DashActivity,
@@ -86,8 +91,13 @@ function KpiCard({
   hero?: boolean;
 }) {
   return (
-    <Card className={hero ? 'border-emerald-600/20 bg-emerald-50/40' : undefined}>
-      <CardContent className="space-y-4 p-5">
+    <Card
+      className={cn(
+        hero && 'border-emerald-600/20 bg-emerald-50/40',
+        hero && 'col-span-2 lg:col-span-1'
+      )}
+    >
+      <CardContent className="space-y-3 p-4 lg:space-y-4 lg:p-5">
         <div className="flex items-center justify-between">
           <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             {label}
@@ -107,7 +117,9 @@ function KpiCard({
           <p
             className={
               'font-semibold tabular-nums tracking-tight ' +
-              (hero ? 'text-4xl text-emerald-700' : 'text-3xl')
+              (hero
+                ? 'text-3xl text-emerald-700 lg:text-4xl'
+                : 'text-2xl lg:text-3xl')
             }
           >
             {value}
@@ -154,24 +166,24 @@ export function ContractorDashboard({
   growth?: { recommendation: Recommendation | null; openRequests: number } | null;
 }) {
   return (
-    <div className="mx-auto max-w-7xl space-y-8">
+    <div className="mx-auto max-w-7xl space-y-5 lg:space-y-8">
       {/* Header */}
-      <header className="flex flex-wrap items-end justify-between gap-4">
+      <header className="flex flex-wrap items-end justify-between gap-3 lg:gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="text-xl font-semibold tracking-tight lg:text-2xl">
             Welcome{name ? `, ${name}` : ''}
           </h1>
-          <p className="mt-0.5 text-muted-foreground">
+          <p className="mt-0.5 text-sm text-muted-foreground lg:text-base">
             Here's what needs your attention today.
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button asChild>
+        <div className="flex w-full gap-2 lg:w-auto">
+          <Button asChild className="flex-1 lg:flex-none">
             <Link href="/app/leads">
               <Inbox className="size-4" /> My Leads
             </Link>
           </Button>
-          <Button asChild variant="outline">
+          <Button asChild variant="outline" className="flex-1 lg:flex-none">
             <Link href="/app/appointments">
               <CalendarDays className="size-4" /> Appointments
             </Link>
@@ -180,7 +192,7 @@ export function ContractorDashboard({
       </header>
 
       {/* Primary KPIs */}
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
         <KpiCard
           label="Revenue this month"
           value={money(data.revenueThisMonth)}
@@ -213,9 +225,9 @@ export function ContractorDashboard({
       </section>
 
       {/* Main: active leads (focus) + right rail */}
-      <section className="grid grid-cols-1 gap-6 lg:grid-cols-10">
+      <section className="flex flex-col gap-4 lg:grid lg:grid-cols-10 lg:gap-6">
         {/* Active leads — the focal point */}
-        <Card className="lg:col-span-7">
+        <Card className="order-2 lg:order-none lg:col-span-7">
           <CardHeader className="flex-row items-center justify-between border-b">
             <div className="flex items-center gap-2">
               <CardTitle>Active leads</CardTitle>
@@ -241,6 +253,52 @@ export function ContractorDashboard({
                 </p>
               </div>
             ) : (
+              <>
+              <ul className="divide-y lg:hidden">
+                {data.activeLeads.map((l) => {
+                  const tel = l.phone ? telHref(l.phone) : null;
+                  return (
+                    <li key={l.assignment_id} className="space-y-2 p-4">
+                      <Link href={`/app/leads/${l.lead_id}`} className="block">
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="min-w-0 truncate text-base font-semibold">{l.name}</p>
+                          <Badge variant="secondary">{assignmentLabel(l.status)}</Badge>
+                        </div>
+                        <p className="mt-0.5 flex items-center gap-1 text-sm text-muted-foreground">
+                          <MapPin className="size-3.5 shrink-0" aria-hidden="true" />
+                          <span className="truncate">
+                            {[l.vertical, l.city].filter(Boolean).join(' · ') || '—'}
+                          </span>
+                        </p>
+                        {l.next_appointment ? (
+                          <p className="mt-1 flex items-center gap-1 text-sm font-medium">
+                            <CalendarClock className="size-3.5" aria-hidden="true" />
+                            {fmtDateTime(l.next_appointment)}
+                          </p>
+                        ) : null}
+                      </Link>
+                      <div className="flex gap-2">
+                        {tel ? (
+                          <a
+                            href={tel}
+                            className={cn(buttonVariants({ size: 'sm' }), 'flex-1 gap-2')}
+                          >
+                            <Phone className="size-4" aria-hidden="true" />
+                            Call
+                          </a>
+                        ) : null}
+                        <Link
+                          href={`/app/leads/${l.lead_id}`}
+                          className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'flex-1')}
+                        >
+                          Open
+                        </Link>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className="hidden lg:block">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -296,14 +354,16 @@ export function ContractorDashboard({
                   ))}
                 </TableBody>
               </Table>
+              </div>
+              </>
             )}
           </CardContent>
         </Card>
 
         {/* Right rail */}
-        <div className="space-y-6 lg:col-span-3">
+        <div className="contents lg:block lg:space-y-6 lg:col-span-3">
           {/* Upcoming appointments */}
-          <Card>
+          <Card className="order-1 lg:order-none">
             <CardHeader className="flex-row items-center justify-between">
               <CardTitle className="text-base">Upcoming appointments</CardTitle>
               <Link
@@ -345,7 +405,7 @@ export function ContractorDashboard({
           </Card>
 
           {/* Recent activity */}
-          <Card>
+          <Card className="order-3 lg:order-none">
             <CardHeader>
               <CardTitle className="text-base">Recent activity</CardTitle>
             </CardHeader>
@@ -366,10 +426,12 @@ export function ContractorDashboard({
 
           {/* Optional services: last in the rail, below the lead workflow */}
           {growth && (
+            <div className="order-4 lg:order-none">
             <GrowthDashboardCard
               recommendation={growth.recommendation}
               openRequests={growth.openRequests}
             />
+            </div>
           )}
         </div>
       </section>

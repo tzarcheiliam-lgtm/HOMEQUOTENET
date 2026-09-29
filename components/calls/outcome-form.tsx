@@ -1,7 +1,7 @@
 'use client';
 
-import { useActionState, useMemo, useState } from 'react';
-import { ArrowRight, Save } from 'lucide-react';
+import { useActionState, useEffect, useMemo, useState } from 'react';
+import { ArrowRight, Check, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,6 +19,7 @@ import {
 import { requiredFieldsFor, visibleFieldsFor, type OutcomeField } from '@/lib/calls/rules';
 import type { ProspectDisposition } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { useOutcomePreset } from './call-workspace';
 
 /**
  * Log the outcome of a call. Picking an outcome reveals only the fields that
@@ -47,6 +48,11 @@ export function OutcomeForm({
     undefined
   );
   const [outcome, setOutcome] = useState<ProspectDisposition | ''>('');
+  // The phone action bar's "Appt" button pre-selects Appointment booked.
+  const preset = useOutcomePreset();
+  useEffect(() => {
+    if (preset) setOutcome(preset.outcome);
+  }, [preset]);
   const visible = useMemo(
     () => new Set<OutcomeField>(outcome ? visibleFieldsFor(outcome) : ['notes']),
     [outcome]
@@ -76,11 +82,11 @@ export function OutcomeForm({
   }
 
   return (
-    <Card id="log">
-      <CardHeader className="pb-3">
+    <Card id="log" className="max-lg:gap-3 max-lg:border-0 max-lg:bg-transparent max-lg:py-0 max-lg:shadow-none">
+      <CardHeader className="pb-3 max-lg:px-0">
         <CardTitle className="text-base">Log this call</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="max-lg:px-0">
         <form action={formAction} className="space-y-4">
           <input type="hidden" name="prospect_id" value={prospectId} />
 
@@ -88,12 +94,40 @@ export function OutcomeForm({
             <Label htmlFor="outcome">
               Outcome <span className="text-destructive">*</span>
             </Label>
+            {/* Phones: big tap tiles; once chosen they collapse to a summary. */}
+            <div className="lg:hidden">
+              {outcome ? (
+                <div className="flex items-center justify-between gap-3 rounded-xl border bg-card p-3">
+                  <span className="flex items-center gap-2 text-sm font-semibold">
+                    <Check className="size-4 text-emerald-600" aria-hidden="true" />
+                    {DISPOSITIONS.find((d) => d.value === outcome)?.label}
+                  </span>
+                  <Button type="button" size="sm" variant="outline" onClick={() => setOutcome('')}>
+                    Change
+                  </Button>
+                </div>
+              ) : (
+                <div role="group" aria-label="Outcome" className="grid grid-cols-2 gap-2">
+                  {DISPOSITIONS.filter((d) => LOGGABLE_OUTCOMES.includes(d.value)).map((d) => (
+                    <button
+                      key={d.value}
+                      type="button"
+                      onClick={() => setOutcome(d.value)}
+                      className="min-h-12 rounded-xl border bg-card px-3 py-2 text-left text-sm font-medium leading-tight active:bg-accent"
+                    >
+                      {d.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <Select
               id="outcome"
               name="outcome"
               value={outcome}
               onChange={(e) => setOutcome(e.target.value as ProspectDisposition)}
               aria-invalid={errors.outcome ? true : undefined}
+              className="max-lg:hidden"
               autoFocus
               required
             >
@@ -107,13 +141,13 @@ export function OutcomeForm({
               ))}
             </Select>
             <FieldError message={errors.outcome} />
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground max-lg:hidden">
               Currently: {DISPOSITIONS.find((d) => d.value === disposition)?.label ?? disposition}
             </p>
           </div>
 
           {show('callback_at') ? (
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-2 gap-3">
               <Field
                 label="Callback date"
                 htmlFor="callback_date"
@@ -171,7 +205,7 @@ export function OutcomeForm({
           ) : null}
 
           {show('follow_up_at') ? (
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-2 gap-3">
               <Field
                 label="Follow-up date"
                 htmlFor="follow_up_date"
@@ -191,7 +225,7 @@ export function OutcomeForm({
               <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Sales appointment
               </p>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-2 gap-3">
                 <Field
                   label="Date"
                   htmlFor="appointment_date"
@@ -222,6 +256,7 @@ export function OutcomeForm({
                   htmlFor="time_zone"
                   required={req('time_zone')}
                   error={errors.time_zone}
+                  className="col-span-2 sm:col-span-1"
                 >
                   <Select id="time_zone" name="time_zone" defaultValue="America/Los_Angeles" required>
                     {TIME_ZONES.map((z) => (
@@ -271,7 +306,7 @@ export function OutcomeForm({
             <Textarea
               id="notes"
               name="notes"
-              rows={4}
+              rows={5}
               placeholder="What was said, who you spoke to, anything the next call needs to know."
             />
           </Field>
@@ -287,7 +322,7 @@ export function OutcomeForm({
             </p>
           ) : null}
 
-          <div className="flex flex-wrap gap-2">
+          <div className="sticky bottom-0 z-30 -mx-3 flex flex-wrap gap-2 border-t bg-background/95 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur max-lg:[&>button]:flex-1 lg:static lg:mx-0 lg:border-0 lg:bg-transparent lg:p-0 lg:pb-0 lg:backdrop-blur-none">
             <Button type="submit" name="intent" value="save" disabled={pending || !outcome}>
               <Save className="size-4" aria-hidden="true" />
               {pending ? 'Saving…' : 'Save outcome'}
@@ -314,16 +349,18 @@ function Field({
   htmlFor,
   required,
   error,
+  className,
   children,
 }: {
   label: string;
   htmlFor: string;
   required?: boolean;
   error?: string;
+  className?: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-1.5">
+    <div className={cn('space-y-1.5', className)}>
       <Label htmlFor={htmlFor}>
         {label} {required ? <span className="text-destructive">*</span> : null}
       </Label>

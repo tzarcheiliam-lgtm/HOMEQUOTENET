@@ -40,7 +40,7 @@ export default async function LeadRecipientsPage() {
         />
       ) : (
         <Card className="p-0">
-          <Table>
+          <Table stack>
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
@@ -62,18 +62,18 @@ export default async function LeadRecipientsPage() {
                       <div className="text-xs text-muted-foreground">Linked to {r.contractor.name}</div>
                     )}
                   </TableCell>
-                  <TableCell>{KIND_LABEL[r.kind]}</TableCell>
-                  <TableCell className="tabular-nums">{r.phone ?? '—'}</TableCell>
-                  <TableCell>
+                  <TableCell label="Type">{KIND_LABEL[r.kind]}</TableCell>
+                  <TableCell label="Phone" className="tabular-nums">{r.phone ?? '—'}</TableCell>
+                  <TableCell label="Status">
                     <Badge variant={r.is_active ? 'success' : 'muted'}>{r.is_active ? 'Active' : 'Inactive'}</Badge>
                   </TableCell>
                   <TableCell className="text-right">
                     <details className="group text-left">
-                      <summary className="cursor-pointer list-none text-right text-sm font-medium text-muted-foreground hover:text-foreground">
+                      <summary className="flex min-h-11 cursor-pointer list-none items-center justify-end text-right text-sm font-medium text-muted-foreground hover:text-foreground">
                         <span className="group-open:hidden">Edit</span>
                         <span className="hidden group-open:inline">Close</span>
                       </summary>
-                      <div className="mt-3 w-[min(36rem,80vw)] rounded-lg border bg-card p-4">
+                      <div className="mt-3 w-full rounded-lg border bg-card p-4 lg:w-[min(36rem,80vw)]">
                         <RecipientForm recipient={r} contractors={contractorOptions} />
                       </div>
                     </details>

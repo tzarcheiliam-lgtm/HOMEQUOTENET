@@ -7,6 +7,8 @@ export interface NavItem {
   icon: string;
   /** Which roles can see this item. */
   roles: UserRole[];
+  /** Full page title when `label` is a shortened bottom-bar label. */
+  title?: string;
 }
 
 // The UI is admin-first, but each item declares exactly which roles see it.
@@ -151,4 +153,87 @@ export const ROLE_LABELS: Record<UserRole, string> = {
  */
 export function homePathFor(role: UserRole): string {
   return role === 'caller' ? '/app/calls' : '/app';
+}
+
+/* ---- Mobile navigation ---------------------------------------------------
+ * The phone UI shows a few destinations in a bottom bar and everything else
+ * behind "More". Both lists are derived from NAV_ITEMS (plus the calling
+ * workspace sub-pages), so a role can never see a route on a phone that it
+ * cannot see in the desktop sidebar.
+ */
+
+/** Calling-workspace sub-pages: not in the sidebar (CallsSubnav covers them
+ *  on desktop) but worth first-class phone navigation. Same guard as the
+ *  pages themselves (requireCallWorkspace). */
+const CALL_WORKSPACE_EXTRAS: NavItem[] = [
+  {
+    label: 'Call Logs',
+    href: '/app/calls/logs',
+    icon: 'ClipboardList',
+    roles: ['admin', 'caller', 'setter'],
+  },
+  {
+    label: 'Call Appointments',
+    href: '/app/calls/appointments',
+    icon: 'CalendarCheck',
+    roles: ['admin', 'caller', 'setter'],
+  },
+  {
+    label: 'Call Emails',
+    href: '/app/calls/emails',
+    icon: 'Mail',
+    roles: ['admin', 'caller', 'setter'],
+  },
+];
+
+/** Bottom-bar picks per role, in order. Label is the short phone label. */
+const MOBILE_PRIMARY: Record<UserRole, { href: string; label: string }[]> = {
+  admin: [
+    { href: '/app', label: 'Home' },
+    { href: '/app/calls', label: 'Calls' },
+    { href: '/app/leads', label: 'Leads' },
+    { href: '/app/appointments', label: 'Appts' },
+  ],
+  setter: [
+    { href: '/app', label: 'Home' },
+    { href: '/app/calls', label: 'Calls' },
+    { href: '/app/leads', label: 'Leads' },
+    { href: '/app/appointments', label: 'Appts' },
+  ],
+  caller: [
+    { href: '/app/calls', label: 'Prospects' },
+    { href: '/app/calls/logs', label: 'Logs' },
+    { href: '/app/calls/appointments', label: 'Appts' },
+  ],
+  contractor: [
+    { href: '/app', label: 'Home' },
+    { href: '/app/leads', label: 'Leads' },
+    { href: '/app/appointments', label: 'Appts' },
+  ],
+};
+
+export interface MobileNav {
+  primary: NavItem[];
+  secondary: NavItem[];
+}
+
+export function mobileNavForRole(role: UserRole): MobileNav {
+  const visible = [...NAV_ITEMS, ...CALL_WORKSPACE_EXTRAS].filter((i) =>
+    i.roles.includes(role)
+  );
+  const primary: NavItem[] = [];
+  for (const pick of MOBILE_PRIMARY[role]) {
+    const item = visible.find((i) => i.href === pick.href);
+    if (item) primary.push({ ...item, label: pick.label, title: item.label });
+  }
+  const taken = new Set(primary.map((p) => p.href));
+  const seen = new Set<string>();
+  const secondary = visible.filter((i) => {
+    if (taken.has(i.href)) return false;
+    const key = `${i.href}|${i.label}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return { primary, secondary };
 }

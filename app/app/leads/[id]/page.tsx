@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { Pencil, Archive, ArchiveRestore, Trash2, ChevronDown } from 'lucide-react';
+import { Pencil, Archive, ArchiveRestore, Trash2, ChevronDown, MessageSquare, Mail, StickyNote } from 'lucide-react';
 import { requireProfile } from '@/lib/auth';
 import { getLead, listAssignableCompanyUsers } from '@/lib/data/leads';
 import { listContractorOptions } from '@/lib/data/contractors';
@@ -38,6 +38,10 @@ import { LeadDistributionPanel } from '@/components/leads/lead-distribution-pane
 import { ContactCard } from '@/components/leads/contact-card';
 import { ProjectSummaryCard } from '@/components/leads/project-summary-card';
 import { CallTextActions } from '@/components/leads/lead-quick-actions';
+import { LeadActionBar } from '@/components/leads/lead-action-bar';
+import { ConfirmAction } from '@/components/ui/confirm-action';
+import { sheetRowClass } from '@/components/mobile/mobile-card';
+import { telHref } from '@/lib/leads/lead-emails';
 import { getLeadDistribution, listRecipients } from '@/lib/data/lead-distribution';
 import { isContractorOwner } from '@/lib/permissions';
 
@@ -92,9 +96,15 @@ export default async function LeadDetailPage({
     undefined;
   const locationSummary = [lead.zip, lead.city].filter(Boolean).join(' · ') || undefined;
   const age = formatLeadAge(lead.created_at);
+  const tel = lead.phone ? telHref(lead.phone) : null;
+  const destination = [lead.address, lead.city, lead.state, lead.zip].filter(Boolean).join(', ');
+  const directionsHref =
+    lead.address || (lead.city && lead.zip)
+      ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`
+      : null;
 
   return (
-    <div className="space-y-6 pb-20 md:pb-0">
+    <div className="space-y-4 lg:space-y-6">
       <PageHeader
         title={name}
         description={[serviceSummary, locationSummary].filter(Boolean).join('  ·  ')}
@@ -102,12 +112,16 @@ export default async function LeadDetailPage({
         backLabel="Leads"
       >
         {isStaff ? (
-          <StatusSelect leadId={lead.id} status={lead.status} />
-        ) : (
-          <Badge variant={leadStatusVariant(lead.status)}>
-            {LEAD_STATUS_LABELS[lead.status]}
-          </Badge>
-        )}
+          <div className="max-lg:hidden">
+            <StatusSelect leadId={lead.id} status={lead.status} />
+          </div>
+        ) : null}
+        <Badge
+          variant={leadStatusVariant(lead.status)}
+          className={isStaff ? 'lg:hidden' : undefined}
+        >
+          {LEAD_STATUS_LABELS[lead.status]}
+        </Badge>
         <Badge variant={qualificationVariant(lead.qualification_status)}>
           {QUALIFICATION_STATUS_LABELS[lead.qualification_status]}
         </Badge>
@@ -116,12 +130,12 @@ export default async function LeadDetailPage({
           <span className="text-xs text-muted-foreground">Received {age} ago</span>
         )}
 
-        <div className="hidden md:block">
+        <div className="hidden lg:block">
           <CallTextActions phone={lead.phone} size="sm" />
         </div>
 
         {isStaff && (
-          <>
+          <div className="contents max-lg:hidden">
             <Button asChild variant="outline" size="sm">
               <Link href={`/app/leads/${lead.id}/edit`}>
                 <Pencil className="size-4" /> Edit
@@ -150,13 +164,15 @@ export default async function LeadDetailPage({
                 </Button>
               </form>
             )}
-          </>
+          </div>
         )}
       </PageHeader>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Left: lead info */}
-        <div className="space-y-6 lg:col-span-1">
+      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-3 lg:gap-6">
+        {/* Left: lead info. On phones the column wrappers dissolve (contents)
+            and the cards are re-ordered so what a call needs comes first. */}
+        <div className="contents lg:col-span-1 lg:block lg:space-y-6">
+          <div className="order-1 lg:order-none">
           <ContactCard
             phone={lead.phone}
             email={lead.email}
@@ -165,7 +181,9 @@ export default async function LeadDetailPage({
             state={lead.state}
             zip={lead.zip}
           />
+          </div>
 
+          <div className="order-2 lg:order-none">
           <ProjectSummaryCard
             verticalName={lead.vertical?.name}
             subServiceName={lead.sub_service?.name}
@@ -174,10 +192,11 @@ export default async function LeadDetailPage({
             zip={lead.zip}
             description={lead.project_description}
           />
+          </div>
 
           {/* Attribution — internal HomeQuote routing detail, staff only */}
           {isStaff && (
-            <Card>
+            <Card className="order-[8] lg:order-none">
               <details>
                 <summary className="flex cursor-pointer list-none items-center justify-between px-6 py-1 text-sm font-semibold [&::-webkit-details-marker]:hidden">
                   Attribution
@@ -205,7 +224,7 @@ export default async function LeadDetailPage({
 
           {/* Consent (TCPA) — staff only; contractors don't need this detail */}
           {isStaff && (
-            <Card>
+            <Card className="order-[9] lg:order-none">
               <CardHeader>
                 <CardTitle>Consent</CardTitle>
               </CardHeader>
@@ -234,7 +253,7 @@ export default async function LeadDetailPage({
 
           {/* Economics — admin only */}
           {isAdmin && (
-            <Card>
+            <Card className="order-[10] lg:order-none">
               <CardHeader>
                 <CardTitle>Economics</CardTitle>
               </CardHeader>
@@ -253,9 +272,9 @@ export default async function LeadDetailPage({
         </div>
 
         {/* Right: workflow */}
-        <div className="space-y-6 lg:col-span-2">
+        <div className="contents lg:col-span-2 lg:block lg:space-y-6">
           {/* Qualification — a clear 2-step workflow for staff */}
-          <Card>
+          <Card className="order-3 lg:order-none">
             <CardHeader>
               <CardTitle>Qualification</CardTitle>
             </CardHeader>
@@ -301,7 +320,7 @@ export default async function LeadDetailPage({
           {/* Review & send: new leads go to the HomeQuote team first; a
               person qualifies them, then chooses who receives them. */}
           {isStaff && distribution && (
-            <Card>
+            <Card className="order-4 lg:order-none">
               <CardHeader>
                 <CardTitle>Review &amp; send</CardTitle>
               </CardHeader>
@@ -317,7 +336,7 @@ export default async function LeadDetailPage({
           )}
 
           {/* Assignment / distribution */}
-          <Card>
+          <Card id="assignments" className="order-5 scroll-mt-20 lg:order-none">
             <CardHeader>
               <CardTitle>
                 {isStaff ? 'Contractor assignments' : 'Your assignment'}
@@ -338,7 +357,7 @@ export default async function LeadDetailPage({
           </Card>
 
           {/* Notes & activity */}
-          <Card>
+          <Card id="notes" className="order-6 scroll-mt-20 lg:order-none">
             <CardHeader>
               <CardTitle>Notes & activity</CardTitle>
             </CardHeader>
@@ -352,7 +371,7 @@ export default async function LeadDetailPage({
           </Card>
 
           {/* Attachments */}
-          <Card>
+          <Card className="order-7 lg:order-none">
             <CardHeader>
               <CardTitle>Attachments</CardTitle>
             </CardHeader>
@@ -393,12 +412,66 @@ export default async function LeadDetailPage({
         </div>
       </div>
 
-      {/* Sticky mobile action bar */}
-      {lead.phone && (
-        <div className="fixed inset-x-0 bottom-0 z-40 flex gap-2 border-t bg-background/95 p-3 backdrop-blur md:hidden">
-          <CallTextActions phone={lead.phone} size="default" className="flex-1 [&>*]:flex-1" />
-        </div>
-      )}
+      {/* Phone action bar: Call · Directions · Status · More */}
+      <LeadActionBar
+        leadId={lead.id}
+        status={lead.status}
+        tel={tel}
+        directionsHref={directionsHref}
+        canChangeStatus={isStaff}
+        more={
+          <>
+            {tel ? (
+              <a href={tel.replace('tel:', 'sms:')} className={sheetRowClass}>
+                <MessageSquare className="size-4" aria-hidden="true" /> Text homeowner
+              </a>
+            ) : null}
+            {lead.email ? (
+              <a href={`mailto:${lead.email}`} className={sheetRowClass}>
+                <Mail className="size-4" aria-hidden="true" /> Email homeowner
+              </a>
+            ) : null}
+            <a href="#notes" className={sheetRowClass}>
+              <StickyNote className="size-4" aria-hidden="true" /> Add a note
+            </a>
+            {isStaff ? (
+              <>
+                <Link href={`/app/leads/${lead.id}/edit`} className={sheetRowClass}>
+                  <Pencil className="size-4" aria-hidden="true" /> Edit lead
+                </Link>
+                <form action={lead.archived_at ? unarchiveLead : archiveLead}>
+                  <input type="hidden" name="id" value={lead.id} />
+                  <button type="submit" className={sheetRowClass}>
+                    {lead.archived_at ? (
+                      <ArchiveRestore className="size-4" aria-hidden="true" />
+                    ) : (
+                      <Archive className="size-4" aria-hidden="true" />
+                    )}
+                    {lead.archived_at ? 'Restore lead' : 'Archive lead'}
+                  </button>
+                </form>
+              </>
+            ) : null}
+            {isAdmin ? (
+              <ConfirmAction
+                action={deleteLead}
+                fields={{ id: lead.id }}
+                triggerLabel={
+                  <>
+                    <Trash2 className="size-4" aria-hidden="true" /> Delete lead
+                  </>
+                }
+                triggerVariant="outline"
+                triggerClassName="h-12 w-full justify-start rounded-xl px-4 text-destructive"
+                title="Delete this lead?"
+                description="This permanently removes the lead and its history. This cannot be undone."
+                confirmLabel="Delete lead"
+                destructive
+              />
+            ) : null}
+          </>
+        }
+      />
     </div>
   );
 }

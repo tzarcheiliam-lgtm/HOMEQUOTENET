@@ -39,15 +39,15 @@ export function ConfirmAction({
         </Button>
       </AlertDialog.Trigger>
       <AlertDialog.Portal>
-        <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=open]:fade-in" />
-        <AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-card p-6 shadow-lg">
+        <AlertDialog.Overlay className="fixed inset-0 z-[70] bg-black/40 data-[state=open]:animate-in data-[state=open]:fade-in" />
+        <AlertDialog.Content className="fixed left-1/2 top-1/2 z-[70] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-card p-6 shadow-lg">
           <AlertDialog.Title className="text-lg font-semibold">
             {title}
           </AlertDialog.Title>
           <AlertDialog.Description className="mt-1.5 text-sm text-muted-foreground">
             {description}
           </AlertDialog.Description>
-          <form action={action} className="mt-6 flex justify-end gap-2">
+          <form action={action} className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             {Object.entries(fields).map(([name, value]) => (
               <input key={name} type="hidden" name={name} value={value} />
             ))}

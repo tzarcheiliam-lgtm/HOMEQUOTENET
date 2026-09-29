@@ -59,13 +59,13 @@ export function LeadsTable({
   }
 
   const mobileCards = (
-    <div className="md:hidden">
+    <div className="lg:hidden">
       <LeadCards rows={rows} readOnly={readOnly} />
     </div>
   );
 
   const table = (
-    <Card className="hidden overflow-hidden p-0 md:block">
+    <Card className="hidden overflow-hidden p-0 lg:block">
       <Table>
         <TableHeader>
           <TableRow>
@@ -187,7 +187,7 @@ export function LeadsTable({
   return (
     <form action={bulkLeadAction} className="space-y-3">
       {/* Bulk action bar (desktop only — mobile uses per-card actions) */}
-      <div className="hidden flex-wrap items-center gap-3 rounded-md border bg-muted/40 px-3 py-2 md:flex">
+      <div className="hidden flex-wrap items-center gap-3 rounded-md border bg-muted/40 px-3 py-2 lg:flex">
         <span className="text-sm text-muted-foreground">
           {selected.size} selected
         </span>

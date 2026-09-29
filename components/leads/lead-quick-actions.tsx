@@ -47,7 +47,7 @@ function CopyButton({ value, label }: { value: string; label: string }) {
         setCopied(true);
         setTimeout(() => setCopied(false), 1200);
       }}
-      className="inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+      className="inline-flex size-9 shrink-0 items-center justify-center rounded text-muted-foreground lg:size-6 hover:bg-accent hover:text-foreground"
     >
       {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
     </button>

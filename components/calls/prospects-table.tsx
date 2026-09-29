@@ -19,6 +19,7 @@ import { assignProspects } from '@/lib/actions/prospects';
 import { isDialable } from '@/lib/calls/rules';
 import type { ProspectListRow, CallerOption } from '@/lib/data/prospects';
 import { DispositionBadge } from './disposition-badge';
+import { ProspectCards } from './prospect-cards';
 import { fmtDateTime, fmtPhone, fmtRelative, isDue, siteHref, siteLabel, telHref } from './format';
 
 /**
@@ -67,7 +68,7 @@ export function ProspectsTable({
   }
 
   const table = (
-    <Card className="p-0">
+    <Card className="hidden p-0 lg:block">
       <div className="overflow-x-auto">
         <Table className="min-w-[1040px]">
           <TableHeader>
@@ -245,18 +246,27 @@ export function ProspectsTable({
     </Card>
   );
 
-  if (!isAdmin) return table;
+  const cards = <ProspectCards rows={rows} isAdmin={isAdmin} />;
+
+  if (!isAdmin) {
+    return (
+      <>
+        {cards}
+        {table}
+      </>
+    );
+  }
 
   return (
     <form action={assignProspects} className="space-y-3">
-      <div className="flex flex-wrap items-center gap-3 rounded-md border bg-muted/40 px-3 py-2">
+      <div className="hidden flex-wrap items-center gap-3 rounded-md border bg-muted/40 px-3 py-2 lg:flex">
         <span className="text-sm text-muted-foreground tabular-nums">
           {selected.size} selected
         </span>
         {Array.from(selected).map((id) => (
           <input key={id} type="hidden" name="ids" value={id} />
         ))}
-        <Select name="assignee" className="h-8 w-auto" defaultValue="" required>
+        <Select name="assignee" className="h-8 w-auto lg:h-8" defaultValue="" required>
           <option value="" disabled>
             {'Assign to…'}
           </option>
@@ -271,6 +281,7 @@ export function ProspectsTable({
           Apply
         </Button>
       </div>
+      {cards}
       {table}
     </form>
   );
