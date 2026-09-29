@@ -5,6 +5,7 @@ import { BellRing, Smartphone } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { toast } from '@/components/ui/toaster';
 import { detectEnv, disablePush, enablePush, readPushState, type PushEnv, type PushUiState } from '@/lib/notifications/client';
 import { InstallSteps } from './install-helper';
 import type { NotificationPreferences, NotificationType } from '@/lib/notifications/types';
@@ -87,7 +88,10 @@ export function NotificationSettings({
     const result = await enablePush(userId);
     setBusy(false);
     if (!result.ok) setMessage({ tone: 'error', text: result.message });
-    else setMessage({ tone: 'ok', text: 'Notifications are on for this device.' });
+    else {
+      setMessage({ tone: 'ok', text: 'Notifications are on for this device.' });
+      toast('Notifications turned on');
+    }
     await refresh();
   };
 
@@ -124,7 +128,9 @@ export function NotificationSettings({
         body: JSON.stringify(patch),
       });
       if (!res.ok) throw new Error();
+      toast('Notification settings saved');
     } catch {
+      toast('Could not save that change', 'error');
       setMessage({ tone: 'error', text: 'Could not save that change. Please try again.' });
     }
   };

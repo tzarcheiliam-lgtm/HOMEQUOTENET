@@ -7,6 +7,8 @@ import { getGrowthContext } from '@/lib/data/service-requests';
 import { OPEN_REQUEST_STATUSES } from '@/lib/growth/catalog';
 import { ContractorDashboard } from '@/components/dashboard/contractor-dashboard';
 import { AdminDashboard } from '@/components/dashboard/admin-dashboard';
+import { MobileHome } from '@/components/dashboard/mobile-home';
+import { getMobileHome } from '@/lib/data/mobile-home';
 import { PageHeader } from '@/components/ui/page-header';
 import { KpiCard } from '@/components/ui/kpi-card';
 import { Inbox, BadgeCheck, CalendarDays } from 'lucide-react';
@@ -59,6 +61,16 @@ export default async function DashboardPage() {
   // A caller's whole job is the calling workspace; /app is just the way in.
   if (profile.role === 'caller') redirect('/app/calls');
 
+  // Phones get the action center; the existing dashboards below are untouched and
+  // shown from lg up, so desktop is unchanged.
+  const mobile = await getMobileHome(profile).catch(() => null);
+  const withMobile = (desktop: React.ReactNode) => (
+    <>
+      {mobile ? <MobileHome data={mobile} name={profile.full_name} role={profile.role} /> : null}
+      <div className={mobile ? 'hidden lg:block' : undefined}>{desktop}</div>
+    </>
+  );
+
   if (profile.role === 'contractor') {
     const [data, growth] = await Promise.all([
       getContractorDashboard(),
@@ -76,15 +88,13 @@ export default async function DashboardPage() {
         )
         .catch(() => null),
     ]);
-    return (
-      <ContractorDashboard data={data} name={profile.full_name} growth={growth} />
-    );
+    return withMobile(<ContractorDashboard data={data} name={profile.full_name} growth={growth} />);
   }
 
   if (profile.role === 'admin') {
     const data = await getAdminDashboard();
-    return <AdminDashboard data={data} name={profile.full_name} />;
+    return withMobile(<AdminDashboard data={data} name={profile.full_name} />);
   }
 
-  return <SetterDashboard name={profile.full_name} />;
+  return withMobile(<SetterDashboard name={profile.full_name} />);
 }

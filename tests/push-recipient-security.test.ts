@@ -260,3 +260,34 @@ describe('8-9. inactive users and disabled devices', () => {
     expect(endpoints).toEqual(['https://fcm.googleapis.com/a1']);
   });
 });
+
+describe('workflow "send push" action routing', () => {
+  const wf = (payload: Record<string, unknown>, over: Partial<NotificationEvent> = {}) =>
+    ev({ type: 'workflow_alert', entity_type: 'workflow', entity_id: 'step-1', lead_id: 'lead-B', payload: { title: 'T', body: 'B', url: '/app/leads/lead-B', assignmentId: 'asg-B', ...payload }, ...over });
+
+  it('assigned_contractor reaches only the assignment\'s company', async () => {
+    const out = await buildNotifications(wf({ audience: 'assigned_contractor' }), db());
+    expect(ids(out)).toEqual([B1]);
+  });
+
+  it('a workflow owned by contractor A cannot push to contractor B\'s users via B\'s assignment', async () => {
+    const out = await buildNotifications(wf({ audience: 'assigned_contractor' }, { contractor_id: A_CO }), db());
+    expect(out).toEqual([]);
+  });
+
+  it('admins audience reaches admins only; a hand-picked contractor user is dropped', async () => {
+    expect(ids(await buildNotifications(wf({ audience: 'admins' }), db()))).toEqual([ADMIN]);
+    expect(await buildNotifications(wf({ audience: 'specific_user', userId: A1 }), db())).toEqual([]);
+    expect(ids(await buildNotifications(wf({ audience: 'specific_user', userId: SETTER2 }), db()))).toEqual([SETTER2]);
+  });
+
+  it('assigned_caller resolves from the assignment, not the role', async () => {
+    const out = await buildNotifications(wf({ audience: 'assigned_caller', assignmentId: 'asg-caller' }), db());
+    expect(ids(out)).toEqual([CALLER]);
+  });
+
+  it('an external url in the step becomes /app', async () => {
+    const out = await buildNotifications(wf({ audience: 'admins', url: 'https://evil.example' }), db());
+    expect(out[0].url).toBe('/app');
+  });
+});

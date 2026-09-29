@@ -82,6 +82,15 @@ describe('migration 0020 mirrors the TypeScript contract', () => {
     ['workflow_step_runs', 'status', WORKFLOW_STEP_RUN_STATUSES],
     ['workflow_logs', 'level', WORKFLOW_LOG_LEVELS],
   ] as const)('%s.%s', (table, column, values) => {
+    if (column === 'action_type') {
+      // 0033 widened this constraint (send_push); 0020 is the historical base, 0033 the current truth.
+      const later = readFileSync('supabase/migrations/0033_workflow_send_push.sql', 'utf8');
+      const m = later.match(new RegExp(`alter table public\\.${table} add constraint [a-z_]+ check \\(action_type in \\(([^)]*)\\)`));
+      expect(m, `${table} 0033 check`).not.toBeNull();
+      expect(Array.from(m![1].matchAll(/'([^']+)'/g), (x) => x[1])).toEqual([...values]);
+      expect([...values]).toEqual(expect.arrayContaining(checkList(table, column)));
+      return;
+    }
     expect(checkList(table, column)).toEqual([...values]);
   });
 

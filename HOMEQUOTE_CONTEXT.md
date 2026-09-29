@@ -822,3 +822,9 @@ Web Push (standard VAPID, `web-push` npm, no Firebase) + an in-app notification 
 - **Env**: `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (build-time), `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, optional `PUSH_ENDPOINT_HOSTS`.
 - **UI**: bell (`components/notifications/notification-bell.tsx`) in desktop header + phone top bar; `/app/settings/notifications`; iOS install helper; sign-out detaches the device.
 - Not yet: workflow *action* type for alerts (`raiseWorkflowAlert()` helper exists), appointment-changed for Calendly reschedules.
+
+### Mobile/PWA layer additions (2026-09-29, migrations 0032–0033)
+- **Auth persistence**: one explicit 400-day cookie policy (`lib/supabase/cookie-options.ts`) for browser/server/middleware clients; middleware redirects carry refreshed cookies; transient Supabase errors show a retry page (`getProfile()` throws → `app/app/error.tsx`) instead of bouncing to `/sign-in`; `/sign-in?returnTo=` (legacy `next`) validated by `safeNextPath`.
+- **Notification routing is fail-closed**: `lib/notifications/routing.ts` resolves audiences per admin rule (`notification_routing_rules`, UI at `/app/settings/notification-routing`), then `authorize()` re-verifies each user (contractor users only via assigned_contractor + matching company + real assignment). Never role-broadcast.
+- **Workflow action `send_push`** (0033): plain-text title/body (no merge fields), audience enum; contractor-owned workflows may only target `assigned_contractor`. Queued as `workflow_alert` outbox events.
+- **Phone UX**: action-center home (`components/dashboard/mobile-home.tsx`, data `lib/data/mobile-home.ts`, RLS-scoped) shown below lg above the untouched desktop dashboards; bottom nav = 3 role tabs + Alerts (unread badge, `/app/notifications`) + More; toaster (`components/ui/toaster.tsx`), `lib/haptics.ts`, `app/app/loading.tsx` skeleton; `public/offline.html` served by the SW only when a navigation has no network (no app data is ever cached).

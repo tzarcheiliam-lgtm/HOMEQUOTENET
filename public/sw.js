@@ -1,12 +1,13 @@
 /*
- * HomeQuote service worker — Web Push only.
+ * HomeQuote service worker — push notifications + an offline fallback page.
  *
- * Deliberately NOT a caching/offline worker: it has no fetch handler, so it can
- * never serve stale CRM data or interfere with auth. Its jobs are:
+ * It deliberately does NOT cache app pages or data (only /offline.html), so it can
+ * never serve stale CRM content or interfere with auth. Its jobs are:
  *   1. show a notification when a push arrives (even with the app closed)
  *   2. open/focus HomeQuote on the right internal page when it is tapped
  *   3. keep the app-icon badge in step
  *   4. re-subscribe if the browser rotates the push subscription
+ *   5. show /offline.html when a navigation fails because there is no network
  *
  * Keep this file dependency-free and small; it is served as-is from /public.
  */
@@ -25,12 +26,32 @@ function safeUrl(input) {
   return url;
 }
 
-self.addEventListener('install', () => {
+const OFFLINE_CACHE = 'hq-offline-v1';
+
+self.addEventListener('install', (event) => {
+  // Only the static offline page is cached — never app pages or data, so a cache can
+  // never show stale CRM content or leak one user's data to the next.
+  event.waitUntil(caches.open(OFFLINE_CACHE).then((c) => c.add('/offline.html')).catch(() => {}));
   self.skipWaiting();
 });
 
+// Navigations only: if the network is unreachable, show the offline page (the session
+// cookie is untouched, so reconnecting resumes signed in). Everything else, and every
+// successful response, passes straight through.
+self.addEventListener('fetch', (event) => {
+  if (event.request.mode !== 'navigate') return;
+  event.respondWith(
+    fetch(event.request).catch(async () => (await caches.match('/offline.html')) || Response.error())
+  );
+});
+
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== OFFLINE_CACHE).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
+  );
 });
 
 self.addEventListener('push', (event) => {

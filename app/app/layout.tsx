@@ -9,6 +9,7 @@ import { MobileChrome } from '@/components/mobile/mobile-shell';
 import { NotificationBell } from '@/components/notifications/notification-bell';
 import { PortalPushBoot } from '@/components/notifications/portal-push-boot';
 import { SignOutForm } from '@/components/notifications/sign-out-form';
+import { Toaster } from '@/components/ui/toaster';
 import { InstallHelper } from '@/components/notifications/install-helper';
 
 // The CRM draws edge to edge on notched phones (PWA / wrapper); the mobile
@@ -40,6 +41,7 @@ export default async function AppLayout({
   return (
     <div className="flex min-h-[100dvh]">
       <PortalPushBoot userId={profile.id} />
+      <Toaster />
       {/* Sidebar */}
       <aside className="hidden w-64 shrink-0 flex-col border-r bg-card lg:flex">
         <div className="flex h-16 items-center border-b px-5">
@@ -57,7 +59,7 @@ export default async function AppLayout({
             {ROLE_LABELS[profile.role]}
           </span>
           <div className="flex items-center gap-3">
-            <NotificationBell variant="desktop" />
+            <NotificationBell />
             <span className="text-sm font-medium">
               {profile.full_name || profile.email}
             </span>

@@ -11,6 +11,7 @@ export const workflowActionDefaultConfig = (type: WorkflowActionType): Record<st
     case 'send_webhook': return { url: 'https://example.com/webhooks/homequote', includeLeadContact: false };
     case 'notify_team': return { audience: { kind: 'lead_alert_team' }, subject: 'Workflow update', message: 'A workflow needs attention for {{lead.first_name}}.' };
     case 'create_calendar_event': return { startsInMinutes: 1440, location: '' };
+    case 'send_push': return { audience: 'assigned_contractor', title: 'Lead update', body: 'Open HomeQuote for details.' };
     case 'stop_workflow': return { reason: '' };
     case 'assign_user': return { strategy: 'specific', userIds: ['00000000-0000-0000-0000-000000000000'] };
     case 'create_task': return { title: 'Follow up' };

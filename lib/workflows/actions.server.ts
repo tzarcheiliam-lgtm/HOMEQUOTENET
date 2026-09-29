@@ -1,6 +1,7 @@
 import 'server-only';
 import { createHmac } from 'node:crypto';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { enqueueNotificationEvent, flushNotificationsSoon } from '@/lib/notifications/outbox';
 import { processLeadEmails, leadAlertRecipients } from '@/lib/leads/notify';
 import { WORKFLOW_ACTIONS, WORKFLOW_ACTION_CONFIG_SCHEMAS, type WorkflowAction, type WorkflowActionResult, type WorkflowError } from './actions';
 import type { WorkflowEvent } from './events';
@@ -78,6 +79,18 @@ export async function executeWorkflowAction(input:ExecuteWorkflowActionInput):Pr
     case 'create_calendar_event':{const c=WORKFLOW_ACTION_CONFIG_SCHEMAS.create_calendar_event.parse(action.config);const assignmentId=typeof input.values.assignment?.id==='string'?input.values.assignment.id:null;if(!assignmentId||!input.context.run.leadId)return {outcome:'skipped',reason:'missing_assignment'};const {data,error}=await input.db.rpc('workflow_create_appointment',{p_lead:input.context.run.leadId,p_assignment:assignmentId,p_scheduled_at:new Date(input.context.now.getTime()+c.startsInMinutes*60000).toISOString(),p_location:c.location??null,p_notes:c.notes?renderWorkflowTemplate(c.notes,input.values):null,p_causation:input.context.event.id,p_correlation:input.context.event.correlationId??input.context.event.id});return error?permanent('appointment_create_failed','Could not create appointment'):{outcome:'success',output:{appointmentId:data}}}
     case 'send_webhook':{const c=WORKFLOW_ACTION_CONFIG_SCHEMAS.send_webhook.parse(action.config),url=safeWebhookUrl(c.url);if(!url)return permanent('invalid_webhook_url','Webhook URL is not allowed');let secret:string|null=null;if(c.signingIntegrationId){const {data}=await input.db.from('integrations').select('secret').eq('id',c.signingIntegrationId).eq('is_enabled',true).maybeSingle();secret=data?.secret??null;if(!secret)return permanent('missing_signing_secret','Webhook signing integration is unavailable')}
       const payload:Record<string,unknown>={eventId:input.context.event.id,eventType:input.context.event.type,runId:input.context.run.id,leadId:input.context.run.leadId,entityType:input.context.event.entityType,entityId:input.context.event.entityId};if(c.includeLeadContact&&input.values.lead)payload.contact={firstName:input.values.lead.first_name??null,lastName:input.values.lead.last_name??null,email:input.values.lead.email??null,phone:input.values.lead.phone??null};const body=JSON.stringify(payload),headers:Record<string,string>={'Content-Type':'application/json','X-HomeQuote-Event-Id':input.context.stepRun.idempotencyKey};if(secret)headers['X-HomeQuote-Signature']=createHmac('sha256',secret).update(body).digest('hex');try{const response=await fetch(url,{method:'POST',redirect:'error',signal:AbortSignal.timeout(10000),headers,body});if(response.ok)return {outcome:'success',provider:{provider:'webhook',statusCode:response.status}};const retry=response.status===429||response.status>=500;return {outcome:retry?'temporary_failure':'permanent_failure',error:wfError(retry?'webhook_unavailable':'webhook_rejected',`Webhook returned HTTP ${response.status}`,retry?'temporary':'permanent'),provider:{provider:'webhook',statusCode:response.status}}}catch{return temporary('webhook_unavailable','Webhook request failed')}}
+    case 'send_push':{
+      const c=WORKFLOW_ACTION_CONFIG_SCHEMAS.send_push.parse(action.config);
+      // A contractor-owned workflow may only ever address its own company's users.
+      if(input.context.run.contractorId&&c.audience!=='assigned_contractor')return permanent('audience_not_allowed','Contractor workflows can only notify the assigned contractor');
+      const assignmentId=typeof input.values.assignment?.id==='string'?input.values.assignment.id:null;
+      const leadId=input.context.run.leadId;
+      if(c.audience.startsWith('assigned_')&&(!leadId||!assignmentId))return {outcome:'skipped',reason:'missing_assignment'};
+      const ok=await enqueueNotificationEvent({type:'workflow_alert',entityType:'workflow',entityId:input.context.stepRun.id,leadId,contractorId:input.context.run.contractorId,dedupeKey:'wf-push:'+input.context.stepRun.id,payload:{title:c.title,body:c.body,url:c.url??(leadId?'/app/leads/'+leadId:'/app'),audience:c.audience,userId:c.userId??null,assignmentId},db:input.db});
+      if(!ok)return temporary('push_queue_failed','Could not queue the push notification');
+      flushNotificationsSoon();
+      return {outcome:'success',output:{queued:true}};
+    }
     case 'wait':case 'stop_workflow':return permanent('control_action_dispatched','Control actions are handled by the workflow engine');
     case 'send_sms':case 'assign_user':case 'create_task':case 'add_tag':case 'remove_tag':return {outcome:'skipped',reason:'unavailable_action'};
   }

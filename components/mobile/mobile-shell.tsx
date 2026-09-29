@@ -10,7 +10,7 @@ import type { NavItem } from '@/lib/nav';
 import type { UserRole } from '@/lib/types';
 import { NAV_ICONS } from '@/components/nav-icons';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
-import { NotificationBell } from '@/components/notifications/notification-bell';
+import { useNotifications } from '@/components/notifications/use-notifications';
 import { SignOutForm } from '@/components/notifications/sign-out-form';
 
 /*
@@ -63,6 +63,7 @@ const TITLE_RULES: [RegExp, string][] = [
   [/^\/app\/pay\/[^/]+$/, 'Payment'],
   [/^\/app\/integrations\/meta$/, 'Meta lead ads'],
   [/^\/app\/settings\/notifications$/, 'Notifications'],
+  [/^\/app\/notifications$/, 'Notifications'],
   [/^\/app\/settings\/notification-routing$/, 'Notification routing'],
 ];
 
@@ -134,7 +135,9 @@ export function MobileChrome({
   const active = bestMatch(pathname, all);
   const moreActive =
     !!active && secondary.some((s) => s.href === active.href && s.label === active.label);
-  const isDestination = all.some((i) => i.href === pathname);
+  const { unread } = useNotifications();
+  const alertsActive = pathname === '/app/notifications';
+  const isDestination = alertsActive || all.some((i) => i.href === pathname);
   const showBack = !isDestination && pathname !== '/app';
   const action = contextualAction(pathname, role);
 
@@ -181,7 +184,6 @@ export function MobileChrome({
               <Plus className="size-5" />
             </Link>
           ) : null}
-          <NotificationBell variant="mobile" />
           <button
             type="button"
             aria-label="Account and menu"
@@ -232,6 +234,27 @@ export function MobileChrome({
                 </li>
               );
             })}
+            <li className="flex-1">
+              <Link
+                href="/app/notifications"
+                aria-current={alertsActive ? 'page' : undefined}
+                aria-label={unread > 0 ? `Alerts, ${unread} unread` : 'Alerts'}
+                className={cn(
+                  'flex h-full flex-col items-center justify-center gap-0.5 text-[11px] font-medium active:bg-accent/60',
+                  alertsActive ? 'text-foreground' : 'text-muted-foreground'
+                )}
+              >
+                <span className="relative">
+                  <Bell className={cn('size-6', alertsActive && 'stroke-[2.4]')} aria-hidden="true" />
+                  {unread > 0 ? (
+                    <span className="absolute -right-2 -top-1 min-w-[16px] rounded-full bg-destructive px-1 text-center text-[10px] font-bold leading-4 text-white">
+                      {unread > 99 ? '99+' : unread}
+                    </span>
+                  ) : null}
+                </span>
+                Alerts
+              </Link>
+            </li>
             <li className="flex-1">
               <button
                 type="button"

@@ -52,7 +52,7 @@ export async function updateSession(request: NextRequest) {
   if (publicPath.startsWith('/estimate/') || publicPath.startsWith('/api/funnels/') || publicPath.startsWith('/api/stripe/')) return supabaseResponse;
   // The service worker and manifest are fetched by the browser itself (often in the
   // background): they need no session and must not trigger a token refresh.
-  if (publicPath === '/sw.js' || publicPath === '/manifest.webmanifest') return supabaseResponse;
+  if (publicPath === '/sw.js' || publicPath === '/manifest.webmanifest' || publicPath === '/offline.html') return supabaseResponse;
 
   // Guard: if the Supabase env vars aren't present in this build, don't throw
   // (which would 500 the entire site via MIDDLEWARE_INVOCATION_FAILED). Skip the

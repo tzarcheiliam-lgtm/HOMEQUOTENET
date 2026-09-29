@@ -49,6 +49,13 @@ function StepConfig({ step, onConfig, emailTemplates }: { step: WorkflowActionSt
           : <><Field label="Subject"><Input value={String(config.subject ?? '')} onChange={event => set('subject', event.target.value)} /></Field><Field label="Body"><Textarea rows={7} value={String(config.body ?? '')} onChange={event => set('body', event.target.value)} /></Field><MergeHelp /></>}
       </div>;
     }
+    case 'send_push':
+      return <div className="space-y-3">
+        <Field label="Notify"><Select value={String(config.audience ?? 'assigned_contractor')} onChange={event => set('audience', event.target.value)}><option value="assigned_contractor">Assigned contractor</option><option value="assigned_setter">Assigned setter</option><option value="assigned_caller">Assigned caller</option><option value="admins">Admins</option></Select></Field>
+        <Field label="Title"><Input maxLength={100} value={String(config.title ?? '')} onChange={event => set('title', event.target.value)} /></Field>
+        <Field label="Message"><Input maxLength={200} value={String(config.body ?? '')} onChange={event => set('body', event.target.value)} /></Field>
+        <p className="text-xs text-muted-foreground">Plain text only: lock screens never show homeowner details. Only people tied to this lead are notified, and each person&apos;s notification settings apply.</p>
+      </div>;
     case 'notify_team':
       return <div className="space-y-3"><Field label="Subject"><Input value={String(config.subject ?? '')} onChange={event => set('subject', event.target.value)} /></Field><Field label="Message"><Textarea rows={5} value={String(config.message ?? '')} onChange={event => set('message', event.target.value)} /></Field><MergeHelp /></div>;
     case 'wait': {

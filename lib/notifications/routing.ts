@@ -98,6 +98,8 @@ export async function buildNotifications(event: NotificationEvent, db: Db): Prom
     case 'workflow_alert': {
       const p = event.payload ?? {};
       const named = Array.isArray(p.userIds) ? (p.userIds.filter((x) => typeof x === 'string') as string[]) : [];
+      const audience = str(p.audience);
+      if (audience) return workflowPush(ctx, audience);
       // A workflow names its own audience; otherwise the routing rule decides.
       const cands: Candidate[] = named.map((id) => ({ id, via: 'specific' as const }));
       if (!named.length) cands.push(...(await staffAudience(ctx, ctx.rule)));
@@ -459,4 +461,31 @@ async function callbackDue(ctx: Ctx): Promise<OutgoingNotification[]> {
   }
   const people = await authorize(ctx, out);
   return group(ctx, people, '📞 Callback Due', prospect.company_name, () => `/app/calls/${prospectId}`);
+}
+
+/**
+ * The "Send push notification" workflow action. The step names an audience, never
+ * a user list (except an explicit staff member); who that is comes from the run's
+ * own assignment, then passes the same authorize() gate as every other event, so a
+ * workflow can never reach a contractor who is not on the lead.
+ */
+async function workflowPush(ctx: Ctx, audience: string): Promise<OutgoingNotification[]> {
+  const p = ctx.event.payload;
+  const rule: RoutingRule = {
+    admins: audience === 'admins',
+    assigned_setter: audience === 'assigned_setter',
+    assigned_caller: audience === 'assigned_caller',
+    assigned_contractor: audience === 'assigned_contractor',
+    specific_user_ids: audience === 'specific_user' && str(p.userId) ? [str(p.userId) as string] : [],
+  };
+  const c: Ctx = { ...ctx, rule };
+  const a = await associate(c, { assignmentId: str(p.assignmentId) });
+  ctx.leadId = c.leadId;
+  ctx.contractorId = c.contractorId;
+  // Workflow-owned tenant must match the assignment's contractor, or nobody is notified.
+  if (audience === 'assigned_contractor' && ctx.event.contractor_id && ctx.event.contractor_id !== a.contractorId) return [];
+  const cands = await homeownerAudience(c, a, []);
+  const people = await authorize(c, cands);
+  const url = str(p.url);
+  return group(ctx, people, str(p.title) ?? 'HomeQuote', str(p.body) ?? '', () => url ?? FALLBACK_URL);
 }

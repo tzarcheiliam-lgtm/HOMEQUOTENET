@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Bell, CheckCheck, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { BottomSheet } from '@/components/ui/bottom-sheet';
+import { toast } from '@/components/ui/toaster';
 import { markAllRead, markRead, useNotifications } from './use-notifications';
 import type { AppNotification } from '@/lib/notifications/types';
 
@@ -36,7 +36,7 @@ function BellButton({ unread, className, ...props }: { unread: number; className
   );
 }
 
-function Panel({ onNavigate, big }: { onNavigate: () => void; big: boolean }) {
+export function NotificationPanel({ onNavigate, big }: { onNavigate: () => void; big: boolean }) {
   const router = useRouter();
   const { items, unread, loaded } = useNotifications();
 
@@ -52,7 +52,10 @@ function Panel({ onNavigate, big }: { onNavigate: () => void; big: boolean }) {
         <p className="text-sm text-muted-foreground">{unread > 0 ? `${unread} unread` : 'All caught up'}</p>
         <button
           type="button"
-          onClick={() => void markAllRead()}
+          onClick={() => {
+            void markAllRead();
+            toast('All notifications marked read');
+          }}
           disabled={unread === 0}
           className={cn(
             'flex items-center gap-1.5 rounded-lg px-2 text-sm font-medium text-primary disabled:opacity-40',
@@ -111,16 +114,16 @@ function Panel({ onNavigate, big }: { onNavigate: () => void; big: boolean }) {
 }
 
 /**
- * The bell. Phones open a bottom sheet with 44px+ rows; the desktop header
- * gets a small dropdown, so the desktop layout only gains one icon.
+ * The desktop header bell (a small dropdown, so the desktop layout only gains one
+ * icon). Phones use the Alerts tab in the bottom nav and /app/notifications.
  */
-export function NotificationBell({ variant }: { variant: 'desktop' | 'mobile' }) {
+export function NotificationBell() {
   const { unread } = useNotifications();
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (variant !== 'desktop' || !open) return;
+    if (!open) return;
     const onDown = (e: MouseEvent) => {
       if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
     };
@@ -131,27 +134,14 @@ export function NotificationBell({ variant }: { variant: 'desktop' | 'mobile' })
       document.removeEventListener('mousedown', onDown);
       document.removeEventListener('keydown', onKey);
     };
-  }, [variant, open]);
-
-  if (variant === 'mobile') {
-    return (
-      <BottomSheet
-        open={open}
-        onOpenChange={setOpen}
-        title="Notifications"
-        trigger={<BellButton unread={unread} className="size-11 shrink-0" />}
-      >
-        <Panel big onNavigate={() => setOpen(false)} />
-      </BottomSheet>
-    );
-  }
+  }, [open]);
 
   return (
     <div ref={wrapRef} className="relative">
       <BellButton unread={unread} onClick={() => setOpen((v) => !v)} aria-expanded={open} className="size-9 hover:bg-accent" />
       {open ? (
         <div className="absolute right-0 top-11 z-50 max-h-[70vh] w-96 overflow-y-auto rounded-xl border bg-card p-3 shadow-lg">
-          <Panel big={false} onNavigate={() => setOpen(false)} />
+          <NotificationPanel big={false} onNavigate={() => setOpen(false)} />
         </div>
       ) : null}
     </div>

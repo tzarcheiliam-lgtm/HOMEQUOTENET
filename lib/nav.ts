@@ -187,10 +187,14 @@ const CALL_WORKSPACE_EXTRAS: NavItem[] = [
 ];
 
 /** Bottom-bar picks per role, in order. Label is the short phone label. */
+/**
+ * Bottom-bar picks per role, in order (label is the short phone label). The bar
+ * always adds an Alerts tab (notifications) and a More tab, so keep these to
+ * three or four to stay at five tabs. Anything not listed lives under More.
+ */
 const MOBILE_PRIMARY: Record<UserRole, { href: string; label: string }[]> = {
   admin: [
     { href: '/app', label: 'Home' },
-    { href: '/app/calls', label: 'Calls' },
     { href: '/app/leads', label: 'Leads' },
     { href: '/app/appointments', label: 'Appts' },
   ],
@@ -198,7 +202,6 @@ const MOBILE_PRIMARY: Record<UserRole, { href: string; label: string }[]> = {
     { href: '/app', label: 'Home' },
     { href: '/app/calls', label: 'Calls' },
     { href: '/app/leads', label: 'Leads' },
-    { href: '/app/appointments', label: 'Appts' },
   ],
   caller: [
     { href: '/app/calls', label: 'Prospects' },

@@ -81,7 +81,7 @@ export async function enqueueNotificationEvent(input: {
   contractorId?: string | null;
   payload?: Record<string, unknown>;
   db?: Db;
-}): Promise<void> {
+}): Promise<boolean> {
   try {
     const db = input.db ?? createAdminClient();
     const { error } = await db.from('notification_events').insert({
@@ -93,9 +93,14 @@ export async function enqueueNotificationEvent(input: {
       payload: input.payload ?? {},
       dedupe_key: input.dedupeKey,
     });
-    if (error && error.code !== '23505') console.error('[push] could not enqueue event:', error.message);
+    if (error && error.code !== '23505') {
+      console.error('[push] could not enqueue event:', error.message);
+      return false;
+    }
+    return true; // 23505 = already queued (idempotent retry)
   } catch (e) {
     console.error('[push] could not enqueue event:', e instanceof Error ? e.message : e);
+    return false;
   }
 }
 

@@ -23,6 +23,7 @@ export const WORKFLOW_ACTION_TYPES = [
   'notify_team',
   'create_calendar_event',
   'stop_workflow',
+  'send_push',
 ] as const;
 export type WorkflowActionType = (typeof WORKFLOW_ACTION_TYPES)[number];
 export const workflowActionTypeSchema = z.enum(WORKFLOW_ACTION_TYPES);
@@ -135,6 +136,21 @@ export const WORKFLOW_ACTION_CONFIG_SCHEMAS = {
       includeLeadContact: z.boolean().default(false),
     })
     .strict(),
+  // Push + in-app notification. Text is plain (NO merge fields: lock screens must not
+  // carry homeowner data). Recipients resolve through lib/notifications/routing.ts, which
+  // is fail-closed and tenant-isolated; the audience names WHO, the event's own records
+  // decide which person.
+  send_push: z
+    .object({
+      audience: z.enum(['admins', 'assigned_setter', 'assigned_caller', 'assigned_contractor', 'specific_user']),
+      userId: uuidSchema.optional(),
+      title: z.string().trim().min(1).max(100),
+      body: z.string().trim().max(200).default(''),
+      // Internal path only (validated again at send time). Default: the lead.
+      url: z.string().trim().max(300).regex(/^\/app(\/[A-Za-z0-9._~%:@+=,;-]*)*$/).optional(),
+    })
+    .strict()
+    .refine((c) => c.audience !== 'specific_user' || !!c.userId, 'Choose the team member to notify'),
   // HomeQuote team alert through the existing Gmail sender and LEAD_ALERT_EMAILS.
   notify_team: z
     .object({
@@ -206,6 +222,7 @@ export const WORKFLOW_ACTIONS = {
   send_webhook: a({ type: 'send_webhook', label: 'Send webhook', category: 'integration', availability: 'ready', control: false, requiresConsent: false, requiresLead: false, requiresAssignment: false, defaultMaxAttempts: 5, backedBy: 'Outbound HTTPS POST; signing secret from public.integrations (admin-only secret column).' }),
   notify_team: a({ type: 'notify_team', label: 'Notify team', category: 'messaging', availability: 'ready', control: false, requiresConsent: false, requiresLead: false, requiresAssignment: false, defaultMaxAttempts: 5, backedBy: 'Existing Gmail connection + LEAD_ALERT_EMAILS / lead_recipients (migration 0016).' }),
   create_calendar_event: a({ type: 'create_calendar_event', label: 'Create appointment', category: 'crm', availability: 'ready', control: false, requiresConsent: false, requiresLead: true, requiresAssignment: true, defaultMaxAttempts: 3, backedBy: 'public.appointments on the run assignment.' }),
+  send_push: a({ type: 'send_push', label: 'Send push notification', category: 'messaging', availability: 'ready', control: false, requiresConsent: false, requiresLead: false, requiresAssignment: false, defaultMaxAttempts: 3, backedBy: 'Web Push + in-app notifications (lib/notifications) with fail-closed recipient routing.' }),
   stop_workflow: a({ type: 'stop_workflow', label: 'Stop workflow', category: 'control', availability: 'ready', control: true, requiresConsent: false, requiresLead: false, requiresAssignment: false, defaultMaxAttempts: 1, backedBy: 'Engine: completes the run with no further steps.' }),
 } as const satisfies { [K in WorkflowActionType]: WorkflowActionDefinition<K> };
 
