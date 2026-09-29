@@ -10,7 +10,13 @@ export async function getProfile(): Promise<Profile | null> {
   const supabase = await createClient();
   const {
     data: { user },
+    error,
   } = await supabase.auth.getUser();
+  // Supabase unreachable is not "signed out": fail closed (no portal) but do not send the
+  // user to /sign-in — the app error boundary offers a retry and the session cookie survives.
+  if (!user && error && (error.name === 'AuthRetryableFetchError' || (error.status ?? 0) >= 500)) {
+    throw new Error('Could not reach the sign-in service. Please try again in a moment.');
+  }
   if (!user) return null;
 
   const { data: profile } = await supabase

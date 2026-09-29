@@ -1,15 +1,24 @@
 import type { MetadataRoute } from 'next';
 import { site } from '@/content/site';
 
-/** Web app manifest: home-screen name and icons carry HomeQuote branding. */
+/**
+ * Web app manifest. Installing HomeQuote to a Home Screen opens the CRM
+ * (/app) as a standalone app, which is what iOS/Android need before Web Push
+ * is available there. Scope stays "/" so the sign-in pages (outside /app) keep
+ * loading inside the app instead of bouncing out to the browser.
+ */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: site.name,
+    id: '/app',
+    name: 'HomeQuote Network',
     short_name: 'HomeQuote',
     description: site.description,
-    start_url: '/',
-    display: 'browser',
-    background_color: '#08090b',
+    start_url: '/app',
+    scope: '/',
+    display: 'standalone',
+    orientation: 'portrait',
+    // The portal is light; the splash matches it. theme_color is the brand dark.
+    background_color: '#ffffff',
     theme_color: '#08090b',
     icons: [
       { src: '/icons/homequote-192.png', sizes: '192x192', type: 'image/png' },

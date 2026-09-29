@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import type Stripe from 'stripe';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { stripe } from '@/lib/billing/stripe';
+import { flushNotificationsSoon } from '@/lib/notifications/outbox';
 import { claimStripeEvent, handleStripeEvent, releaseStripeEvent } from '@/lib/billing/webhook';
 
 // Stripe → HomeQuote. Every request must carry a valid Stripe-Signature for
@@ -36,5 +37,6 @@ export async function POST(req: NextRequest) {
     console.error('[stripe-webhook] Failed to handle', event.type, event.id, error instanceof Error ? error.message : error);
     return NextResponse.json({ error: 'Handler failed' }, { status: 500 });
   }
+  flushNotificationsSoon();
   return NextResponse.json({ received: true });
 }

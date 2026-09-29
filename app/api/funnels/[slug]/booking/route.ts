@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { equalSecret, getFunnel, readBody } from '@/lib/funnels/server';
+import { flushNotificationsSoon } from '@/lib/notifications/outbox';
 
 const schema = z.object({ sessionId: z.string().uuid(), appointmentId: z.string().min(1).max(200), calendarId: z.string().min(1).max(100), scheduledAt: z.string().datetime({ offset: true }) });
 export async function POST(request: Request, { params }: { params: Promise<{ slug: string }> }) {
@@ -19,6 +20,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
     const { error } = await db.rpc('record_funnel_booking', { p_session: body.data.sessionId, p_integration: funnel.integration_id,
       p_external: body.data.appointmentId, p_calendar: body.data.calendarId, p_time: body.data.scheduledAt });
     if (error) return NextResponse.json({ error: 'Booking does not match this request' }, { status: 422 });
+    flushNotificationsSoon();
     return NextResponse.json({ ok: true });
   } catch { return NextResponse.json({ error: 'Booking unavailable' }, { status: 503 }); }
 }

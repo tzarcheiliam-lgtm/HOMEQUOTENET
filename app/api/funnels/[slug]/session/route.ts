@@ -8,6 +8,7 @@ import { cookieName, getFunnel, getSession, hash, newToken, publicSession, readB
 import { after } from 'next/server';
 import { deliverPendingFunnels } from '@/lib/funnels/delivery';
 import { sendLeadEmailsSoon } from '@/lib/leads/notify';
+import { flushNotificationsSoon } from '@/lib/notifications/outbox';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -91,6 +92,7 @@ export async function PATCH(request: Request, context: Context) {
         const { data, error } = await db.rpc('record_calendly_booking', { p_session: s.id, p_hash: s.token_hash, p_invitee: inviteeUri,
           p_event: eventUri, p_time: check.startTime, p_verified: check.verified });
         if (error) return reply({ error: 'We couldn’t confirm that booking. Your request is saved and the team will follow up.' }, 422);
+        flushNotificationsSoon();
         return reply({ session: publicSession(data) });
       }
       return reply({ session: withPrefill(publicSession(s), s) });
@@ -123,7 +125,10 @@ export async function PATCH(request: Request, context: Context) {
       p_answers: answers, p_step: nextStep, p_completed: completed, p_contact: body.contact ?? null, p_qualified: qualified, p_consent: consentText(config) });
     if (error) return reply({ error: error.code === '40001' ? 'Your progress changed in another tab. Refresh to continue.' : 'We couldn’t save that. Please try again.' }, error.code === '40001' ? 409 : 503);
     // Saved lead -> internal new-lead alert to the HomeQuote team only (never the funnel's contractor).
-    if (body.contact && !funnel.is_demo) sendLeadEmailsSoon();
+    if (body.contact && !funnel.is_demo) {
+      sendLeadEmailsSoon();
+      flushNotificationsSoon();
+    }
     if (body.contact && !funnel.is_demo && funnel.integration_id) after(async () => { try { await deliverPendingFunnels(); } catch { /* Durable queue retains the job for retry. */ } });
     const saved = publicSession(data);
     return reply({ session: body.contact && config.calendarProvider === 'calendly' && saved.current_step === 'calendar'

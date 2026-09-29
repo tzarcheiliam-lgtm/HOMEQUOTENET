@@ -6,6 +6,7 @@ import { requireRole } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { processLeadEmails } from '@/lib/leads/notify';
+import { flushNotificationsSoon } from '@/lib/notifications/outbox';
 
 export type DistributionState =
   | { ok: true; message: string; warning?: string }
@@ -41,6 +42,7 @@ export async function sendLeadToRecipients(
     const known = /Qualify the lead|Choose at least one|Lead not found/.exec(error.message)?.[0];
     return { ok: false, error: known ? error.message : 'The lead could not be sent. Try again.' };
   }
+  flushNotificationsSoon();
   const queued: string[] = data?.queued ?? [];
   const skipped: { name: string; reason: string }[] = data?.skipped ?? [];
 

@@ -4,12 +4,14 @@ import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ChevronLeft, LayoutDashboard, LogOut, MoreHorizontal, Plus } from 'lucide-react';
+import { Bell, ChevronLeft, LayoutDashboard, LogOut, MoreHorizontal, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { NavItem } from '@/lib/nav';
 import type { UserRole } from '@/lib/types';
 import { NAV_ICONS } from '@/components/nav-icons';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
+import { NotificationBell } from '@/components/notifications/notification-bell';
+import { SignOutForm } from '@/components/notifications/sign-out-form';
 
 /*
  * Phone chrome for the CRM: a compact top bar, a fixed bottom nav, the "More"
@@ -60,6 +62,8 @@ const TITLE_RULES: [RegExp, string][] = [
   [/^\/app\/growth\/[^/]+$/, 'Growth tool'],
   [/^\/app\/pay\/[^/]+$/, 'Payment'],
   [/^\/app\/integrations\/meta$/, 'Meta lead ads'],
+  [/^\/app\/settings\/notifications$/, 'Notifications'],
+  [/^\/app\/settings\/notification-routing$/, 'Notification routing'],
 ];
 
 /** Where the back arrow goes: one level up, with /app/calls as the calls root. */
@@ -177,6 +181,7 @@ export function MobileChrome({
               <Plus className="size-5" />
             </Link>
           ) : null}
+          <NotificationBell variant="mobile" />
           <button
             type="button"
             aria-label="Account and menu"
@@ -250,7 +255,7 @@ export function MobileChrome({
         onOpenChange={setMoreOpen}
         title="Menu"
         footer={
-          <form action={signOutAction}>
+          <SignOutForm action={signOutAction}>
             <button
               type="submit"
               className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border text-sm font-medium text-destructive active:bg-accent"
@@ -258,7 +263,7 @@ export function MobileChrome({
               <LogOut className="size-4" aria-hidden="true" />
               Sign out
             </button>
-          </form>
+          </SignOutForm>
         }
       >
         <div className="mb-3 flex items-center gap-3 rounded-xl bg-muted/50 p-3">
@@ -293,6 +298,14 @@ export function MobileChrome({
             })}
           </nav>
         ) : null}
+        <Link
+          href="/app/settings/notifications"
+          onClick={() => setMoreOpen(false)}
+          className="mt-2 flex min-h-14 items-center gap-3 rounded-xl border bg-background px-3 py-2 text-sm font-medium active:bg-accent"
+        >
+          <Bell className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          Notification settings
+        </Link>
       </BottomSheet>
     </>
   );

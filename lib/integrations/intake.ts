@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { normalizeEmail, normalizePhone } from '@/lib/leads/normalize';
 import { getConnector } from './connectors';
 import { sendLeadEmailsSoon } from '@/lib/leads/notify';
+import { flushNotificationsSoon } from '@/lib/notifications/outbox';
 import type { IntakeContext, IntakeResult, NormalizedLead } from './types';
 
 function splitName(full: string | null | undefined): {
@@ -146,6 +147,7 @@ export async function ingestLead(
 
   await touchIntegration(ctx.integrationId, { sync: true });
   sendLeadEmailsSoon();
+  flushNotificationsSoon();
   return { status: 'created', leadId: lead.id, intakeEventId: ev?.id };
 }
 

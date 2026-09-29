@@ -2,6 +2,7 @@ import 'server-only';
 import type Stripe from 'stripe';
 import type { createAdminClient } from '@/lib/supabase/admin';
 import { paymentStatusForSubscription, type PaymentStatus } from '@/lib/billing/pricing';
+import { enqueueNotificationEvent } from '@/lib/notifications/outbox';
 
 type Db = ReturnType<typeof createAdminClient>;
 
@@ -44,6 +45,16 @@ async function applyUpdate(db: Db, requestId: string, update: Update, now: Date)
   if (paid && (row.status === 'new' || row.status === 'contacted')) patch.status = 'in_progress';
   const { error: updateError } = await db.from('service_requests').update(patch).eq('id', requestId);
   if (updateError) throw new Error(updateError.message);
+  // First confirmed payment only. Verified webhook -> outbox -> push; never throws.
+  if (paid && !row.paid_at) {
+    await enqueueNotificationEvent({
+      type: 'payment_received',
+      entityType: 'service_request',
+      entityId: requestId,
+      dedupeKey: `payment:${requestId}`,
+      db,
+    });
+  }
 }
 
 /** Record one verified Stripe event on its service request. Throws to make Stripe retry. */

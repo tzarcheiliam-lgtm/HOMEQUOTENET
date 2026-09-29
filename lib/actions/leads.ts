@@ -12,6 +12,7 @@ import {
 } from '@/lib/contractor-access';
 import { resolvePricingAgreementId } from '@/lib/data/contractors';
 import { leadFormToObject, leadInputSchema } from '@/lib/validation/leads';
+import { enqueueNotificationEvent, flushNotificationsSoon } from '@/lib/notifications/outbox';
 import type { ActivityType, LeadStatus } from '@/lib/types';
 
 export type LeadFormState =
@@ -88,6 +89,7 @@ export async function createLead(
   if (error) return { error: error.message };
 
   await recordActivity(data!.id, 'system', 'Lead created');
+  flushNotificationsSoon();
 
   revalidatePath('/app/leads');
   redirect(`/app/leads/${data!.id}`);
@@ -217,6 +219,7 @@ export async function bulkLeadAction(formData: FormData): Promise<void> {
       .update({ status: 'assigned' })
       .in('id', ids)
       .in('status', ['new', 'contact_attempted', 'qualified']);
+    flushNotificationsSoon();
   }
 
   revalidatePath('/app/leads');
@@ -454,6 +457,7 @@ export async function assignLead(
     `Assigned to ${contractorIds.length} contractor(s)`,
     { contractor_ids: contractorIds, exclusive: isExclusive }
   );
+  flushNotificationsSoon();
   revalidateLead(id);
   return { success: true };
 }
@@ -550,6 +554,19 @@ export async function assignLeadToCompanyUser(formData: FormData): Promise<void>
   await supabase.from('lead_assignments')
     .update({ assigned_user_id: assignedUserId })
     .eq('id', assignment.id);
+  if (assignedUserId) {
+    // Reassigning to a company user is an UPDATE (no DB event), so queue the alert here.
+    await enqueueNotificationEvent({
+      type: 'lead_assigned',
+      entityType: 'lead_assignment',
+      entityId: assignment.id,
+      leadId: assignment.lead_id,
+      contractorId: assignment.contractor_id,
+      dedupeKey: `lead-assigned-user:${assignment.id}:${assignedUserId}:${Date.now()}`,
+      payload: { assignedUserId, actorId: profile.id },
+    });
+    flushNotificationsSoon();
+  }
   await recordActivity(
     assignment.lead_id,
     'assignment',
@@ -647,6 +664,7 @@ export async function scheduleAppointment(
     await recordActivity(leadId, 'appointment', 'Appointment scheduled');
     revalidateLead(leadId);
   }
+  flushNotificationsSoon();
   return { success: true };
 }
 
@@ -675,5 +693,6 @@ export async function updateAppointmentStatus(
       .eq('id', leadId);
     await recordActivity(leadId, 'appointment', 'Appointment completed');
   }
+  flushNotificationsSoon();
   if (leadId) revalidateLead(leadId);
 }

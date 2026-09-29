@@ -7,6 +7,7 @@ import { isCallAssigneeRole } from '@/lib/calls/callers';
 import { createClient } from '@/lib/supabase/server';
 import { requireCallWorkspace, requireRole } from '@/lib/auth';
 import { nextProspectIdFor } from '@/lib/data/prospects';
+import { flushNotificationsSoon } from '@/lib/notifications/outbox';
 import {
   prospectPatchFor,
   validateOutcome,
@@ -195,6 +196,7 @@ export async function logCallOutcome(
       updated_by: me.id,
     });
     if (sErr) return { ok: false, error: sErr.message };
+    flushNotificationsSoon();
   }
 
   revalidatePath('/app/calls');
@@ -319,6 +321,7 @@ export async function setSalesAppointmentStatus(fd: FormData): Promise<void> {
     .eq('id', id);
   if (error) throw new Error(error.message);
 
+  flushNotificationsSoon();
   revalidatePath('/app/calls/appointments');
   revalidatePath(`/app/calls/${appt.prospect_id}`);
 }

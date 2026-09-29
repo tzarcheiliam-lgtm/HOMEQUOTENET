@@ -1,17 +1,31 @@
 import Link from 'next/link';
-import type { Viewport } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { requireProfile } from '@/lib/auth';
 import { mobileNavForRole, navItemsForRole, ROLE_LABELS } from '@/lib/nav';
 import { AppSidebar } from '@/components/app-sidebar';
 import { signOutAction } from '@/lib/actions/auth';
 import { Button } from '@/components/ui/button';
 import { MobileChrome } from '@/components/mobile/mobile-shell';
+import { NotificationBell } from '@/components/notifications/notification-bell';
+import { PortalPushBoot } from '@/components/notifications/portal-push-boot';
+import { SignOutForm } from '@/components/notifications/sign-out-form';
+import { InstallHelper } from '@/components/notifications/install-helper';
 
 // The CRM draws edge to edge on notched phones (PWA / wrapper); the mobile
 // chrome pads itself with env(safe-area-inset-*).
 export const viewport: Viewport = {
   maximumScale: 1,
   viewportFit: 'cover',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#0a0a0f' },
+  ],
+};
+
+// Home Screen (standalone) app behaviour on iOS; the manifest covers Android/desktop.
+export const metadata: Metadata = {
+  appleWebApp: { capable: true, title: 'HomeQuote', statusBarStyle: 'default' },
+  other: { 'mobile-web-app-capable': 'yes' },
 };
 
 export default async function AppLayout({
@@ -25,6 +39,7 @@ export default async function AppLayout({
 
   return (
     <div className="flex min-h-[100dvh]">
+      <PortalPushBoot userId={profile.id} />
       {/* Sidebar */}
       <aside className="hidden w-64 shrink-0 flex-col border-r bg-card lg:flex">
         <div className="flex h-16 items-center border-b px-5">
@@ -42,14 +57,15 @@ export default async function AppLayout({
             {ROLE_LABELS[profile.role]}
           </span>
           <div className="flex items-center gap-3">
+            <NotificationBell variant="desktop" />
             <span className="text-sm font-medium">
               {profile.full_name || profile.email}
             </span>
-            <form action={signOutAction}>
+            <SignOutForm action={signOutAction}>
               <Button type="submit" variant="outline" size="sm">
                 Sign out
               </Button>
-            </form>
+            </SignOutForm>
           </div>
         </header>
         {/* Phones: compact top bar, bottom nav and <main> live together so the
@@ -62,6 +78,7 @@ export default async function AppLayout({
           displayName={profile.full_name || profile.email || 'Account'}
           signOutAction={signOutAction}
         >
+          <InstallHelper />
           {children}
         </MobileChrome>
       </div>

@@ -25,7 +25,8 @@ export default async function SignInPage({
 }) {
   const sp = await searchParams;
   const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
-  const next = one(sp.next);
+  // returnTo is what the middleware sets (a tapped notification, a deep link); next is the older name.
+  const next = one(sp.returnTo) ?? one(sp.next);
   const notice = one(sp.error) ? NOTICES[one(sp.error) as string] : undefined;
 
   return (

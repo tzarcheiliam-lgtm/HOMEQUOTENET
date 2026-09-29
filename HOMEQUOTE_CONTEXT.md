@@ -810,3 +810,15 @@ and up the original sidebar + table desktop layout is unchanged.
   from `'use client'` files into server components; use `mobile-card.tsx`.
 - Homeowner appointments have no `confirmed` status in the schema; "Confirm" is
   therefore not offered there (sales appointments have it).
+
+## Push notifications + PWA (added 2026-09-29, migration 0031)
+
+Web Push (standard VAPID, `web-push` npm, no Firebase) + an in-app notification center.
+- **PWA**: `app/manifest.ts` (start_url `/app`, standalone, scope `/`), `public/sw.js` (push/click/badge/subscription-change only — NO fetch handler, no caching), headers for `/sw.js` in `next.config.ts`. iOS meta via `metadata.appleWebApp` in `app/app/layout.tsx`.
+- **Tables** (0031): `push_subscriptions` (unique endpoint, multi-device), `notification_preferences` (one bool per type), `notifications` (in-app; users can only flip `read_at`), `push_notification_logs` (admin read), `notification_events` (service-role outbox, all API roles revoked).
+- **Pipeline**: DB triggers → `notification_events` (from `workflow_events` for lead.created/assigned, appointment.booked/cancelled; own triggers for appointment time change and prospect sales appointments; `enqueue_due_callbacks()` from the tick; Stripe webhook and company-user reassignment enqueue from app code) → `lib/notifications/outbox.ts` `processNotificationEvents` (called via `flushNotificationsSoon()` after requests, plus the 5-min `/api/workflows/tick` as backstop) → `routing.ts` (who + lock-screen-safe text + role-aware URL) → `service.ts` `sendPushNotification` (prefs, in-app row, push, prune 404/410, log; never throws).
+- **Adding a type**: boolean column on `notification_preferences` + `notification_events.type` check + entry in `lib/notifications/types.ts` + a case in `routing.ts`.
+- **Security**: push endpoint host allowlist (`lib/notifications/endpoint.ts`, SSRF), URLs forced to `/app…` (`url.ts`, also in sw.js), subscribe route uses session user only, text never contains name/phone/address/money.
+- **Env**: `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (build-time), `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, optional `PUSH_ENDPOINT_HOSTS`.
+- **UI**: bell (`components/notifications/notification-bell.tsx`) in desktop header + phone top bar; `/app/settings/notifications`; iOS install helper; sign-out detaches the device.
+- Not yet: workflow *action* type for alerts (`raiseWorkflowAlert()` helper exists), appointment-changed for Calendly reschedules.
