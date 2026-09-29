@@ -217,7 +217,7 @@ export function FunnelBuilder({
           <Card><CardContent className="space-y-3 p-4">
             <h3 className="text-sm font-semibold">Tracking</h3>
             <Field label="Meta Pixel ID (optional)">
-              <Input value={config.trackingPixels.metaPixelId ?? ''} onChange={e => patch({ ...config, trackingPixels: { metaPixelId: e.target.value || undefined } })} />
+              <Input value={config.trackingPixels.metaPixelId ?? ''} onChange={e => patch({ ...config, trackingPixels: { ...config.trackingPixels, metaPixelId: e.target.value || undefined } })} />
             </Field>
           </CardContent></Card>
         </div>

@@ -102,7 +102,12 @@ export function FunnelExperience({ slug, initialConfig, demo, previewMode, jumpT
   }, [step]);
   useEffect(() => {
     if (!session?.id) return;
-    try { setTracking(localStorage.getItem(`hqn-measurement:${session.id}`) === 'yes'); } catch { /* Measurement remains off. */ }
+    const optOut = config.trackingPixels.consentMode === 'opt_out';
+    try {
+      const saved = localStorage.getItem(`hqn-measurement:${session.id}`);
+      setTracking(saved === 'yes' || (optOut && saved !== 'no'));
+    } catch { setTracking(optOut); /* Storage blocked: fall back to the funnel's default. */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.id]);
   useEffect(() => {
     if (!session || !tracking || demo || previewMode) return;
