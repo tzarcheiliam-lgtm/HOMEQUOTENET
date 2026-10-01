@@ -96,12 +96,16 @@ export const QUALIFICATION_STATUSES: {
   { value: 'needs_qualification', label: 'Needs qualification', help: 'Not reviewed yet', variant: 'warning' },
   { value: 'qualified', label: 'Qualified', help: 'Ready to send', variant: 'success' },
   { value: 'not_qualified', label: 'Not qualified', help: 'Won’t be sent', variant: 'muted' },
+  // Set automatically by a funnel's hard service-area gate (migration 0034), never by
+  // human review — distinct from 'not_qualified' so staff can tell "wrong state" apart
+  // from "reviewed and declined" at a glance.
+  { value: 'out_of_service_area', label: 'Outside service area', help: 'Won’t be sent — project is outside the service area', variant: 'muted' },
 ];
 
 export const QUALIFICATION_STATUS_LABELS: Record<QualificationStatus, string> = Object.fromEntries(
   QUALIFICATION_STATUSES.map((s) => [s.value, s.label])
 ) as Record<QualificationStatus, string>;
 
-export function qualificationVariant(status: QualificationStatus) {
+export function qualificationVariant(status: QualificationStatus): 'warning' | 'success' | 'muted' {
   return QUALIFICATION_STATUSES.find((s) => s.value === status)?.variant ?? 'muted';
 }

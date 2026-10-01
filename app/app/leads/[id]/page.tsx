@@ -214,9 +214,23 @@ export default async function LeadDetailPage({
                   <Row label="Campaign" value={lead.campaign} />
                   <Row label="Ad set" value={lead.ad_set} />
                   <Row label="Ad name" value={lead.ad_name} />
+                  <Row label="Placement" value={lead.placement} />
                   <Row label="UTM source" value={lead.utm_source} />
                   <Row label="UTM medium" value={lead.utm_medium} />
                   <Row label="UTM campaign" value={lead.utm_campaign} />
+                  <Row label="UTM content" value={lead.utm_content} />
+                  <Row label="UTM term" value={lead.utm_term} />
+                  <Row label="Landing page" value={lead.landing_page_url} />
+                  {lead.service_area_valid !== null && (
+                    <Row
+                      label="Service area"
+                      value={
+                        <Badge variant={lead.service_area_valid ? 'success' : 'warning'}>
+                          {lead.service_area_valid ? 'Valid' : 'Outside service area'}
+                        </Badge>
+                      }
+                    />
+                  )}
                 </CardContent>
               </details>
             </Card>

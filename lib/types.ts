@@ -224,6 +224,11 @@ export interface Lead {
   form_name: string | null;
   form_id: string | null;
   external_lead_id: string | null;
+  // Service area + Meta ad attribution (migration 0034). placement/fbclid are new
+  // columns; service_area_valid is null for every funnel without a hard state gate.
+  service_area_valid: boolean | null;
+  placement: string | null;
+  fbclid: string | null;
   integration_id: string | null;
   created_by: string | null;
   created_at: string;
@@ -519,7 +524,7 @@ export interface ProspectSalesAppointment {
 
 // --- Lead review + distribution (migration 0016) -------------------------------
 
-export type QualificationStatus = 'needs_qualification' | 'qualified' | 'not_qualified';
+export type QualificationStatus = 'needs_qualification' | 'qualified' | 'not_qualified' | 'out_of_service_area';
 
 export type LeadRecipientKind = 'team_member' | 'contractor';
 

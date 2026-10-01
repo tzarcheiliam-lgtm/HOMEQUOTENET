@@ -24,11 +24,12 @@ export async function getSession(funnel: Funnel) {
   const { data, error } = await createAdminClient().from('funnel_sessions').select('*')
     .eq('funnel_id', funnel.id).eq('token_hash', hash(token)).gt('expires_at', new Date().toISOString()).maybeSingle();
   if (error) throw new Error('Session storage is unavailable');
-  return data as (Session & { token_hash: string; config_snapshot: FunnelConfig; contact: Record<string, unknown> | null }) | null;
+  return data as (Session & { token_hash: string; config_snapshot: FunnelConfig; contact: Record<string, unknown> | null; created_at: string }) | null;
 }
 export function publicSession(s: Session): Session {
   return { id: s.id, answers: s.answers, current_step: s.current_step, version: s.version, qualified: s.qualified,
-    contact_submitted_at: s.contact_submitted_at, booked_at: s.booked_at, attribution: s.attribution };
+    contact_submitted_at: s.contact_submitted_at, booked_at: s.booked_at, attribution: s.attribution,
+    service_area_valid: s.service_area_valid ?? null };
 }
 export function sameOrigin(request: Request) {
   return request.headers.get('origin') === new URL(request.url).origin;

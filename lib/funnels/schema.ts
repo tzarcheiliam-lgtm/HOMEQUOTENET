@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { usZipState } from '../location/us-zip.ts';
 
 const key = z.string().regex(/^[a-z][a-z0-9_]{0,49}$/);
 const text = z.string().trim().min(1).max(300);
@@ -37,7 +38,12 @@ export const funnelSchema = z.object({
   secondaryColor: readableColor.default('#042247'),
   industry: text,
   // zipPrefixes (3 digits) cover whole regions without listing every ZIP.
-  serviceArea: z.object({ label: text, zipCodes: z.array(z.string().regex(/^\d{5}$/)).max(10000).default([]), zipPrefixes: z.array(z.string().regex(/^\d{3}$/)).max(1000).default([]) }),
+  // strictStates (optional, default none = unrestricted, unchanged for every existing funnel):
+  // a hard state-level gate, independent of and broader than zipPrefixes/zipCodes. When set,
+  // a project ZIP outside these states fails qualify() outright (see serviceAreaValid below) —
+  // used by Pool Masters to reject out-of-state leads even though its own zipPrefixes (a tighter
+  // LA/Ventura radius) only ever matched in-state ZIPs anyway. Two-letter USPS state codes.
+  serviceArea: z.object({ label: text, zipCodes: z.array(z.string().regex(/^\d{5}$/)).max(10000).default([]), zipPrefixes: z.array(z.string().regex(/^\d{3}$/)).max(1000).default([]), strictStates: z.array(z.enum(['CA'])).max(10).default([]) }),
   questions: z.array(questionSchema).min(1).max(30),
   qualificationRules: z.array(conditionSchema).max(30).default([]),
   qualifiedMessage: text.default('Great — it looks like we may be able to help.'),
@@ -96,6 +102,9 @@ export type Session = {
   id: string; answers: Answers; current_step: string; version: number;
   qualified: boolean | null; contact_submitted_at: string | null;
   booked_at: string | null; attribution: Attribution;
+  // null = this funnel has no serviceArea.strictStates gate (every funnel except
+  // Pool Masters today); true/false only meaningful once the ZIP question is answered.
+  service_area_valid: boolean | null;
   // Only for the session owner on the Calendly step, to prefill the booking form.
   prefill?: { name: string; email: string };
 };
@@ -161,20 +170,38 @@ export function sanitizeAnswers(config: FunnelConfig, input: Answers): Answers {
 export function qualify(config: FunnelConfig, answers: Answers): boolean | null {
   if (visibleQuestions(config, answers).some(q => !isAnswered(answers, q.id))) return null;
   const zip = answers[config.questions.find(q => q.type === 'zip')!.id];
-  return inServiceArea(config, zip) && config.qualificationRules.every(rule => matches(rule, answers));
+  return inServiceArea(config, zip) && serviceAreaValid(config, zip) && config.qualificationRules.every(rule => matches(rule, answers));
 }
 export function inServiceArea(config: FunnelConfig, zip: string) {
   return config.serviceArea.zipCodes.includes(zip) || config.serviceArea.zipPrefixes.some(prefix => zip.startsWith(prefix));
+}
+/**
+ * The hard state-level gate (see `serviceArea.strictStates`). Unset (every funnel except
+ * Pool Masters today) always passes, so this is a no-op for the rest of the app. When set,
+ * an out-of-state or unresolvable ZIP fails regardless of the radius-based `inServiceArea`
+ * check above. Pure/exported so both the server (route.ts, the real enforcement) and the
+ * client (funnel-experience.tsx, for the polished "outside our service area" copy) agree.
+ */
+export function serviceAreaValid(config: FunnelConfig, zip: string): boolean {
+  if (!config.serviceArea.strictStates.length) return true;
+  const state = usZipState(zip);
+  return !!state && (config.serviceArea.strictStates as string[]).includes(state);
 }
 export function consentText(config: FunnelConfig) {
   // A HomeQuote-branded (house) funnel can share the request with partner contractors.
   const recipients = config.clientName === 'HomeQuote Network' ? 'HomeQuote Network and the contractor partners it matches me with' : `HomeQuote Network and ${config.clientName}`;
   return `I agree that ${recipients} may call, text, or email me about my project, including using automated technology. Consent is not a condition of purchase. Message and data rates may apply. Reply STOP to opt out.`;
 }
+// Meta's dynamic URL parameter macros (verified current as of this writing: {{campaign.id}},
+// {{campaign.name}}, {{adset.id}}, {{adset.name}}, {{ad.id}}, {{ad.name}}, {{placement}},
+// {{site_source_name}}) are configured in Ads Manager to append these plain query params —
+// captured here alongside the existing utm_*/fbclid/gclid set, never invented client-side.
+const ATTRIBUTION_PARAMS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'fbclid', 'gclid',
+  'campaign_id', 'campaign_name', 'adset_id', 'adset_name', 'ad_id', 'ad_name', 'placement', 'site_source_name'] as const;
 export function captureAttribution(url: string, referrer: string, device: string): Attribution {
   const parsed = new URL(url);
   const result: Attribution = { landing_page_url: `${parsed.origin}${parsed.pathname}`, device_type: device };
-  for (const k of ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'fbclid', 'gclid']) {
+  for (const k of ATTRIBUTION_PARAMS) {
     const value = parsed.searchParams.get(k);
     if (value) result[k] = value.slice(0, 500);
   }

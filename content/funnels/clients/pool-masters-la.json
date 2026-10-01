@@ -5,7 +5,8 @@
   "industry": "Pool construction & remodeling",
   "serviceArea": {
     "label": "Los Angeles & Ventura County",
-    "zipPrefixes": ["900", "901", "902", "903", "904", "905", "906", "907", "908", "910", "911", "912", "913", "914", "915", "916", "917", "918", "930", "935"]
+    "zipPrefixes": ["900", "901", "902", "903", "904", "905", "906", "907", "908", "910", "911", "912", "913", "914", "915", "916", "917", "918", "930", "935"],
+    "strictStates": ["CA"]
   },
   "questions": [
     { "id": "service", "type": "choice", "headline": "What type of project are you interested in?", "description": "Choose the closest fit.", "options": [

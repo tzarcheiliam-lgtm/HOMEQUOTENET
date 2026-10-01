@@ -7,9 +7,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { DEFAULT_PLACEHOLDERS, MAX_ANSWER_LENGTH, calendlyEmbedUrl, consentText, contactSchema, isRequired, isTextQuestion, validateAnswer, visibleQuestions, type FunnelConfig, type Session } from '@/lib/funnels/schema';
+import { DEFAULT_PLACEHOLDERS, MAX_ANSWER_LENGTH, calendlyEmbedUrl, consentText, contactSchema, isRequired, isTextQuestion, serviceAreaValid, validateAnswer, visibleQuestions, type FunnelConfig, type Session } from '@/lib/funnels/schema';
 import { previewAdvance } from '@/lib/funnels/builder';
 import { trackFunnel } from '@/lib/funnels/tracking';
+
+const STATE_NAMES: Record<string, string> = { CA: 'California' };
 
 /**
  * `previewMode` (used only by the funnel builder's live preview, never the
@@ -37,7 +39,7 @@ export function FunnelExperience({ slug, initialConfig, demo, previewMode, jumpT
 
   const start = useCallback(async () => {
     if (previewMode) {
-      setSession({ id: 'preview', answers: {}, current_step: config.questions[0].id, version: 0, qualified: null, contact_submitted_at: null, booked_at: null, attribution: {} });
+      setSession({ id: 'preview', answers: {}, current_step: config.questions[0].id, version: 0, qualified: null, contact_submitted_at: null, booked_at: null, attribution: {}, service_area_valid: null });
       return;
     }
     setError(''); setBusy(true);
@@ -113,7 +115,9 @@ export function FunnelExperience({ slug, initialConfig, demo, previewMode, jumpT
     if (!session || !tracking || demo || previewMode) return;
     trackFunnel(session.id, slug, 'PageView', config.trackingPixels.metaPixelId);
     trackFunnel(session.id, slug, 'ViewContent', config.trackingPixels.metaPixelId);
-    if (session.contact_submitted_at) trackFunnel(session.id, slug, 'Lead', config.trackingPixels.metaPixelId);
+    // Never a Meta "Lead" for a submission that failed this funnel's (optional) hard
+    // service-area gate — null/undefined means the gate doesn't apply to this funnel.
+    if (session.contact_submitted_at && session.service_area_valid !== false) trackFunnel(session.id, slug, 'Lead', config.trackingPixels.metaPixelId);
     if (session.booked_at) trackFunnel(session.id, slug, 'Schedule', config.trackingPixels.metaPixelId);
   }, [session, tracking, config, slug, demo, previewMode]);
   useEffect(() => {
@@ -156,12 +160,21 @@ export function FunnelExperience({ slug, initialConfig, demo, previewMode, jumpT
     const form = new FormData(event.currentTarget);
     const contact = contactSchema.safeParse({ firstName: form.get('firstName'), lastName: form.get('lastName'), phone: form.get('phone'), email: form.get('email'), consent: form.get('consent') === 'on', website: form.get('website') });
     if (!contact.success) { setError(contact.error.issues[0].message); return; }
-    void save({ contact: contact.data });
+    // Read Meta's own cookies at submit time (set by fbevents.js once the visitor opted in);
+    // used server-side only, to match the browser Lead event for Conversions API dedup.
+    const cookie = (name: string) => document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))?.[1];
+    const meta = tracking ? { fbp: cookie('_fbp'), fbc: cookie('_fbc') } : undefined;
+    void save({ contact: contact.data, ...(meta && (meta.fbp || meta.fbc) ? { meta } : {}) });
   }
   const done = !!session?.booked_at || step === 'thanks';
+  // Purely a copy decision (which reviewMessage to show); the real enforcement is
+  // server-side in qualify()/serviceAreaValid() — see lib/funnels/schema.ts.
+  const zipQuestionId = config.questions.find(q => q.type === 'zip')?.id;
+  const outOfServiceArea = !!config.serviceArea.strictStates.length && !!zipQuestionId && !!session?.answers[zipQuestionId]
+    && !serviceAreaValid(config, session.answers[zipQuestionId]);
   const title = done ? session?.booked_at ? 'You’re on the calendar.' : config.thankYouPage.headline
     : step === 'calendar' ? config.calendarHeadline ?? 'Choose a time for your free estimate'
-    : step === 'qualification' ? checking ? 'Checking availability in your area…' : session?.qualified ? config.qualifiedMessage : config.reviewMessage
+    : step === 'qualification' ? checking ? 'Checking availability in your area…' : session?.qualified ? config.qualifiedMessage : outOfServiceArea ? 'Outside our current service area' : config.reviewMessage
     : step === 'contact' ? 'Who should we reach out to?' : question?.headline;
   const calendarUrl = config.calendarUrl ? new URL(config.calendarUrl) : null;
   if (calendarUrl && session && !calendly) calendarUrl.searchParams.set('hqn_session_id', session.id);
@@ -214,7 +227,9 @@ export function FunnelExperience({ slug, initialConfig, demo, previewMode, jumpT
         </form>}
         {step === 'qualification' && <div className="funnel-result">
           {checking ? <div className="funnel-checking" role="status"><span /> Reviewing your answers and {config.serviceArea.label}</div> : <>
-            <p>{session?.qualified ? 'Share your details so we can help you take the next step. Availability will be confirmed by the team.' : 'Your project needs a personal review before we can confirm a fit.'}</p>
+            <p>{session?.qualified ? 'Share your details so we can help you take the next step. Availability will be confirmed by the team.'
+              : outOfServiceArea ? `It looks like this project is outside our current service area. We’re currently serving projects in ${config.serviceArea.strictStates.map(s => STATE_NAMES[s] ?? s).join(', ')}.`
+              : 'Your project needs a personal review before we can confirm a fit.'}</p>
             {(session?.qualified || config.unqualifiedAction === 'review') && <Button className="funnel-primary" disabled={busy} onClick={() => void save({ step: 'contact' })}>Continue <ArrowRight size={18} /></Button>}
             {!session?.qualified && config.unqualifiedAction === 'stop' && <p>We’re unable to offer an estimate for these details right now. You can go back to correct an answer.</p>}
           </>}

@@ -2,13 +2,20 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { z } from 'zod';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { MAX_ANSWER_LENGTH, calendlyUri, captureAttribution, consentText, contactSchema, funnelSchema, isAnswered, qualify, sanitizeAnswers, validateAnswer, visibleQuestions, type FunnelConfig, type Session } from '@/lib/funnels/schema';
+import { MAX_ANSWER_LENGTH, calendlyUri, captureAttribution, consentText, contactSchema, funnelSchema, isAnswered, qualify, sanitizeAnswers, serviceAreaValid, validateAnswer, visibleQuestions, type FunnelConfig, type Session } from '@/lib/funnels/schema';
 import { verifyCalendlyBooking } from '@/lib/funnels/calendly';
 import { cookieName, getFunnel, getSession, hash, newToken, publicSession, readBody, sameOrigin } from '@/lib/funnels/server';
 import { after } from 'next/server';
 import { deliverPendingFunnels } from '@/lib/funnels/delivery';
 import { sendLeadEmailsSoon } from '@/lib/leads/notify';
 import { flushNotificationsSoon } from '@/lib/notifications/outbox';
+import { buildFbc, sendMetaEvent } from '@/lib/meta/capi';
+
+/** Vercel overwrites x-forwarded-for; this is the real client IP (never logged/stored raw). */
+function clientIp(request: Request): string | undefined {
+  const header = request.headers.get('x-vercel-forwarded-for') ?? request.headers.get('x-forwarded-for');
+  return header?.split(',')[0]?.trim() || undefined;
+}
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -69,6 +76,9 @@ const updateSchema = z.object({
   contact: contactSchema.optional(),
   calendarViewed: z.boolean().optional(),
   calendlyBooking: z.object({ eventUri: calendlyUri, inviteeUri: calendlyUri }).optional(),
+  // Read from document.cookie at submit time (lib/funnels/tracking.ts); used only
+  // server-side to build the Meta Conversions API Lead event's user_data.
+  meta: z.object({ fbp: z.string().max(100).optional(), fbc: z.string().max(256).optional() }).optional(),
 });
 export async function PATCH(request: Request, context: Context) {
   if (!sameOrigin(request)) return reply({ error: 'Invalid origin' }, 403);
@@ -93,6 +103,17 @@ export async function PATCH(request: Request, context: Context) {
           p_event: eventUri, p_time: check.startTime, p_verified: check.verified });
         if (error) return reply({ error: 'We couldn’t confirm that booking. Your request is saved and the team will follow up.' }, 422);
         flushNotificationsSoon();
+        // Appointment booking confirmed (the same bar the rest of the app uses for this
+        // signal) — fire Schedule, paired with the browser event via the same event_id.
+        if (config.trackingPixels.metaPixelId && s.contact) after(() => sendMetaEvent({
+          pixelId: config.trackingPixels.metaPixelId!, eventName: 'Schedule', eventId: `${s.id}:Schedule`,
+          eventSourceUrl: s.attribution.landing_page_url ?? `https://${request.headers.get('host')}/estimate/${funnel.slug}`,
+          user: {
+            email: s.contact!.email as string, phone: s.contact!.phone as string,
+            firstName: s.contact!.firstName as string, lastName: s.contact!.lastName as string,
+            clientIpAddress: clientIp(request), clientUserAgent: request.headers.get('user-agent') ?? undefined,
+          },
+        }));
         return reply({ session: publicSession(data) });
       }
       return reply({ session: withPrefill(publicSession(s), s) });
@@ -117,12 +138,18 @@ export async function PATCH(request: Request, context: Context) {
       else return reply({ error: 'Please complete the earlier questions.' }, 422);
     }
     const qualified = qualify(config, answers);
+    // Independent of (but folded into) `qualified` above: null until the ZIP question is
+    // answered, then the hard serviceArea.strictStates verdict (always true for every
+    // funnel that doesn't set strictStates — i.e. every funnel except Pool Masters today).
+    const zipQuestionId = config.questions.find(q => q.type === 'zip')?.id;
+    const areaValid = zipQuestionId && isAnswered(answers, zipQuestionId) ? serviceAreaValid(config, answers[zipQuestionId]) : null;
     if (body.contact) {
       if (qualified === null || s.current_step !== 'contact' || (!qualified && config.unqualifiedAction === 'stop')) return reply({ error: 'Please finish the questions first.' }, 422);
       nextStep = qualified && config.calendarUrl ? 'calendar' : 'thanks';
     }
     const { data, error } = await db.rpc('save_funnel_session', { p_id: s.id, p_hash: s.token_hash, p_version: body.version,
-      p_answers: answers, p_step: nextStep, p_completed: completed, p_contact: body.contact ?? null, p_qualified: qualified, p_consent: consentText(config) });
+      p_answers: answers, p_step: nextStep, p_completed: completed, p_contact: body.contact ?? null, p_qualified: qualified,
+      p_consent: consentText(config), p_service_area_valid: areaValid });
     if (error) return reply({ error: error.code === '40001' ? 'Your progress changed in another tab. Refresh to continue.' : 'We couldn’t save that. Please try again.' }, error.code === '40001' ? 409 : 503);
     // Saved lead -> internal new-lead alert to the HomeQuote team only (never the funnel's contractor).
     if (body.contact && !funnel.is_demo) {
@@ -130,6 +157,23 @@ export async function PATCH(request: Request, context: Context) {
       flushNotificationsSoon();
     }
     if (body.contact && !funnel.is_demo && funnel.integration_id) after(async () => { try { await deliverPendingFunnels(); } catch { /* Durable queue retains the job for retry. */ } });
+    // Meta Lead conversion — only for a real submission that passed the (optional, per-funnel)
+    // service-area gate. Never fires for an out-of-area submission (areaValid === false) or a
+    // funnel with no pixel configured. Same event_id formula as the browser pixel
+    // (lib/funnels/tracking.ts `${sessionId}:${event}`) so Meta deduplicates the pair.
+    if (body.contact && !funnel.is_demo && areaValid !== false && config.trackingPixels.metaPixelId) {
+      const zip = zipQuestionId ? answers[zipQuestionId] : undefined;
+      after(() => sendMetaEvent({
+        pixelId: config.trackingPixels.metaPixelId!, eventName: 'Lead', eventId: `${s.id}:Lead`,
+        eventSourceUrl: s.attribution.landing_page_url ?? `https://${request.headers.get('host')}/estimate/${funnel.slug}`,
+        user: {
+          email: body.contact!.email, phone: body.contact!.phone, firstName: body.contact!.firstName, lastName: body.contact!.lastName,
+          state: areaValid === true ? 'CA' : undefined, zip,
+          clientIpAddress: clientIp(request), clientUserAgent: request.headers.get('user-agent') ?? undefined,
+          fbp: body.meta?.fbp, fbc: body.meta?.fbc ?? buildFbc(s.attribution.fbclid, new Date(s.created_at).getTime()),
+        },
+      }));
+    }
     const saved = publicSession(data);
     return reply({ session: body.contact && config.calendarProvider === 'calendly' && saved.current_step === 'calendar'
       ? { ...saved, prefill: { name: `${body.contact.firstName} ${body.contact.lastName}`, email: body.contact.email } } : saved });

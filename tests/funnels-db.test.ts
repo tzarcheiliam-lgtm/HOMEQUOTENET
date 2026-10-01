@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import pg from 'pg';
 import example from '@/content/funnels/pool-demo.json';
-import { funnelSchema } from '@/lib/funnels/schema';
+import { funnelSchema, qualify, serviceAreaValid } from '@/lib/funnels/schema';
 
 const url = process.env.SUPABASE_DB_URL;
 const db = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } });
@@ -36,7 +36,7 @@ suite('funnel database (rolled back)', () => {
       await q('set local role anon');
       const rows = await q('select id from public.funnel_sessions');
       expect(rows).toHaveLength(0);
-      const [allowed] = await q("select has_function_privilege('anon','public.save_funnel_session(uuid,text,integer,jsonb,text,text,jsonb,boolean,text)','execute') as ok");
+      const [allowed] = await q("select has_function_privilege('anon','public.save_funnel_session(uuid,text,integer,jsonb,text,text,jsonb,boolean,text,boolean)','execute') as ok");
       expect(allowed.ok).toBe(false);
     } finally { await q('rollback to savepoint public_access'); }
   });
@@ -107,5 +107,36 @@ suite('funnel database (rolled back)', () => {
     await q("update public.funnel_deliveries set status='failed',available_at=now() where id=$1", [jobs[0].id]);
     const retry = await q('select * from public.claim_funnel_deliveries()');
     expect(retry).toHaveLength(1); expect(retry[0].id).toBe(jobs[0].id); expect(retry[0].attempts).toBe(2);
+  });
+  it('a funnel with serviceArea.strictStates rejects an out-of-state ZIP at the database layer, preserving the submission', async () => {
+    // Mirrors app/api/funnels/[slug]/session/route.ts: qualify()/serviceAreaValid() computed
+    // server-side from the config + answers, then passed in — never recomputed/trusted from SQL.
+    const strictConfig = funnelSchema.parse({ ...example, serviceArea: { ...config.serviceArea, strictStates: ['CA'] },
+      calendarProvider: 'calendly', calendarUrl: 'https://calendly.com/homequotenetwork/30min' });
+    const strictFunnel = randomUUID(); const strictSession = randomUUID();
+    await q('insert into public.funnels(id,slug,contractor_id,published,config) values($1,$2,$3,true,$4)', [strictFunnel, `test-strict-${strictFunnel}`, ids.contractor, strictConfig]);
+    await q("insert into public.funnel_sessions(id,funnel_id,token_hash,rate_key,config_snapshot,current_step) values($1::uuid,$2,$1::uuid::text,'test',$3,'contact')", [strictSession, strictFunnel, strictConfig]);
+    // 'backyard' (unlike 'full_remodel') has no conditional follow-up question, so this
+    // answer set is complete and qualify() evaluates to a real boolean, not null.
+    const tnAnswers = { ...answers, service: 'backyard', zip: '37201' }; // Nashville, TN
+    const areaValid = serviceAreaValid(strictConfig, tnAnswers.zip);
+    const qualified = qualify(strictConfig, tnAnswers);
+    expect(areaValid).toBe(false); expect(qualified).toBe(false);
+    // Unique phone too, not just email — otherwise phone_e164 dedup reuses the
+    // existing lead from an earlier test (same contractor) and never creates
+    // the new one this test means to inspect.
+    const tnContact = { ...contact, email: `funnel-${strictSession}@example.test`, phone: '8185550199' };
+    await q('select public.save_funnel_session($1,$2,0,$3,$4,null,$5,$6,$7,$8)',
+      [strictSession, strictSession, tnAnswers, 'thanks', tnContact, qualified, 'Reviewed consent', areaValid]);
+    const [s] = await q('select lead_id, qualified, service_area_valid from public.funnel_sessions where id=$1', [strictSession]);
+    expect(s.qualified).toBe(false); expect(s.service_area_valid).toBe(false);
+    expect(s.lead_id).toBeTruthy(); // preserved for wasted/out-of-area traffic analysis
+    const [lead] = await q('select service_area_valid, qualification_status, qualified from public.leads where id=$1', [s.lead_id]);
+    expect(lead.service_area_valid).toBe(false);
+    expect(lead.qualification_status).toBe('out_of_service_area');
+    expect(lead.qualified).toBe(false);
+    // The DB-level guard on record_calendly_booking independently refuses a non-qualified session.
+    await expect(q("select public.record_calendly_booking($1,$2,'https://api.calendly.com/scheduled_events/e1/invitees/i1','https://api.calendly.com/scheduled_events/e1')",
+      [strictSession, strictSession])).rejects.toThrow();
   });
 });
