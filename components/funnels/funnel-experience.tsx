@@ -170,7 +170,9 @@ export function FunnelExperience({ slug, initialConfig, demo, previewMode, jumpT
   // Purely a copy decision (which reviewMessage to show); the real enforcement is
   // server-side in qualify()/serviceAreaValid() — see lib/funnels/schema.ts.
   const zipQuestionId = config.questions.find(q => q.type === 'zip')?.id;
-  const outOfServiceArea = !!config.serviceArea.strictStates.length && !!zipQuestionId && !!session?.answers[zipQuestionId]
+  // Defensive: a config snapshot from an older cached response may predate this field.
+  const strictStates = config.serviceArea.strictStates ?? [];
+  const outOfServiceArea = !!strictStates.length && !!zipQuestionId && !!session?.answers[zipQuestionId]
     && !serviceAreaValid(config, session.answers[zipQuestionId]);
   const title = done ? session?.booked_at ? 'You’re on the calendar.' : config.thankYouPage.headline
     : step === 'calendar' ? config.calendarHeadline ?? 'Choose a time for your free estimate'
@@ -228,7 +230,7 @@ export function FunnelExperience({ slug, initialConfig, demo, previewMode, jumpT
         {step === 'qualification' && <div className="funnel-result">
           {checking ? <div className="funnel-checking" role="status"><span /> Reviewing your answers and {config.serviceArea.label}</div> : <>
             <p>{session?.qualified ? 'Share your details so we can help you take the next step. Availability will be confirmed by the team.'
-              : outOfServiceArea ? `It looks like this project is outside our current service area. We’re currently serving projects in ${config.serviceArea.strictStates.map(s => STATE_NAMES[s] ?? s).join(', ')}.`
+              : outOfServiceArea ? `It looks like this project is outside our current service area. We’re currently serving projects in ${strictStates.map(s => STATE_NAMES[s] ?? s).join(', ')}.`
               : 'Your project needs a personal review before we can confirm a fit.'}</p>
             {(session?.qualified || config.unqualifiedAction === 'review') && <Button className="funnel-primary" disabled={busy} onClick={() => void save({ step: 'contact' })}>Continue <ArrowRight size={18} /></Button>}
             {!session?.qualified && config.unqualifiedAction === 'stop' && <p>We’re unable to offer an estimate for these details right now. You can go back to correct an answer.</p>}

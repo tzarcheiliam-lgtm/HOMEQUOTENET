@@ -183,9 +183,12 @@ export function inServiceArea(config: FunnelConfig, zip: string) {
  * client (funnel-experience.tsx, for the polished "outside our service area" copy) agree.
  */
 export function serviceAreaValid(config: FunnelConfig, zip: string): boolean {
-  if (!config.serviceArea.strictStates.length) return true;
+  // Defensive: a config object from an older cached response (e.g. mid-deploy) may
+  // predate this field entirely, since it's additive and not every call site re-parses.
+  const strictStates = config.serviceArea.strictStates ?? [];
+  if (!strictStates.length) return true;
   const state = usZipState(zip);
-  return !!state && (config.serviceArea.strictStates as string[]).includes(state);
+  return !!state && (strictStates as string[]).includes(state);
 }
 export function consentText(config: FunnelConfig) {
   // A HomeQuote-branded (house) funnel can share the request with partner contractors.
