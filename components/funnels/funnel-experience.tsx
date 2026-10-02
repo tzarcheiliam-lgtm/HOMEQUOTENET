@@ -82,12 +82,12 @@ export function FunnelExperience({ slug, initialConfig, demo, previewMode, jumpT
     }
     setBusy(true); setError('');
     try {
-      const res = await fetch(endpoint, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, version: session.version }) });
+      const res = await fetch(endpoint, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, ...('contact' in body || 'calendlyBooking' in body ? { measurement: tracking } : {}), version: session.version }) });
       const data = await res.json(); if (!res.ok) throw new Error(data.error);
       setSession(data.session);
     } catch (e) { setError(e instanceof Error ? e.message : 'Please try again.'); }
     finally { setBusy(false); }
-  }, [session, busy, endpoint, previewMode, config]);
+  }, [session, busy, endpoint, previewMode, config, tracking]);
 
   const step = session?.current_step ?? config.questions[0].id;
   const questions = visibleQuestions(config, session?.answers ?? {});

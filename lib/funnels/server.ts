@@ -24,7 +24,7 @@ export async function getSession(funnel: Funnel) {
   const { data, error } = await createAdminClient().from('funnel_sessions').select('*')
     .eq('funnel_id', funnel.id).eq('token_hash', hash(token)).gt('expires_at', new Date().toISOString()).maybeSingle();
   if (error) throw new Error('Session storage is unavailable');
-  return data as (Session & { token_hash: string; config_snapshot: FunnelConfig; contact: Record<string, unknown> | null; created_at: string }) | null;
+  return data as (Session & { token_hash: string; config_snapshot: FunnelConfig; contact: Record<string, unknown> | null; created_at: string; lead_id?: string | null; measurement_allowed?: boolean | null }) | null;
 }
 export function publicSession(s: Session): Session {
   return { id: s.id, answers: s.answers, current_step: s.current_step, version: s.version, qualified: s.qualified,

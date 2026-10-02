@@ -16,6 +16,77 @@ function splitName(full: string | null | undefined): {
   return { first: parts[0], last: parts.slice(1).join(' ') || null };
 }
 
+type Candidate = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email_normalized: string | null;
+  phone_e164: string | null;
+};
+
+const nameKey = (v: string | null | undefined) => (v ?? '').trim().toLowerCase();
+
+/** First names must agree; last names must agree when both are present. */
+function namesCompatible(c: Candidate, first: string | null, last: string | null): boolean {
+  if (!nameKey(first) || !nameKey(c.first_name)) return false;
+  if (nameKey(first) !== nameKey(c.first_name)) return false;
+  return !nameKey(last) || !nameKey(c.last_name) || nameKey(last) === nameKey(c.last_name);
+}
+
+/**
+ * Conservative contact matching. A new inquiry is only treated as the same lead when
+ * it matches on BOTH email and phone, or on one of them with a compatible name. A bare
+ * shared phone/email with a different name (a spouse, a family line, a typo) creates a
+ * new lead that is flagged for review instead of being merged or discarded.
+ * Lookups use parameterised .eq() filters — contact values never enter a filter string.
+ */
+export async function findContactMatch(
+  admin: ReturnType<typeof createAdminClient>,
+  emailNorm: string | null,
+  phoneNorm: string | null,
+  first: string | null,
+  last: string | null
+): Promise<{ kind: 'match' | 'possible'; id: string } | null> {
+  const select = 'id, first_name, last_name, email_normalized, phone_e164';
+  const found = new Map<string, Candidate>();
+  for (const [column, value] of [['email_normalized', emailNorm], ['phone_e164', phoneNorm]] as const) {
+    if (!value) continue;
+    const { data } = await admin.from('leads').select(select).eq(column, value).is('archived_at', null).limit(5);
+    for (const row of (data ?? []) as Candidate[]) found.set(row.id, row);
+  }
+  let possible: string | null = null;
+  for (const c of found.values()) {
+    const both = !!emailNorm && !!phoneNorm && c.email_normalized === emailNorm && c.phone_e164 === phoneNorm;
+    if (both || namesCompatible(c, first, last)) return { kind: 'match', id: c.id };
+    possible ??= c.id;
+  }
+  return possible ? { kind: 'possible', id: possible } : null;
+}
+
+async function findByExternalId(
+  admin: ReturnType<typeof createAdminClient>,
+  integrationId: string | null,
+  externalId: string | null | undefined
+): Promise<string | null> {
+  if (!integrationId || !externalId) return null;
+  const { data } = await admin
+    .from('leads')
+    .select('id')
+    .eq('integration_id', integrationId)
+    .eq('external_lead_id', externalId)
+    .limit(1);
+  if (data?.[0]?.id) return data[0].id;
+  // Delivery that matched an existing lead never created a row of its own, but was logged.
+  const { data: ev } = await admin
+    .from('lead_intake_events')
+    .select('lead_id, duplicate_of')
+    .eq('integration_id', integrationId)
+    .eq('external_lead_id', externalId)
+    .in('status', ['created', 'duplicate'])
+    .limit(1);
+  return ev?.[0]?.lead_id ?? ev?.[0]?.duplicate_of ?? null;
+}
+
 /**
  * The single intake pipeline every source flows through:
  *   normalize → duplicate detection → attribution → lead creation → log.
@@ -49,23 +120,24 @@ export async function ingestLead(
     ad_id: normalized.ad_id ?? null,
     form: normalized.form ?? null,
     form_id: normalized.form_id ?? null,
+    page_id: normalized.page_id ?? null,
     normalized: normalized as unknown as Record<string, unknown>,
     raw_payload: (ctx.rawPayload ?? {}) as Record<string, unknown>,
   };
 
-  // ---- 1. Duplicate detection (by normalized email or phone) ---------------
+  const { first, last } = splitName(normalized.full_name);
+
+  // ---- 0. Idempotency: the same Meta lead delivered again (webhook retry) --------
+  const already = await findByExternalId(admin, ctx.integrationId, normalized.external_lead_id);
+  if (already) return { status: 'duplicate', duplicateOf: already, redelivery: true };
+
+  // ---- 1. Contact matching (conservative) ----------------------------------------
   let duplicateOf: string | null = null;
+  let possibleDuplicateOf: string | null = null;
   if (emailNorm || phoneNorm) {
-    const ors: string[] = [];
-    if (emailNorm) ors.push(`email_normalized.eq.${emailNorm}`);
-    if (phoneNorm) ors.push(`phone_e164.eq.${phoneNorm}`);
-    const { data: existing } = await admin
-      .from('leads')
-      .select('id')
-      .or(ors.join(','))
-      .is('archived_at', null)
-      .limit(1);
-    if (existing && existing.length > 0) duplicateOf = existing[0].id;
+    const m = await findContactMatch(admin, emailNorm, phoneNorm, first, last);
+    if (m?.kind === 'match') duplicateOf = m.id;
+    else if (m) possibleDuplicateOf = m.id;
   }
 
   if (duplicateOf) {
@@ -74,7 +146,15 @@ export async function ingestLead(
       lead_id: duplicateOf,
       type: 'system',
       body: `Duplicate lead received via ${ctx.provider} (not created)`,
-      metadata: { provider: ctx.provider, external_lead_id: normalized.external_lead_id },
+      metadata: {
+        provider: ctx.provider,
+        external_lead_id: normalized.external_lead_id,
+        form_id: normalized.form_id,
+        timeline: normalized.timeline,
+        budget_range: normalized.budget_range,
+        project_description: normalized.project_description,
+        answers: normalized.answers,
+      },
     });
     const { data: ev } = await admin
       .from('lead_intake_events')
@@ -88,7 +168,6 @@ export async function ingestLead(
   }
 
   // ---- 2. Attribution + lead creation --------------------------------------
-  const { first, last } = splitName(normalized.full_name);
   const { data: lead, error } = await admin
     .from('leads')
     .insert({
@@ -112,6 +191,11 @@ export async function ingestLead(
       form_name: normalized.form ?? null,
       form_id: normalized.form_id ?? null,
       external_lead_id: normalized.external_lead_id ?? null,
+      page_id: normalized.page_id ?? null,
+      timeline: normalized.timeline ?? null,
+      budget_range: normalized.budget_range ?? null,
+      project_description: normalized.project_description ?? null,
+      answers: normalized.answers ?? null,
       integration_id: ctx.integrationId,
       // TCPA consent captured at intake (H4)
       consent_granted: normalized.consent_granted ?? false,
@@ -121,6 +205,12 @@ export async function ingestLead(
     })
     .select('id')
     .single();
+
+  if (error?.code === '23505') {
+    // A concurrent delivery of the same Meta lead won the race (uq_leads_meta_external).
+    const existing = await findByExternalId(admin, ctx.integrationId, normalized.external_lead_id);
+    if (existing) return { status: 'duplicate', duplicateOf: existing, redelivery: true };
+  }
 
   if (error || !lead) {
     const { data: ev } = await admin
@@ -135,8 +225,10 @@ export async function ingestLead(
   await admin.from('lead_activities').insert({
     lead_id: lead.id,
     type: 'system',
-    body: `Lead captured via ${ctx.provider} intake`,
-    metadata: { provider: ctx.provider, platform: eventBase.platform },
+    body: possibleDuplicateOf
+      ? `Lead captured via ${ctx.provider} intake. Shares an email or phone with an existing lead under a different name — review for a possible duplicate.`
+      : `Lead captured via ${ctx.provider} intake`,
+    metadata: { provider: ctx.provider, platform: eventBase.platform, possible_duplicate_of: possibleDuplicateOf },
   });
 
   const { data: ev } = await admin
@@ -148,10 +240,15 @@ export async function ingestLead(
   await touchIntegration(ctx.integrationId, { sync: true });
   sendLeadEmailsSoon();
   flushNotificationsSoon();
-  return { status: 'created', leadId: lead.id, intakeEventId: ev?.id };
+  return {
+    status: 'created',
+    leadId: lead.id,
+    intakeEventId: ev?.id,
+    ...(possibleDuplicateOf ? { possibleDuplicateOf } : {}),
+  };
 }
 
-async function touchIntegration(
+export async function touchIntegration(
   id: string | null,
   opts: { sync?: boolean; activity?: boolean; error?: string }
 ) {

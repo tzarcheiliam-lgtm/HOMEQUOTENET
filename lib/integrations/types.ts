@@ -21,6 +21,14 @@ export interface NormalizedLead {
   form?: string | null;
   form_id?: string | null;
   external_lead_id?: string | null;
+  page_id?: string | null;
+
+  // Project details (mapped from custom form questions where recognisable)
+  timeline?: string | null;
+  budget_range?: string | null;
+  project_description?: string | null;
+  /** Every non-standard form answer, label -> value, kept verbatim on the lead. */
+  answers?: Record<string, string> | null;
 
   // TCPA consent (connectors populate where the source provides it)
   consent_granted?: boolean | null;
@@ -55,6 +63,10 @@ export interface IntakeContext {
 
 export interface IntakeResult {
   status: 'created' | 'duplicate' | 'error';
+  /** True when this exact external lead was already imported (webhook re-delivery). */
+  redelivery?: boolean;
+  /** Set when a new lead was created that shares an email/phone with another lead. */
+  possibleDuplicateOf?: string;
   leadId?: string;
   duplicateOf?: string;
   error?: string;

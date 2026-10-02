@@ -507,6 +507,27 @@ or secrets by design).
 - **Meta (Facebook/Instagram) Lead Ads** — `lib/integrations/meta.ts`,
   webhook at `app/api/integrations/meta/webhook`, HMAC-signature verified
   (`tests/meta-signature.test.ts`). Settings UI at `/app/integrations/meta`.
+  Hardened (migration 0035, NOT yet applied to production as of this edit): the webhook
+  returns 5xx when Graph retrieval fails so Meta redelivers (never acknowledges a lead it
+  couldn't fetch); the token travels in the Authorization header; secrets resolve from env
+  (`META_APP_SECRET`, `META_PAGE_ACCESS_TOKEN`, `META_WEBHOOK_VERIFY_TOKEN`,
+  `META_GRAPH_VERSION`) before the admin-only `integrations` row; only the configured Page's
+  leads are imported; `ingestLead` is idempotent on `(integration_id, external_lead_id)`
+  (unique index `uq_leads_meta_external`); contact matching is conservative (both email+phone,
+  or one + compatible name; otherwise a new lead flagged "possible duplicate"); custom answers
+  land in `leads.answers` and map to `timeline`/`budget_range`/`project_description`.
+  Tests: `meta-leadgen`, `meta-webhook-route`, `meta-intake-matching`.
+  Website leads: `leads.fbp`/`fbc` are stored write-once at contact submit (`lib/meta/lead-ids.ts`,
+  migration 0035) and reused by the server Schedule event; `META_TEST_EVENT_CODE` (temporary!) routes
+  server events to Meta's Test Events. Setup + test checklist: `docs/meta-lead-ads-setup.md`;
+  duplicate-id pre-check: `supabase/scripts/meta-duplicate-leads.sql`.
+  Migration 0036 (NOT applied yet): `funnel_sessions.measurement_allowed` persists the visitor's advertising-measurement choice;
+  the session route gates every server Meta event and fbp/fbc storage on it (default per `consentMode` when never recorded; fails
+  safe if the write fails). `save_funnel_session` contact matching is now conservative: reuse only on same email+phone (or one + same
+  first name), open lead, <30 days, identical answers; otherwise a new lead flagged "possible duplicate" (never merged/modified).
+  Tests: `funnel-session-meta` (runs), `funnel-matching-db` (needs SUPABASE_DB_URL on a disposable DB; not run yet).
+  Existing Lead/Schedule CAPI events (`lib/meta/capi.ts`) are WEB conversion events
+  (`action_source: website`) — they are NOT Meta's CRM "Qualified Leads" events.
 - **Generic lead intake** — `app/api/integrations/[provider]/intake`,
   `lib/integrations/intake.ts`, authenticated per-integration
   (`tests/intake-auth.test.ts`), logs every attempt to `lead_intake_events`

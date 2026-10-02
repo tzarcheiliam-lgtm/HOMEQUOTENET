@@ -5,12 +5,16 @@ import {
   verifyMetaSignature,
   normalizeMetaValue,
   fetchMetaLead,
+  extractLeadgenValues,
+  resolveMetaSecrets,
 } from '@/lib/integrations/meta';
-import { ingestLead } from '@/lib/integrations/intake';
+import { ingestLead, touchIntegration } from '@/lib/integrations/intake';
 
 // Unauthenticated endpoint — Meta calls it directly. Auth is the verify token
-// (GET handshake) plus the service-role client for DB writes.
+// (GET handshake) and the X-Hub-Signature-256 HMAC (POST), plus the service-role
+// client for DB writes.
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 async function getMetaIntegration() {
   const admin = createAdminClient();
@@ -22,7 +26,7 @@ async function getMetaIntegration() {
     .limit(1)
     .maybeSingle();
   return data as
-    | { id: string; secret: string | null; config: any; is_enabled: boolean }
+    | { id: string; secret: string | null; config: Record<string, unknown> | null; is_enabled: boolean }
     | null;
 }
 
@@ -31,7 +35,7 @@ export async function GET(req: NextRequest) {
   const integration = await getMetaIntegration();
   const challenge = verifyMetaChallenge(
     req.nextUrl.searchParams,
-    integration?.secret
+    resolveMetaSecrets(integration).verifyToken
   );
   if (challenge) {
     return new NextResponse(challenge, { status: 200 });
@@ -40,6 +44,11 @@ export async function GET(req: NextRequest) {
 }
 
 // Lead delivery.
+//
+// Contract with Meta: a 2xx means "stored, don't redeliver"; any 5xx means "try
+// again". A lead whose answers could not be fetched is therefore answered with
+// 500 — never acknowledged and dropped. Redelivery is safe because ingestLead is
+// idempotent on the Meta lead ID.
 export async function POST(req: NextRequest) {
   // Read the RAW body — required for an exact HMAC signature comparison.
   const rawBody = await req.text();
@@ -51,7 +60,7 @@ export async function POST(req: NextRequest) {
   }
 
   // C1: verify Meta's X-Hub-Signature-256 against the app secret. Reject 401.
-  const appSecret = integration.config?.app_secret as string | undefined;
+  const { appSecret, accessToken } = resolveMetaSecrets(integration);
   const signature = req.headers.get('x-hub-signature-256');
   if (!verifyMetaSignature(rawBody, signature, appSecret)) {
     return NextResponse.json(
@@ -60,39 +69,53 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let body: any;
+  let body: Parameters<typeof extractLeadgenValues>[0];
   try {
     body = JSON.parse(rawBody);
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const token = integration.config?.page_access_token as string | undefined;
-
-  // Extract leadgen values from the webhook envelope.
-  const values: any[] = [];
-  for (const entry of body?.entry ?? []) {
-    for (const change of entry.changes ?? []) {
-      if (change.value) values.push(change.value);
-    }
-  }
-  if (values.length === 0 && body?.value) values.push(body.value);
+  const configuredPage = integration.config?.page_id ? String(integration.config.page_id) : null;
+  const values = extractLeadgenValues(body);
 
   let created = 0;
   let duplicate = 0;
   let errored = 0;
+  let skipped = 0;
+  let fetchFailures = 0;
+  let lastFailure: string | null = null;
 
   for (const v of values) {
-    let value = v;
-    // Real deliveries carry only IDs — fetch field data via Graph if we can.
-    if (!v.field_data && v.leadgen_id && token) {
-      const fetched = await fetchMetaLead(v.leadgen_id, token);
-      if (fetched) value = { ...v, ...fetched };
+    // Only import leads from the Page this integration is configured for.
+    if (configuredPage && v.page_id && String(v.page_id) !== configuredPage) {
+      skipped++;
+      continue;
     }
+    if (!v.leadgen_id) {
+      skipped++;
+      continue;
+    }
+
+    // Real deliveries carry only IDs — the answers must come from the Graph API.
+    const fetched = await fetchMetaLead(String(v.leadgen_id), accessToken);
+    if (!fetched.ok) {
+      fetchFailures++;
+      lastFailure = fetched.reason;
+      // IDs and a reason only — never the token, never lead data.
+      console.error('[meta-leadgen] lead retrieval failed', {
+        leadgen_id: v.leadgen_id,
+        reason: fetched.reason,
+        status: fetched.status,
+      });
+      continue;
+    }
+
+    const value = { ...v, ...fetched.lead };
     const result = await ingestLead(normalizeMetaValue(value), {
       integrationId: integration.id,
       provider: 'meta',
-      platform: value.platform ?? 'facebook',
+      platform: 'facebook',
       rawPayload: v,
     });
     if (result.status === 'created') created++;
@@ -100,5 +123,16 @@ export async function POST(req: NextRequest) {
     else errored++;
   }
 
-  return NextResponse.json({ received: values.length, created, duplicate, errored });
+  if (fetchFailures > 0) {
+    await touchIntegration(integration.id, {
+      error:
+        lastFailure === 'auth' || lastFailure === 'missing_token'
+          ? 'Meta access token is missing, expired or lacks leads_retrieval — reconnect it.'
+          : `Meta lead retrieval failed (${lastFailure}); Meta will redeliver.`,
+    });
+  }
+
+  const summary = { received: values.length, created, duplicate, errored, skipped, fetchFailures };
+  // 5xx for anything not safely stored so Meta redelivers; duplicates are harmless.
+  return NextResponse.json(summary, { status: fetchFailures > 0 || errored > 0 ? 500 : 200 });
 }

@@ -86,28 +86,51 @@ export function buildFbc(fbclid: string | null | undefined, creationTimeMs: numb
 }
 
 /**
+ * Optional Events Manager "Test events" code (e.g. TEST12345). While META_TEST_EVENT_CODE is set,
+ * every server event carries test_event_code, so Meta shows it only under Test Events and keeps it
+ * out of reporting and ad optimization — which also means REAL conversions stop counting. Set it
+ * only for a verification session and remove it afterwards. Malformed values are ignored.
+ */
+export function testEventCode(env: string | undefined = process.env.META_TEST_EVENT_CODE): string | undefined {
+  const code = (env ?? '').trim();
+  return /^[A-Za-z0-9_-]{1,40}$/.test(code) ? code : undefined;
+}
+
+/** The exact JSON body POSTed to /{dataset}/events (token excluded from the exported builder). */
+export function buildEventsPayload(event: MetaLeadEvent, testCode?: string) {
+  return {
+    data: [{
+      event_name: event.eventName,
+      event_time: event.eventTime ?? Math.floor(Date.now() / 1000),
+      event_id: event.eventId,
+      event_source_url: event.eventSourceUrl,
+      action_source: 'website',
+      user_data: buildUserData(event.user),
+    }],
+    ...(testCode ? { test_event_code: testCode } : {}),
+  };
+}
+
+let warnedTestMode = false;
+
+/**
  * Fire-and-forget: errors are logged (no PII, no token) and swallowed so a
  * funnel submission is never blocked or failed by an ad-tracking hiccup.
  */
 export async function sendMetaEvent(event: MetaLeadEvent): Promise<void> {
   const token = process.env.META_CONVERSIONS_API_TOKEN;
   if (!token || !event.pixelId) return;
+  const testCode = testEventCode();
+  if (testCode && !warnedTestMode) {
+    warnedTestMode = true;
+    console.warn('[meta-capi] META_TEST_EVENT_CODE is set: events are sent as TEST events and will not count toward reporting');
+  }
   try {
     const res = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${event.pixelId}/events`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal: AbortSignal.timeout(10000),
-      body: JSON.stringify({
-        access_token: token,
-        data: [{
-          event_name: event.eventName,
-          event_time: event.eventTime ?? Math.floor(Date.now() / 1000),
-          event_id: event.eventId,
-          event_source_url: event.eventSourceUrl,
-          action_source: 'website',
-          user_data: buildUserData(event.user),
-        }],
-      }),
+      body: JSON.stringify({ access_token: token, ...buildEventsPayload(event, testCode) }),
     });
     if (!res.ok) console.error(`[meta-capi] ${event.eventName} rejected: HTTP ${res.status}`);
   } catch (error) {

@@ -10,6 +10,7 @@ import { deliverPendingFunnels } from '@/lib/funnels/delivery';
 import { sendLeadEmailsSoon } from '@/lib/leads/notify';
 import { flushNotificationsSoon } from '@/lib/notifications/outbox';
 import { buildFbc, sendMetaEvent } from '@/lib/meta/capi';
+import { loadLeadMetaIds, rememberLeadMetaIds } from '@/lib/meta/lead-ids';
 
 /** Vercel overwrites x-forwarded-for; this is the real client IP (never logged/stored raw). */
 function clientIp(request: Request): string | undefined {
@@ -78,6 +79,9 @@ const updateSchema = z.object({
   calendlyBooking: z.object({ eventUri: calendlyUri, inviteeUri: calendlyUri }).optional(),
   // Read from document.cookie at submit time (lib/funnels/tracking.ts); used only
   // server-side to build the Meta Conversions API Lead event's user_data.
+  // The visitor's "Allow optional advertising measurement" choice at the moment of this request
+  // (contact submit / booking). Persisted on the session so server-side Meta events honor an opt-out.
+  measurement: z.boolean().optional(),
   meta: z.object({ fbp: z.string().max(100).optional(), fbc: z.string().max(256).optional() }).optional(),
 });
 export async function PATCH(request: Request, context: Context) {
@@ -91,6 +95,15 @@ export async function PATCH(request: Request, context: Context) {
     const body = parsed.data;
     const config = funnelSchema.parse(s.config_snapshot);
     const db = createAdminClient();
+    // Advertising-measurement choice: this request's value wins and is persisted; otherwise the stored
+    // one; otherwise the funnel's default (opt_out funnels on, opt_in off). If recording a CHANGED choice
+    // fails, fail safe for this request: send nothing to Meta.
+    let measurementAllowed = typeof body.measurement === 'boolean' ? body.measurement
+      : (s.measurement_allowed ?? config.trackingPixels.consentMode === 'opt_out');
+    if (typeof body.measurement === 'boolean' && body.measurement !== s.measurement_allowed) {
+      const { error } = await db.from('funnel_sessions').update({ measurement_allowed: body.measurement }).eq('id', s.id);
+      if (error) { measurementAllowed = false; console.error('[funnel-session] could not record measurement choice', error.code ?? 'unknown'); }
+    }
     if (s.contact_submitted_at) {
       if (body.calendarViewed && s.qualified && config.calendarUrl) {
         const { error } = await db.from('funnel_events').upsert({ session_id: s.id, event: 'calendar_viewed', step_id: '' }, { onConflict: 'session_id,event,step_id', ignoreDuplicates: true });
@@ -105,15 +118,20 @@ export async function PATCH(request: Request, context: Context) {
         flushNotificationsSoon();
         // Appointment booking confirmed (the same bar the rest of the app uses for this
         // signal) — fire Schedule, paired with the browser event via the same event_id.
-        if (config.trackingPixels.metaPixelId && s.contact) after(() => sendMetaEvent({
-          pixelId: config.trackingPixels.metaPixelId!, eventName: 'Schedule', eventId: `${s.id}:Schedule`,
-          eventSourceUrl: s.attribution.landing_page_url ?? `https://${request.headers.get('host')}/estimate/${funnel.slug}`,
-          user: {
-            email: s.contact!.email as string, phone: s.contact!.phone as string,
-            firstName: s.contact!.firstName as string, lastName: s.contact!.lastName as string,
-            clientIpAddress: clientIp(request), clientUserAgent: request.headers.get('user-agent') ?? undefined,
-          },
-        }));
+        if (config.trackingPixels.metaPixelId && s.contact && measurementAllowed) after(async () => {
+          // fbp/fbc saved with the lead at contact submit (only present if measurement was allowed).
+          const ids = await loadLeadMetaIds(db, s.lead_id);
+          await sendMetaEvent({
+            pixelId: config.trackingPixels.metaPixelId!, eventName: 'Schedule', eventId: `${s.id}:Schedule`,
+            eventSourceUrl: s.attribution.landing_page_url ?? `https://${request.headers.get('host')}/estimate/${funnel.slug}`,
+            user: {
+              email: s.contact!.email as string, phone: s.contact!.phone as string,
+              firstName: s.contact!.firstName as string, lastName: s.contact!.lastName as string,
+              clientIpAddress: clientIp(request), clientUserAgent: request.headers.get('user-agent') ?? undefined,
+              fbp: ids.fbp, fbc: ids.fbc,
+            },
+          });
+        });
         return reply({ session: publicSession(data) });
       }
       return reply({ session: withPrefill(publicSession(s), s) });
@@ -161,7 +179,7 @@ export async function PATCH(request: Request, context: Context) {
     // service-area gate. Never fires for an out-of-area submission (areaValid === false) or a
     // funnel with no pixel configured. Same event_id formula as the browser pixel
     // (lib/funnels/tracking.ts `${sessionId}:${event}`) so Meta deduplicates the pair.
-    if (body.contact && !funnel.is_demo && areaValid !== false && config.trackingPixels.metaPixelId) {
+    if (body.contact && !funnel.is_demo && areaValid !== false && config.trackingPixels.metaPixelId && measurementAllowed) {
       const zip = zipQuestionId ? answers[zipQuestionId] : undefined;
       after(() => sendMetaEvent({
         pixelId: config.trackingPixels.metaPixelId!, eventName: 'Lead', eventId: `${s.id}:Lead`,
@@ -173,6 +191,16 @@ export async function PATCH(request: Request, context: Context) {
           fbp: body.meta?.fbp, fbc: body.meta?.fbc ?? buildFbc(s.attribution.fbclid, new Date(s.created_at).getTime()),
         },
       }));
+    }
+    // Remember the browser identifiers with the lead (write-once) so later server events for
+    // this lead — e.g. Schedule — can reuse them. Sent by the client only when the visitor's
+    // advertising-measurement choice allowed it. Never blocks or fails the submission.
+    const metaIds = body.contact && !funnel.is_demo && measurementAllowed ? {
+      fbp: body.meta?.fbp,
+      fbc: body.meta?.fbc ?? buildFbc(s.attribution.fbclid, new Date(s.created_at).getTime()) ?? undefined,
+    } : null;
+    if (metaIds && (metaIds.fbp || metaIds.fbc) && typeof data?.lead_id === 'string') {
+      after(() => rememberLeadMetaIds(db, data.lead_id as string, metaIds));
     }
     const saved = publicSession(data);
     return reply({ session: body.contact && config.calendarProvider === 'calendly' && saved.current_step === 'calendar'

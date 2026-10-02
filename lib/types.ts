@@ -229,6 +229,9 @@ export interface Lead {
   service_area_valid: boolean | null;
   placement: string | null;
   fbclid: string | null;
+  // Meta browser identifiers saved write-once at website contact submit (migration 0035).
+  fbp: string | null;
+  fbc: string | null;
   integration_id: string | null;
   created_by: string | null;
   created_at: string;
