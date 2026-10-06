@@ -14,7 +14,7 @@ import { normalizeEmail, normalizePhone } from '@/lib/leads/normalize';
  * fail because ad tracking isn't configured.
  */
 
-const GRAPH_VERSION = 'v21.0';
+const GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v26.0';
 
 function sha256(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
@@ -45,7 +45,7 @@ export type MetaUserData = {
 
 export type MetaLeadEvent = {
   pixelId: string;
-  eventName: 'Lead' | 'Schedule' | 'ViewContent' | 'PageView';
+  eventName: 'Lead' | 'Schedule' | 'QualifiedLead' | 'ViewContent' | 'PageView';
   eventId: string;
   eventSourceUrl: string;
   eventTime?: number; // unix seconds; defaults to now
@@ -132,7 +132,11 @@ export async function sendMetaEvent(event: MetaLeadEvent): Promise<void> {
       signal: AbortSignal.timeout(10000),
       body: JSON.stringify({ access_token: token, ...buildEventsPayload(event, testCode) }),
     });
-    if (!res.ok) console.error(`[meta-capi] ${event.eventName} rejected: HTTP ${res.status}`);
+    // Meta's success body is { events_received, messages, fbtrace_id }; errors carry error.message/fbtrace_id.
+    // Logged without PII or the token so an accepted-vs-dropped event is visible in the server logs.
+    const body = await res.json().catch(() => ({})) as { events_received?: number; fbtrace_id?: string; error?: { message?: string; code?: number; fbtrace_id?: string } };
+    if (!res.ok || body.error) console.error(`[meta-capi] ${event.eventName} rejected: HTTP ${res.status} code=${body.error?.code ?? 'n/a'} ${body.error?.message ?? ''} trace=${body.error?.fbtrace_id ?? 'n/a'}`);
+    else console.info(`[meta-capi] ${event.eventName} pixel=${event.pixelId} events_received=${body.events_received ?? 'n/a'} trace=${body.fbtrace_id ?? 'n/a'}`);
   } catch (error) {
     console.error(`[meta-capi] ${event.eventName} failed`, error instanceof Error ? error.name : 'unknown');
   }

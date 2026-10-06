@@ -1,6 +1,9 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { after } from 'next/server';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { sendQualifiedLeadEvent } from '@/lib/meta/qualified';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth';
@@ -372,6 +375,11 @@ export async function updateQualification(
   }
 
   const changed = before?.qualification_status !== reviewStatus;
+  // Meta feedback: only on a real transition INTO qualified by a person (a re-save of an already
+  // qualified lead sends nothing). Best-effort; eligibility/consent checks live in the helper.
+  if (changed && reviewStatus === 'qualified') {
+    after(() => sendQualifiedLeadEvent(createAdminClient(), id));
+  }
   await recordActivity(
     id,
     'qualification',
