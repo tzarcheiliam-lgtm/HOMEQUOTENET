@@ -153,6 +153,8 @@ auth callback route handler).
   /api/integrations/gmail/oauth/callback` — Gmail OAuth for the Calls > Emails
   sender identity
 - `POST /api/stripe/webhook` — Stripe webhook (Checkout + subscription events)
+- `POST /api/ai-calling/webhook` — Fish Audio post-call webhooks, signature-verified (§18)
+- `POST /api/ai-calling/tick` — AI-calling scheduler gate (Bearer `AI_CALLING_CRON_SECRET`); does not dial yet (§18)
 - `POST /api/workflows/tick` — the workflow scheduler tick (Bearer
   `WORKFLOW_CRON_SECRET`), called every 5 min by the GitHub Actions workflow
   `.github/workflows/workflow-tick.yml`
@@ -856,3 +858,13 @@ Web Push (standard VAPID, `web-push` npm, no Firebase) + an in-app notification 
 - **Notification routing is fail-closed**: `lib/notifications/routing.ts` resolves audiences per admin rule (`notification_routing_rules`, UI at `/app/settings/notification-routing`), then `authorize()` re-verifies each user (contractor users only via assigned_contractor + matching company + real assignment). Never role-broadcast.
 - **Workflow action `send_push`** (0033): plain-text title/body (no merge fields), audience enum; contractor-owned workflows may only target `assigned_contractor`. Queued as `workflow_alert` outbox events.
 - **Phone UX**: action-center home (`components/dashboard/mobile-home.tsx`, data `lib/data/mobile-home.ts`, RLS-scoped) shown below lg above the untouched desktop dashboards; bottom nav = 3 role tabs + Alerts (unread badge, `/app/notifications`) + More; toaster (`components/ui/toaster.tsx`), `lib/haptics.ts`, `app/app/loading.tsx` skeleton; `public/offline.html` served by the SW only when a navigation has no network (no app data is ever cached).
+
+## 18. AI calling via Fish Audio (added 2026-10-06, migration 0037) — foundation only, NOT live
+
+Verified against the official docs (not just mocks): Fish Audio is itself the phone/voice-agent service (Fish Agents), not just TTS. It dials through a phone number bound to an agent; no separate telephony vendor is needed on our side.
+- **Place a call**: `POST https://api.fish.audio/v1/agent/phone-calls`, `Authorization: Bearer <FISH_API_KEY>`, `Idempotency-Key` header, body `agent_id`, `phone_number_id` (Fish's id for a team-owned Twilio-provider or imported-SIP number, not the E.164 string), `to_number` (E.164), optional `dynamic_variables`/`metadata`/`overrides`. Returns `{session_id, status:"queued"}`. https://docs.fish.audio/api-reference/endpoint/agent/create-phone-call
+- **Webhooks**: configured on the agent via `PATCH /v1/agent/agents/{agent_id}/config` (`webhooks.post_call`, up to 5 `{url, secret}`; the secret is one WE choose; list replaced as a whole; takes effect after the agent is **published**). Events: `call.ended`, `call.analyzed`, `phone_call.dial_finished`. Header `X-Fish-Webhook-Signature: t=<unix>,v1=<hex>`, `v1 = HMAC_SHA256(secret, "<t>." + raw body)`, 5-minute tolerance, at-least-once (3 attempts, 10s timeout). https://docs.fish.audio/agents/monitor/webhooks
+- **Code**: `lib/ai-calling/` — `signature.ts` (verify), `fish.ts` (client: `createPhoneCall`, `setPostCallWebhooks`), `events.ts` (dedupe key), `config.ts` (kill switch `AI_CALLING_GLOBAL_ENABLED`, must be exactly `true`), `place.ts` (`placeAiCall`, the only sanctioned dial path; refuses when disabled). Routes: `app/api/ai-calling/webhook` (401 on bad signature, 500 if `FISH_WEBHOOK_SECRET` unset, stores to `ai_call_events` idempotently, 500 on storage failure so Fish retries) and `app/api/ai-calling/tick`.
+- **DB** (0037, NOT yet applied to production): `ai_call_events` (service-role only).
+- **Env**: `AI_CALLING_GLOBAL_ENABLED` (keep `false`), `AI_CALLING_CRON_SECRET`, `FISH_API_KEY`, `FISH_AGENT_ID`, `FISH_PHONE_NUMBER_ID`, `FISH_WEBHOOK_SECRET`.
+- **Not built / not verified**: Fish's phone-number management endpoints (only the create-phone-call and webhooks pages were reviewed); mapping call results onto `contractor_prospects`/`prospect_call_attempts`; selecting prospects to dial; do-not-call, calling-hours and consent enforcement (required before anything calls `placeAiCall` for real prospects); inbound `conversation_init` webhook. Fish publishes no fixed signature test vector, so `tests/ai-calling.test.ts` builds MACs from the documented formula; the first real delivery is the true end-to-end check.
