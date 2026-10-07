@@ -50,6 +50,8 @@ export async function updateSession(request: NextRequest) {
   // Avoid an unrelated Supabase Auth round trip on every quiz step and asset load.
   const publicPath = request.nextUrl.pathname;
   if (publicPath.startsWith('/estimate/') || publicPath.startsWith('/api/funnels/') || publicPath.startsWith('/api/stripe/')) return supabaseResponse;
+  // Public e-signing: signers have no HQN session; the token (never a cookie) is the credential.
+  if (publicPath === '/sign' || publicPath.startsWith('/api/signing/')) return supabaseResponse;
   // The service worker and manifest are fetched by the browser itself (often in the
   // background): they need no session and must not trigger a token refresh.
   if (publicPath === '/sw.js' || publicPath === '/manifest.webmanifest' || publicPath === '/offline.html') return supabaseResponse;

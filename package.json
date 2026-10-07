@@ -10,18 +10,23 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@cantoo/pdf-lib": "^2.11.1",
+    "@napi-rs/canvas": "^1.0.10",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.45.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "fontkit": "^2.0.4",
     "lucide-react": "^0.511.0",
     "next": "15.6.0-canary.59",
+    "pdfjs-dist": "^6.4.299",
     "radix-ui": "^1.4.2",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "server-only": "^0.0.1",
     "stripe": "^22.6.2",
     "tailwind-merge": "^3.3.0",
+    "tesseract.js": "^7.0.0",
     "web-push": "^3.6.7",
     "zod": "^3.24.4"
   },

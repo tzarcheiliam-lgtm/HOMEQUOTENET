@@ -41,3 +41,13 @@ export function belongsToCompany(profile: Profile, contractorId: string): boolea
   return isHqnAdministrator(profile) ||
     (profile.role === 'contractor' && profile.contractor_id === contractorId);
 }
+
+/**
+ * Documents & Signing: HQN administrators and contractor users (owners AND staff) of the owning company.
+ * Setters/callers never see it. Tenant scoping (which company's documents) is enforced separately in
+ * lib/signing/access.ts and by RLS.
+ */
+export function canManageSigning(profile: Profile): boolean {
+  return isHqnAdministrator(profile) ||
+    (profile.role === 'contractor' && profile.is_active && !!profile.contractor_id);
+}

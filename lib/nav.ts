@@ -66,6 +66,14 @@ export const NAV_ITEMS: NavItem[] = [
     icon: 'CalendarDays',
     roles: ['admin', 'setter', 'contractor'],
   },
+  // Electronic document signing. HQN admins see every company's documents; contractor owners/staff only their own
+  // (enforced server-side in lib/signing/access.ts and by RLS, not by this list).
+  {
+    label: 'Documents & Signing',
+    href: '/app/documents',
+    icon: 'FileSignature',
+    roles: ['admin', 'contractor'],
+  },
   // Optional growth services for contractors. Listed after the lead workflow
   // so leads and appointments stay first.
   {

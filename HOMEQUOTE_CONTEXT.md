@@ -88,7 +88,7 @@ components/            UI grouped by domain (billing, calls, contractors,
                        leads, marketing, team, workflows) + components/ui
                        (shared primitives: PageHeader, KpiCard, EmptyState,
                        StatusBadge, ConfirmAction, Table, Card, etc.)
-supabase/migrations/    28 sequential SQL files, 0001 → 0028 (see §6)
+supabase/migrations/    sequential SQL files (latest 0039, see §6 and §19)
 content/                Marketing copy/data (per-niche site content)
 scripts/                Seeders, migration helpers, prospecting import, QA (§ below)
 tests/                  Vitest suites: pure logic + live-DB suites (see §13)
@@ -881,3 +881,13 @@ Fish Audio is itself the phone/voice-agent service (Fish Agents): it dials from 
 - **Tests**: `ai-calling*.test.ts` (logic, queue, webhook status, actions/permissions) plus `ai-calling-sql.test.ts` (migrations in PGlite).
 - **DEPLOY ORDER**: apply migration 0038 BEFORE deploying this code. The webhook now reads/writes the new tables; until 0038 exists, deliveries return 500 (the raw events stay in `ai_call_events` and can be re-applied).
 - **Activation / stop**: see the activation checklist in the 2026-10-07 handoff: apply 0038; set `AI_CALLING_CRON_SECRET` in Vercel + GitHub; configure Pool Masters (agent id, phone id, mode) in the UI; set `AI_CALLING_GLOBAL_ENABLED=true` and redeploy; click Enable calling. To stop: Emergency stop in the UI (instant), or set the env var to false and redeploy.
+
+## 19. Documents & Signing (electronic signature) — migration 0039, NOT yet applied/deployed
+
+Full write-up: `docs/document-signing.md`. Summary:
+- **Routes**: `/app/documents` (list), `/app/documents/new` (upload), `/app/documents/[versionId]` (draft editor or sent-request detail); public `/sign` (token in URL **fragment** `#t=` signing / `#d=` completed-document download); `POST /api/signing/session` and `/api/signing/download` (signer APIs, token in body, no-store). Nav item "Documents & Signing" for admin + contractor; panels on lead page (admin/contractor) and contractor page (admin). Setters/callers: no access (`canManageSigning` in `lib/permissions.ts`).
+- **Tables** (0039): `signing_documents` (owner contractor or NULL=HQN, optional `lead_id`), `signing_versions` (draft->sent/locked; status draft/awaiting_signature/partially_signed/completed/declined/voided/expired; original + final + certificate paths and SHA-256), `signing_recipients` (token hashes only), `signing_fields` (fractions of the displayed page), `signing_field_values` (insert-only, separate from sender `prefill_value`), `signing_events` (append-only, hash chained). Private bucket `signing-documents`. All writes via service role; state changes are SECURITY DEFINER SQL functions (`signing_send/submit/decline/void/new_version/save_draft/...`) — change behavior there, with tests in `tests/signing-sql.test.ts`.
+- **Code**: engine `lib/signing/` (`pdf-validate`, `detect` + `layout` + `extract` + `ocr`, `geometry`, `stamp`, `certificate`, `finalize`), service `service.ts` (sender) / `signer.ts` (public), actions `lib/actions/signing.ts`, UI `components/signing/*`. Emails go through the existing Gmail sender (`sendGmailMessage`, new optional `replyTo`). `/api/workflows/tick` also runs `signingMaintenance()` (expire + finalize retry). Middleware skips session refresh for `/sign` and `/api/signing/`.
+- **Rules to keep**: a sent version is immutable (new version = copy + void old); never store/log token plaintext; signer identity is "emailed link only" and signatures are NOT cryptographic digital signatures — keep the UI/certificate wording honest; detection is heuristic and always reviewed; OCR is local (tesseract.js + bundled model), no external AI/OCR provider.
+- **Deploy order**: apply 0039 before deploying this code. No new env vars. Legal review required before real contracts (see doc).
+- **Not built**: templates, scheduled auto-reminders, SMS/ID verification, PAdES, retention purge.
