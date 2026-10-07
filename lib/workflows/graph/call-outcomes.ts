@@ -123,6 +123,8 @@ export function resolveCallOutcome(
     case 'failed':
     case 'cancelled':
     case 'expired':
+      // A queued call cancelled because the number opted out (recorded by ANY call or contractor) is an opt-out here too.
+      if (job.status === 'cancelled' && (job.block_reason === 'opted_out' || job.block_reason === 'do_not_call')) return final('opted_out', job.block_reason);
       return final('failed', job.last_error ?? job.status);
     case 'completed':
       break;

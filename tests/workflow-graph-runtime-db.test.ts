@@ -114,7 +114,7 @@ beforeAll(async () => {
     create table public.funnel_bookings (id uuid primary key default gen_random_uuid(), session_id uuid, appointment_id uuid, provider text, external_id text, scheduled_at timestamptz);
     create table public.lead_email_deliveries (id uuid primary key default gen_random_uuid(), lead_id uuid, kind text, recipient_email text, subject text, status text default 'pending', provider_message_id text);
     create table public.lead_activities (id uuid primary key default gen_random_uuid(), lead_id uuid, actor_id uuid, type text default 'note', body text, metadata jsonb default '{}', created_at timestamptz default now());
-    create table public.contractor_prospects (id uuid primary key default gen_random_uuid());
+    create table public.contractor_prospects (id uuid primary key default gen_random_uuid(), phone_e164 text, disposition text, do_not_call_at timestamptz);
     create table public.email_templates (id uuid primary key default gen_random_uuid(), subject text, html_body text, text_body text, is_active boolean default true, contractor_visible boolean default true);
   `);
   await db.exec(`alter table public.lead_email_deliveries add constraint lead_email_deliveries_kind_check check (kind in ('new_lead_alert','qualified_lead'))`);
@@ -825,6 +825,73 @@ describe('AI call node', () => {
       const enroll = (await state(wf.id)).enroll_from;
       await q(`select wfg_set_paused($1,false)`, [wf.id]);
       expect((await state(wf.id)).enroll_from).toEqual(enroll);
+    });
+  });
+
+  // ---- Issue 4: one opt-out policy for every kind of call and for workflow messages ---------------------------
+  describe('opt-out scope', () => {
+    const optOut = (phone: string, source = 'call_analysis') => q(`insert into ai_call_opt_outs(phone_e164, source, reason) values ($1,$2,'test') on conflict do nothing`, [phone, source]);
+    const phoneOf = async (lead: string) => (await q<any>(`select phone_e164 from leads where id=$1`, [lead]))[0].phone_e164;
+
+    it('one number-level opt-out cancels QUEUED calls of every kind and every contractor, and a workflow run reads it as opted out', async () => {
+      const { lead, run } = await start(callFlow());                 // c1 workflow call (queued)
+      const phone = await phoneOf(lead);
+      await q(`insert into ai_call_jobs(trigger_source, dedupe_key, contractor_id, lead_id, contact_phone, status) values
+        ('manual','manual:oo1',$1,$2,$3,'queued'), ('auto_form','lead:oo2',$4,$2,$3,'queued')`, [c1, lead, phone, c2]);
+      const { createSupabaseJobStore } = await import('@/lib/ai-calling/store.server');
+      const store = createSupabaseJobStore(h.client);
+      await store.addOptOut(phone, 'call_analysis', 'asked');
+      await store.cancelQueuedForPhone(phone, '00000000-0000-0000-0000-000000000000');
+      const jobs = await jobsFor(lead);
+      expect(jobs).toHaveLength(3);
+      expect(jobs.every((j: any) => j.status === 'cancelled' && j.block_reason === 'opted_out')).toBe(true);
+      await tick(); // the waiting workflow call is woken by the cancellation
+      await timePasses(run.id);
+      await tick();
+      expect(await notes(lead)).toEqual(['OPT OUT']);
+      expect((await stepsOf(run.id)).find((x: any) => x.step_key === 'ai_call_1').output).toMatchObject({ outcome: 'opted_out' });
+    });
+
+    it('an opt-out recorded for a number blocks a DIFFERENT contractor\'s workflow too, for calls AND emails, without placing a job', async () => {
+      const g = chain('lead.assigned', [['send_email', { to: { kind: 'lead' }, subject: 'hello', body: 'hi', onError: 'fail_run' }], ['ai_call', { purpose: 'qualification', contextFields: [], maxAttempts: 1, resultTimeoutMinutes: 120, analysisGraceMinutes: 30 }]]);
+      const wf = await publishFlow(g, c1, 'cross contractor');
+      await new Promise((r) => setTimeout(r, 20));
+      const other = await newLead();
+      const phone = await phoneOf(other);
+      await optOut(phone);                                           // e.g. heard on a call made for contractor c2
+      const mine = await newLead({ phone }); await assign(mine, c1);
+      await processWorkflowEvent(await eventOf('lead.assigned', mine), { db: h.client });
+      const run = (await runsOf(wf.id))[0];
+      const steps = await stepsOf(run.id);
+      expect(steps.find((x: any) => x.step_key === 'send_email_1')).toMatchObject({ status: 'skipped', skip_reason: 'contact_suppressed' });
+      expect(steps.find((x: any) => x.step_key === 'ai_call_1').output).toMatchObject({ outcome: 'opted_out', executionStatus: 'not_placed' });
+      expect(await jobsFor(mine)).toHaveLength(0);
+      expect(await q(`select 1 from lead_email_deliveries where lead_id=$1`, [mine])).toHaveLength(0);
+    });
+
+    it('the do-not-call list the queue checks also suppresses workflow contact', async () => {
+      const wf = await publishFlow(callFlow(), c1, 'dnc');
+      await new Promise((r) => setTimeout(r, 20));
+      const lead = await newLead();
+      await q(`insert into contractor_prospects(phone_e164, do_not_call_at) values ($1, now())`, [await phoneOf(lead)]);
+      await assign(lead, c1);
+      await processWorkflowEvent(await eventOf('lead.assigned', lead), { db: h.client });
+      expect(await jobsFor(lead)).toHaveLength(0);
+      expect(await notes(lead)).toEqual(['OPT OUT']);
+      expect((await runsOf(wf.id))[0].status).toBe('completed');
+    });
+
+    it('a contractor cannot read the opt-out list or another contractor\'s calls (no cross-contractor exposure)', async () => {
+      const lead = await newLead(); await assign(lead, c2);
+      const phone = await phoneOf(lead);
+      await optOut(phone, 'admin');
+      await q(`insert into ai_call_jobs(trigger_source, dedupe_key, contractor_id, lead_id, contact_phone, status, block_reason) values ('manual','manual:oo9',$1,$2,$3,'blocked','opted_out')`, [c2, lead, phone]);
+      const seen = async (uid: string, sql: string) => { await db.exec('reset role'); await as(uid); await db.exec('set role authenticated'); try { return (await q<any>(sql)).length; } finally { await db.exec('reset role'); } };
+      expect(await seen(owner1, `select 1 from ai_call_opt_outs`)).toBe(0);
+      expect(await seen(owner1, `select 1 from ai_call_jobs where lead_id='${lead}'`)).toBe(0);
+      expect(await seen(admin, `select 1 from ai_call_opt_outs where phone_e164='${phone}'`)).toBe(1);
+      // The owner's run view only ever shows the neutral outcome/reason, never who else heard the opt-out.
+      const mine = await newLead({ phone }); await assign(mine, c1);
     });
   });
 });

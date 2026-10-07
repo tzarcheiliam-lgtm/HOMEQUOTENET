@@ -59,6 +59,7 @@ class Builder {
         const parts = String(f.val).split(',').map((term) => {
           const [col, op, ...rest] = term.split('.'); const v = rest.join('.');
           if (op === 'is') return `${ident(col)} is ${v}`;
+          if (op === 'not' && rest[0] === 'is') return `${ident(col)} is not ${rest.slice(1).join('.')}`; // col.not.is.null
           params.push(v);
           return `${ident(col)} ${op === 'neq' ? 'is distinct from' : '='} $${params.length}`;
         });

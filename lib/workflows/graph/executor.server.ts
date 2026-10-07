@@ -105,6 +105,9 @@ export class DbPorts implements EnginePorts {
       // A recorded opt-out for this number applies to EVERY run, not just the one that heard it.
       const { data } = await this.db.from('ai_call_opt_outs').select('phone_e164').eq('phone_e164', phone).maybeSingle();
       if (data) return { suppressed: true, reason: 'number_opted_out' };
+      // The same do-not-call list the call queue checks (so a workflow cannot email/call a number the queue would refuse).
+      const { data: dnc } = await this.db.from('contractor_prospects').select('id').eq('phone_e164', phone).or('disposition.eq.do_not_call,do_not_call_at.not.is.null').limit(1);
+      if ((dnc ?? []).length > 0) return { suppressed: true, reason: 'do_not_call' };
     }
     return { suppressed: false };
   }
