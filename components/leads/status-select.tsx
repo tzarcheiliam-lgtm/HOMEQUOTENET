@@ -20,6 +20,7 @@ export function StatusSelect({
       <input type="hidden" name="lead_id" value={leadId} />
       <Select
         name="status"
+        aria-label="Lead status"
         defaultValue={status}
         className="h-8 w-auto"
         onChange={() => ref.current?.requestSubmit()}

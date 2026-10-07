@@ -1,12 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Bell, ChevronLeft, LayoutDashboard, LogOut, MoreHorizontal, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { NavItem } from '@/lib/nav';
+import { groupNavItems, type NavItem } from '@/lib/nav';
+import { BrandLogo } from '@/components/brand-logo';
 import type { UserRole } from '@/lib/types';
 import { NAV_ICONS } from '@/components/nav-icons';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
@@ -21,7 +21,6 @@ import { SignOutForm } from '@/components/notifications/sign-out-form';
  * same per-role visibility as the sidebar.
  */
 
-const LOGO = '/images/brand/homequote-network-logo.webp';
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 
 /**
@@ -157,19 +156,9 @@ export function MobileChrome({
             <Link
               href="/app"
               aria-label="HomeQuote home"
-              className="flex size-11 shrink-0 items-center justify-center"
+              className="flex h-11 min-w-11 shrink-0 items-center justify-center"
             >
-              <Image
-                src={LOGO}
-                alt=""
-                aria-hidden="true"
-                width={32}
-                height={32}
-                sizes="32px"
-                priority
-                className="rounded-full"
-                style={{ width: 32, height: 32 }}
-              />
+              <BrandLogo variant="mark" priority className="w-[52px]" />
             </Link>
           )}
           <p className="min-w-0 flex-1 truncate text-[17px] font-semibold tracking-tight">
@@ -201,9 +190,9 @@ export function MobileChrome({
         className={cn(
           // overflow-y-auto only from lg: a scroll container here would stop sticky
           // children (tabs, filter bars, save bars) sticking to the viewport.
-          'min-w-0 flex-1 p-3 sm:p-6 lg:overflow-y-auto',
+          'min-w-0 flex-1 p-3 sm:px-6 sm:py-5 lg:overflow-y-auto lg:px-8 lg:py-6',
           focused ? 'pb-mbar' : 'pb-mnav',
-          'lg:pb-6'
+          'lg:pb-8'
         )}
       >
         {children}
@@ -225,7 +214,7 @@ export function MobileChrome({
                     aria-current={isActive ? 'page' : undefined}
                     className={cn(
                       'flex h-full flex-col items-center justify-center gap-0.5 text-[11px] font-medium active:bg-accent/60',
-                      isActive ? 'text-foreground' : 'text-muted-foreground'
+                      isActive ? 'text-primary' : 'text-muted-foreground'
                     )}
                   >
                     <Icon className={cn('size-6', isActive && 'stroke-[2.4]')} aria-hidden="true" />
@@ -299,32 +288,43 @@ export function MobileChrome({
           </div>
         </div>
         {secondary.length > 0 ? (
-          <nav aria-label="More" className="grid grid-cols-2 gap-2">
-            {secondary.map((item) => {
-              const Icon = NAV_ICONS[item.icon] ?? LayoutDashboard;
-              const isActive = active?.href === item.href && active?.label === item.label;
-              return (
-                <Link
-                  key={`${item.href}-${item.label}`}
-                  href={item.href}
-                  onClick={() => setMoreOpen(false)}
-                  aria-current={isActive ? 'page' : undefined}
-                  className={cn(
-                    'flex min-h-14 items-center gap-3 rounded-xl border px-3 py-2 text-sm font-medium active:bg-accent',
-                    isActive ? 'border-primary bg-primary/5' : 'bg-background'
-                  )}
-                >
-                  <Icon className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                  <span className="min-w-0 leading-tight">{item.label}</span>
-                </Link>
-              );
-            })}
+          <nav aria-label="More" className="space-y-4">
+            {groupNavItems(secondary).map(({ group, items }) => (
+              <div key={group ?? 'top'}>
+                {group ? (
+                  <p className="px-1 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    {group}
+                  </p>
+                ) : null}
+                <div className="grid grid-cols-2 gap-2">
+                  {items.map((item) => {
+                    const Icon = NAV_ICONS[item.icon] ?? LayoutDashboard;
+                    const isActive = active?.href === item.href && active?.label === item.label;
+                    return (
+                      <Link
+                        key={`${item.href}-${item.label}`}
+                        href={item.href}
+                        onClick={() => setMoreOpen(false)}
+                        aria-current={isActive ? 'page' : undefined}
+                        className={cn(
+                          'flex min-h-12 items-center gap-3 rounded-xl border px-3 py-2 text-sm active:bg-accent',
+                          isActive ? 'border-primary bg-accent font-semibold text-primary' : 'bg-background font-medium'
+                        )}
+                      >
+                        <Icon className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                        <span className="min-w-0 leading-tight">{item.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </nav>
         ) : null}
         <Link
           href="/app/settings/notifications"
           onClick={() => setMoreOpen(false)}
-          className="mt-2 flex min-h-14 items-center gap-3 rounded-xl border bg-background px-3 py-2 text-sm font-medium active:bg-accent"
+          className="mt-4 flex min-h-12 items-center gap-3 rounded-xl border bg-background px-3 py-2 text-sm font-medium active:bg-accent"
         >
           <Bell className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
           Notification settings

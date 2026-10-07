@@ -240,37 +240,43 @@ select:has(option[value=''][disabled]:checked) {
   ---break---
 */
 
+/*
+  HomeQuote brand tokens. Navy and gray are sampled from the logo artwork
+  (navy #011D44, gray #656A74); everything else is a tint of those two so the
+  portal reads as one system. Status colors stay semantic (emerald / amber /
+  red) and are always paired with an icon or label, never color alone.
+*/
 :root {
   --background: hsl(0 0% 100%);
-  --foreground: hsl(240 10% 3.9%);
+  --foreground: hsl(220 30% 10%);
   --card: hsl(0 0% 100%);
-  --card-foreground: hsl(240 10% 3.9%);
+  --card-foreground: hsl(220 30% 10%);
   --popover: hsl(0 0% 100%);
-  --popover-foreground: hsl(240 10% 3.9%);
-  --primary: hsl(240 5.9% 10%);
-  --primary-foreground: hsl(0 0% 98%);
-  --secondary: hsl(240 4.8% 95.9%);
-  --secondary-foreground: hsl(240 5.9% 10%);
-  --muted: hsl(240 4.8% 95.9%);
-  --muted-foreground: hsl(240 3.8% 46.1%);
-  --accent: hsl(240 4.8% 95.9%);
-  --accent-foreground: hsl(240 5.9% 10%);
-  --destructive: hsl(0 84.2% 60.2%);
-  --destructive-foreground: hsl(0 0% 98%);
-  --border: hsl(240 5.9% 90%);
-  --input: hsl(240 5.9% 90%);
-  --ring: hsl(240 10% 3.9%);
-  --chart-1: hsl(12 76% 61%);
+  --popover-foreground: hsl(220 30% 10%);
+  --primary: hsl(218 97% 13%);
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: hsl(220 18% 95%);
+  --secondary-foreground: hsl(218 60% 14%);
+  --muted: hsl(220 18% 95%);
+  --muted-foreground: hsl(220 9% 40%);
+  --accent: hsl(218 40% 94%);
+  --accent-foreground: hsl(218 97% 13%);
+  --destructive: hsl(0 72% 46%);
+  --destructive-foreground: hsl(0 0% 100%);
+  --border: hsl(220 14% 88%);
+  --input: hsl(220 12% 80%);
+  --ring: hsl(218 85% 38%);
+  --chart-1: hsl(218 97% 13%);
   --chart-2: hsl(173 58% 39%);
-  --chart-3: hsl(197 37% 24%);
-  --chart-4: hsl(43 74% 66%);
-  --chart-5: hsl(27 87% 67%);
-  --radius: 0.6rem;
+  --chart-3: hsl(220 9% 45%);
+  --chart-4: hsl(43 74% 56%);
+  --chart-5: hsl(27 87% 57%);
+  --radius: 0.5rem;
+  /* App canvas behind white surfaces. */
+  --app-bg: hsl(220 20% 97%);
+  --brand-navy: #011d44;
+  --brand-gray: #656a74;
 }
-
-/*
-  ---break---
-*/
 
 .dark {
   --background: hsl(240 10% 3.9%);
@@ -507,5 +513,26 @@ select:has(option[value=''][disabled]:checked) {
     display: inline-flex;
     align-items: center;
     min-height: 2.25rem;
+  }
+}
+
+/*
+  Shared focus treatment: links, summaries and custom controls get the same
+  visible ring that buttons and fields draw for themselves.
+*/
+a:focus-visible,
+summary:focus-visible,
+[role='button']:focus-visible,
+[role='tab']:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 0.375rem;
+}
+
+/* Checkbox / radio rows: the whole label is the tap target, at least 44px. */
+@media (max-width: 1023px) {
+  main label:has(> input[type='checkbox']),
+  main label:has(> input[type='radio']) {
+    min-height: 2.75rem;
   }
 }

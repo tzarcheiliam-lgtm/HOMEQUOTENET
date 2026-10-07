@@ -1,5 +1,6 @@
 'use client';
 
+import { keepValuesOnError } from '@/lib/forms/keep-values';
 import { useActionState, useState } from 'react';
 import Link from 'next/link';
 import { Send } from 'lucide-react';
@@ -63,7 +64,7 @@ export function SendLeadForm({
     });
 
   return (
-    <form action={formAction} className="space-y-4">
+    <form onSubmit={keepValuesOnError(formAction)} className="space-y-4">
       <input type="hidden" name="lead_id" value={leadId} />
       <fieldset disabled={!canSend || pending} className="space-y-4 disabled:opacity-60">
         {GROUPS.map((group) => {
@@ -140,7 +141,7 @@ export function SendLeadForm({
       </fieldset>
       {state && !state.ok && <p className="text-sm text-destructive">{state.error}</p>}
       {state?.ok && (
-        <p className="text-sm text-emerald-600">
+        <p className="text-sm text-emerald-700">
           {state.message}
           {state.warning ? <span className="block text-muted-foreground">{state.warning}</span> : null}
         </p>

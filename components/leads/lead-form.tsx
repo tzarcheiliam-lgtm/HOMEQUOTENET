@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useMemo, useState } from 'react';
+import { cloneElement, isValidElement, startTransition, useActionState, useId, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -36,10 +36,17 @@ function Field({
   children: React.ReactNode;
   className?: string;
 }) {
+  const id = useId();
+  // Tie the label to its control so tapping the label focuses the field and
+  // screen readers announce it.
+  const control = isValidElement<{ id?: string }>(children)
+    ? cloneElement(children, { id: children.props.id ?? id })
+    : children;
+  const controlId = isValidElement<{ id?: string }>(children) ? (children.props.id ?? id) : undefined;
   return (
     <div className={`space-y-1.5 ${className ?? ''}`}>
-      <Label>{label}</Label>
-      {children}
+      <Label htmlFor={controlId}>{label}</Label>
+      {control}
     </div>
   );
 }
@@ -71,7 +78,17 @@ export function LeadForm({
   );
 
   return (
-    <form action={formAction} className="space-y-6">
+    // Submitted through onSubmit rather than the form `action` prop: React 19
+    // resets uncontrolled fields after every action, which would wipe what the
+    // user typed whenever validation fails.
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        const data = new FormData(e.currentTarget);
+        startTransition(() => formAction(data));
+      }}
+      className="space-y-6"
+    >
       {lead && <input type="hidden" name="id" value={lead.id} />}
 
       {/* Contact */}
@@ -87,7 +104,7 @@ export function LeadForm({
             <Input name="last_name" defaultValue={lead?.last_name ?? ''} />
           </Field>
           <Field label="Phone">
-            <Input name="phone" defaultValue={lead?.phone ?? ''} />
+            <Input name="phone" type="tel" inputMode="tel" defaultValue={lead?.phone ?? ''} />
           </Field>
           <Field label="Email">
             <Input name="email" type="email" defaultValue={lead?.email ?? ''} />
@@ -111,7 +128,7 @@ export function LeadForm({
             <Input name="state" defaultValue={lead?.state ?? ''} />
           </Field>
           <Field label="ZIP">
-            <Input name="zip" defaultValue={lead?.zip ?? ''} />
+            <Input name="zip" inputMode="numeric" defaultValue={lead?.zip ?? ''} />
           </Field>
         </CardContent>
       </Card>
@@ -314,14 +331,14 @@ export function LeadForm({
       </Card>
 
       {/* Sticky action bar — keeps Save reachable in this long form */}
-      <div className="sticky bottom-0 z-10 -mx-4 flex items-center justify-end gap-3 border-t bg-background/90 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/75">
+      <div className="sticky bottom-mnav z-30 -mx-3 flex items-center justify-end gap-3 border-t bg-background/90 px-3 py-3 backdrop-blur lg:bottom-0 lg:z-10 lg:-mx-4 lg:px-4 supports-[backdrop-filter]:bg-background/75">
         {state?.error && (
           <p className="mr-auto text-sm text-destructive">{state.error}</p>
         )}
         {state?.success && (
-          <p className="mr-auto text-sm text-emerald-600">Saved.</p>
+          <p className="mr-auto text-sm text-emerald-700">Saved.</p>
         )}
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" disabled={pending} className="max-sm:flex-1">
           {pending ? 'Saving…' : submitLabel}
         </Button>
       </div>

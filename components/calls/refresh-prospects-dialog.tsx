@@ -269,7 +269,7 @@ export function RefreshProspectsDialog({ assignees }: { assignees: CallerOption[
                     {phase === 'running' && i === messages.length - 1 ? (
                       <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground" aria-hidden="true" />
                     ) : (
-                      <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600" aria-hidden="true" />
+                      <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-700" aria-hidden="true" />
                     )}
                     <span>{m}</span>
                   </li>

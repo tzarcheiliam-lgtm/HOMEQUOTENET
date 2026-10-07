@@ -1,5 +1,6 @@
 'use client';
 
+import { keepValuesOnError } from '@/lib/forms/keep-values';
 import Link from 'next/link';
 import { useActionState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -45,7 +46,7 @@ export function ForgotPasswordForm({ action }: { action: Action }) {
             {state.success}
           </p>
         ) : (
-          <form action={formAction} className="flex flex-col gap-4">
+          <form onSubmit={keepValuesOnError(formAction)} className="flex flex-col gap-4">
             <Field label="Email">
               <Input name="email" type="email" autoComplete="email" required />
             </Field>
@@ -97,7 +98,7 @@ export function SetPasswordForm({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form action={formAction} className="flex flex-col gap-4">
+        <form onSubmit={keepValuesOnError(formAction)} className="flex flex-col gap-4">
           <Field label="New password">
             <Input
               name="password"

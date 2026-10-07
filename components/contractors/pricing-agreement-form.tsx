@@ -1,5 +1,6 @@
 'use client';
 
+import { keepValuesOnError } from '@/lib/forms/keep-values';
 import { useActionState, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -55,7 +56,7 @@ export function PricingAgreementForm({
   };
 
   return (
-    <form action={formAction} className="space-y-4">
+    <form onSubmit={keepValuesOnError(formAction)} className="space-y-4">
       <input type="hidden" name="contractor_id" value={contractorId} />
       {agreement && <input type="hidden" name="id" value={agreement.id} />}
 

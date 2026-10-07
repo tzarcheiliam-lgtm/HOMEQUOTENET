@@ -1,5 +1,6 @@
 'use client';
 
+import { keepValuesOnError } from '@/lib/forms/keep-values';
 import { useActionState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -21,7 +22,7 @@ export function QualificationForm({ lead }: { lead: Lead }) {
   );
 
   return (
-    <form action={formAction} className="space-y-4">
+    <form onSubmit={keepValuesOnError(formAction)} className="space-y-4">
       <input type="hidden" name="lead_id" value={lead.id} />
       <fieldset className="space-y-1.5">
         <legend className="text-sm font-medium">Review decision</legend>
@@ -103,7 +104,7 @@ export function QualificationForm({ lead }: { lead: Lead }) {
         </p>
       </div>
       {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
-      {state?.success && <p className="text-sm text-emerald-600">Saved.</p>}
+      {state?.success && <p className="text-sm text-emerald-700">Saved.</p>}
       <Button type="submit" size="sm" variant="outline" disabled={pending}>
         {pending ? 'Saving…' : 'Save qualification'}
       </Button>

@@ -193,7 +193,7 @@ export function NotificationSettings({
 
           {pushConfigured && state === 'active' ? (
             <div className="flex flex-col gap-2 sm:flex-row">
-              <p className="flex-1 self-center text-sm font-medium text-emerald-600">● Notifications are on for this device</p>
+              <p className="flex-1 self-center text-sm font-medium text-emerald-700">● Notifications are on for this device</p>
               <Button variant="outline" onClick={onTest} disabled={busy}>
                 Send test notification
               </Button>
@@ -204,7 +204,7 @@ export function NotificationSettings({
           ) : null}
 
           {message ? (
-            <p role="status" className={cn('text-sm', message.tone === 'error' ? 'text-destructive' : 'text-emerald-600')}>
+            <p role="status" className={cn('text-sm', message.tone === 'error' ? 'text-destructive' : 'text-emerald-700')}>
               {message.text}
             </p>
           ) : null}

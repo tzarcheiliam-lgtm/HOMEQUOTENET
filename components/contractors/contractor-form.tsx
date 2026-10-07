@@ -1,5 +1,6 @@
 'use client';
 
+import { keepValuesOnError } from '@/lib/forms/keep-values';
 import { useActionState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,7 +27,7 @@ export function ContractorForm({
   );
 
   return (
-    <form action={formAction} className="space-y-4 max-w-2xl">
+    <form onSubmit={keepValuesOnError(formAction)} className="space-y-4 max-w-2xl">
       {contractor && <input type="hidden" name="id" value={contractor.id} />}
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -103,7 +104,7 @@ export function ContractorForm({
           <p className="text-sm text-destructive">{state.error}</p>
         )}
         {state?.success && (
-          <p className="text-sm text-emerald-600">Saved.</p>
+          <p className="text-sm text-emerald-700">Saved.</p>
         )}
       </div>
     </form>

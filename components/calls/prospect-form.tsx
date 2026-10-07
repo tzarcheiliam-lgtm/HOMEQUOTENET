@@ -1,5 +1,6 @@
 'use client';
 
+import { keepValuesOnError } from '@/lib/forms/keep-values';
 import { useActionState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,7 +19,7 @@ export function ProspectForm({ callers }: { callers: CallerOption[] }) {
   );
 
   return (
-    <form action={formAction} className="space-y-6">
+    <form onSubmit={keepValuesOnError(formAction)} className="space-y-6">
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Company</CardTitle>

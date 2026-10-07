@@ -1,5 +1,6 @@
 'use client';
 
+import { keepValuesOnError } from '@/lib/forms/keep-values';
 import { useActionState, useEffect, useRef, useState } from 'react';
 import { CircleCheck, LoaderCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -49,7 +50,7 @@ export function ServiceRequestForm({
   }
 
   return (
-    <form action={formAction} className="space-y-4">
+    <form onSubmit={keepValuesOnError(formAction)} className="space-y-4">
       <input type="hidden" name="service" value={service.slug} />
       <input type="hidden" name="source" value={source} />
 

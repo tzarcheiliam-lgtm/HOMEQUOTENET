@@ -68,7 +68,7 @@ export function SimulateLeadForm({
         </Button>
         {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
         {state?.success && (
-          <p className="text-sm text-emerald-600">{state.success}</p>
+          <p className="text-sm text-emerald-700">{state.success}</p>
         )}
       </div>
       <p className="text-xs text-muted-foreground">
