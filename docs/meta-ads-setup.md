@@ -1,6 +1,6 @@
 # Meta Ads analytics and outcome feedback
 
-Migration **0041**. Everything ships **dormant**: conversion delivery is OFF, no campaign is touched, no backfill runs.
+Migration **0042**. Everything ships **dormant**: conversion delivery is OFF, no campaign is touched, no backfill runs.
 
 ## What it does
 1. **Reporting (read-only)** — imports ad accounts, campaigns, ad sets, ads and daily ad-level insights (spend, impressions,
@@ -38,7 +38,7 @@ Same-day sales keep the true insert time; back-dated sales are `date` precision 
 - **Token expiry/revocation**: System User tokens don't expire but can be revoked; a revoked/expired token (Graph code 190) shows as a banner and as `auth` sync/delivery failures; replace the env var.
 
 ## Go-live steps (needs approval)
-1. Apply migration 0041, deploy, set env vars + GitHub secrets.
+1. Apply migration 0042, deploy, set env vars + GitHub secrets.
 2. Sync, map each ad account → contractor (Setup). Unmapped accounts are admin-only.
 3. Switch delivery to **Test**, record a qualification on a test lead, confirm it appears under Events Manager → Test events.
 4. Review the eligibility report and the event mapping table on Setup. Approve or change the event names.
