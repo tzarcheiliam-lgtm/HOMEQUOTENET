@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
+import { LeadPicker, type PickedLead } from '@/components/signing/lead-picker';
 import { createClient } from '@/lib/supabase/client';
 import { prepareUploadAction, registerUploadAction } from '@/lib/actions/signing';
 import { LIMITS, SIGNING_BUCKET } from '@/lib/signing/constants';
@@ -19,6 +20,7 @@ export function UploadForm({ contractors, fixedContractorId, defaultContractorId
   const [contractorId, setContractorId] = useState<string>(fixedContractorId ?? defaultContractorId);
   const [phase, setPhase] = useState<'idle' | 'uploading' | 'analyzing'>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [lead, setLead] = useState<PickedLead | null>(leadId ? { id: leadId, name: leadName ?? 'Lead' } : null);
 
   const pick = (f: File | null) => {
     setError(null); setFile(null);
@@ -39,7 +41,7 @@ export function UploadForm({ contractors, fixedContractorId, defaultContractorId
       const { error: upErr } = await createClient().storage.from(SIGNING_BUCKET).uploadToSignedUrl(prep.path, prep.token, file, { contentType: 'application/pdf' });
       if (upErr) throw new Error('The upload failed. Check your connection and try again.');
       setPhase('analyzing');
-      const reg = await registerUploadAction({ docId: prep.docId, versionId: prep.versionId, contractorId: prep.contractorId, title, leadId });
+      const reg = await registerUploadAction({ docId: prep.docId, versionId: prep.versionId, contractorId: prep.contractorId, title, leadId: lead?.id ?? null });
       if (!reg.ok) throw new Error(reg.error);
       router.push(`/app/documents/${reg.versionId}`);
     } catch (err) {
@@ -59,13 +61,13 @@ export function UploadForm({ contractors, fixedContractorId, defaultContractorId
         <div className="space-y-1.5"><Label htmlFor="title">Document title *</Label><Input id="title" value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} required /></div>
         {contractors && (
           <div className="space-y-1.5"><Label htmlFor="company">Company</Label>
-            <Select id="company" value={contractorId} onChange={(e) => setContractorId(e.target.value)}>
+            <Select id="company" value={contractorId} onChange={(e) => { setContractorId(e.target.value); setLead(null); }}>
               <option value="">HomeQuote Network (internal)</option>
               {contractors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </Select>
             <p className="text-xs text-muted-foreground">Decides whose users can see and manage this document.</p></div>
         )}
-        {leadId && <p className="text-sm text-muted-foreground">This document will be attached to lead <strong>{leadName ?? leadId}</strong>.</p>}
+        <LeadPicker contractorId={contractors ? contractorId || null : null} value={lead} onChange={setLead} />
       </CardContent></Card>
       <div className="flex gap-2 rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
         <ShieldCheck className="mt-0.5 size-4 shrink-0" />

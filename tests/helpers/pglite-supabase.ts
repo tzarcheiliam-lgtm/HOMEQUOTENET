@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * A tiny supabase-js look-alike backed by PGlite + an in-memory storage bucket, so the real service layer
  * (lib/signing/*) can run end to end in tests against the real migration SQL. Supports exactly the query
@@ -6,7 +7,9 @@
  */
 import type { PGlite } from '@electric-sql/pglite';
 
-type Filter = { col: string; op: 'eq' | 'in' | 'is'; val: unknown };
+type Filter = { col: string; op: 'eq' | 'in' | 'is' | 'ilike'; val: unknown };
+/** RPCs that return a table (called with `select * from fn(...)`). */
+const SET_RETURNING = new Set(['signing_claim_auto_reminders']);
 const ident = (s: string) => `"${s.replace(/"/g, '""')}"`;
 
 class Builder {
@@ -27,6 +30,7 @@ class Builder {
   eq(col: string, val: unknown) { this.filters.push({ col, op: 'eq', val }); return this; }
   in(col: string, val: unknown[]) { this.filters.push({ col, op: 'in', val }); return this; }
   is(col: string, val: unknown) { this.filters.push({ col, op: 'is', val }); return this; }
+  ilike(col: string, val: string) { this.filters.push({ col, op: 'ilike', val }); return this; }
   order(col: string, o?: { ascending?: boolean }) { this._order.push({ col, asc: o?.ascending !== false }); return this; }
   limit(n: number) { this._limit = n; return this; }
   single() { this._single = 'single'; return this; }
@@ -35,6 +39,7 @@ class Builder {
     if (!this.filters.length) return '';
     return ' where ' + this.filters.map((f) => {
       if (f.op === 'is') return `${ident(f.col)} is ${f.val === null ? 'null' : String(f.val)}`;
+      if (f.op === 'ilike') { params.push(f.val); return `${ident(f.col)} ilike $${params.length}`; }
       if (f.op === 'in') { const arr = f.val as unknown[]; if (!arr.length) return 'false'; return `${ident(f.col)} in (${arr.map((v) => { params.push(v); return `$${params.length}`; }).join(',')})`; }
       params.push(f.val); return `${ident(f.col)} = $${params.length}`;
     }).join(' and ');
@@ -86,6 +91,7 @@ export class FakeStorage {
       createSignedUrl: async (path: string) => (this.files.has(path) ? { data: { signedUrl: `https://storage.test/signed/${encodeURIComponent(path)}?t=1` }, error: null } : { data: null, error: { message: 'not found' } }),
       createSignedUploadUrl: async (path: string) => ({ data: { signedUrl: `https://storage.test/upload/${path}`, token: 'upload-token', path }, error: null }),
       remove: async (paths: string[]) => { for (const p of paths) this.files.delete(p); return { error: null }; },
+      copy: async (from: string, to: string) => { const f = this.files.get(from); if (!f) return { error: { message: 'not found' } }; this.files.set(to, new Uint8Array(f)); return { error: null }; },
     };
   }
 }
@@ -101,6 +107,10 @@ export function fakeSupabase(db: PGlite, storage = new FakeStorage()) {
           if (v !== null && typeof v === 'object') { params.push(JSON.stringify(v)); return `${k} := $${params.length}::jsonb`; }
           params.push(v); return `${k} := $${params.length}`;
         });
+        if (SET_RETURNING.has(fn)) {
+          const rows = await db.query<any>(`select * from ${fn}(${named.join(', ')})`, params);
+          return { data: rows.rows, error: null };
+        }
         const res = await db.query<any>(`select ${fn}(${named.join(', ')}) as r`, params);
         return { data: res.rows[0]?.r ?? null, error: null };
       } catch (e) { return { data: null, error: { message: (e as Error).message } }; }

@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { requireProfile } from '@/lib/auth';
 import { canManageSigning, isHqnAdministrator } from '@/lib/permissions';
@@ -22,7 +23,9 @@ export default async function NewDocumentPage({ searchParams }: { searchParams: 
   }
   return (
     <div className="mx-auto max-w-2xl space-y-6">
-      <PageHeader title="New document" description="Upload a PDF to prepare it for signing." backHref="/app/documents" backLabel="Documents" />
+      <PageHeader title="New document" description="Upload a PDF to prepare it for signing." backHref="/app/documents" backLabel="Documents">
+        <Link href="/app/documents/templates" className="text-sm font-medium text-primary hover:underline">Start from a template instead</Link>
+      </PageHeader>
       <UploadForm contractors={contractors} fixedContractorId={admin ? null : profile.contractor_id} defaultContractorId={admin && sp.contractor && /^[0-9a-f-]{36}$/i.test(sp.contractor) ? sp.contractor : ''} leadId={leadId} leadName={leadName} />
     </div>
   );

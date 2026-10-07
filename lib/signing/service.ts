@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @next/next/no-img-element */
 import 'server-only';
 import { randomUUID } from 'node:crypto';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -10,9 +9,11 @@ import { ownerKey, loadVersionForActor, type VersionRow } from '@/lib/signing/ac
 import { detectFields } from '@/lib/signing/detect';
 import { inviteEmail, voidedEmail } from '@/lib/signing/email';
 import { SigningError, messageFor } from '@/lib/signing/errors';
+import { newAccessCode } from '@/lib/signing/access-code';
+import { log, unwrap } from '@/lib/signing/rpc';
 import { finalizeVersion } from '@/lib/signing/finalize';
 import { inspectPdf, PdfRejected } from '@/lib/signing/pdf-validate';
-import { draftSchema, type DraftInput } from '@/lib/signing/schemas';
+import { draftSchema, reminderSchema, type DraftInput } from '@/lib/signing/schemas';
 import { downloadObject, downloadVerified, removeObject, signedUrl } from '@/lib/signing/storage';
 import { generateToken, hashToken } from '@/lib/signing/tokens';
 import type { Profile } from '@/lib/types';
@@ -23,18 +24,6 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function requireManager(actor: Profile) {
   if (!canManageSigning(actor)) throw new SigningError('forbidden', messageFor('forbidden'));
 }
-async function log(versionId: string, type: string, actor: Profile | null, meta: Record<string, unknown> = {}, recipientId: string | null = null) {
-  await createAdminClient().rpc('signing_log_event', { p_version: versionId, p_recipient: recipientId, p_type: type, p_actor: actor?.id ?? null, p_ip: null, p_ua: null, p_meta: meta });
-}
-function unwrap(res: { data: any; error: { message: string } | null }) {
-  if (res.error) {
-    const m = /signing:(\w+)/.exec(res.error.message);
-    throw new SigningError(m?.[1] ?? 'server', messageFor(m?.[1] ?? 'server'));
-  }
-  if (res.data && res.data.ok === false) throw new SigningError(res.data.error, messageFor(res.data.error), res.data);
-  return res.data;
-}
-
 // ---------------------------------------------------------------------------
 // Upload -> document + draft version + suggested fields
 // ---------------------------------------------------------------------------
@@ -63,6 +52,12 @@ export async function registerUpload(actor: Profile, input: { docId: string; ver
     const supabase = await createClient();
     const { data: lead } = await supabase.from('leads').select('id').eq('id', input.leadId).maybeSingle();
     if (!lead) throw new SigningError('forbidden', 'That lead is not available to you.');
+    // A company's document may only be attached to a lead assigned to that company: the editor shows the
+    // lead's name, so attaching someone else's lead would disclose it to this company.
+    if (contractorId) {
+      const { data: asg } = await admin.from('lead_assignments').select('id').eq('lead_id', input.leadId).eq('contractor_id', contractorId).maybeSingle();
+      if (!asg) throw new SigningError('lead_mismatch', messageFor('lead_mismatch'));
+    }
   }
   if (contractorId) {
     const { data: c } = await admin.from('contractors').select('id').eq('id', contractorId).maybeSingle();
@@ -109,7 +104,7 @@ export async function getEditorBundle(actor: Profile, versionId: string) {
   const { version, doc } = await loadVersionForActor(actor, versionId);
   const admin = createAdminClient();
   const [recs, fields, events, vals] = await Promise.all([
-    admin.from('signing_recipients').select('id,name,email,order_index,status,invited_at,last_sent_at,send_count,last_email_status,last_email_error,last_reminded_at,first_viewed_at,consent_at,signed_at,declined_at,decline_reason').eq('version_id', versionId).order('order_index'),
+    admin.from('signing_recipients').select('id,name,email,order_index,status,invited_at,last_sent_at,send_count,last_email_status,last_email_error,last_reminded_at,first_viewed_at,consent_at,signed_at,declined_at,decline_reason,auto_reminders_sent,access_code_issued_at,access_code_locked_at,access_verified_at').eq('version_id', versionId).order('order_index'),
     admin.from('signing_fields').select('*').eq('version_id', versionId).order('sort_order'),
     admin.from('signing_events').select('id,recipient_id,event_type,ip,metadata,created_at,actor_user_id').eq('version_id', versionId).order('id'),
     admin.from('signing_field_values').select('field_id,recipient_id,value,sig_method,typed_text').eq('version_id', versionId),
@@ -141,6 +136,9 @@ export async function saveDraft(actor: Profile, versionId: string, raw: unknown)
     p_recipients: d.recipients, p_fields: d.fields,
   });
   unwrap(res);
+  unwrap(await createAdminClient().rpc('signing_set_draft_options', {
+    p_version: versionId, p_auto_remind_days: d.auto_remind_days, p_auto_remind_max: d.auto_remind_max, p_require_code: d.require_access_code,
+  }));
 }
 
 export async function markReviewed(actor: Profile, versionId: string) {
@@ -171,17 +169,17 @@ export async function deleteDraft(actor: Profile, versionId: string) {
 // ---------------------------------------------------------------------------
 export interface InviteResult { recipientId: string; name: string; email: string; sent: boolean; error?: string }
 
-async function inviteRecipient(version: VersionRow, title: string, recipient: { id: string; name: string; email: string }, kind: 'invited' | 'reminded', actor: Profile | null): Promise<InviteResult> {
+async function inviteRecipient(version: VersionRow, title: string, recipient: { id: string; name: string; email: string }, kind: 'invited' | 'reminded' | 'auto_reminded', actor: Profile | null): Promise<InviteResult> {
   const admin = createAdminClient();
   const token = generateToken();
   const issued = await admin.rpc('signing_issue_token', { p_recipient: recipient.id, p_token_hash: hashToken(token) });
   if (issued.error || !issued.data?.ok) return { recipientId: recipient.id, name: recipient.name, email: recipient.email, sent: false, error: messageFor(issued.data?.error ?? 'server') };
   try {
-    const m = inviteEmail({ recipientName: recipient.name, senderName: version.sender_name, business: version.sender_business_name, documentTitle: title, message: version.message, expiresAt: new Date(issued.data.expires_at), token, reminder: kind === 'reminded', subject: version.subject, senderEmail: version.sender_email });
+    const m = inviteEmail({ recipientName: recipient.name, senderName: version.sender_name, business: version.sender_business_name, documentTitle: title, message: version.message, expiresAt: new Date(issued.data.expires_at), token, reminder: kind !== 'invited', subject: version.subject, senderEmail: version.sender_email, requiresCode: version.require_access_code });
     await sendGmailMessage({ toEmail: recipient.email, subject: m.subject, message: m.message, html: m.html, text: m.text, replyTo: version.sender_email ?? undefined });
     const { data: cur } = await admin.from('signing_recipients').select('send_count').eq('id', recipient.id).single();
-    await admin.from('signing_recipients').update({ last_sent_at: new Date().toISOString(), send_count: (cur?.send_count ?? 0) + 1, last_email_status: 'sent', last_email_error: null, ...(kind === 'reminded' ? { last_reminded_at: new Date().toISOString() } : {}) }).eq('id', recipient.id);
-    await log(version.id, kind === 'reminded' ? 'reminded' : 'invited', actor, {}, recipient.id);
+    await admin.from('signing_recipients').update({ last_sent_at: new Date().toISOString(), send_count: (cur?.send_count ?? 0) + 1, last_email_status: 'sent', last_email_error: null, ...(kind !== 'invited' ? { last_reminded_at: new Date().toISOString() } : {}) }).eq('id', recipient.id);
+    await log(version.id, kind === 'invited' ? 'invited' : kind === 'auto_reminded' ? 'auto_reminded' : 'reminded', actor, {}, recipient.id);
     return { recipientId: recipient.id, name: recipient.name, email: recipient.email, sent: true };
   } catch (e) {
     const error = errText(e);
@@ -191,7 +189,14 @@ async function inviteRecipient(version: VersionRow, title: string, recipient: { 
   }
 }
 
-export async function sendForSignature(actor: Profile, versionId: string): Promise<InviteResult[]> {
+export interface IssuedCode { recipientId: string; name: string; email: string; code: string }
+
+/**
+ * Sends the request. When the version requires access codes, one code per signer is created BEFORE any email goes
+ * out and returned here (plaintext, once) so the sender can share it outside email. A signer whose code could not
+ * be created is not emailed, because they would be unable to finish.
+ */
+export async function sendForSignature(actor: Profile, versionId: string): Promise<{ results: InviteResult[]; codes: IssuedCode[] }> {
   const { version, doc } = await loadVersionForActor(actor, versionId);
   const admin = createAdminClient();
   let business: string | null = 'HomeQuote Network';
@@ -199,10 +204,40 @@ export async function sendForSignature(actor: Profile, versionId: string): Promi
   unwrap(await admin.rpc('signing_send', { p_version: versionId, p_actor: actor.id, p_sender_name: actor.full_name ?? actor.email, p_sender_email: actor.email, p_business: business }));
   const { data: fresh } = await admin.from('signing_versions').select('*').eq('id', versionId).single();
   const { data: recs } = await admin.from('signing_recipients').select('id,name,email,order_index').eq('version_id', versionId).order('order_index');
+  const codes: IssuedCode[] = [];
+  const codeFailed = new Set<string>();
+  if ((fresh as VersionRow).require_access_code) {
+    for (const r of recs ?? []) {
+      const c = newAccessCode();
+      const res = await admin.rpc('signing_set_access_code', { p_recipient: r.id, p_salt: c.salt, p_hash: c.hash, p_actor: actor.id });
+      if (res.error || !res.data?.ok) codeFailed.add(r.id);
+      else codes.push({ recipientId: r.id, name: r.name, email: r.email, code: c.code });
+    }
+  }
   const targets = version.signing_order === 'sequential' ? (recs ?? []).slice(0, 1) : (recs ?? []);
   const results: InviteResult[] = [];
-  for (const r of targets) results.push(await inviteRecipient(fresh as VersionRow, doc.title, r, 'invited', actor));
-  return results;
+  for (const r of targets) {
+    if (codeFailed.has(r.id)) { results.push({ recipientId: r.id, name: r.name, email: r.email, sent: false, error: 'An access code could not be created. Use “New code”, then resend.' }); continue; }
+    results.push(await inviteRecipient(fresh as VersionRow, doc.title, r, 'invited', actor));
+  }
+  return { results, codes };
+}
+
+/** New access code for one open signer (old code stops working; any verified session is cleared). Shown once, not emailed. */
+export async function regenerateAccessCode(actor: Profile, versionId: string, recipientId: string): Promise<IssuedCode> {
+  const { version, r } = await activeRecipient(actor, versionId, recipientId);
+  if (!version.require_access_code) throw new SigningError('not_required', messageFor('not_required'));
+  const c = newAccessCode();
+  unwrap(await createAdminClient().rpc('signing_set_access_code', { p_recipient: recipientId, p_salt: c.salt, p_hash: c.hash, p_actor: actor.id }));
+  return { recipientId, name: r.name, email: r.email, code: c.code };
+}
+
+/** Change (or turn off) automatic reminders on a draft or open request. */
+export async function setReminders(actor: Profile, versionId: string, raw: unknown) {
+  await loadVersionForActor(actor, versionId);
+  const parsed = reminderSchema.safeParse(raw);
+  if (!parsed.success) throw new SigningError('bad_request', 'Choose valid reminder settings.');
+  unwrap(await createAdminClient().rpc('signing_set_reminders', { p_version: versionId, p_auto_remind_days: parsed.data.days, p_auto_remind_max: parsed.data.max, p_actor: actor.id }));
 }
 
 async function activeRecipient(actor: Profile, versionId: string, recipientId: string) {
@@ -275,15 +310,82 @@ export async function retryFinalize(actor: Profile, versionId: string) {
   return finalizeVersion(versionId);
 }
 
-/** Scheduler hook: expire overdue requests and retry stuck finalizations. Never throws. */
+/**
+ * Sends due automatic reminders. Each signer is claimed atomically in SQL (and their send clock moved) before the
+ * email goes out, so overlapping ticks cannot double-send, and a failure is retried only after the next interval.
+ */
+export async function runAutoReminders(limit = 20): Promise<{ claimed: number; sent: number }> {
+  const admin = createAdminClient();
+  const { data: claimed, error } = await admin.rpc('signing_claim_auto_reminders', { p_limit: limit });
+  if (error || !Array.isArray(claimed)) return { claimed: 0, sent: 0 };
+  let sent = 0;
+  for (const c of claimed as { recipient_id: string; version_id: string }[]) {
+    try {
+      const { data: version } = await admin.from('signing_versions').select('*').eq('id', c.version_id).single();
+      const { data: doc } = await admin.from('signing_documents').select('title').eq('id', (version as VersionRow).document_id).single();
+      const { data: r } = await admin.from('signing_recipients').select('id,name,email').eq('id', c.recipient_id).single();
+      if (version && doc && r && (await inviteRecipient(version as VersionRow, doc.title, r, 'auto_reminded', null)).sent) sent++;
+    } catch { /* recorded per signer by inviteRecipient; the next interval retries */ }
+  }
+  return { claimed: claimed.length, sent };
+}
+
+/** Scheduler hook: expire overdue requests, retry stuck finalizations, send automatic reminders. Never throws. */
 export async function signingMaintenance() {
   const admin = createAdminClient();
-  const out = { expired: 0, finalized: 0 };
+  const out = { expired: 0, finalized: 0, reminders: 0 };
   try {
     const r = await admin.rpc('signing_expire_due');
     out.expired = typeof r.data === 'number' ? r.data : 0;
     const { data: stuck } = await admin.from('signing_versions').select('id').eq('status', 'completed').is('final_sha256', null).limit(5);
     for (const s of stuck ?? []) if ((await finalizeVersion(s.id)).status === 'finalized') out.finalized++;
   } catch { /* maintenance is best-effort */ }
+  try { out.reminders = (await runAutoReminders()).sent; } catch { /* best-effort */ }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Lead picker (upload screen)
+// ---------------------------------------------------------------------------
+export interface LeadHit { id: string; name: string; detail: string }
+
+/**
+ * Finds leads the actor may attach a document to. RLS-scoped (a contractor user only ever sees their own
+ * leads). When a company owns the document only leads assigned to that company are offered.
+ */
+export async function searchLeads(actor: Profile, query: string, contractorId: string | null): Promise<LeadHit[]> {
+  requireManager(actor);
+  const company = isHqnAdministrator(actor) ? contractorId : actor.contractor_id;
+  if (company && !UUID.test(company)) throw new SigningError('bad_request', 'Invalid company.');
+  const terms = query.trim().toLowerCase().replace(/[^\p{L}\p{N} '.-]/gu, ' ').split(/\s+/).filter(Boolean).slice(0, 4);
+  const supabase = await createClient();
+  type L = { id: string; first_name: string | null; last_name: string | null; zip: string | null; phone_e164: string | null };
+  let leads: L[] = [];
+  if (company) {
+    const { data } = await supabase.from('lead_assignments').select('lead:leads(id,first_name,last_name,zip,phone_e164)').eq('contractor_id', company).order('created_at', { ascending: false }).limit(300);
+    leads = ((data ?? []) as unknown as { lead: L | null }[]).map((r) => r.lead).filter(Boolean) as L[];
+  } else {
+    const cols = 'id,first_name,last_name,zip,phone_e164';
+    const first = terms[0];
+    if (first) {
+      const [a, b] = await Promise.all([
+        supabase.from('leads').select(cols).ilike('first_name', `%${first}%`).limit(40),
+        supabase.from('leads').select(cols).ilike('last_name', `%${first}%`).limit(40),
+      ]);
+      leads = [...((a.data ?? []) as L[]), ...((b.data ?? []) as L[])];
+    } else {
+      leads = ((await supabase.from('leads').select(cols).order('created_at', { ascending: false }).limit(15)).data ?? []) as L[];
+    }
+  }
+  const seen = new Set<string>();
+  const hits: LeadHit[] = [];
+  for (const l of leads) {
+    if (seen.has(l.id)) continue;
+    seen.add(l.id);
+    const name = [l.first_name, l.last_name].filter(Boolean).join(' ') || 'Unnamed lead';
+    if (!terms.every((t) => name.toLowerCase().includes(t))) continue;
+    hits.push({ id: l.id, name, detail: [l.zip, l.phone_e164 ? `••${l.phone_e164.slice(-4)}` : null].filter(Boolean).join(' · ') });
+    if (hits.length >= 15) break;
+  }
+  return hits;
 }

@@ -2,7 +2,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, ArrowRight, Check, CheckCircle2, Clock, Download, FileText, Loader2, Lock, PenLine, ShieldCheck, XCircle } from 'lucide-react';
+import { AlertCircle, ArrowRight, Check, CheckCircle2, Clock, Download, FileText, Loader2, Lock, PenLine, ShieldCheck, XCircle, KeyRound } from 'lucide-react';
 import { PdfPageView, usePdf } from '@/components/signing/pdf-view';
 import { SCRIPT_FONT, SignaturePad, type SignatureValue } from '@/components/signing/signature-pad';
 import { Button } from '@/components/ui/button';
@@ -17,13 +17,19 @@ interface Session {
   signers: { name: string; order: number; status: string; isMe: boolean }[]; fields: SField[];
   consent: { version: string; text: string[]; identity: string; method: string }; pdfUrl: string;
 }
+interface CodeRequired { state: 'code_required'; documentTitle?: string | null; sender?: string | null; locked: boolean; hasCode: boolean; remaining: number }
 interface Dead { state: 'invalid' | 'signed' | 'declined' | 'voided' | 'expired' | 'not_your_turn'; documentTitle?: string | null; sender?: string | null; version_status?: string }
 type Entry = { kind: 'sig'; v: SignatureValue } | { kind: 'text'; v: string } | { kind: 'check'; v: boolean };
 
+/** Secret returned by a correct access-code check; sent with every later signing action (never stored in a URL). */
+let accessSession: string | null = null;
+const sessionKey = (token: string) => `hqsign:${token.slice(0, 12)}`;
+
 async function api<T = any>(path: string, body: object): Promise<T> {
-  const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store' });
+  const payload = path === '/api/signing/session' && accessSession ? { ...body, session: accessSession } : body;
+  const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), cache: 'no-store' });
   const json = await res.json().catch(() => ({ ok: false, message: 'Unexpected response.' }));
-  if (!res.ok || json.ok === false) throw Object.assign(new Error(json.message || 'Something went wrong.'), { code: json.error, fields: json.fields, field_id: json.field_id });
+  if (!res.ok || json.ok === false) throw Object.assign(new Error(json.message || 'Something went wrong.'), { code: json.error, fields: json.fields, field_id: json.field_id, remaining: json.remaining });
   return json as T;
 }
 
@@ -85,16 +91,56 @@ function DownloadPanel({ token, ready }: { token: string; ready: boolean }) {
   );
 }
 
+function CodeGate({ info, token, onVerified }: { info: CodeRequired; token: string; onVerified: (session: string | null) => Promise<void> }) {
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [remaining, setRemaining] = useState(info.remaining);
+  const [locked, setLocked] = useState(info.locked);
+  const who = info.sender ?? 'the sender';
+  if (!info.hasCode) return <Message icon={KeyRound} title="Access code not set up"><p>This request needs an access code, but none has been set up for you yet. Ask {who} to send it again.</p></Message>;
+  if (locked) return <Message icon={XCircle} title="Too many incorrect codes" tone="bad"><p>For security this link is locked. Ask {who} for a new access code, then open the link from your email again.</p></Message>;
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true); setErr(null);
+    try {
+      const r = await api<{ session: string | null }>('/api/signing/session', { action: 'verify', token, code });
+      await onVerified(r.session);
+    } catch (ex) {
+      const x = ex as Error & { code?: string; remaining?: number };
+      if (x.code === 'code_locked') setLocked(true);
+      else { setErr(x.message); if (typeof x.remaining === 'number') setRemaining(x.remaining); setBusy(false); }
+    }
+  };
+  return (
+    <Shell>
+      <main className="mx-auto w-full max-w-xl flex-1 px-4 py-10">
+        <form onSubmit={submit} className="rounded-2xl border bg-white p-6 shadow-sm sm:p-10">
+          <span className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-zinc-100 text-zinc-600"><KeyRound className="size-6" /></span>
+          <h1 className="text-center text-xl font-semibold">Enter your access code</h1>
+          <p className="mt-2 text-center text-sm text-zinc-600">{info.documentTitle ? <><strong>{info.documentTitle}</strong>{info.sender ? ` from ${info.sender}` : ''} needs a 6-digit access code. </> : null}{who} should have given it to you by phone or text. It is not in the email.</p>
+          <label htmlFor="access-code" className="sr-only">Access code</label>
+          <input id="access-code" inputMode="numeric" autoComplete="one-time-code" autoFocus maxLength={7} value={code} onChange={(e) => setCode(e.target.value)}
+            className="mt-6 w-full rounded-lg border px-4 py-3 text-center text-2xl font-semibold tracking-[0.4em] outline-none focus:ring-2 focus:ring-slate-400" placeholder="••••••" />
+          {err && <p className="mt-3 text-center text-sm text-red-600" role="alert">{err}{remaining < 5 && remaining > 0 ? ` ${remaining} ${remaining === 1 ? 'try' : 'tries'} left.` : ''}</p>}
+          <Button type="submit" className="mt-5 w-full" disabled={busy || code.replace(/\D/g, '').length !== 6}>{busy ? <Loader2 className="size-4 animate-spin" /> : null} Continue</Button>
+        </form>
+      </main>
+    </Shell>
+  );
+}
+
 export function SignerApp() {
   const [token, setToken] = useState<string | null>(null);
   const [mode, setMode] = useState<'sign' | 'download' | null>(null);
-  const [data, setData] = useState<Session | Dead | null>(null);
+  const [data, setData] = useState<Session | Dead | CodeRequired | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [dl, setDl] = useState<{ state: string; documentTitle?: string; sender?: string | null; name?: string; ready?: boolean } | null>(null);
 
   useEffect(() => {
     const m = /^#(t|d)=([A-Za-z0-9_-]{43})$/.exec(window.location.hash);
     if (!m) { setData({ state: 'invalid' }); return; }
+    if (m[1] === 't') { try { accessSession = window.sessionStorage.getItem(sessionKey(m[2])); } catch { accessSession = null; } }
     setToken(m[2]); setMode(m[1] === 't' ? 'sign' : 'download');
   }, []);
   useEffect(() => {
@@ -116,6 +162,14 @@ export function SignerApp() {
     return <Message icon={CheckCircle2} title="Your signed document is ready" tone="good"><p><strong>{dl.documentTitle}</strong>{dl.sender ? ` · ${dl.sender}` : ''}</p><DownloadPanel token={token!} ready={!!dl.ready} /></Message>;
   }
   if (!data) return <Message icon={Loader2} title="Opening your document…" />;
+  if (data.state === 'code_required') {
+    return <CodeGate info={data as CodeRequired} token={token!} onVerified={async (session) => {
+      accessSession = session;
+      try { if (session) window.sessionStorage.setItem(sessionKey(token!), session); } catch { /* the page still works for this visit */ }
+      const r = await api('/api/signing/session', { action: 'open', token });
+      setData(r);
+    }} />;
+  }
   if (data.state !== 'ok') {
     const d = data as Dead;
     const who = d.sender ? ` from ${d.sender}` : '';

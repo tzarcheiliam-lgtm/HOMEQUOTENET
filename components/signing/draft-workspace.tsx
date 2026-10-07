@@ -2,21 +2,25 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, ArrowDown, ArrowUp, CheckCircle2, ChevronLeft, ChevronRight, Loader2, Send, ShieldAlert, Trash2, UserPlus } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowUp, BellRing, CheckCircle2, ChevronLeft, ChevronRight, KeyRound, Loader2, Send, ShieldAlert, Trash2, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Select } from '@/components/ui/select';
+import { AccessCodesPanel, type ShownCode } from '@/components/signing/access-codes-panel';
+import { SaveTemplate } from '@/components/signing/save-template';
 import { FieldBox, FIELD_ICONS } from '@/components/signing/field-box';
 import { PdfPageView, usePdf } from '@/components/signing/pdf-view';
-import { DATE_FORMATS, FIELD_DEFAULT_PT, FIELD_TYPES, FIELD_TYPE_LABELS, LEGAL_REVIEW_NOTE, type FieldType } from '@/lib/signing/constants';
+import { DATE_FORMATS, FIELD_DEFAULT_PT, FIELD_TYPES, FIELD_TYPE_LABELS, LEGAL_REVIEW_NOTE, REMINDER_DAY_OPTIONS, REMINDER_MAX_OPTIONS, type FieldType } from '@/lib/signing/constants';
 import { SIGNER_COLORS, autoAssign, colorFor, sendProblems, type UiField, type UiPage, type UiRecipient } from '@/lib/signing/view';
 import { deleteDraftAction, markReviewedAction, saveDraftAction, sendAction } from '@/lib/actions/signing';
 
 export interface DraftInit {
   versionId: string; title: string; pages: UiPage[]; pdfUrl: string;
   subject: string; message: string; order: 'sequential' | 'parallel'; expiryDays: number;
+  autoRemindDays: number | null; autoRemindMax: number; requireAccessCode: boolean;
   recipients: { name: string; email: string }[]; fields: UiField[];
   detection: { methods?: string[]; notes?: string[]; ocrPages?: number[]; pagesWithoutText?: number[]; ocrSkippedPages?: number[] } | null;
 }
@@ -35,6 +39,9 @@ export function DraftWorkspace({ init }: { init: DraftInit }) {
   const [message, setMessage] = useState(init.message);
   const [order, setOrder] = useState(init.order);
   const [expiryDays, setExpiryDays] = useState(init.expiryDays);
+  const [remindDays, setRemindDays] = useState<number | null>(init.autoRemindDays);
+  const [remindMax, setRemindMax] = useState(init.autoRemindMax);
+  const [requireCode, setRequireCode] = useState(init.requireAccessCode);
   const [selected, setSelected] = useState<string | null>(null);
   const [armed, setArmed] = useState<FieldType | null>(null);
   const [activeSigner, setActiveSigner] = useState(1);
@@ -56,6 +63,7 @@ export function DraftWorkspace({ init }: { init: DraftInit }) {
     });
     return {
       subject, message, signing_order: order, expiry_days: expiryDays, recipients: recs,
+      auto_remind_days: remindDays, auto_remind_max: remindMax, require_access_code: requireCode,
       fields: fields.map((f) => ({
         recipient_index: f.recipient_index ? validIdx.get(f.recipient_index) ?? null : null, type: f.type, page: f.page,
         x: f.x, y: f.y, w: f.w, h: f.h, required: f.required, label: f.label, group_key: f.group_key, prefill_value: f.prefill_value || null,
@@ -63,7 +71,7 @@ export function DraftWorkspace({ init }: { init: DraftInit }) {
         reviewed: f.reviewed, role_hint: f.role_hint, detection_note: f.detection_note, source_ref: f.source_ref,
       })),
     };
-  }, [fields, recipients, subject, message, order, expiryDays]);
+  }, [fields, recipients, subject, message, order, expiryDays, remindDays, remindMax, requireCode]);
   const payloadRef = useRef(payload);
   payloadRef.current = payload;
 
@@ -198,6 +206,7 @@ export function DraftWorkspace({ init }: { init: DraftInit }) {
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [sentResults, setSentResults] = useState<{ name: string; email: string; sent: boolean; error?: string }[] | null>(null);
+  const [sentCodes, setSentCodes] = useState<ShownCode[]>([]);
   useEffect(() => { if (step === 'review') setVisited((v) => new Set(v).add(page)); }, [page, step]);
   const allVisited = visited.size >= init.pages.length;
 
@@ -209,6 +218,7 @@ export function DraftWorkspace({ init }: { init: DraftInit }) {
       if (!rv.ok) throw new Error(rv.error);
       const res = await sendAction(init.versionId);
       if (!res.ok) throw new Error(res.error);
+      setSentCodes(res.codes);
       setSentResults(res.results);
       router.refresh();
     } catch (e) { setSendError((e as Error).message); }
@@ -228,7 +238,8 @@ export function DraftWorkspace({ init }: { init: DraftInit }) {
             <p className="mt-1">Open the document and use “Resend” once the problem is fixed.</p>
           </div>
         )}
-        <Button onClick={() => router.push(`/app/documents/${init.versionId}`)}>View request</Button>
+        <AccessCodesPanel codes={sentCodes} />
+        <Button onClick={() => router.push(`/app/documents/${init.versionId}`)}>{sentCodes.length ? 'I have saved the codes: view request' : 'View request'}</Button>
       </CardContent></Card>
     );
   }
@@ -404,6 +415,21 @@ export function DraftWorkspace({ init }: { init: DraftInit }) {
                   <div className="space-y-1.5"><Label htmlFor="msg">Message</Label><Textarea id="msg" rows={4} maxLength={4000} value={message} onChange={(e) => { setMessage(e.target.value); touch(); }} placeholder="Add a short note for your signers (optional)" /></div>
                   <div className="space-y-1.5"><Label htmlFor="exp">Link expires after (days)</Label><Input id="exp" type="number" min={1} max={90} value={expiryDays} onChange={(e) => { setExpiryDays(Math.max(1, Math.min(90, Number(e.target.value) || 14))); touch(); }} /></div>
                 </CardContent></Card>
+              <Card><CardHeader className="pb-2"><CardTitle className="text-base">Security &amp; reminders</CardTitle></CardHeader>
+                <CardContent className="space-y-4">
+                  <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-0.5 size-4" checked={requireCode} onChange={(e) => { setRequireCode(e.target.checked); touch(); }} />
+                    <span><span className="flex items-center gap-1 font-medium"><KeyRound className="size-3.5" /> Require an access code</span>
+                      <span className="block text-xs text-muted-foreground">Each signer must also enter a 6-digit code. You get the codes once after sending and share them by phone or text; they are never in the email. Five wrong tries lock that signer. This is an extra check, not proof of legal identity.</span></span></label>
+                  <div className="space-y-1.5 border-t pt-3"><Label htmlFor="remind" className="flex items-center gap-1"><BellRing className="size-3.5" /> Automatic reminders</Label>
+                    <Select id="remind" value={remindDays ?? ''} onChange={(e) => { setRemindDays(e.target.value ? Number(e.target.value) : null); touch(); }}>
+                      <option value="">Off</option>{REMINDER_DAY_OPTIONS.map((d) => <option key={d} value={d}>Every {d} day{d === 1 ? '' : 's'} until signed</option>)}
+                    </Select>
+                    {remindDays !== null && (
+                      <div className="flex items-center gap-2 text-sm"><span className="text-muted-foreground">at most</span>
+                        <Select aria-label="Maximum reminders" className="w-24" value={remindMax} onChange={(e) => { setRemindMax(Number(e.target.value)); touch(); }}>{REMINDER_MAX_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}</Select>
+                        <span className="text-muted-foreground">reminders per signer</span></div>)}
+                    <p className="text-xs text-muted-foreground">Sent only to signers who were invited and have not signed (in a sequence, only the signer whose turn it is). A reminder includes a fresh link, so signers with the page open are skipped for an hour.</p></div>
+                </CardContent></Card>
             </>
           )}
 
@@ -421,6 +447,7 @@ export function DraftWorkspace({ init }: { init: DraftInit }) {
                   <p><strong>How signers are identified:</strong> by a unique, expiring link sent to the email address you entered. No ID check is done, so an email link does not prove someone’s legal identity. Signatures are drawn or typed electronic signatures, not certificate-based digital signatures.</p>
                   <p className="mt-1">{LEGAL_REVIEW_NOTE}</p>
                 </div>
+                {requireCode && <p className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900"><KeyRound className="mt-0.5 size-3.5 shrink-0" /> Access codes are on. After you send, you will see each signer&rsquo;s code once; make sure you can share it with them.</p>}
                 <label className="flex items-start gap-2"><input type="checkbox" className="mt-0.5 size-4" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} disabled={!allVisited} />
                   <span className={allVisited ? '' : 'text-muted-foreground'}>I have reviewed the field placement on every page{!allVisited ? ` (view all ${init.pages.length} pages first)` : ''}.</span></label>
                 {sendError && <p className="text-destructive">{sendError}</p>}
@@ -430,6 +457,7 @@ export function DraftWorkspace({ init }: { init: DraftInit }) {
           )}
 
           <div className="flex items-center justify-between gap-2">
+            <SaveTemplate versionId={init.versionId} signerCount={recipients.filter((r) => r.name.trim() && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(r.email.trim())).length} defaultName={init.title} beforeSave={flush} />
             <Button type="button" variant="ghost" size="sm" className="text-destructive" onClick={async () => { if (confirm('Delete this draft and its uploaded file?')) { const r = await deleteDraftAction(init.versionId); if (r.ok) router.push('/app/documents'); } }}><Trash2 className="size-4" /> Delete draft</Button>
             {step !== 'review' && <Button type="button" onClick={async () => { await flush(); setStep(step === 'fields' ? 'signers' : 'review'); window.scrollTo({ top: 0 }); }}>{step === 'fields' ? 'Next: signers' : 'Next: review'} <ChevronRight className="size-4" /></Button>}
           </div>

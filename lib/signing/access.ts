@@ -13,6 +13,7 @@ export interface VersionRow {
   sent_at: string | null; completed_at: string | null; declined_at: string | null; voided_at: string | null; void_reason: string | null;
   retention_until: string | null; finalized_at: string | null; final_path: string | null; final_sha256: string | null;
   certificate_path: string | null; certificate_sha256: string | null; finalize_error: string | null; created_at: string;
+  auto_remind_days: number | null; auto_remind_max: number; require_access_code: boolean;
 }
 export interface DocumentRow {
   id: string; contractor_id: string | null; lead_id: string | null; title: string; created_by: string | null;

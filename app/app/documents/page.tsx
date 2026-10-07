@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { FileSignature, Plus } from 'lucide-react';
+import { BookmarkPlus, FileSignature, Plus } from 'lucide-react';
 import { requireProfile } from '@/lib/auth';
 import { canManageSigning } from '@/lib/permissions';
 import { redirect } from 'next/navigation';
@@ -24,6 +24,7 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
   return (
     <div className="space-y-6">
       <PageHeader title="Documents & Signing" description="Upload a PDF, review suggested signature fields, and send it for electronic signature.">
+        <Link href="/app/documents/templates" className={cn(buttonVariants({ size: 'lg', variant: 'outline' }), 'max-lg:w-full')}><BookmarkPlus className="size-4" /> Templates</Link>
         <Link href="/app/documents/new" className={cn(buttonVariants({ size: 'lg' }), 'max-lg:w-full')}><Plus className="size-4" /> New document</Link>
       </PageHeader>
       <form method="get" className="flex flex-wrap gap-2">

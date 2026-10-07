@@ -32,6 +32,9 @@ export const draftSchema = z.object({
   message: z.string().trim().max(4000).default(''),
   signing_order: z.enum(['sequential', 'parallel']),
   expiry_days: z.number().int().min(1).max(90),
+  auto_remind_days: z.number().int().min(1).max(30).nullable().default(null),
+  auto_remind_max: z.number().int().min(1).max(10).default(3),
+  require_access_code: z.boolean().default(false),
   recipients: z.array(recipientSchema).max(LIMITS.maxRecipients),
   fields: z.array(fieldSchema).max(LIMITS.maxFields),
 });
@@ -59,3 +62,23 @@ export function inspectPngBase64(b64: string): { width: number; height: number; 
   if (!width || !height || width > 2400 || height > 1200) return null;
   return { width, height, bytes: buf.length };
 }
+
+export const reminderSchema = z.object({
+  days: z.number().int().min(1).max(30).nullable(),
+  max: z.number().int().min(1).max(10),
+});
+
+export const templateInputSchema = z.object({
+  name: z.string().trim().min(1, 'Give the template a name').max(120),
+  description: z.string().trim().max(500).default(''),
+  roleLabels: z.array(z.string().trim().min(1, 'Name every signer role').max(60)).min(1).max(LIMITS.maxRecipients),
+  keepPrefill: z.boolean().default(false),
+});
+export type TemplateInput = z.infer<typeof templateInputSchema>;
+
+export const fromTemplateSchema = z.object({
+  title: z.string().trim().min(1, 'Give the document a title').max(200),
+  leadId: z.string().uuid().nullable().default(null),
+  recipients: z.array(recipientSchema).min(1).max(LIMITS.maxRecipients),
+});
+export type FromTemplateInput = z.infer<typeof fromTemplateSchema>;

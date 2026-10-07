@@ -3,10 +3,13 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Ban, BellRing, Download, FilePlus2, Loader2, RefreshCw, Send } from 'lucide-react';
+import { Ban, BellRing, Download, FilePlus2, KeyRound, Loader2, RefreshCw, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { fileUrlAction, newVersionAction, remindAction, resendAction, retryFinalizeAction, voidAction } from '@/lib/actions/signing';
+import { Select } from '@/components/ui/select';
+import { AccessCodesPanel, type ShownCode } from '@/components/signing/access-codes-panel';
+import { REMINDER_DAY_OPTIONS, REMINDER_MAX_OPTIONS } from '@/lib/signing/constants';
+import { fileUrlAction, newVersionAction, regenerateCodeAction, remindAction, resendAction, retryFinalizeAction, setRemindersAction, voidAction } from '@/lib/actions/signing';
 
 type Kind = 'original' | 'final' | 'certificate';
 
@@ -59,21 +62,56 @@ export function RequestActions({ versionId, status, needsFinalize }: { versionId
   );
 }
 
-export function SignerActions({ versionId, recipientId, canRemind, name }: { versionId: string; recipientId: string; canRemind: boolean; name: string }) {
+export function SignerActions({ versionId, recipientId, canRemind, name, requireCode = false, codeLocked = false }: { versionId: string; recipientId: string; canRemind: boolean; name: string; requireCode?: boolean; codeLocked?: boolean }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
+  const [shown, setShown] = useState<ShownCode | null>(null);
   const run = (kind: 'resend' | 'remind') => start(async () => {
     setMsg(null);
     const r = kind === 'resend' ? await resendAction(versionId, recipientId) : await remindAction(versionId, recipientId);
     if (!r.ok) setMsg(r.error); else if (!r.result.sent) setMsg(`Email failed: ${r.result.error}`); else setMsg(kind === 'resend' ? 'Invitation sent' : 'Reminder sent');
     router.refresh();
   });
+  const newCode = () => start(async () => {
+    setMsg(null);
+    const r = await regenerateCodeAction(versionId, recipientId);
+    if (!r.ok) return setMsg(r.error);
+    setShown(r.issued);
+    router.refresh();
+  });
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <Button size="sm" variant="outline" disabled={pending} onClick={() => run('resend')} aria-label={`Resend invitation to ${name}`}><Send className="size-3.5" /> Resend</Button>
-      {canRemind && <Button size="sm" variant="outline" disabled={pending} onClick={() => run('remind')} aria-label={`Remind ${name}`}><BellRing className="size-3.5" /> Remind</Button>}
-      {msg && <span className="text-xs text-muted-foreground">{msg}</span>}
+    <div className="flex flex-col items-end gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button size="sm" variant="outline" disabled={pending} onClick={() => run('resend')} aria-label={`Resend invitation to ${name}`}><Send className="size-3.5" /> Resend</Button>
+        {canRemind && <Button size="sm" variant="outline" disabled={pending} onClick={() => run('remind')} aria-label={`Remind ${name}`}><BellRing className="size-3.5" /> Remind</Button>}
+        {requireCode && <Button size="sm" variant={codeLocked ? 'default' : 'outline'} disabled={pending} onClick={newCode} aria-label={`New access code for ${name}`}><KeyRound className="size-3.5" /> New code</Button>}
+        {msg && <span className="text-xs text-muted-foreground">{msg}</span>}
+      </div>
+      {shown && <div className="w-full max-w-md text-left"><AccessCodesPanel codes={[shown]} title="New access code" /></div>}
+    </div>
+  );
+}
+
+/** Change automatic reminders on a draft/open request (operational; the document itself stays locked). */
+export function ReminderSettings({ versionId, days, max, status }: { versionId: string; days: number | null; max: number; status: string }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [d, setD] = useState<number | null>(days);
+  const [m, setM] = useState(max);
+  const [msg, setMsg] = useState<string | null>(null);
+  if (status !== 'awaiting_signature' && status !== 'partially_signed') return days ? <p className="text-xs text-muted-foreground">Automatic reminders were set to every {days} day{days === 1 ? '' : 's'}, up to {max}.</p> : null;
+  return (
+    <div className="space-y-2 rounded-md border p-3 text-sm">
+      <p className="flex items-center gap-1 font-medium"><BellRing className="size-3.5" /> Automatic reminders</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <Select aria-label="Reminder interval" className="w-auto" value={d ?? ''} onChange={(e) => setD(e.target.value ? Number(e.target.value) : null)}>
+          <option value="">Off</option>{REMINDER_DAY_OPTIONS.map((n) => <option key={n} value={n}>Every {n} day{n === 1 ? '' : 's'}</option>)}
+        </Select>
+        {d !== null && <><span className="text-muted-foreground">at most</span><Select aria-label="Maximum reminders" className="w-20" value={m} onChange={(e) => setM(Number(e.target.value))}>{REMINDER_MAX_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}</Select></>}
+        <Button size="sm" variant="outline" disabled={pending || (d === days && m === max)} onClick={() => start(async () => { setMsg(null); const r = await setRemindersAction(versionId, { days: d, max: m }); setMsg(r.ok ? 'Saved' : r.error); router.refresh(); })}>{pending ? <Loader2 className="size-4 animate-spin" /> : null} Save</Button>
+        {msg && <span className="text-xs text-muted-foreground">{msg}</span>}
+      </div>
     </div>
   );
 }

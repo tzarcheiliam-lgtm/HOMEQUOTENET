@@ -74,10 +74,12 @@ beforeAll(async () => {
     create table public.profiles (id uuid primary key default gen_random_uuid(), role text, is_active boolean default true);
     create table public.contractors (id uuid primary key default gen_random_uuid(), name text);
     create table public.leads (id uuid primary key default gen_random_uuid(), first_name text, last_name text);
+    create table public.lead_assignments (id uuid primary key default gen_random_uuid(), lead_id uuid, contractor_id uuid);
     create function public.is_admin() returns boolean language sql stable as $$ select false $$;
     create function public.auth_contractor_id() returns uuid language sql stable as $$ select null::uuid $$;
   `);
   await db.exec(readFileSync(new URL('../supabase/migrations/0039_document_signing.sql', import.meta.url), 'utf8'));
+  await db.exec(readFileSync(new URL('../supabase/migrations/0040_signing_templates_reminders_codes.sql', import.meta.url), 'utf8'));
   storage = new FakeStorage();
   h.client = fakeSupabase(db, storage);
   cA = (await q(`insert into contractors(name) values ('Acme Pools') returning id`))[0].id;
@@ -110,7 +112,7 @@ describe('end to end: upload -> suggest -> review -> invite -> sign (2 signers, 
     await expect(svc.sendForSignature(userA, up.versionId)).rejects.toMatchObject({ code: 'subject_required' });
     await configure(userA, up.versionId, [{ name: 'Ada Lovelace', email: 'ada@example.test' }, { name: 'Bob Builder', email: 'bob@example.test' }]);
 
-    const sent = await svc.sendForSignature(userA, up.versionId);
+    const sent = (await svc.sendForSignature(userA, up.versionId)).results;
     expect(sent).toHaveLength(1); // sequential: only the first signer is invited
     expect(h.emails).toHaveLength(1);
     expect(h.emails[0].toEmail).toBe('ada@example.test');
@@ -241,8 +243,21 @@ describe('tenant isolation and authorisation (server side)', () => {
 
   it('attaches visible leads', async () => {
     const lead = (await q(`insert into leads(first_name,last_name) values ('Pat','Homeowner') returning id`))[0].id;
+    await q(`insert into lead_assignments(lead_id, contractor_id) values ($1, $2)`, [lead, cA]);
     const up = await newDraft(userA, await textContractPdf(), { leadId: lead });
     expect((await svc.getEditorBundle(userA, up.versionId)).lead).toEqual({ id: lead, name: 'Pat Homeowner' });
+  });
+
+  it("refuses to attach a lead that is not assigned to the document's company (it would disclose that lead's name to them)", async () => {
+    const other = (await q(`insert into leads(first_name,last_name) values ('Casey','Elsewhere') returning id`))[0].id;
+    await q(`insert into lead_assignments(lead_id, contractor_id) values ($1, $2)`, [other, cB]);
+    const prep = await svc.prepareUpload(userA, null);
+    storage.files.set(prep.path, await textContractPdf());
+    await expect(svc.registerUpload(userA, { docId: prep.docId, versionId: prep.versionId, contractorId: null, title: 'T', leadId: other })).rejects.toMatchObject({ code: 'lead_mismatch' });
+    // the admin cannot do it either: the document would belong to company A
+    const prep2 = await svc.prepareUpload(admin, cA);
+    storage.files.set(prep2.path, await textContractPdf());
+    await expect(svc.registerUpload(admin, { docId: prep2.docId, versionId: prep2.versionId, contractorId: cA, title: 'T', leadId: other })).rejects.toMatchObject({ code: 'lead_mismatch' });
   });
 });
 
@@ -250,7 +265,7 @@ describe('request lifecycle', () => {
   it('parallel signers, resend rotates the link (old one dies), reminders, decline, void', async () => {
     const up = await newDraft(userA, await textContractPdf());
     await configure(userA, up.versionId, [{ name: 'Ada', email: 'ada@example.test' }, { name: 'Bob', email: 'bob@example.test' }], 'parallel');
-    const sent = await svc.sendForSignature(userA, up.versionId);
+    const sent = (await svc.sendForSignature(userA, up.versionId)).results;
     expect(sent.map((r) => r.sent)).toEqual([true, true]);
     expect(h.emails).toHaveLength(2);
     const [ta, tb] = h.emails.map(tokenFrom);
@@ -319,7 +334,7 @@ describe('request lifecycle', () => {
     const up = await newDraft(userA, await textContractPdf());
     await configure(userA, up.versionId, [{ name: 'Ada', email: 'ada@example.test' }]);
     h.failEmail = true;
-    const res = await svc.sendForSignature(userA, up.versionId);
+    const res = (await svc.sendForSignature(userA, up.versionId)).results;
     expect(res[0]).toMatchObject({ sent: false, error: 'Gmail is down' });
     const b = await svc.getEditorBundle(userA, up.versionId);
     expect(b.version.status).toBe('awaiting_signature');

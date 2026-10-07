@@ -95,6 +95,13 @@ export const SIGNING_EVENT_LABELS: Record<string, string> = {
   voided: 'Voided',
   expired: 'Expired',
   downloaded: 'Downloaded',
+  auto_reminded: 'Automatic reminder emailed',
+  reminders_configured: 'Reminder settings changed',
+  access_code_issued: 'Access code issued',
+  access_code_verified: 'Access code entered correctly',
+  access_code_failed: 'Wrong access code entered',
+  access_code_locked: 'Signer locked out after wrong access codes',
+  template_saved: 'Saved as a template',
 };
 
 // ---------------------------------------------------------------------------
@@ -115,6 +122,14 @@ export const CONSENT_TEXT: string[] = [
 export const AUTH_METHOD = 'email_link' as const;
 export const IDENTITY_STATEMENT =
   'The signer was identified only by access to a unique, expiring link sent to the email address the sender entered. HomeQuote Network did not independently verify the signer’s legal identity (no ID check, no SMS or access-code check).';
+
+export const AUTH_METHOD_CODE = 'email_link_code' as const;
+export const IDENTITY_STATEMENT_CODE =
+  'Signers marked “link + access code” were identified by access to a unique, expiring link sent to the email address the sender entered AND by an access code that the sender states they shared separately from the email. HomeQuote Network recorded that the code was entered correctly but did not independently verify the signer’s legal identity or confirm how the code was delivered.';
+
+/** Automatic-reminder choices offered in the editor (days between reminders). */
+export const REMINDER_DAY_OPTIONS = [1, 2, 3, 5, 7, 14] as const;
+export const REMINDER_MAX_OPTIONS = [1, 2, 3, 5, 10] as const;
 
 export const SIGNATURE_STATEMENT =
   'Signatures on this document are electronic signatures (drawn or typed by the signer). They are not certificate-based cryptographic digital signatures (e.g. PAdES).';
