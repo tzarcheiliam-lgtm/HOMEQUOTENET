@@ -33,6 +33,18 @@ export const WORKFLOW_LOG_CODES = [
   'step.failed',
   'step.waiting',
   'action.provider_response',
+  // Visual builder (graph engine)
+  'run.skipped_pre_publish',
+  'run.held_paused',
+  'run.skipped_paused',
+  'run.suppressed',
+  'run.retried',
+  'node.branch_taken',
+  'wait.satisfied',
+  'wait.timed_out',
+  'call.requested',
+  'call.adopted',
+  'call.outcome',
 ] as const;
 export type WorkflowLogCode = (typeof WORKFLOW_LOG_CODES)[number];
 

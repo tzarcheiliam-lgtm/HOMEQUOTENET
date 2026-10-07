@@ -21,7 +21,6 @@ import {
   type WorkflowActionStep,
   type WorkflowDefinition,
   type WorkflowError,
-  type WorkflowEvaluationContext,
   type WorkflowEvent,
   type WorkflowEventRow,
   type WorkflowLogEntry,
@@ -30,6 +29,10 @@ import {
   type WorkflowStepRunRow,
 } from '@/lib/workflows';
 import { executeWorkflowAction } from './actions.server';
+import { loadWorkflowEvaluationContext } from './context.server';
+import { cleanupCancelledRuns, dispatchGraphEvent, executeGraphRun, isGraphSnapshot } from './graph/executor.server';
+
+export { loadWorkflowEvaluationContext };
 
 type WorkflowDb = ReturnType<typeof createAdminClient>;
 
@@ -83,57 +86,6 @@ async function loadStoredWorkflow(db: WorkflowDb, row: Record<string, unknown>):
   return workflowFromRows(row as never, (steps ?? []) as never);
 }
 
-function payloadId(event: WorkflowEvent, key: string): string | null {
-  const value = (event.payload as Record<string, unknown>)[key];
-  return typeof value === 'string' ? value : null;
-}
-
-export async function loadWorkflowEvaluationContext(
-  db: WorkflowDb,
-  event: WorkflowEvent,
-  workflowContractorId: string | null
-): Promise<WorkflowEvaluationContext> {
-  let lead: Record<string, unknown> | null = null;
-  let assignment: Record<string, unknown> | null = null;
-  let appointment: Record<string, unknown> | null = null;
-  let estimate: Record<string, unknown> | null = null;
-  let contractor: Record<string, unknown> | null = null;
-
-  if (event.leadId) {
-    const result = await db.from('leads').select('*').eq('id', event.leadId).maybeSingle();
-    lead = (result.data as Record<string, unknown> | null) ?? null;
-  }
-  const assignmentId = payloadId(event, 'assignmentId') ?? (event.entityType === 'lead_assignment' ? event.entityId : null);
-  if (assignmentId) {
-    const result = await db.from('lead_assignments').select('*').eq('id', assignmentId).maybeSingle();
-    assignment = (result.data as Record<string, unknown> | null) ?? null;
-  } else if (workflowContractorId && event.leadId) {
-    const result = await db
-      .from('lead_assignments')
-      .select('*')
-      .eq('lead_id', event.leadId)
-      .eq('contractor_id', workflowContractorId)
-      .maybeSingle();
-    assignment = (result.data as Record<string, unknown> | null) ?? null;
-  }
-  const appointmentId = payloadId(event, 'appointmentId') ?? (event.entityType === 'appointment' ? event.entityId : null);
-  if (appointmentId) {
-    const result = await db.from('appointments').select('*').eq('id', appointmentId).maybeSingle();
-    appointment = (result.data as Record<string, unknown> | null) ?? null;
-  }
-  const estimateId = payloadId(event, 'estimateId') ?? (event.entityType === 'estimate' ? event.entityId : null);
-  if (estimateId) {
-    const result = await db.from('estimates').select('*').eq('id', estimateId).maybeSingle();
-    estimate = (result.data as Record<string, unknown> | null) ?? null;
-  }
-  const contractorId = workflowContractorId ?? event.contractorId;
-  if (contractorId) {
-    const result = await db.from('contractors').select('id,name').eq('id', contractorId).maybeSingle();
-    contractor = (result.data as Record<string, unknown> | null) ?? null;
-  }
-  return { contractor, lead, assignment, appointment, estimate, event: { payload: event.payload as Record<string, unknown> } };
-}
-
 async function causationContainsWorkflow(db: WorkflowDb, event: WorkflowEvent, workflowId: string): Promise<boolean> {
   let eventId = event.causationId;
   for (let depth = 0; eventId && depth < 50; depth += 1) {
@@ -167,6 +119,8 @@ async function cancelExitRuns(db: WorkflowDb, event: WorkflowEvent): Promise<voi
     for (const run of cancelled ?? []) {
       await writeLog(db, { level: 'info', code: 'run.exit_event', message: 'Run cancelled by exit event', runId: run.id, eventId: event.id, data: { event_type: event.type } });
     }
+    // Graph runs also leave waits / queued calls behind; linear runs have none (no-op).
+    await cleanupCancelledRuns(db, (cancelled ?? []).map((run: { id: string }) => run.id));
   }
 }
 
@@ -184,13 +138,13 @@ export async function processWorkflowEvent(
     const event = await loadEvent(db, eventId);
     await writeLog(db, { level: 'info', code: 'event.recorded', message: 'Workflow event received', eventId, data: { event_type: event.type } });
     await cancelExitRuns(db, event);
-    const { data: rows, error } = await db
-      .from('workflows')
-      .select('*')
-      .eq('trigger_type', event.type)
-      .eq('enabled', true)
-      .eq('is_template', false)
-      .is('archived_at', null);
+    // Satisfy any "wait for an event" step first (graph runs); a no-op for linear workflows.
+    await db.rpc('workflow_satisfy_event_waits', { p_event: eventId });
+    // Visual (graph) workflows run on their own path below; the linear engine only sees linear workflows.
+    // Before migration 0041 the `engine` column does not exist, so fall back to the original query.
+    const linearQuery = () => db.from('workflows').select('*').eq('trigger_type', event.type).eq('enabled', true).eq('is_template', false).is('archived_at', null);
+    let { data: rows, error } = await linearQuery().eq('engine', 'linear');
+    if (error && /engine/i.test(error.message)) ({ data: rows, error } = await linearQuery());
     if (error) throw new Error('Could not load matching workflows');
     for (const row of rows ?? []) {
       const workflow = await loadStoredWorkflow(db, row as Record<string, unknown>);
@@ -237,6 +191,12 @@ export async function processWorkflowEvent(
       result.createdRunIds.push(run.id);
       await writeLog(db, { level: 'info', code: 'run.created', message: 'Workflow run created', runId: run.id, eventId, data: { workflow_version: workflow.version } });
     }
+    // Visual workflows: enrollment rules, publish cut-off, re-entry and duplicate prevention live there.
+    const { data: eventRow } = await db.from('workflow_events').select('recorded_at').eq('id', eventId).maybeSingle();
+    const graph = await dispatchGraphEvent(db, event, eventRow?.recorded_at);
+    result.createdRunIds.push(...graph.createdRunIds);
+    result.duplicateWorkflows.push(...graph.duplicateWorkflows);
+    result.skippedWorkflows.push(...graph.skipped);
     const status = result.createdRunIds.length || result.duplicateWorkflows.length ? 'dispatched' : 'ignored';
     let finish = db.from('workflow_events').update({
       dispatch_status: status,
@@ -345,6 +305,8 @@ export async function executeClaimedWorkflowRun(
   workerId: string,
   db: WorkflowDb = createAdminClient()
 ): Promise<void> {
+  // Visual-builder runs carry a graph snapshot and use the graph engine; everything else is unchanged.
+  if (isGraphSnapshot(run.definition_snapshot)) return executeGraphRun(run, workerId, db);
   const definition = parseWorkflowDefinition(run.definition_snapshot);
   const event = await loadEvent(db, run.trigger_event_id);
   const claimedFrom = typeof run.metadata?._claimed_from === 'string' ? run.metadata._claimed_from : 'pending';
@@ -516,6 +478,8 @@ export async function processWorkflowTick(options: { db?: WorkflowDb; workerId?:
   }
   let runs = 0;
   try {
+    // Safety net: wake runs whose awaited call result / event already arrived (webhook trigger missed, run was mid-step).
+    await db.rpc('workflow_sweep_waits');
     const executed = await claimAndExecuteWorkflowRuns({ db, workerId, limit });
     runs = executed.claimed;
     failures += executed.failed;

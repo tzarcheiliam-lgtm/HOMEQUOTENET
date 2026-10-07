@@ -91,6 +91,15 @@ describe('migration 0020 mirrors the TypeScript contract', () => {
       expect([...values]).toEqual(expect.arrayContaining(checkList(table, column)));
       return;
     }
+    if (column === 'trigger_type' || column === 'type') {
+      // 0041 added five event types; its constraint is the current truth, 0020 the historical base.
+      const later = readFileSync('supabase/migrations/0041_visual_workflow_builder.sql', 'utf8');
+      const m = later.match(new RegExp(`alter table public\\.${table} add constraint ${table}_${column}_check check \\(${column} in \\(([^)]*)\\)`));
+      expect(m, `${table} 0041 check`).not.toBeNull();
+      expect(Array.from(m![1].matchAll(/'([^']+)'/g), (x) => x[1])).toEqual([...values]);
+      expect([...values]).toEqual(expect.arrayContaining(checkList(table, column)));
+      return;
+    }
     expect(checkList(table, column)).toEqual([...values]);
   });
 
@@ -179,7 +188,7 @@ describe('trigger registry', () => {
   });
 
   it('defines exactly one canonical idempotency ref per event type', () => {
-    for (const type of WORKFLOW_EVENT_TYPES) expect(WORKFLOW_TRIGGERS[type].idempotencyRef).toMatch(/^[a-z]+:</);
+    for (const type of WORKFLOW_EVENT_TYPES) expect(WORKFLOW_TRIGGERS[type].idempotencyRef).toMatch(/^[a-z_]+:</);
   });
 
   it('includes every trigger the product brief requires', () => {
@@ -193,7 +202,8 @@ describe('trigger registry', () => {
     for (const t of ['lead.assigned', 'assignment.status_changed', 'appointment.no_show', 'estimate.sent', 'deal.won', 'deal.lost'] as const) {
       expect(WORKFLOW_TRIGGERS[t].contractorScope).toBe('required');
     }
-    expect(WORKFLOW_TRIGGERS['task.completed'].availability).toBe('needs_domain');
+    // task.completed became ready with workflow_tasks (migration 0041); inbound messages still have no table.
+    expect(WORKFLOW_TRIGGERS['task.completed'].availability).toBe('ready');
     expect(WORKFLOW_TRIGGERS['message.received'].availability).toBe('needs_domain');
     expect(WORKFLOW_TRIGGERS['lead.created'].availability).toBe('ready');
   });

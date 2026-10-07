@@ -11,11 +11,21 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ConfirmAction } from '@/components/ui/confirm-action';
 import { WorkflowBuilder } from '@/components/workflows/workflow-builder';
+import { getGraphWorkflow, loadBuilderLookups, loadCapabilities } from '@/lib/data/workflow-graph';
+import { BuilderShell } from '@/components/workflows/builder/builder-shell';
 import { DryRunPanel } from '@/components/workflows/dry-run-panel';
 
 export default async function WorkflowDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ enable_error?: string }> }) {
   const profile = await requireRole(['admin', 'contractor']);
   const { id } = await params;
+
+  // Visual (graph) workflows open in the new builder; classic ones keep the original page below.
+  const graph = await getGraphWorkflow(id);
+  if (graph) {
+    const caps = await loadCapabilities(profile);
+    const lookups = await loadBuilderLookups(graph.contractorId, profile.role === 'admin');
+    return <BuilderShell detail={graph} lookups={lookups} canEdit={caps.edit(graph.contractorId)} isAdmin={profile.role === 'admin'} />;
+  }
   const canEdit = profile.role === 'admin';
 
   let workflow: Workflow;

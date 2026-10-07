@@ -39,8 +39,11 @@ export function createSupabaseJobStore(db: SupabaseClient = createAdminClient())
     },
     async hasRecentDuplicate(job, sinceIso) {
       if (!job.contact_phone || !job.contractor_id) return false;
-      const rows = (must(await db.from('ai_call_jobs').select('id,status,created_at').eq('contact_phone', job.contact_phone)
-        .eq('contractor_id', job.contractor_id).neq('id', job.id).gte('created_at', sinceIso).in('status', DUP_STATUSES), 'duplicates') ?? []) as { id: string; status: string; created_at: string }[];
+      let query = db.from('ai_call_jobs').select('id,status,created_at').eq('contact_phone', job.contact_phone)
+        .eq('contractor_id', job.contractor_id).neq('id', job.id).gte('created_at', sinceIso).in('status', DUP_STATUSES);
+      // A workflow's own earlier attempts are spaced by the workflow itself (wait steps), so they do not count.
+      if (job.workflow_run_id) query = query.or(`workflow_run_id.is.null,workflow_run_id.neq.${job.workflow_run_id}`);
+      const rows = (must(await query, 'duplicates') ?? []) as { id: string; status: string; created_at: string }[];
       // Two jobs claimed together must not block each other: only an EARLIER in-flight job counts.
       return rows.some((r) => r.status !== 'dispatching' || r.created_at < job.created_at || (r.created_at === job.created_at && r.id < job.id));
     },
@@ -74,6 +77,11 @@ export function createSupabaseJobStore(db: SupabaseClient = createAdminClient())
       if (error) throw new Error(`cancel queued: ${error.message}`);
     },
     async addLeadActivity(leadId, body, metadata) {
+      // Fish delivers at least once and a failed apply is retried: a note carrying an event_key is written once.
+      if (typeof metadata.event_key === 'string') {
+        const { data: seen } = await db.from('lead_activities').select('id').eq('lead_id', leadId).contains('metadata', { event_key: metadata.event_key }).limit(1);
+        if ((seen ?? []).length) return;
+      }
       const { error } = await db.from('lead_activities').insert({ lead_id: leadId, actor_id: null, type: 'contact_attempt', body, metadata });
       if (error) throw new Error(`lead activity: ${error.message}`);
     },

@@ -6,7 +6,7 @@ import { inWindow, nextEligible, resolveZones, type CallWindow } from './timezon
  */
 export type BlockReason =
   | 'expired' | 'lead_archived' | 'contractor_off' | 'contractor_not_automatic' | 'not_configured'
-  | 'lead_not_qualified' | 'invalid_number' | 'opted_out' | 'do_not_call' | 'no_consent' | 'duplicate_recent_call' | 'unknown_timezone';
+  | 'lead_not_qualified' | 'contractor_not_workflow' | 'no_calling_window' | 'invalid_number' | 'opted_out' | 'do_not_call' | 'no_consent' | 'duplicate_recent_call' | 'unknown_timezone';
 
 export type Decision =
   | { action: 'dispatch' }
@@ -14,14 +14,14 @@ export type Decision =
   | { action: 'block'; reason: BlockReason };
 
 export interface EligibilityInput {
-  trigger: 'auto_form' | 'manual';
+  trigger: 'auto_form' | 'manual' | 'workflow';
   now: Date;
   createdAt: Date;
   maxJobAgeHours: number;
   leadArchived?: boolean;
   /** leads.qualification_status; a lead a person (or the service-area gate) rejected is never called. */
   qualificationStatus?: string | null;
-  contractorMode: 'off' | 'manual_only' | 'automatic' | null;
+  contractorMode: 'off' | 'manual_only' | 'automatic' | 'workflow_only' | null;
   agentId: string | null;
   phoneNumberId: string | null;
   /** Destination, expected E.164. */
@@ -53,7 +53,8 @@ const CALL_CONSENT_WORDING = /\bcall/i;
 export function hasCallConsent(i: EligibilityInput): boolean {
   const c = i.consent;
   if (!c.granted || !c.at) return false;
-  if (i.trigger === 'auto_form') return !!c.disclosure && CALL_CONSENT_WORDING.test(c.disclosure);
+  // Automatic contact (form-to-call and workflow calls) needs wording that covers being called.
+  if (i.trigger === 'auto_form' || i.trigger === 'workflow') return !!c.disclosure && CALL_CONSENT_WORDING.test(c.disclosure);
   // Manual: either the lead's own recorded consent, or a recorded basis + reference.
   if (c.disclosure && CALL_CONSENT_WORDING.test(c.disclosure)) return true;
   return !!(c.basis?.trim() && c.reference?.trim());
@@ -66,6 +67,8 @@ export function evaluateEligibility(i: EligibilityInput): Decision {
   if (i.qualificationStatus === 'not_qualified' || i.qualificationStatus === 'out_of_service_area') return { action: 'block', reason: 'lead_not_qualified' };
   if (i.contractorMode === null || i.contractorMode === 'off') return { action: 'block', reason: 'contractor_off' };
   if (i.trigger === 'auto_form' && i.contractorMode !== 'automatic') return { action: 'block', reason: 'contractor_not_automatic' };
+  // A workflow call needs the contractor to have opted in to automation (workflow_only or automatic); manual_only never.
+  if (i.trigger === 'workflow' && i.contractorMode !== 'automatic' && i.contractorMode !== 'workflow_only') return { action: 'block', reason: 'contractor_not_workflow' };
   if (!i.agentId?.trim() || !i.phoneNumberId?.trim()) return { action: 'block', reason: 'not_configured' };
   if (!validPhone(i.phone)) return { action: 'block', reason: 'invalid_number' };
   if (i.optedOut) return { action: 'block', reason: 'opted_out' };
@@ -87,6 +90,8 @@ export const BLOCK_LABELS: Record<BlockReason, string> = {
   lead_not_qualified: 'Lead not qualified / outside service area',
   contractor_off: 'Contractor AI calling is off',
   contractor_not_automatic: 'Contractor not in automatic mode',
+  contractor_not_workflow: 'Contractor AI calling does not allow workflow calls',
+  no_calling_window: 'The workflow call window does not overlap the allowed calling hours',
   not_configured: 'Agent or phone number not configured',
   invalid_number: 'Invalid phone number',
   opted_out: 'Opted out',
