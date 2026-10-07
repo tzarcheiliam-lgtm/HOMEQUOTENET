@@ -3,7 +3,7 @@
  * States plainly what was and was not verified; it does NOT claim a certificate-based digital signature.
  */
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from '@cantoo/pdf-lib';
-import { IDENTITY_STATEMENT, LEGAL_REVIEW_NOTE, LIMITS, SIGNATURE_STATEMENT } from '@/lib/signing/constants';
+import { IDENTITY_STATEMENT, IDENTITY_STATEMENT_CODE, LEGAL_REVIEW_NOTE, LIMITS, SIGNATURE_STATEMENT } from '@/lib/signing/constants';
 import { describeUserAgent, formatUtc } from '@/lib/signing/format';
 import { prepareFonts } from '@/lib/signing/stamp';
 
@@ -110,7 +110,7 @@ export async function buildCertificate(input: CertificateInput): Promise<Uint8Ar
     kv('Agreed to e-sign', formatUtc(r.consentAt));
     kv(r.declinedAt ? 'Declined' : 'Signed', formatUtc(r.declinedAt ?? r.signedAt));
     kv('Signature method', r.signatureMethods.length ? r.signatureMethods.join(', ') : '—');
-    kv('Identification', r.authMethod === 'email_link' ? 'Unique emailed link only (no independent identity verification)' : r.authMethod);
+    kv('Identification', r.authMethod === 'email_link' ? 'Unique emailed link only (no independent identity verification)' : r.authMethod === 'email_link_code' ? 'Unique emailed link + access code (no independent identity verification)' : r.authMethod);
     kv('IP address', r.ip ?? '—');
     kv('Device', describeUserAgent(r.userAgent));
     kv('Time zone reported', r.timezone ?? '—');
@@ -133,6 +133,7 @@ export async function buildCertificate(input: CertificateInput): Promise<Uint8Ar
 
   h2('What this record does and does not show');
   para(IDENTITY_STATEMENT, { size: 8.5, gap: 3 });
+  if (input.recipients.some((r) => r.authMethod === 'email_link_code')) para(IDENTITY_STATEMENT_CODE, { size: 8.5, gap: 3 });
   para(SIGNATURE_STATEMENT, { size: 8.5, gap: 3 });
   para('The hash above identifies the signed PDF delivered with this certificate. Any later change to that PDF changes its hash.', { size: 8.5, gap: 3 });
   para(LEGAL_REVIEW_NOTE, { size: 8.5, color: MUTED });

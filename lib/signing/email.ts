@@ -25,6 +25,8 @@ const PERSONAL_NOTE =
 export interface InviteInput {
   recipientName: string; senderName: string | null; business: string | null; documentTitle: string;
   message: string | null; expiresAt: Date; token: string; reminder?: boolean; subject?: string | null; senderEmail?: string | null;
+  /** The signer must also enter an access code the sender gives them separately (never put in this email). */
+  requiresCode?: boolean;
 }
 export function inviteEmail(i: InviteInput) {
   const who = i.business || i.senderName || 'A HomeQuote Network contractor';
@@ -34,6 +36,7 @@ export function inviteEmail(i: InviteInput) {
     p(`Hi ${esc(i.recipientName)},`) +
       p(`<strong>${esc(who)}</strong> sent you <strong>${esc(i.documentTitle)}</strong> to review and sign electronically.`) +
       (i.message ? quote(i.message) : '') +
+      (i.requiresCode ? p(`You will also need a <strong>6-digit access code</strong>. ${esc(who)} will give it to you separately (for example by phone or text). It is not in this email.`) : '') +
       p(`The link works until <strong>${esc(i.expiresAt.toUTCString().replace(' GMT', ' UTC'))}</strong>.`),
     { label: 'Review and sign', href: signLink(i.token) },
     `${esc(PERSONAL_NOTE)}<br><br>Sent through HomeQuote Network on behalf of ${esc(who)}${i.senderEmail ? `. Questions? Reply to this email to reach ${esc(i.senderEmail)}` : ''}.`
@@ -43,6 +46,7 @@ export function inviteEmail(i: InviteInput) {
     `${who} sent you "${i.documentTitle}" to review and sign electronically.`,
     i.message ? `\n${i.message}\n` : '',
     `Review and sign: ${signLink(i.token)}`, '',
+    i.requiresCode ? `You will also need a 6-digit access code. ${who} will give it to you separately (for example by phone or text); it is not in this email.\n` : '',
     `This link works until ${i.expiresAt.toUTCString()}.`, PERSONAL_NOTE,
   ].join('\n');
   return { subject, html, text, message: text };

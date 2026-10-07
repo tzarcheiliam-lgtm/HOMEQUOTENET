@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { NO_STORE, errorResponse, requestContext } from '@/lib/signing/request';
 import { SigningError } from '@/lib/signing/errors';
-import { signerConsent, signerDecline, signerOpen, signerSubmit } from '@/lib/signing/signer';
+import { signerConsent, signerDecline, signerOpen, signerSubmit, signerVerifyCode } from '@/lib/signing/signer';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -19,10 +19,11 @@ export async function POST(request: Request) {
     if (!body || typeof body.action !== 'string') throw new SigningError('bad_request', 'Bad request.');
     const ctx = await requestContext();
     switch (body.action) {
-      case 'open': return NextResponse.json({ ok: true, ...(await signerOpen(body.token, ctx)) }, { headers: NO_STORE });
-      case 'consent': await signerConsent(body.token, ctx); return NextResponse.json({ ok: true }, { headers: NO_STORE });
-      case 'submit': return NextResponse.json(await signerSubmit(body.token, { values: body.values, timezone: body.timezone }, ctx), { headers: NO_STORE });
-      case 'decline': await signerDecline(body.token, typeof body.reason === 'string' ? body.reason : '', ctx); return NextResponse.json({ ok: true }, { headers: NO_STORE });
+      case 'open': return NextResponse.json({ ok: true, ...(await signerOpen(body.token, ctx, body.session)) }, { headers: NO_STORE });
+      case 'verify': return NextResponse.json({ ok: true, ...(await signerVerifyCode(body.token, body.code, ctx)) }, { headers: NO_STORE });
+      case 'consent': await signerConsent(body.token, ctx, body.session); return NextResponse.json({ ok: true }, { headers: NO_STORE });
+      case 'submit': return NextResponse.json(await signerSubmit(body.token, { values: body.values, timezone: body.timezone }, ctx, body.session), { headers: NO_STORE });
+      case 'decline': await signerDecline(body.token, typeof body.reason === 'string' ? body.reason : '', ctx, body.session); return NextResponse.json({ ok: true }, { headers: NO_STORE });
       default: throw new SigningError('bad_request', 'Bad request.');
     }
   } catch (e) {

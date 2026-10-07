@@ -1,17 +1,18 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @next/next/no-img-element */
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
-import { AlertTriangle, CheckCircle2, Mail, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, BellRing, CheckCircle2, KeyRound, Mail, ShieldCheck } from 'lucide-react';
 import { requireProfile } from '@/lib/auth';
 import { canManageSigning } from '@/lib/permissions';
 import { SigningError } from '@/lib/signing/errors';
 import { getEditorBundle, previewUrl } from '@/lib/signing/service';
-import { RECIPIENT_STATUS_LABELS, SIGNING_EVENT_LABELS, IDENTITY_STATEMENT, SIGNATURE_STATEMENT, STATUS_LABELS, type SigningStatus } from '@/lib/signing/constants';
+import { RECIPIENT_STATUS_LABELS, SIGNING_EVENT_LABELS, IDENTITY_STATEMENT, IDENTITY_STATEMENT_CODE, SIGNATURE_STATEMENT, STATUS_LABELS, type SigningStatus } from '@/lib/signing/constants';
 import { formatUtc } from '@/lib/signing/format';
 import type { UiField } from '@/lib/signing/view';
 import { SigningStatusBadge } from '@/components/signing/status-badge';
 import { DraftWorkspace } from '@/components/signing/draft-workspace';
-import { DownloadButtons, RequestActions, SignerActions } from '@/components/signing/detail-actions';
+import { DownloadButtons, ReminderSettings, RequestActions, SignerActions } from '@/components/signing/detail-actions';
+import { SaveTemplate } from '@/components/signing/save-template';
 import { ReadOnlyViewer } from '@/components/signing/readonly-viewer';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -45,6 +46,7 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
         <PageHeader title={doc.title} description={`Draft${version.version_no > 1 ? ` · version ${version.version_no}` : ''}${contractorName ? ` · ${contractorName}` : ''}${lead ? ` · Lead: ${lead.name}` : ''}`} backHref="/app/documents" backLabel="Documents" />
         <DraftWorkspace init={{
           versionId: version.id, title: doc.title, pages: version.pages, pdfUrl, subject: version.subject ?? '', message: version.message ?? '', order: version.signing_order, expiryDays: version.expiry_days,
+          autoRemindDays: version.auto_remind_days, autoRemindMax: version.auto_remind_max, requireAccessCode: version.require_access_code,
           recipients: recipients.map((r) => ({ name: r.name, email: r.email })), fields: uiFields, detection: version.detection as any,
         }} />
       </div>
@@ -99,16 +101,23 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
                     {r.send_count > 1 ? ` · sent ${r.send_count}×` : ''}
                   </p>
                   {r.last_email_status === 'failed' && <p className="mt-0.5 flex items-center gap-1 text-xs text-destructive"><Mail className="size-3" /> Email failed: {r.last_email_error}</p>}
+                  {version.require_access_code && (
+                    <p className={`mt-0.5 flex items-center gap-1 text-xs ${r.access_code_locked_at ? 'text-destructive' : 'text-muted-foreground'}`}><KeyRound className="size-3" />
+                      {r.access_code_locked_at ? 'Locked after too many wrong codes: issue a new code' : r.access_verified_at ? 'Access code entered' : r.access_code_issued_at ? 'Access code required (not yet entered)' : 'No access code issued'}</p>)}
+                  {version.auto_remind_days && (r.auto_reminders_sent ?? 0) > 0 && <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground"><BellRing className="size-3" /> {r.auto_reminders_sent} of {version.auto_remind_max} automatic reminder{r.auto_reminders_sent === 1 ? '' : 's'} sent</p>}
                 </div>
                 <Badge variant={r.status === 'signed' ? 'success' : r.status === 'declined' ? 'secondary' : 'muted'}>{RECIPIENT_STATUS_LABELS[r.status as keyof typeof RECIPIENT_STATUS_LABELS]}</Badge>
-                {open && r.status !== 'signed' && r.status !== 'declined' && turn && <SignerActions versionId={version.id} recipientId={r.id} canRemind={!!r.invited_at && r.last_email_status !== 'failed'} name={r.name} />}
+                {open && r.status !== 'signed' && r.status !== 'declined' && turn && <SignerActions versionId={version.id} recipientId={r.id} canRemind={!!r.invited_at && r.last_email_status !== 'failed'} name={r.name} requireCode={version.require_access_code} codeLocked={!!r.access_code_locked_at} />}
               </div>
             );
           })}
         </CardContent>
       </Card>
 
+      {version.require_access_code && <p className="flex items-center gap-2 text-sm text-muted-foreground"><KeyRound className="size-4" /> Signers must enter an access code you shared with them. Codes are shown only when issued; use “New code” on a signer if one is lost.</p>}
+      <ReminderSettings versionId={version.id} days={version.auto_remind_days} max={version.auto_remind_max} status={status} />
       <RequestActions versionId={version.id} status={status} needsFinalize={needsFinalize} />
+      <div><SaveTemplate versionId={version.id} signerCount={recipients.length} defaultName={doc.title} /></div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
@@ -129,7 +138,7 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
                 <div key={v.id} className="flex items-center justify-between"><Link href={`/app/documents/${v.id}`} className={`hover:underline ${v.id === version.id ? 'font-semibold' : ''}`}>Version {v.version_no}</Link><span className="text-xs text-muted-foreground">{STATUS_LABELS[v.status as SigningStatus] ?? v.status}</span></div>))}</CardContent></Card>
           )}
           <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><ShieldCheck className="size-4" /> What this record shows</CardTitle></CardHeader>
-            <CardContent className="space-y-2 text-xs text-muted-foreground"><p>{IDENTITY_STATEMENT}</p><p>{SIGNATURE_STATEMENT}</p></CardContent></Card>
+            <CardContent className="space-y-2 text-xs text-muted-foreground"><p>{IDENTITY_STATEMENT}</p>{version.require_access_code && <p>{IDENTITY_STATEMENT_CODE}</p>}<p>{SIGNATURE_STATEMENT}</p></CardContent></Card>
         </div>
       </div>
 

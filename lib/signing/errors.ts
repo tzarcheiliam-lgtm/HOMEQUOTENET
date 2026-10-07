@@ -31,5 +31,13 @@ export const ERROR_MESSAGES: Record<string, string> = {
   bad_value: 'One of the values could not be accepted.',
   too_long: 'One of the values is too long.',
   not_open: 'This request is no longer open for signing.',
+  code_required: 'Enter your access code to continue.',
+  wrong_code: 'That access code is not correct.',
+  code_locked: 'Too many incorrect attempts. Ask the sender for a new access code.',
+  code_missing: 'No access code has been set up for this request. Ask the sender to send it again.',
+  not_required: 'This request does not use an access code.',
+  bad_roles: 'The number of signers does not match the template.',
+  template_not_found: 'That template could not be found.',
+  lead_mismatch: 'That lead is not assigned to this company.',
 };
 export const messageFor = (code: string) => ERROR_MESSAGES[code] ?? 'Something went wrong. Please try again.';

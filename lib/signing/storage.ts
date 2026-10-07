@@ -33,3 +33,9 @@ export async function signedUrl(path: string, seconds = 120, downloadName?: stri
 export async function removeObject(path: string) {
   await createAdminClient().storage.from(SIGNING_BUCKET).remove([path]).catch(() => undefined);
 }
+
+/** Copies a stored object inside the private bucket (templates keep their own copy of the PDF). */
+export async function copyObject(from: string, to: string) {
+  const { error } = await createAdminClient().storage.from(SIGNING_BUCKET).copy(from, to);
+  if (error) throw new SigningError('storage', 'The file could not be copied.');
+}

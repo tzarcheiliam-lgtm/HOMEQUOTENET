@@ -2,7 +2,7 @@ import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { sendGmailMessage } from '@/lib/emails/gmail';
 import { CONSENT_TEXT_SHA256 } from '@/lib/signing/consent-hash';
-import { AUTH_METHOD, CONSENT_TEXT, CONSENT_VERSION, IDENTITY_STATEMENT, type DateFormat } from '@/lib/signing/constants';
+import { AUTH_METHOD, AUTH_METHOD_CODE, CONSENT_TEXT, CONSENT_VERSION, IDENTITY_STATEMENT, IDENTITY_STATEMENT_CODE, type DateFormat } from '@/lib/signing/constants';
 import { declinedEmail, inviteEmail, siteUrl } from '@/lib/signing/email';
 import { SigningError, messageFor } from '@/lib/signing/errors';
 import { finalizeVersion } from '@/lib/signing/finalize';
@@ -10,13 +10,14 @@ import { formatSigningDate, safeTimeZone } from '@/lib/signing/format';
 import { inspectPngBase64, submitSchema } from '@/lib/signing/schemas';
 import { textFits } from '@/lib/signing/stamp';
 import { downloadVerified, signedUrl } from '@/lib/signing/storage';
-import { generateToken, hashToken, looksLikeToken } from '@/lib/signing/tokens';
+import { generateToken, hashToken, looksLikeToken, safeEqualHex } from '@/lib/signing/tokens';
+import { MAX_CODE_ATTEMPTS, normalizeCodeInput } from '@/lib/signing/access-code';
 import type { VersionRow } from '@/lib/signing/access';
 
 export interface RequestContext { ip: string | null; userAgent: string | null }
 const errText = (e: unknown) => String((e as Error)?.message ?? e).slice(0, 300);
 
-type OpenState = 'ok' | 'signed' | 'declined' | 'voided' | 'expired' | 'invalid' | 'not_your_turn';
+type OpenState = 'ok' | 'signed' | 'declined' | 'voided' | 'expired' | 'invalid' | 'not_your_turn' | 'code_required';
 
 /** Generic, content-free outcome for dead links. Reveals nothing about the document. */
 async function describeDead(versionId: string | undefined) {
@@ -28,13 +29,55 @@ async function describeDead(versionId: string | undefined) {
   return { documentTitle: d?.title ?? null, sender: v.sender_business_name ?? v.sender_name ?? null };
 }
 
-export async function signerOpen(token: unknown, ctx: RequestContext) {
+
+/**
+ * Access-code gate. When the request requires a code, every signer action must carry the session secret minted by
+ * a successful code check (bound to this signing link, 4 h, hash-only in the database). A forwarded link alone is
+ * therefore not enough. The database separately refuses to mark anyone signed without a verified code.
+ */
+async function accessGate(tokenHash: string, session: unknown) {
+  const admin = createAdminClient();
+  const { data: rec } = await admin.from('signing_recipients')
+    .select('id,version_id,status,access_session_hash,access_session_expires_at,access_code_hash,access_code_attempts,access_code_locked_at').eq('token_hash', tokenHash).maybeSingle();
+  if (!rec) return null;
+  const { data: v } = await admin.from('signing_versions').select('require_access_code').eq('id', rec.version_id).single();
+  const required = !!v?.require_access_code;
+  const sessionOk = !required || (looksLikeToken(session) && !!rec.access_session_hash && safeEqualHex(hashToken(session), rec.access_session_hash)
+    && !!rec.access_session_expires_at && new Date(rec.access_session_expires_at) > new Date());
+  return { rec, required, sessionOk, locked: !!rec.access_code_locked_at, hasCode: !!rec.access_code_hash, remaining: Math.max(0, MAX_CODE_ATTEMPTS - (rec.access_code_attempts ?? 0)) };
+}
+async function requireAccess(tokenHash: string, session: unknown) {
+  const g = await accessGate(tokenHash, session);
+  if (g && g.required && !g.sessionOk) throw new SigningError('code_required', messageFor('code_required'));
+}
+
+/** Checks the access code. On success returns the session secret the page must send with later actions. */
+export async function signerVerifyCode(token: unknown, code: unknown, ctx: RequestContext): Promise<{ session: string | null }> {
+  if (!looksLikeToken(token)) throw new SigningError('invalid', messageFor('invalid'));
+  const normalized = normalizeCodeInput(code);
+  // Not a 6-digit code: tell the signer without costing them an attempt.
+  if (!normalized) throw new SigningError('bad_code_format', 'Enter the 6-digit code.');
+  const session = generateToken();
+  const { data, error } = await createAdminClient().rpc('signing_verify_code', { p_token_hash: hashToken(token), p_code: normalized, p_session_hash: hashToken(session), p_ip: ctx.ip, p_ua: ctx.userAgent });
+  if (error) throw new SigningError('server', 'Please try again in a moment.');
+  if (!data?.ok) throw new SigningError(data?.error ?? 'server', messageFor(data?.error ?? 'server'), { remaining: data?.remaining });
+  return { session: data.not_required ? null : session };
+}
+
+export async function signerOpen(token: unknown, ctx: RequestContext, session?: unknown) {
   if (!looksLikeToken(token)) return { state: 'invalid' as OpenState };
   const admin = createAdminClient();
   const { data, error } = await admin.rpc('signing_open', { p_token_hash: hashToken(token), p_ip: ctx.ip, p_ua: ctx.userAgent });
   if (error) throw new SigningError('server', 'Please try again in a moment.');
   const state = data.state as OpenState;
   if (state !== 'ok') return { state, ...(state === 'invalid' ? {} : await describeDead(data.version_id)) };
+
+  const gate = await accessGate(hashToken(token), session);
+  if (gate?.required && !gate.sessionOk) {
+    // Nothing about the document is revealed until the code is entered (only the title and sender, as for a dead link).
+    return { state: 'code_required' as const, locked: gate.locked, hasCode: gate.hasCode, remaining: gate.remaining, ...(await describeDead(data.version_id)) };
+  }
+  await admin.from('signing_recipients').update({ last_viewed_at: new Date().toISOString() }).eq('id', data.recipient_id);
 
   const [{ data: version }, { data: recipient }] = await Promise.all([
     admin.from('signing_versions').select('*').eq('id', data.version_id).single(),
@@ -70,18 +113,19 @@ export async function signerOpen(token: unknown, ctx: RequestContext) {
         done: !mine && val ? { value: val.value, image_png: val.image_png, typed_text: val.typed_text } : null,
       };
     }),
-    consent: { version: CONSENT_VERSION, text: CONSENT_TEXT, identity: IDENTITY_STATEMENT, method: AUTH_METHOD },
+    consent: { version: CONSENT_VERSION, text: CONSENT_TEXT, identity: v.require_access_code ? IDENTITY_STATEMENT_CODE : IDENTITY_STATEMENT, method: v.require_access_code ? AUTH_METHOD_CODE : AUTH_METHOD },
     pdfUrl: await signedUrl(v.original_path, 900),
   };
 }
 
-export async function signerConsent(token: unknown, ctx: RequestContext) {
+export async function signerConsent(token: unknown, ctx: RequestContext, session?: unknown) {
   if (!looksLikeToken(token)) throw new SigningError('invalid', messageFor('invalid'));
+  await requireAccess(hashToken(token), session);
   const { data, error } = await createAdminClient().rpc('signing_record_consent', { p_token_hash: hashToken(token), p_consent_version: CONSENT_VERSION, p_consent_sha256: CONSENT_TEXT_SHA256, p_ip: ctx.ip, p_ua: ctx.userAgent });
   if (error || !data?.ok) throw new SigningError(data?.error ?? 'server', messageFor(data?.error ?? 'server'));
 }
 
-export async function signerSubmit(token: unknown, raw: unknown, ctx: RequestContext) {
+export async function signerSubmit(token: unknown, raw: unknown, ctx: RequestContext, session?: unknown) {
   if (!looksLikeToken(token)) throw new SigningError('invalid', messageFor('invalid'));
   const parsed = submitSchema.safeParse(raw);
   if (!parsed.success) throw new SigningError('bad_request', 'Some values are invalid.');
@@ -90,6 +134,7 @@ export async function signerSubmit(token: unknown, raw: unknown, ctx: RequestCon
   const hash = hashToken(token);
   const { data: rec } = await admin.from('signing_recipients').select('id,version_id,status').eq('token_hash', hash).maybeSingle();
   if (!rec) throw new SigningError('invalid', messageFor('invalid'));
+  if (rec.status !== 'signed') await requireAccess(hash, session);
   if (rec.status === 'signed') {
     // idempotent retry: nothing to validate, the SQL function returns {already:true}
     const again = await admin.rpc('signing_submit', { p_token_hash: hash, p_values: [], p_ctx: { ip: ctx.ip, user_agent: ctx.userAgent, timezone: tz } });
@@ -155,7 +200,7 @@ async function inviteNextSigner(versionId: string) {
   if (!issued.data?.ok) return;
   const { data: doc } = await admin.from('signing_documents').select('title').eq('id', v.document_id).single();
   try {
-    const m = inviteEmail({ recipientName: next.name, senderName: v.sender_name, business: v.sender_business_name, documentTitle: doc!.title, message: v.message, expiresAt: new Date(v.expires_at), token, subject: v.subject, senderEmail: v.sender_email });
+    const m = inviteEmail({ recipientName: next.name, senderName: v.sender_name, business: v.sender_business_name, documentTitle: doc!.title, message: v.message, expiresAt: new Date(v.expires_at), token, subject: v.subject, senderEmail: v.sender_email, requiresCode: v.require_access_code });
     await sendGmailMessage({ toEmail: next.email, subject: m.subject, message: m.message, html: m.html, text: m.text, replyTo: v.sender_email ?? undefined });
     await admin.from('signing_recipients').update({ last_sent_at: new Date().toISOString(), send_count: 1, last_email_status: 'sent', last_email_error: null }).eq('id', next.id);
     await admin.rpc('signing_log_event', { p_version: versionId, p_recipient: next.id, p_type: 'invited', p_actor: null, p_ip: null, p_ua: null, p_meta: {} });
@@ -166,8 +211,9 @@ async function inviteNextSigner(versionId: string) {
   }
 }
 
-export async function signerDecline(token: unknown, reason: string, ctx: RequestContext) {
+export async function signerDecline(token: unknown, reason: string, ctx: RequestContext, session?: unknown) {
   if (!looksLikeToken(token)) throw new SigningError('invalid', messageFor('invalid'));
+  await requireAccess(hashToken(token), session);
   const admin = createAdminClient();
   const { data, error } = await admin.rpc('signing_decline', { p_token_hash: hashToken(token), p_reason: reason.slice(0, 1000), p_ip: ctx.ip, p_ua: ctx.userAgent });
   if (error || !data?.ok) throw new SigningError(data?.error ?? 'server', messageFor(data?.error ?? 'server'));

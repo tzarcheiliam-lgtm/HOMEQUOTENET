@@ -5,6 +5,7 @@ import { requireProfile } from '@/lib/auth';
 import { canManageSigning } from '@/lib/permissions';
 import { SigningError, messageFor } from '@/lib/signing/errors';
 import * as svc from '@/lib/signing/service';
+import * as tpl from '@/lib/signing/templates';
 
 type R<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
@@ -33,7 +34,7 @@ export async function markReviewedAction(versionId: string) {
   return run(async (a) => { await svc.markReviewed(a, versionId); return {}; });
 }
 export async function sendAction(versionId: string) {
-  return run(async (a) => { const results = await svc.sendForSignature(a, versionId); touch(); return { results }; });
+  return run(async (a) => { const { results, codes } = await svc.sendForSignature(a, versionId); touch(); return { results, codes }; });
 }
 export async function resendAction(versionId: string, recipientId: string) {
   return run(async (a) => { const result = await svc.resendInvitation(a, versionId, recipientId); touch(); return { result }; });
@@ -58,4 +59,24 @@ export async function previewUrlAction(versionId: string) {
 }
 export async function retryFinalizeAction(versionId: string) {
   return run(async (a) => { const r = await svc.retryFinalize(a, versionId); touch(); return { status: r.status }; });
+}
+
+/** Access codes are returned once and never stored in plaintext; they are for the sender to share outside email. */
+export async function regenerateCodeAction(versionId: string, recipientId: string) {
+  return run(async (a) => { const issued = await svc.regenerateAccessCode(a, versionId, recipientId); touch(); return { issued }; });
+}
+export async function setRemindersAction(versionId: string, settings: { days: number | null; max: number }) {
+  return run(async (a) => { await svc.setReminders(a, versionId, settings); touch(); return {}; });
+}
+export async function searchLeadsAction(query: string, contractorId: string | null) {
+  return run(async (a) => ({ leads: await svc.searchLeads(a, query.slice(0, 80), contractorId) }));
+}
+export async function saveTemplateAction(versionId: string, input: unknown) {
+  return run(async (a) => { const r = await tpl.saveAsTemplate(a, versionId, input); revalidatePath('/app/documents/templates'); return r; });
+}
+export async function createFromTemplateAction(templateId: string, input: unknown) {
+  return run(async (a) => { const r = await tpl.createFromTemplate(a, templateId, input); touch(); revalidatePath('/app/documents/templates'); return r; });
+}
+export async function archiveTemplateAction(templateId: string) {
+  return run(async (a) => { await tpl.archiveTemplate(a, templateId); revalidatePath('/app/documents/templates'); return {}; });
 }
