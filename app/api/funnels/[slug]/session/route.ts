@@ -9,6 +9,7 @@ import { after } from 'next/server';
 import { deliverPendingFunnels } from '@/lib/funnels/delivery';
 import { sendLeadEmailsSoon } from '@/lib/leads/notify';
 import { flushNotificationsSoon } from '@/lib/notifications/outbox';
+import { runAiCallQueue } from '@/lib/ai-calling/run.server';
 import { buildFbc, sendMetaEvent } from '@/lib/meta/capi';
 import { loadLeadMetaIds, rememberLeadMetaIds } from '@/lib/meta/lead-ids';
 
@@ -174,6 +175,9 @@ export async function PATCH(request: Request, context: Context) {
       sendLeadEmailsSoon();
       flushNotificationsSoon();
     }
+    // AI calling: the lead's assignment already enqueued a job (DB trigger). This only nudges the worker
+    // after the response is sent; it is a no-op unless calling is enabled, and the scheduled tick is the backstop.
+    if (body.contact && !funnel.is_demo) after(async () => { try { await runAiCallQueue({ limit: 3 }); } catch { /* the scheduled tick retries */ } });
     if (body.contact && !funnel.is_demo && funnel.integration_id) after(async () => { try { await deliverPendingFunnels(); } catch { /* Durable queue retains the job for retry. */ } });
     // Meta Lead conversion — only for a real submission that passed the (optional, per-funnel)
     // service-area gate. Never fires for an out-of-area submission (areaValid === false) or a

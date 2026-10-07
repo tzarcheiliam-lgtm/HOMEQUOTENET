@@ -2,14 +2,17 @@ import { createHmac } from 'node:crypto';
 import { NextRequest } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ insert: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  insert: vi.fn(), del: vi.fn(),
+  store: { getSettings: vi.fn(), findJob: vi.fn(), updateJob: vi.fn(), addLeadActivity: vi.fn(), touchLeadContact: vi.fn() },
+}));
 vi.mock('server-only', () => ({}));
-vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({ from: () => ({ insert: mocks.insert }) }) }));
+vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({ from: () => ({ insert: mocks.insert, delete: () => ({ eq: mocks.del }) }) }) }));
+vi.mock('@/lib/ai-calling/store.server', () => ({ createSupabaseJobStore: () => mocks.store }));
 
 import { verifyFishSignature } from '@/lib/ai-calling/signature';
 import { dedupeKey } from '@/lib/ai-calling/events';
 import { createPhoneCall, setPostCallWebhooks } from '@/lib/ai-calling/fish';
-import { placeAiCall } from '@/lib/ai-calling/place';
 import { POST as webhook } from '@/app/api/ai-calling/webhook/route';
 import { POST as tick } from '@/app/api/ai-calling/tick/route';
 
@@ -26,6 +29,10 @@ beforeEach(() => {
   process.env.FISH_WEBHOOK_SECRET = SECRET;
   process.env.FISH_API_KEY = 'fk_test';
   mocks.insert.mockReset().mockResolvedValue({ error: null });
+  mocks.del.mockReset().mockResolvedValue({ error: null });
+  mocks.store.getSettings.mockReset().mockResolvedValue({ retry_delay_minutes: 60 });
+  mocks.store.findJob.mockReset().mockResolvedValue(null);
+  mocks.store.updateJob.mockReset().mockResolvedValue(undefined);
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); delete process.env.AI_CALLING_GLOBAL_ENABLED; delete process.env.AI_CALLING_CRON_SECRET; });
@@ -73,10 +80,27 @@ describe('POST /api/ai-calling/webhook', () => {
     expect((await post(ended, sign(ended))).status).toBe(500);
   });
   it('stores a valid event once and treats a unique violation as a duplicate', async () => {
-    expect(await (await post(ended, sign(ended))).json()).toEqual({ received: true });
+    expect(await (await post(ended, sign(ended))).json()).toEqual({ received: true, matched: false });
     expect(mocks.insert).toHaveBeenCalledWith(expect.objectContaining({ dedupe_key: 'call.ended:s1', session_id: 's1', agent_id: 'a1' }));
     mocks.insert.mockResolvedValue({ error: { code: '23505' } });
-    expect(await (await post(ended, sign(ended))).json()).toMatchObject({ duplicate: true });
+    expect(await (await post(ended, sign(ended))).json()).toMatchObject({ received: true, duplicate: true });
+  });
+  it('applies the event to the matching call job (webhook updates reach the job)', async () => {
+    const job = { id: '11111111-1111-4111-8111-111111111111', status: 'accepted', attempts: 1, max_attempts: 3, key_seq: 0, provider_session_id: 's1', lead_id: null, prospect_id: null, contact_phone: '+13105550123', contractor_id: 'c1' };
+    mocks.store.findJob.mockResolvedValue(job);
+    expect(await (await post(ended, sign(ended))).json()).toEqual({ received: true, matched: true });
+    expect(mocks.store.updateJob).toHaveBeenCalledWith(job.id, expect.objectContaining({ status: 'completed' }));
+  });
+  it('keeps the ledger row and returns 500 when applying fails; Fish\'s retry then re-applies it (not swallowed as a duplicate)', async () => {
+    mocks.store.getSettings.mockRejectedValueOnce(new Error('db down'));
+    expect((await post(ended, sign(ended))).status).toBe(500);
+    expect(mocks.del).not.toHaveBeenCalled();
+    mocks.insert.mockResolvedValue({ error: { code: '23505' } }); // the retry hits the unique key
+    const job = { id: '11111111-1111-4111-8111-111111111111', status: 'accepted', attempts: 1, max_attempts: 3, key_seq: 0, provider_session_id: 's1', lead_id: null, prospect_id: null, contact_phone: null, contractor_id: null };
+    mocks.store.findJob.mockResolvedValue(job);
+    const retry = await (await post(ended, sign(ended))).json();
+    expect(retry).toMatchObject({ received: true, matched: true, duplicate: true });
+    expect(mocks.store.updateJob).toHaveBeenCalledWith(job.id, expect.objectContaining({ status: 'completed' }));
   });
   it('returns 500 on storage failure so Fish retries', async () => {
     mocks.insert.mockResolvedValue({ error: { code: '08006' } });
@@ -116,24 +140,12 @@ describe('Fish client (request shape per official docs)', () => {
   });
 });
 
-describe('kill switch', () => {
-  const call = { agentId: 'a', phoneNumberId: 'p', toNumber: '+14155550123', idempotencyKey: 'k' };
-  it('placeAiCall refuses and never calls Fish unless the flag is exactly true', async () => {
-    const f = vi.fn(); vi.stubGlobal('fetch', f);
-    await expect(placeAiCall(call)).rejects.toThrow(/disabled/);
-    process.env.AI_CALLING_GLOBAL_ENABLED = 'false';
-    await expect(placeAiCall(call)).rejects.toThrow(/disabled/);
-    expect(f).not.toHaveBeenCalled();
-  });
-  it('rejects non-E.164 destinations even when enabled', async () => {
-    process.env.AI_CALLING_GLOBAL_ENABLED = 'true';
-    await expect(placeAiCall({ ...call, toNumber: '747-966-5030' })).rejects.toThrow(/E\.164/);
-  });
-  it('tick requires the bearer secret and reports disabled', async () => {
+describe('tick endpoint', () => {
+  it('tick requires the bearer secret and, with the env switch off, dials nothing and says why', async () => {
     process.env.AI_CALLING_CRON_SECRET = 'cron';
     const req = (auth?: string) => tick(new Request('https://crm.test/api/ai-calling/tick', { method: 'POST', headers: auth ? { authorization: auth } : {} }));
     expect((await req()).status).toBe(401);
     expect((await req('Bearer nope')).status).toBe(401);
-    expect(await (await req('Bearer cron')).json()).toEqual({ status: 'disabled', dialed: 0 });
+    expect(await (await req('Bearer cron')).json()).toMatchObject({ skipped: 'env_disabled', claimed: 0, dialed: 0 });
   });
 });

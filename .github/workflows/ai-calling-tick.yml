@@ -1,0 +1,41 @@
+# AI calling worker: claims due call jobs (new form leads, scheduled and retried calls) by calling
+# POST /api/ai-calling/tick every 5 minutes. Safe to overlap (jobs are claimed with SKIP LOCKED) and
+# a no-op unless AI_CALLING_GLOBAL_ENABLED=true AND an admin has enabled calling.
+#
+# Setup (once):
+#   Vercel (Production): AI_CALLING_CRON_SECRET = <long random string>
+#   GitHub -> Settings -> Secrets and variables -> Actions:
+#     AI_CALLING_CRON_SECRET = <the same string>
+#     AI_CALLING_TICK_URL    = https://<production domain>/api/ai-calling/tick
+# Until both secrets exist the job skips without failing.
+name: AI calling tick
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ai-calling-tick
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: POST /api/ai-calling/tick
+        env:
+          TICK_URL: ${{ secrets.AI_CALLING_TICK_URL }}
+          CRON_SECRET: ${{ secrets.AI_CALLING_CRON_SECRET }}
+        run: |
+          if [ -z "$TICK_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "AI_CALLING_TICK_URL / AI_CALLING_CRON_SECRET not configured; skipping."
+            exit 0
+          fi
+          code=$(curl -sS --max-time 90 -o body.json -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer $CRON_SECRET" "$TICK_URL")
+          echo "HTTP $code"; cat body.json; echo
+          [ "$code" = "200" ]
