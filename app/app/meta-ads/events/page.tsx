@@ -28,7 +28,7 @@ export default async function MetaEventsPage({ searchParams }: { searchParams: P
   await requireRole(['admin']);
   const { status } = await searchParams;
   const db = await createClient();
-  let q = db.from('meta_conversion_events').select('id, lead_id, stage, source_kind, event_name, action_source, dataset_id, event_id, event_time, value, currency, test_mode, status, attempt_count, max_attempts, next_attempt_at, last_http_status, last_error_code, last_error_message, fbtrace_id, events_received, sent_at, skip_reason, created_at').order('created_at', { ascending: false }).limit(200);
+  let q = db.from('meta_conversion_events').select('id, lead_id, stage, source_kind, event_name, action_source, dataset_id, event_id, origin, event_time, value, currency, test_mode, status, attempt_count, max_attempts, next_attempt_at, last_http_status, last_error_code, last_error_message, fbtrace_id, events_received, sent_at, skip_reason, created_at').order('created_at', { ascending: false }).limit(200);
   if (status && LABEL[status]) q = q.eq('status', status);
   const { data } = await q;
   const rows = data ?? [];
@@ -46,13 +46,14 @@ export default async function MetaEventsPage({ searchParams }: { searchParams: P
         <ul className="space-y-3">
           {rows.map((r) => {
             const [label, tone] = LABEL[r.status] ?? [r.status, 'muted' as const];
-            const canRetry = r.status === 'failed' && Date.now() - new Date(r.event_time).getTime() <= META_MAX_EVENT_AGE_MS;
+            const canRetry = r.status === 'failed' && r.origin === 'queue' && Date.now() - new Date(r.event_time).getTime() <= META_MAX_EVENT_AGE_MS;
             return (
               <li key={r.id}>
                 <Card className="gap-2 p-4 text-sm">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant={tone}>{label}</Badge>
                     {r.test_mode && <Badge variant="info">test</Badge>}
+                    {r.origin === 'legacy_direct' && <Badge variant="muted">sent directly</Badge>}
                     <span className="font-medium">{r.event_name}</span>
                     <span className="text-xs text-muted-foreground">{r.source_kind === 'instant_form_crm' ? 'Instant Form · CRM' : 'Website · Pixel'} · {r.action_source}</span>
                   </div>

@@ -80,6 +80,10 @@ export async function saveDeliverySettings(_prev: MetaActionState, fd: FormData)
     updated_at: new Date().toISOString(), updated_by: profile.id,
   };
   if (modeChanged && v.mode !== 'off') { patch.ledger_cursor_at = new Date().toISOString(); patch.ledger_cursor_id = null; }
+  // Handover: the queue and the original direct QualifiedLead sender must never both send REAL events. Test mode leaves the
+  // direct sender alone (test events never count); Live retires it; Off keeps it only if you tick the box (rollback).
+  if (v.mode === 'live') patch.legacy_direct_qualified = false;
+  else if (v.mode === 'off') patch.legacy_direct_qualified = fd.get('restore_legacy') === 'on';
   const { error } = await db.from('meta_settings').update(patch).eq('id', true);
   if (error) return { error: 'Could not save settings' };
   revalidatePath('/app/meta-ads/setup');
@@ -95,8 +99,8 @@ export async function retryConversionEvent(fd: FormData): Promise<void> {
   const id = str(fd, 'id');
   if (!id || !z.string().uuid().safeParse(id).success) return;
   const db = createAdminClient();
-  const { data: ev } = await db.from('meta_conversion_events').select('status, event_time').eq('id', id).maybeSingle();
-  if (!ev || ev.status !== 'failed') return;
+  const { data: ev } = await db.from('meta_conversion_events').select('status, event_time, origin').eq('id', id).maybeSingle();
+  if (!ev || ev.status !== 'failed' || ev.origin !== 'queue') return; // direct-send audit rows are history, not jobs
   if (Date.now() - new Date(ev.event_time).getTime() > META_MAX_EVENT_AGE_MS) return; // too old for Meta; never re-dated
   await db.from('meta_conversion_events').update({
     status: 'pending', attempt_count: 0, next_attempt_at: new Date().toISOString(), permanent_failure: false, last_error_code: null, last_error_message: null,

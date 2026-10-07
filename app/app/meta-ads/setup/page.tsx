@@ -2,8 +2,8 @@ import { CheckCircle2, Circle } from 'lucide-react';
 import { requireRole } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { listContractors } from '@/lib/data/contractors';
-import { backfillReport, envStatus } from '@/lib/data/meta-ads-admin';
-import { GRAPH_VERSION } from '@/lib/meta/marketing-api';
+import { backfillReport, crmReadinessReport, datasetReport, envStatus } from '@/lib/data/meta-ads-admin';
+import { GRAPH_VERSION, MARKETING_API_VERSION } from '@/lib/meta/marketing-api';
 import { CRM_EVENT_NAME, WEBSITE_EVENT_NAME } from '@/lib/meta/conversions';
 import { freshness } from '@/lib/meta/metrics';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,13 +20,15 @@ export default async function MetaSetupPage() {
   const env = envStatus();
   const contractors = (await listContractors()).map((c) => ({ id: c.id, name: c.name }));
   const [{ data: settings }, { data: accounts }, { data: campaigns }, { data: runs }, { data: counts }] = await Promise.all([
-    db.from('meta_settings').select('delivery_mode, test_event_code, dataset_id, insights_days').eq('id', true).maybeSingle(),
+    db.from('meta_settings').select('delivery_mode, test_event_code, dataset_id, insights_days, legacy_direct_qualified').eq('id', true).maybeSingle(),
     db.from('meta_ad_accounts').select('id, name, currency, timezone_name, contractor_id, show_spend_to_contractor, sync_enabled, last_synced_at, last_sync_error').order('name'),
     db.from('meta_campaigns').select('id, name, contractor_id, account_id').order('name').limit(200),
     db.from('meta_sync_runs').select('started_at, finished_at, status, trigger, counts, error_code, error_message').order('started_at', { ascending: false }).limit(5),
     db.from('meta_conversion_events').select('status, test_mode').order('created_at', { ascending: false }).limit(2000),
   ]);
   const report = await backfillReport(db);
+  const datasets = await datasetReport(db, settings?.dataset_id ?? null);
+  const readiness = await crmReadinessReport(db);
   const tally = (counts ?? []).reduce<Record<string, number>>((m, r: { status: string; test_mode: boolean }) => { const k = `${r.status}${r.test_mode ? ' (test)' : ''}`; m[k] = (m[k] ?? 0) + 1; return m; }, {});
   const lastOk = (runs ?? []).find((r) => r.status === 'ok' || r.status === 'partial');
   const acctName = new Map((accounts ?? []).map((a) => [a.id, a.name ?? a.id]));
@@ -43,7 +45,7 @@ export default async function MetaSetupPage() {
       <PageHeader title="Meta Ads setup" description="Connection health, account mapping, and conversion delivery." backHref="/app/meta-ads" backLabel="Meta Ads" />
 
       <Card>
-        <CardHeader><CardTitle>Connection & health</CardTitle><CardDescription>Graph API version in use: {GRAPH_VERSION}. Tokens live only in server environment variables and are never shown here.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Connection & health</CardTitle><CardDescription>Versions in use: Marketing API {MARKETING_API_VERSION}, Conversions API {GRAPH_VERSION}. Tokens live only in server environment variables and are never shown here.</CardDescription></CardHeader>
         <CardContent className="space-y-4">
           <ul className="divide-y text-sm">
             {env.map((e) => (
@@ -84,7 +86,39 @@ export default async function MetaSetupPage() {
 
       <Card>
         <CardHeader><CardTitle>Conversion delivery</CardTitle><CardDescription>Currently <b>{mode.toUpperCase()}</b>. Queue: {Object.entries(tally).map(([k, v]) => `${v} ${k}`).join(' · ') || 'empty'}.</CardDescription></CardHeader>
-        <CardContent><DeliveryForm settings={{ mode, test_event_code: settings?.test_event_code ?? null, dataset_id: settings?.dataset_id ?? null, insights_days: settings?.insights_days ?? 30 }} /></CardContent>
+        <CardContent><DeliveryForm settings={{ legacy: settings?.legacy_direct_qualified ?? true, mode, test_event_code: settings?.test_event_code ?? null, dataset_id: settings?.dataset_id ?? null, insights_days: settings?.insights_days ?? 30 }} /></CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Dataset check</CardTitle>
+          <CardDescription>Compares the dataset each funnel sends events to with the dataset your ad sets and ads use. Read-only: nothing is changed in Meta or HQN.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <ul className="space-y-1 text-xs text-muted-foreground">
+            {datasets.funnelPixels.map((f) => <li key={f.slug}>Funnel <b className="text-foreground">{f.slug}</b>{f.published ? '' : ' (unpublished)'} → dataset <code>{f.pixelId ?? 'none'}</code>{f.sessionPixels.length ? ` · sessions in the last 30 days carried ${f.sessionPixels.join(', ')}` : ''}</li>)}
+            {datasets.adsetPixels.map((a) => <li key={a.pixelId}>{a.adsets} ad set(s) optimize on dataset <code>{a.pixelId}</code></li>)}
+          </ul>
+          {datasets.findings.length === 0 ? <p className="text-emerald-700">Funnels, ad sets and ads agree on their dataset.</p> : (
+            <ul className="space-y-2">{datasets.findings.map((f, i) => (
+              <li key={i} className={`rounded-md border p-3 ${f.severity === 'error' ? 'border-red-300 bg-red-50' : f.severity === 'warning' ? 'border-amber-300 bg-amber-50' : ''}`}>{f.message}</li>
+            ))}</ul>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Instant Form optimization readiness</CardTitle>
+          <CardDescription>Meta&rsquo;s documented fit guidelines for the Conversion Leads goal, measured on your Instant Form leads from the last 30 days. Meta alone decides eligibility.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          <p>{readiness.leads30d} Instant Form leads in 30 days — Meta suggests at least 200 per month. {readiness.meetsVolume ? 'Volume is sufficient.' : 'Below that volume, optimizing on a later stage is unlikely to work well.'}</p>
+          <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
+            {readiness.stages.map((s) => <li key={s.stage}><b className="text-foreground">{s.stage}</b>: {s.count} reached it{s.rate != null ? ` (${(s.rate * 100).toFixed(1)}%)` : ''} — {s.note}</li>)}
+          </ul>
+          <p className="text-xs text-muted-foreground">Other Meta requirements: the stage should happen within 28 days of the lead, events must be uploaded at least daily, and the goal exists only for native Instant Form campaigns in a business Ads Manager account.</p>
+        </CardContent>
       </Card>
 
       <Card>

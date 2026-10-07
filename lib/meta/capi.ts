@@ -113,18 +113,25 @@ export function buildEventsPayload(event: MetaLeadEvent, testCode?: string) {
 
 let warnedTestMode = false;
 
+export type DirectSendResult = { status: 'accepted' | 'failed' | 'skipped'; httpStatus: number | null; code: string | null; message: string | null; fbtraceId: string | null; eventsReceived: number | null; testMode: boolean };
+export type DirectSendAudit = (event: MetaLeadEvent, result: DirectSendResult) => Promise<void>;
+
 /**
  * Fire-and-forget: errors are logged (no PII, no token) and swallowed so a
  * funnel submission is never blocked or failed by an ad-tracking hiccup.
+ * `audit` (optional) records the outcome in meta_conversion_events (origin 'legacy_direct') so a directly-sent event
+ * is visible in the delivery view and the queue can never re-send the same event id.
  */
-export async function sendMetaEvent(event: MetaLeadEvent): Promise<void> {
+export async function sendMetaEvent(event: MetaLeadEvent, audit?: DirectSendAudit): Promise<DirectSendResult> {
   const token = process.env.META_CONVERSIONS_API_TOKEN;
-  if (!token || !event.pixelId) return;
   const testCode = testEventCode();
+  const base = { httpStatus: null, code: null, message: null, fbtraceId: null, eventsReceived: null, testMode: !!testCode };
+  if (!token || !event.pixelId) return { ...base, status: 'skipped', code: !token ? 'no_token' : 'no_pixel' };
   if (testCode && !warnedTestMode) {
     warnedTestMode = true;
     console.warn('[meta-capi] META_TEST_EVENT_CODE is set: events are sent as TEST events and will not count toward reporting');
   }
+  let result: DirectSendResult;
   try {
     const res = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${event.pixelId}/events`, {
       method: 'POST',
@@ -135,9 +142,17 @@ export async function sendMetaEvent(event: MetaLeadEvent): Promise<void> {
     // Meta's success body is { events_received, messages, fbtrace_id }; errors carry error.message/fbtrace_id.
     // Logged without PII or the token so an accepted-vs-dropped event is visible in the server logs.
     const body = await res.json().catch(() => ({})) as { events_received?: number; fbtrace_id?: string; error?: { message?: string; code?: number; fbtrace_id?: string } };
-    if (!res.ok || body.error) console.error(`[meta-capi] ${event.eventName} rejected: HTTP ${res.status} code=${body.error?.code ?? 'n/a'} ${body.error?.message ?? ''} trace=${body.error?.fbtrace_id ?? 'n/a'}`);
-    else console.info(`[meta-capi] ${event.eventName} pixel=${event.pixelId} events_received=${body.events_received ?? 'n/a'} trace=${body.fbtrace_id ?? 'n/a'}`);
+    if (!res.ok || body.error) {
+      console.error(`[meta-capi] ${event.eventName} rejected: HTTP ${res.status} code=${body.error?.code ?? 'n/a'} ${body.error?.message ?? ''} trace=${body.error?.fbtrace_id ?? 'n/a'}`);
+      result = { ...base, status: 'failed', httpStatus: res.status, code: `graph:${body.error?.code ?? res.status}`, message: (body.error?.message ?? '').slice(0, 300), fbtraceId: body.error?.fbtrace_id ?? null };
+    } else {
+      console.info(`[meta-capi] ${event.eventName} pixel=${event.pixelId} events_received=${body.events_received ?? 'n/a'} trace=${body.fbtrace_id ?? 'n/a'}`);
+      result = { ...base, status: (body.events_received ?? 0) >= 1 ? 'accepted' : 'failed', httpStatus: res.status, code: (body.events_received ?? 0) >= 1 ? null : 'not_received', fbtraceId: body.fbtrace_id ?? null, eventsReceived: body.events_received ?? null };
+    }
   } catch (error) {
     console.error(`[meta-capi] ${event.eventName} failed`, error instanceof Error ? error.name : 'unknown');
+    result = { ...base, status: 'failed', code: 'network', message: error instanceof Error ? error.name : 'unknown' };
   }
+  try { await audit?.(event, result); } catch { /* auditing must never break a funnel request */ }
+  return result;
 }

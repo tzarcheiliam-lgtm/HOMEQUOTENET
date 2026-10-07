@@ -40,7 +40,7 @@ beforeAll(async () => {
       amount numeric(12,2) not null, closed_at date not null default current_date, sale_status text not null default 'won', created_by uuid,
       created_at timestamptz not null default now());
   `);
-  await db.exec(read('0041_meta_ads_analytics_outcomes.sql'));
+  await db.exec(read('0042_meta_ads_analytics_outcomes.sql'));
   c1 = (await q<{ id: string }>(`insert into contractors(name) values ('A') returning id`))[0].id;
   c2 = (await q<{ id: string }>(`insert into contractors(name) values ('B') returning id`))[0].id;
   lead1 = (await q<{ id: string }>(`insert into leads default values returning id`))[0].id;
@@ -53,7 +53,7 @@ const outcomes = async (lead = lead1) => (await q<{ outcome: string; actor_kind:
 
 describe('migration 0041', () => {
   it('is idempotent and starts with delivery OFF', async () => {
-    await db.exec(read('0041_meta_ads_analytics_outcomes.sql'));
+    await db.exec(read('0042_meta_ads_analytics_outcomes.sql'));
     expect((await q(`select delivery_mode from meta_settings`))[0]).toEqual({ delivery_mode: 'off' });
   });
 

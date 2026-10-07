@@ -1,5 +1,5 @@
 -- ============================================================================
--- 0041: Meta Ads analytics, lead-outcome ledger, Meta conversion-event queue
+-- 0042: Meta Ads analytics, lead-outcome ledger, Meta conversion-event queue
 -- ============================================================================
 -- Additive and idempotent. Nothing here sends anything to Meta or changes a live
 -- campaign. Conversion delivery ships OFF (meta_settings.delivery_mode = 'off').
@@ -27,6 +27,10 @@ create table if not exists public.meta_settings (
   insights_days   smallint not null default 30 check (insights_days between 1 and 90),
   -- Outcome-ledger position the queue feeder has processed. Set to now() whenever delivery is switched on from
   -- 'off', so outcomes recorded BEFORE activation are never swept up (no automatic backfill).
+  -- Until an admin switches delivery to test/live, the pre-existing direct QualifiedLead send (lib/meta/qualified.ts)
+  -- keeps running exactly as before, so deploying this migration does not silently stop that signal. Switching the
+  -- queue on turns it off (same event id either way, so a handover cannot double count).
+  legacy_direct_qualified boolean not null default true,
   ledger_cursor_at timestamptz,
   ledger_cursor_id uuid,
   updated_at      timestamptz not null default now(),
@@ -75,6 +79,9 @@ create table if not exists public.meta_adsets (
   effective_status   text,
   optimization_goal  text,
   attribution_spec   jsonb,
+  -- Dataset/pixel the ad set optimizes and attributes against (Graph: promoted_object.pixel_id) - used by the dataset
+  -- consistency check; read-only mirror.
+  promoted_object    jsonb,
   synced_at          timestamptz not null default now()
 );
 create index if not exists idx_meta_adsets_campaign on public.meta_adsets(campaign_id);
@@ -87,6 +94,8 @@ create table if not exists public.meta_ads (
   name             text,
   status           text,
   effective_status text,
+  -- Pixel ids named in the ad's tracking_specs (fb_pixel entries); read-only mirror.
+  tracking_pixel_ids text[],
   synced_at        timestamptz not null default now()
 );
 create index if not exists idx_meta_ads_adset on public.meta_ads(adset_id);
@@ -330,7 +339,13 @@ create table if not exists public.meta_conversion_events (
   stage             text not null check (stage in ('lead', 'qualified', 'appointment', 'won')),
   source_kind       text not null check (source_kind in ('website_pixel', 'instant_form_crm')),
   event_name        text not null,
-  action_source     text not null check (action_source in ('website', 'system_generated')),
+  -- Real source of the conversion: 'website' only for something the visitor did on the site; staff-recorded outcomes are
+  -- 'other', AI-call bookings 'phone_call', Instant Form CRM stages 'system_generated' (Meta's CRM spec).
+  action_source     text not null check (action_source in ('website', 'system_generated', 'other', 'phone_call')),
+  -- 'queue' = built by the outbox; 'legacy_direct' = audit row for an event the funnel route/QualifiedLead sent directly.
+  origin            text not null default 'queue' check (origin in ('queue', 'legacy_direct')),
+  appointment_id    uuid references public.appointments(id) on delete set null,
+  sale_id           uuid references public.sales(id) on delete set null,
   dataset_id        text not null,
   -- Stable. Website: '<funnel session id>:<EventName>' (same scheme as the browser Pixel, so Meta de-duplicates).
   -- Instant Form: 'crm:<leadgen id>:<stage>'.

@@ -56,7 +56,7 @@ export function CampaignMappingForm({ campaign, contractors }: { campaign: { id:
   );
 }
 
-export function DeliveryForm({ settings }: { settings: { mode: string; test_event_code: string | null; dataset_id: string | null; insights_days: number } }) {
+export function DeliveryForm({ settings }: { settings: { legacy: boolean; mode: string; test_event_code: string | null; dataset_id: string | null; insights_days: number } }) {
   const [state, action, pending] = useActionState<MetaActionState, FormData>(saveDeliverySettings, undefined);
   const [mode, setMode] = useState(settings.mode);
   return (
@@ -85,6 +85,16 @@ export function DeliveryForm({ settings }: { settings: { mode: string; test_even
           <Input id="confirm_live" name="confirm_live" autoComplete="off" />
         </div>
       )}
+      <div className="rounded-md border bg-muted/40 p-3 text-sm">
+        <p className="font-medium">Website “QualifiedLead” — how it is sent right now</p>
+        <p className="text-muted-foreground">{settings.legacy
+          ? 'The original direct sender is ACTIVE: person-qualified website leads are still sent exactly as before, so deploying this feature caused no gap. Test mode leaves it running (test events never count). Switching to Live retires it and the queue takes over (same event id, so nothing is counted twice).'
+          : settings.mode === 'live' ? 'The queue sends it. The original direct sender is retired.'
+          : 'NOT being sent: the direct sender is off and the queue is not live. Tick the box below (with delivery Off) to restore the original behavior.'}</p>
+        {mode === 'off' && (
+          <label className="mt-2 flex items-center gap-2"><input type="checkbox" name="restore_legacy" defaultChecked={settings.legacy} className="size-4" /> Keep the original direct QualifiedLead sender running while the queue is off (rollback)</label>
+        )}
+      </div>
       <div className="flex items-center gap-3"><Button type="submit" disabled={pending}>{pending ? 'Saving…' : 'Save'}</Button><Msg s={state} /></div>
     </form>
   );

@@ -12,7 +12,14 @@
  * The token travels in the Authorization header, never in a URL, so it cannot land in request logs.
  */
 
+/**
+ * Versions (checked against Meta's changelog on 2026-10-07): Graph API v26.0 is the newest (introduced 2026-07-29); v25.0
+ * (2026-02-18) remains supported until 2028-07-29. The Marketing API changelog lists v25.0 as its current version, so the
+ * reporting reads default to v25.0 and are overridable with META_MARKETING_API_VERSION; Conversions API calls
+ * (lib/meta/capi.ts, queue.server.ts) keep META_GRAPH_VERSION (default v26.0). Unversioned calls are invalid.
+ */
 export const GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v26.0';
+export const MARKETING_API_VERSION = process.env.META_MARKETING_API_VERSION || 'v25.0';
 const GRAPH = 'https://graph.facebook.com';
 
 export type GraphErrorKind =
@@ -80,7 +87,7 @@ const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 export async function graphGet<T = unknown>(path: string, params: Record<string, string>, opts: GraphOptions): Promise<T> {
   const f = opts.fetchImpl ?? fetch;
   const url = path.startsWith('http') ? path
-    : `${GRAPH}/${opts.version ?? GRAPH_VERSION}/${path.replace(/^\//, '')}?${new URLSearchParams(params).toString()}`;
+    : `${GRAPH}/${opts.version ?? MARKETING_API_VERSION}/${path.replace(/^\//, '')}?${new URLSearchParams(params).toString()}`;
   const max = opts.maxRetries ?? 3;
   let last: GraphFailure | null = null;
   for (let attempt = 0; attempt <= max; attempt++) {
@@ -119,8 +126,8 @@ export async function graphGetAll<T>(path: string, params: Record<string, string
 // ---------------------------------------------------------------------------------------------------
 export type MetaAdAccount = { id: string; name?: string; currency?: string; timezone_name?: string; account_status?: number };
 export type MetaCampaign = { id: string; name?: string; objective?: string; status?: string; effective_status?: string };
-export type MetaAdSet = { id: string; name?: string; campaign_id: string; status?: string; effective_status?: string; optimization_goal?: string; attribution_spec?: unknown };
-export type MetaAd = { id: string; name?: string; campaign_id: string; adset_id: string; status?: string; effective_status?: string };
+export type MetaAdSet = { id: string; name?: string; campaign_id: string; status?: string; effective_status?: string; optimization_goal?: string; attribution_spec?: unknown; promoted_object?: unknown };
+export type MetaAd = { id: string; name?: string; campaign_id: string; adset_id: string; status?: string; effective_status?: string; tracking_specs?: unknown };
 export type MetaInsightRow = {
   ad_id: string; campaign_id: string; adset_id: string; date_start: string;
   spend?: string; impressions?: string; reach?: string; inline_link_clicks?: string;
@@ -132,9 +139,9 @@ export const listAdAccounts = (o: GraphOptions) =>
 export const listCampaigns = (acct: string, o: GraphOptions) =>
   graphGetAll<MetaCampaign>(`${acct}/campaigns`, { fields: 'id,name,objective,status,effective_status' }, o);
 export const listAdSets = (acct: string, o: GraphOptions) =>
-  graphGetAll<MetaAdSet>(`${acct}/adsets`, { fields: 'id,name,campaign_id,status,effective_status,optimization_goal,attribution_spec' }, o);
+  graphGetAll<MetaAdSet>(`${acct}/adsets`, { fields: 'id,name,campaign_id,status,effective_status,optimization_goal,attribution_spec,promoted_object' }, o);
 export const listAds = (acct: string, o: GraphOptions) =>
-  graphGetAll<MetaAd>(`${acct}/ads`, { fields: 'id,name,campaign_id,adset_id,status,effective_status' }, o);
+  graphGetAll<MetaAd>(`${acct}/ads`, { fields: 'id,name,campaign_id,adset_id,status,effective_status,tracking_specs' }, o);
 
 /**
  * Daily ad-level insights in the ad account's reporting timezone. `use_unified_attribution_setting`

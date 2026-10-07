@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
 
-import { buildPayload, decide, identifierSummary, interpretResponse, backoffMinutes, type EligibilityInput, type LeadForMeta, type SessionForMeta } from '@/lib/meta/conversions';
+import { buildPayload, decide, identifierSummary, interpretResponse, backoffMinutes, websiteOutcomeActionSource, type EligibilityInput, type LeadForMeta, type Plan, type SessionForMeta } from '@/lib/meta/conversions';
 import { dispatchBatch, feedFromLedger, type ClaimedEvent, type FinishPatch, type LedgerRow, type LoadedLead, type NewEvent, type QueueStore, type Settings } from '@/lib/meta/queue';
 
 const NOW = Date.parse('2026-10-07T12:00:00Z');
@@ -15,18 +15,40 @@ const base = (o: Partial<EligibilityInput> = {}): EligibilityInput => ({ stage: 
 describe('website events (standard Pixel dataset)', () => {
   it('maps a qualified lead to the CUSTOM QualifiedLead event with the browser-style event_id', () => {
     const d = decide(base());
-    expect(d).toMatchObject({ ok: true, plan: { eventName: 'QualifiedLead', actionSource: 'website', eventId: 'sess-1:QualifiedLead', datasetId: '933962709362966', sourceKind: 'website_pixel' } });
+    expect(d).toMatchObject({ ok: true, plan: { eventName: 'QualifiedLead', actionSource: 'other', eventId: 'sess-1:QualifiedLead', datasetId: '933962709362966', sourceKind: 'website_pixel' } });
   });
   it('maps won to the custom WonJob event, not Purchase, with value only when the real amount and currency exist', () => {
-    const w = decide(base({ stage: 'won', value: 18500, currency: 'USD' }));
+    const w = decide(base({ stage: 'won', value: 18500, currency: 'USD', ref: { saleId: 's1' } }));
     expect(w).toMatchObject({ ok: true, plan: { eventName: 'WonJob', value: 18500, currency: 'USD' } });
-    expect(decide(base({ stage: 'won', value: null, currency: null }))).toMatchObject({ ok: true, plan: { eventName: 'WonJob', value: null, currency: null } });
-    expect(decide(base({ stage: 'won', value: 100, currency: 'dollars' }))).toMatchObject({ ok: true, plan: { value: null } });
+    expect(decide(base({ stage: 'won', value: null, currency: null, ref: { saleId: 's1' } }))).toMatchObject({ ok: true, plan: { eventName: 'WonJob', value: null, currency: null } });
+    expect(decide(base({ stage: 'won', value: 100, currency: 'dollars', ref: { saleId: 's1' } }))).toMatchObject({ ok: true, plan: { value: null } });
   });
   it('never duplicates what the funnel already sends directly (Lead; Schedule for a Calendly booking)', () => {
     expect(decide(base({ stage: 'lead' }))).toMatchObject({ ok: false, reason: 'sent_directly_by_funnel' });
-    expect(decide(base({ stage: 'appointment', session: { ...session, bookedAt: '2026-10-06T00:00:00Z' } }))).toMatchObject({ ok: false, reason: 'sent_directly_by_funnel' });
-    expect(decide(base({ stage: 'appointment' }))).toMatchObject({ ok: true, plan: { eventName: 'Schedule', eventId: 'sess-1:Schedule' } });
+    expect(decide(base({ stage: 'appointment', ref: { appointmentId: 'ap1', funnelBooking: 'calendly' } }))).toMatchObject({ ok: false, reason: 'sent_directly_by_funnel' });
+  });
+  it('separate appointments and sales on one lead are separate events; qualification is once per lead', () => {
+    const a1 = decide(base({ stage: 'appointment', ref: { appointmentId: 'ap1' } })), a2 = decide(base({ stage: 'appointment', ref: { appointmentId: 'ap2' } }));
+    if (!a1.ok || !a2.ok) throw new Error('x');
+    expect(a1.plan.eventId).toBe('sess-1:Schedule:ap1'); expect(a2.plan.eventId).toBe('sess-1:Schedule:ap2');
+    const w1 = decide(base({ stage: 'won', ref: { saleId: 's1' } })), w2 = decide(base({ stage: 'won', ref: { saleId: 's2' } }));
+    if (!w1.ok || !w2.ok) throw new Error('x');
+    expect(w1.plan.eventId).not.toBe(w2.plan.eventId);
+    expect((decide(base({ stage: 'qualified' })) as { plan: Plan }).plan.eventId).toBe('sess-1:QualifiedLead');
+    expect(decide(base({ stage: 'won' }))).toMatchObject({ ok: false, reason: 'missing_reference' });
+  });
+  it('labels the REAL event source: staff-recorded outcomes are not website conversions', () => {
+    expect(websiteOutcomeActionSource('qualified')).toBe('other');
+    expect(websiteOutcomeActionSource('won', { saleId: 's' })).toBe('other');
+    expect(websiteOutcomeActionSource('appointment', { appointmentId: 'a', actorKind: 'user' })).toBe('other');
+    expect(websiteOutcomeActionSource('appointment', { appointmentId: 'a', actorKind: 'ai' })).toBe('phone_call');
+  });
+  it('covers a visitor booking through the GHL calendar (browser fires Schedule, no server event existed) with the browser event id and website source', () => {
+    expect(decide(base({ stage: 'appointment', ref: { appointmentId: 'ap9', funnelBooking: 'other' } })))
+      .toMatchObject({ ok: true, plan: { eventName: 'Schedule', eventId: 'sess-1:Schedule', actionSource: 'website' } });
+  });
+  it('a portal-created appointment after a Calendly booking is NOT suppressed', () => {
+    expect(decide(base({ stage: 'appointment', ref: { appointmentId: 'portal-2', funnelBooking: null } }))).toMatchObject({ ok: true, plan: { eventId: 'sess-1:Schedule:portal-2', actionSource: 'other' } });
   });
   it('respects the stored advertising-measurement choice and the consent-mode default', () => {
     expect(decide(base({ session: { ...session, measurementAllowed: false } }))).toMatchObject({ ok: false, reason: 'measurement_not_allowed' });
@@ -45,13 +67,16 @@ describe('website events (standard Pixel dataset)', () => {
     expect(decide(base({ occurredAt: 'garbage' }))).toMatchObject({ ok: false, reason: 'invalid_event_time' });
   });
   it('builds a web payload with the real event time, hashed PII, raw fbp/fbc, and no free text', () => {
-    const d = decide(base({ stage: 'won', value: 500, currency: 'USD' })); if (!d.ok) throw new Error('x');
-    const p = buildPayload({ event_name: d.plan.eventName, event_id: d.plan.eventId, event_time: '2026-10-06T10:00:00Z', action_source: 'website', value: 500, currency: 'USD', source_kind: 'website_pixel' }, webLead, { eventSourceUrl: d.plan.eventSourceUrl, testEventCode: 'TEST123' });
+    const d = decide(base({ stage: 'won', value: 500, currency: 'USD', ref: { saleId: 's1' } })); if (!d.ok) throw new Error('x');
+    const p = buildPayload({ event_name: d.plan.eventName, event_id: d.plan.eventId, event_time: '2026-10-06T10:00:00Z', action_source: d.plan.actionSource, value: 500, currency: 'USD', source_kind: 'website_pixel' }, webLead, { eventSourceUrl: webLead.landing_page_url, testEventCode: 'TEST123' });
     const ev = p.data[0] as Record<string, any>;
     expect(ev.event_time).toBe(Date.parse('2026-10-06T10:00:00Z') / 1000);
     expect(ev.user_data.em).toMatch(/^[a-f0-9]{64}$/); expect(ev.user_data.fbp).toBe('fb.1.1.2');
     expect(ev.user_data.client_ip_address).toBeUndefined();
     expect(ev.custom_data).toEqual({ value: 500, currency: 'USD' });
+    expect(ev.action_source).toBe('other'); expect(ev.event_source_url).toBeUndefined(); // only website events carry a source URL
+    const web = buildPayload({ event_name: 'Schedule', event_id: 'x', event_time: '2026-10-06T10:00:00Z', action_source: 'website', value: null, currency: null, source_kind: 'website_pixel' }, webLead, { eventSourceUrl: 'https://pool.example/estimate/x' });
+    expect((web.data[0] as Record<string, unknown>).event_source_url).toBe('https://pool.example/estimate/x');
     expect(p.test_event_code).toBe('TEST123');
     expect(JSON.stringify(p)).not.toMatch(/Jordan@|8185550142|notes|transcript/i);
   });
@@ -96,6 +121,7 @@ describe('response handling', () => {
 // ------------------------------------------------------------------------------------------------
 // Queue orchestration with an in-memory store
 // ------------------------------------------------------------------------------------------------
+const bookings: Record<string, 'calendly' | 'other'> = {};
 function memStore(settings: Partial<Settings>, leads: Record<string, LoadedLead>, ledger: LedgerRow[]) {
   const s: Settings = { deliveryMode: 'live', testEventCode: null, datasetId: '555000111', cursorAt: '2026-10-01T00:00:00Z', cursorId: null, ...settings };
   const events: (NewEvent & { id: string; attempt_count: number; max_attempts: number; status: string; next_attempt_at: string; finished?: FinishPatch })[] = [];
@@ -104,6 +130,7 @@ function memStore(settings: Partial<Settings>, leads: Record<string, LoadedLead>
     ledgerAfter: async (at) => ledger.filter((r) => !at || r.recorded_at > at),
     advanceCursor: async (r) => { s.cursorAt = r.recorded_at; s.cursorId = r.id; },
     loadLead: async (id) => leads[id] ?? null,
+    funnelBooking: async (id) => bookings[id] ?? null,
     insertEvent: async (e) => {
       if (events.some((x) => x.dataset_id === e.dataset_id && x.event_id === e.event_id && x.test_mode === e.test_mode)) return 'duplicate';
       events.push({ ...e, id: `ev${events.length + 1}`, attempt_count: 0, max_attempts: 5, next_attempt_at: new Date(0).toISOString() }); return 'inserted';
@@ -113,7 +140,7 @@ function memStore(settings: Partial<Settings>, leads: Record<string, LoadedLead>
   };
   return { store, events, s };
 }
-const lrow = (id: string, outcome: string, at: string, over: Partial<LedgerRow> = {}): LedgerRow => ({ id, lead_id: 'L1', outcome, occurred_at: at, recorded_at: at, actor_kind: 'user', amount: null, currency: null, ...over });
+const lrow = (id: string, outcome: string, at: string, over: Partial<LedgerRow> = {}): LedgerRow => ({ id, lead_id: 'L1', outcome, occurred_at: at, recorded_at: at, actor_kind: 'user', amount: null, currency: null, appointment_id: null, sale_id: null, ...over });
 const ok = { ok: true as const, body: { events_received: 1, fbtrace_id: 'TR' } };
 
 describe('feedFromLedger / dispatchBatch', () => {
@@ -140,7 +167,7 @@ describe('feedFromLedger / dispatchBatch', () => {
   it('queues the initial lead stage before later stages for Instant Form leads', async () => {
     const m = memStore({}, leads, [lrow('o1', 'qualified', '2026-10-06T10:00:00Z', { lead_id: 'L2' })]);
     await feedFromLedger(m.store, { now: NOW });
-    expect(m.events.map((e) => e.event_name)).toEqual(['lead', 'qualified']);
+    expect(m.events.map((e) => e.event_name)).toEqual(['lead_received', 'qualified']);
     expect(m.events[0].event_time).toBe(igLead.created_at); // the real lead time, not "now"
   });
   it('records an ineligible-but-Meta lead as a visible skipped row; ignores non-Meta leads silently', async () => {
@@ -164,7 +191,7 @@ describe('feedFromLedger / dispatchBatch', () => {
     expect(m.events[0]).toMatchObject({ test_mode: true, status: 'accepted' });
   });
   it('accepts, retries rate limits with backoff, and fails permanently on auth errors', async () => {
-    const m = memStore({}, leads, [lrow('o1', 'qualified', '2026-10-06T10:00:00Z'), lrow('o2', 'won', '2026-10-06T11:00:00Z', { amount: 900, currency: 'USD' }), lrow('o3', 'appointment_booked', '2026-10-06T12:00:00Z')]);
+    const m = memStore({}, leads, [lrow('o1', 'qualified', '2026-10-06T10:00:00Z'), lrow('o2', 'won', '2026-10-06T11:00:00Z', { amount: 900, currency: 'USD', sale_id: 'sale-1' }), lrow('o3', 'appointment_booked', '2026-10-06T12:00:00Z', { appointment_id: 'ap-1' })]);
     await feedFromLedger(m.store, { now: NOW });
     const fail = (kind: string, retryable: boolean, code: number) => ({ ok: false as const, failure: { kind, retryable, code, message: 'm', httpStatus: 400, fbtraceId: null } });
     const send = vi.fn().mockResolvedValueOnce(ok).mockResolvedValueOnce(fail('rate_limit', true, 17)).mockResolvedValueOnce(fail('auth', false, 190));
@@ -204,5 +231,29 @@ describe('feedFromLedger / dispatchBatch', () => {
     await feedFromLedger(m.store, { now: NOW });
     await dispatchBatch(m.store, async () => ok, { now: NOW });
     expect(m.events).toHaveLength(1); expect(m.events[0].status).toBe('accepted');
+  });
+});
+
+describe('queue coverage of every appointment path', () => {
+  const leads = { L1: { lead: webLead, session, contractorId: null } };
+  it('Calendly: skipped (funnel sent it); GHL: queued with the browser id; portal/AI after a Calendly booking: queued separately', async () => {
+    bookings['cal'] = 'calendly'; bookings['ghl'] = 'other';
+    const m = memStore({}, leads, ['cal', 'ghl', 'portal'].map((a, i) => lrow(`o${i}`, 'appointment_booked', `2026-10-06T1${i}:00:00Z`, { appointment_id: a })));
+    await feedFromLedger(m.store, { now: NOW });
+    expect(m.events.filter((e) => e.status === 'pending').map((e) => [e.event_id, e.action_source])).toEqual([['sess-1:Schedule', 'website'], ['sess-1:Schedule:portal', 'other']]);
+    expect(m.events.find((e) => e.status === 'skipped')?.skip_reason).toBe('sent_directly_by_funnel');
+  });
+  it('two sales on one lead produce two website events; the same sale replayed produces one', async () => {
+    const m = memStore({}, leads, [lrow('o1', 'won', '2026-10-06T10:00:00Z', { sale_id: 's1', amount: 100, currency: 'USD' }), lrow('o2', 'won', '2026-10-06T11:00:00Z', { sale_id: 's2', amount: 200, currency: 'USD' })]);
+    await feedFromLedger(m.store, { now: NOW });
+    m.s.cursorAt = '2026-10-01T00:00:00Z';
+    await feedFromLedger(m.store, { now: NOW });
+    expect(m.events.map((e) => e.event_id)).toEqual(['sess-1:WonJob:s1', 'sess-1:WonJob:s2']);
+  });
+  it('Instant Form: one event per stage even with several appointments or sales', async () => {
+    const igLeads = { L2: { lead: igLead, session: null, contractorId: null } };
+    const m = memStore({}, igLeads, [lrow('a', 'appointment_booked', '2026-10-06T10:00:00Z', { lead_id: 'L2', appointment_id: 'x1' }), lrow('b', 'appointment_booked', '2026-10-06T11:00:00Z', { lead_id: 'L2', appointment_id: 'x2' })]);
+    await feedFromLedger(m.store, { now: NOW });
+    expect(m.events.map((e) => e.event_id)).toEqual(['crm:123456789012345:lead', 'crm:123456789012345:appointment']);
   });
 });

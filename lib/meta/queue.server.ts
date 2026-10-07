@@ -18,7 +18,7 @@ export function supabaseStore(db: SupabaseClient): QueueStore {
       };
     },
     async ledgerAfter(at, id, limit) {
-      let q = db.from('lead_outcome_events').select('id, lead_id, outcome, occurred_at, recorded_at, actor_kind, amount, currency').order('recorded_at').order('id').limit(limit);
+      let q = db.from('lead_outcome_events').select('id, lead_id, outcome, occurred_at, recorded_at, actor_kind, amount, currency, appointment_id, sale_id').order('recorded_at').order('id').limit(limit);
       if (at) q = id ? q.or(`recorded_at.gt."${at}",and(recorded_at.eq."${at}",id.gt.${id})`) : q.gt('recorded_at', at);
       const { data } = await q;
       return ((data ?? []) as (Omit<LedgerRow, 'amount'> & { amount: string | number | null })[]).map((r) => ({ ...r, amount: r.amount == null ? null : Number(r.amount) }));
@@ -42,6 +42,10 @@ export function supabaseStore(db: SupabaseClient): QueueStore {
         session: s ? { id: s.id, createdAt: s.created_at, measurementAllowed: s.measurement_allowed, bookedAt: s.booked_at, consentMode: config?.trackingPixels?.consentMode ?? 'opt_in',
           pixelId: config?.trackingPixels?.metaPixelId, isDemo: !!funnel?.is_demo, slug: funnel?.slug } : null,
       };
+    },
+    async funnelBooking(appointmentId) {
+      const { data } = await db.from('funnel_bookings').select('provider').eq('appointment_id', appointmentId).limit(1).maybeSingle();
+      return !data ? null : data.provider === 'calendly' ? 'calendly' : 'other';
     },
     async insertEvent(e: NewEvent) {
       const { error } = await db.from('meta_conversion_events').insert(e);
@@ -80,10 +84,9 @@ export function graphSend(token: string, fetchImpl: typeof fetch = fetch): SendF
 /** One scheduler tick: feed the queue from the outcome ledger, then dispatch due events. */
 export async function runMetaConversionTick(opts: { dispatchLimit?: number } = {}) {
   const store = supabaseStore(createAdminClient());
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? null;
   const token = process.env.META_CONVERSIONS_API_TOKEN;
-  const feed = await feedFromLedger(store, { siteUrl });
+  const feed = await feedFromLedger(store);
   if (!token) return { feed, dispatch: { claimed: 0, accepted: 0, retried: 0, failed: 0, held: 'META_CONVERSIONS_API_TOKEN not set' } };
-  const dispatch = await dispatchBatch(store, graphSend(token), { limit: opts.dispatchLimit ?? 20, siteUrl });
+  const dispatch = await dispatchBatch(store, graphSend(token), { limit: opts.dispatchLimit ?? 20 });
   return { feed, dispatch };
 }

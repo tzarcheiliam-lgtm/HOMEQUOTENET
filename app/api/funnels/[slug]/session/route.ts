@@ -12,6 +12,7 @@ import { flushNotificationsSoon } from '@/lib/notifications/outbox';
 import { runAiCallQueue } from '@/lib/ai-calling/run.server';
 import { buildFbc, sendMetaEvent } from '@/lib/meta/capi';
 import { loadLeadMetaIds, rememberLeadMetaIds } from '@/lib/meta/lead-ids';
+import { directSendAudit } from '@/lib/meta/audit.server';
 
 /** Vercel overwrites x-forwarded-for; this is the real client IP (never logged/stored raw). */
 function clientIp(request: Request): string | undefined {
@@ -131,7 +132,7 @@ export async function PATCH(request: Request, context: Context) {
               clientIpAddress: clientIp(request), clientUserAgent: request.headers.get('user-agent') ?? undefined,
               fbp: ids.fbp, fbc: ids.fbc,
             },
-          });
+          }, s.lead_id ? directSendAudit(db, { leadId: s.lead_id, stage: 'appointment' }) : undefined);
         });
         return reply({ session: publicSession(data) });
       }
@@ -194,7 +195,7 @@ export async function PATCH(request: Request, context: Context) {
           clientIpAddress: clientIp(request), clientUserAgent: request.headers.get('user-agent') ?? undefined,
           fbp: body.meta?.fbp, fbc: body.meta?.fbc ?? buildFbc(s.attribution.fbclid, new Date(s.created_at).getTime()),
         },
-      }));
+      }, typeof data?.lead_id === 'string' ? directSendAudit(db, { leadId: data.lead_id, stage: 'lead' }) : undefined));
     }
     // Remember the browser identifiers with the lead (write-once) so later server events for
     // this lead — e.g. Schedule — can reuse them. Sent by the client only when the visitor's
