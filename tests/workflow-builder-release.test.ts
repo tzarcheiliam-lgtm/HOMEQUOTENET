@@ -4,9 +4,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { addNodeAfter, emptyGraph } from '@/lib/workflows/graph';
 import { BASE_DDL, MIGRATIONS_BEFORE_0041 } from './helpers/workflow-base-schema';
-// @ts-expect-error plain ESM scripts shared with the staging CLI
 import { assertStagingSafe, CONFIRM_TEXT } from '../scripts/staging/guard.mjs';
-// @ts-expect-error plain ESM scripts shared with the staging CLI
 import { runChecks } from '../scripts/staging/checks.mjs';
 
 /**

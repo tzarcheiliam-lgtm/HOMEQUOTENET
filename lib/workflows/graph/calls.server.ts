@@ -10,7 +10,6 @@ import { buildCallBrief, type GraphEvaluationContext } from './render';
 
 type Db = ReturnType<typeof createAdminClient>;
 
-const IN_FLIGHT = ['queued', 'dispatching', 'accepted', 'answered'];
 /**
  * When may a workflow REUSE an existing call instead of placing its own?  (rule documented in
  * docs/visual-workflow-builder.md, "Reusing the automatic call")

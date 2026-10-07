@@ -95,7 +95,7 @@ const INLINE_FIELDS: Record<GraphNodeType, string[]> = {
 
 /** Plain-language meaning of each AI call result path. */
 const OUTCOME_HELP: Record<CallOutcome, string> = {
-  booked: 'The homeowner agreed to a specific appointment time.',
+  booked: 'The homeowner agreed to a time AND a matching appointment is recorded for this lead. If none is recorded within the wait, the run goes to “Needs human review” instead.',
   qualified_awaiting_scheduling: 'The homeowner is a real prospect, but no time was agreed yet.',
   callback_requested: 'The homeowner asked to be called back.',
   needs_human_review: 'The call ended but the result was unclear or unavailable. A person should take a look.',

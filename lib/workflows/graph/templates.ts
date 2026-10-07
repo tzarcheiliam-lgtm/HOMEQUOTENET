@@ -44,8 +44,8 @@ const aiQualification = build(
   [
     { id: 'trigger', type: 'trigger', config: { event: 'lead.assigned', filters: {}, entry: { match: 'all', conditions: [{ field: 'lead.consent_granted', operator: 'equals', value: true }] } } },
     { id: 'call_homeowner', type: 'ai_call', name: 'Call homeowner', config: { purpose: 'qualification', contextFields: ['project_type', 'city'], maxAttempts: 2, retryDelayMinutes: 120, resultTimeoutMinutes: 480, analysisGraceMinutes: 30 } },
-    note('note_booked', 'The AI assistant booked an appointment with the homeowner.', 'Note: booked'),
-    { id: 'notify_booked', type: 'send_notification', name: 'Tell the team', config: { audience: 'assigned_contractor', title: 'Appointment booked by AI call', body: 'Open the lead for details.', onError: 'fail_run' } },
+    note('note_booked', 'The AI call ended with a confirmed appointment for the homeowner.', 'Note: booked'),
+    { id: 'notify_booked', type: 'send_notification', name: 'Tell the team', config: { audience: 'assigned_contractor', title: 'Appointment confirmed after AI call', body: 'Open the lead for details.', onError: 'fail_run' } },
     task('task_schedule', 'Schedule an estimate with {{lead.first_name}} — qualified by AI call', 60, 'Schedule the estimate'),
     task('task_callback', 'Call {{lead.first_name}} back — they asked for a callback', 120, 'Call back'),
     task('task_review', 'Review the AI call with {{lead.first_name}} and decide next steps', 120, 'Review the call'),
