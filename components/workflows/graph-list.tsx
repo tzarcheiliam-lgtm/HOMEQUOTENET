@@ -49,6 +49,11 @@ export function GraphWorkflowList({ items, canCreate }: { items: GraphWorkflowLi
                 <div><dt className="text-muted-foreground">Active runs</dt><dd className="font-medium">{w.runCounts.active}</dd></div>
                 <div><dt className="text-muted-foreground">Updated</dt><dd className="font-medium">{niceDate(w.updatedAt)}</dd></div>
               </dl>
+              {w.paused && (
+                <p role="status" className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  Paused{w.paused.since ? ` since ${niceDate(w.paused.since)}` : ''}. {w.paused.heldRuns} {w.paused.heldRuns === 1 ? 'run is' : 'runs are'} held and {w.paused.skippedEvents} new {w.paused.skippedEvents === 1 ? 'event was' : 'events were'} not enrolled. Those events will not enroll after you resume.
+                </p>
+              )}
               <div className="flex items-center justify-between border-t pt-3 text-sm">
                 <span className="text-muted-foreground">{w.runCounts.completed} completed · {w.runCounts.failed} failed</span>
                 <Link className="font-medium text-primary hover:underline" href={`/app/workflows/${w.id}/runs`}>Run history</Link>

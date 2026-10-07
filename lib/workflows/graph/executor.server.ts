@@ -381,7 +381,7 @@ export async function dispatchGraphEvent(db: Db, event: WorkflowEvent, recordedA
       graph = parseWorkflowGraph(draft.graph);
     } else {
       if (!wf.published_version || (!wf.enabled && !manual)) { await skip('not_published'); continue; }
-      if (manual && wf.graph_status === 'paused') { await skip('paused'); continue; }
+      if (manual && wf.graph_status === 'paused') { await skip('paused', 'run.skipped_paused'); continue; }
       const v = await loadVersion(db, wf.id, wf.published_version);
       if (!v) { await skip('version_missing'); continue; }
       graph = parseWorkflowGraph(v.graph);
@@ -389,7 +389,12 @@ export async function dispatchGraphEvent(db: Db, event: WorkflowEvent, recordedA
       if (manual && !graph.settings.allowManualEnrollment && triggerOf(graph)?.config.event !== 'workflow.manual_enrollment') { await skip('manual_not_allowed'); continue; }
       // No back-fill: the fact must have been recorded after publishing (or resuming).
       const cutoff = wf.enroll_from ?? wf.published_at;
-      if (cutoff && recordedAt && Date.parse(recordedAt) < Date.parse(cutoff)) { await skip('before_publish', 'run.skipped_pre_publish'); continue; }
+      if (cutoff && recordedAt && Date.parse(recordedAt) < Date.parse(cutoff)) {
+        // Recorded before the cut-off: before the first publish, or during a pause that has since ended.
+        const resumed = !!wf.enroll_from && !!wf.published_at && Date.parse(wf.enroll_from) > Date.parse(wf.published_at);
+        await skip(resumed ? 'paused_period' : 'before_publish', resumed ? 'run.skipped_paused' : 'run.skipped_pre_publish');
+        continue;
+      }
     }
 
     const trigger = triggerOf(graph);
@@ -441,6 +446,18 @@ export async function dispatchGraphEvent(db: Db, event: WorkflowEvent, recordedA
     if (error || !run) throw new Error(`Could not create workflow run: ${error?.message ?? 'no row'}`);
     result.createdRunIds.push(run.id);
     await writeLog(db, { level: 'info', code: 'run.created', message: 'Workflow run created', runId: run.id, eventId: event.id, data: { workflow_version: versionRow?.version ?? null, mode: isTest ? 'test' : 'live' } });
+  }
+
+  // Paused workflows are not loaded above (they are disabled). Make the events they ignore visible:
+  // one log row per (workflow, event), shown as "events received while paused".
+  if (!manual) {
+    const { data: paused } = await db.from('workflows').select('id,contractor_id').eq('engine', 'graph').eq('graph_status', 'paused')
+      .eq('trigger_type', event.type).is('archived_at', null);
+    for (const wf of (paused ?? []) as { id: string; contractor_id: string | null }[]) {
+      if (!workflowCanSeeEvent(wf.contractor_id, event.contractorId)) continue;
+      result.skipped.push({ workflowId: wf.id, reason: 'paused' });
+      await writeLog(db, { level: 'info', code: 'run.skipped_paused', message: 'Event not enrolled: the workflow is paused', workflowId: wf.id, eventId: event.id, data: { reason: 'paused' } });
+    }
   }
   return result;
 }

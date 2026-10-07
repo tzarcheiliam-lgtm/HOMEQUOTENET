@@ -13,15 +13,16 @@ const COPY: Record<LifecycleKind, { title: string; confirm: string; body: string
     title: 'Pause this workflow?',
     confirm: 'Pause workflow',
     body: [
-      'New enrollments stop right away. Events that happen while paused will never enroll, even after you resume.',
-      'Runs that are waiting are held: their timers freeze and they continue when you resume.',
+      'New enrollments stop right away. Events that happen while paused are listed as “not enrolled” and will never enroll, even after you resume.',
+      'Runs that are waiting are held: their timers freeze and they continue when you resume. Calls that are queued but not yet dialed are held too.',
       'A step that is already running finishes first. A call that has already been placed continues with the provider and its result is saved, but the run will not move on until you resume.',
+      'Cancelling a run (or an exit event) still works while paused.',
     ],
   },
   resume: {
     title: 'Resume this workflow?',
     confirm: 'Resume workflow',
-    body: ['Held runs continue where they stopped (overdue waits continue immediately).', 'Enrollment restarts from now — leads that arrived while paused are not enrolled.'],
+    body: ['Held runs continue where they stopped. Anything that came due while paused is released gradually (about one every 20 seconds) so a long pause cannot trigger a burst of calls or emails.', 'Enrollment restarts from now — leads that arrived while paused are not enrolled.'],
   },
   archive: {
     title: 'Archive this workflow?',

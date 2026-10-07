@@ -219,7 +219,7 @@ describe('enrollment rules', () => {
     // The same event, re-dispatched after the resume, is still before the new enrollment cut-off.
     const redo = await processWorkflowEvent(evDuring, { db: h.client });
     expect(redo.createdRunIds).toEqual([]);
-    expect(redo.skippedWorkflows.some((s) => s.reason === 'before_publish')).toBe(true);
+    expect(redo.skippedWorkflows.some((s) => s.reason === 'paused_period')).toBe(true);
   });
 
   it('manual enrollment follows the workflow\'s rules; live tests run the draft without dedupe and never touch other versions', async () => {
@@ -683,6 +683,148 @@ describe('AI call node', () => {
       await tick();
       expect(await notes(a.lead)).toEqual(['FAILED']);
       expect((await stepsOf(a.run.id)).find((x: any) => x.step_key === 'ai_call_1').output).toMatchObject({ outcome: 'failed', reason: 'call_association_mismatch' });
+    });
+  });
+
+  // ---- Issue 3: pause / resume ------------------------------------------------------------------------------
+  describe('pause and resume', () => {
+    const state = async (wf: string) => (await q<any>(`select graph_status, enabled, paused_at, enroll_from from workflows where id=$1`, [wf]))[0];
+    const skippedLogs = async (wf: string) => q<any>(`select event_id from workflow_logs where workflow_id=$1 and code='run.skipped_paused'`, [wf]);
+
+    it('new events while paused are not enrolled, are LOGGED as skipped, and never enroll after resume', async () => {
+      const wf = await publishFlow(callFlow(), c1, 'pause new events');
+      await new Promise((r) => setTimeout(r, 20));
+      await as(admin);
+      await q(`select wfg_set_paused($1,true)`, [wf.id]);
+      expect((await state(wf.id))).toMatchObject({ graph_status: 'paused', enabled: false });
+      expect((await state(wf.id)).paused_at).not.toBeNull();
+      const lead = await newLead(); await assign(lead, c1);
+      const ev = await eventOf('lead.assigned', lead);
+      await processWorkflowEvent(ev, { db: h.client });
+      expect(await runsOf(wf.id)).toHaveLength(0);
+      expect(await skippedLogs(wf.id)).toEqual([{ event_id: ev }]);
+      // Resume: the event recorded during the pause is NOT picked up later (even if re-dispatched late).
+      await q(`select wfg_set_paused($1,false)`, [wf.id]);
+      expect((await state(wf.id))).toMatchObject({ graph_status: 'published', enabled: true, paused_at: null });
+      await dispatchGraphEvent(h.client, eventFromRow((await q<any>(`select * from workflow_events where id=$1`, [ev]))[0]), (await q<any>(`select recorded_at from workflow_events where id=$1`, [ev]))[0].recorded_at.toISOString());
+      expect(await runsOf(wf.id)).toHaveLength(0);
+      // ...and a new event after resume does enroll.
+      await new Promise((r) => setTimeout(r, 20));
+      const later = await newLead(); await assign(later, c1);
+      await processWorkflowEvent(await eventOf('lead.assigned', later), { db: h.client });
+      expect(await runsOf(wf.id)).toHaveLength(1);
+    });
+
+    it('active runs park (waiting timers freeze), nothing runs while paused, and an exit event still cancels a parked run', async () => {
+      const g = chain('lead.assigned', [['wait_duration', { amount: 1, unit: 'hours' }], ['add_note', { body: 'AFTER WAIT' }]], { exitEvents: ['appointment.booked'] });
+      const wf = await publishFlow(g, c1, 'pause parks');
+      await new Promise((r) => setTimeout(r, 20));
+      const lead = await newLead(); await assign(lead, c1);
+      await processWorkflowEvent(await eventOf('lead.assigned', lead), { db: h.client });
+      const run = (await runsOf(wf.id))[0];
+      expect(run.status).toBe('waiting');
+      const wakeAt = new Date(run.resume_at).getTime();
+      await as(admin);
+      await q(`select wfg_set_paused($1,true)`, [wf.id]);
+      expect((await q<any>(`select (resume_at = 'infinity') as parked from workflow_runs where id=$1`, [run.id]))[0].parked).toBe(true);
+      await tick(); // even a forced tick moves nothing
+      expect(await notes(lead)).toEqual([]);
+      expect(wakeAt).toBeGreaterThan(Date.now());
+      // An exit event (the lead booked an appointment) still cancels the parked run.
+      await book(lead, c1);
+      await processWorkflowEvent(await eventOf('appointment.booked', lead), { db: h.client });
+      expect((await runsOf(wf.id))[0].status).toBe('cancelled');
+      expect(await notes(lead)).toEqual([]);
+    });
+
+    it('resume keeps a not-yet-due wake time and does NOT discard held work', async () => {
+      const g = chain('lead.assigned', [['wait_duration', { amount: 2, unit: 'hours' }], ['add_note', { body: 'AFTER WAIT' }]]);
+      const wf = await publishFlow(g, c1, 'resume future');
+      await new Promise((r) => setTimeout(r, 20));
+      const lead = await newLead(); await assign(lead, c1);
+      await processWorkflowEvent(await eventOf('lead.assigned', lead), { db: h.client });
+      const before = (await runsOf(wf.id))[0];
+      await as(admin);
+      await q(`select wfg_set_paused($1,true)`, [wf.id]);
+      await q(`select wfg_set_paused($1,false)`, [wf.id]);
+      const after = (await runsOf(wf.id))[0];
+      expect(new Date(after.resume_at).getTime()).toBe(new Date(before.resume_at).getTime());
+      expect(after.status).toBe('waiting');
+    });
+
+    it('a long pause does not cause a burst: overdue runs are released one by one, in order, none discarded', async () => {
+      const g = chain('lead.assigned', [['wait_duration', { amount: 1, unit: 'hours' }], ['add_note', { body: 'AFTER WAIT' }]]);
+      const wf = await publishFlow(g, c1, 'resume overdue');
+      await new Promise((r) => setTimeout(r, 20));
+      const leads: string[] = [];
+      for (let i = 0; i < 4; i += 1) {
+        const lead = await newLead(); await assign(lead, c1);
+        await processWorkflowEvent(await eventOf('lead.assigned', lead), { db: h.client });
+        leads.push(lead);
+      }
+      await as(admin);
+      await q(`select wfg_set_paused($1,true)`, [wf.id]);
+      // "A long pause": every held run's original wake time is now in the past.
+      await q(`update workflow_runs set metadata = jsonb_set(metadata, '{_parked_resume_at}', to_jsonb((now() - interval '3 days')::text)) where workflow_id=$1`, [wf.id]);
+      await q(`update workflow_step_runs set resume_at = now() - interval '3 days' where run_id in (select id from workflow_runs where workflow_id=$1) and status='waiting'`, [wf.id]);
+      await q(`select wfg_set_paused($1,false)`, [wf.id]);
+      const runs = await q<any>(`select resume_at, status, metadata from workflow_runs where workflow_id=$1 order by resume_at`, [wf.id]);
+      expect(runs).toHaveLength(4);
+      const delays = runs.map((r: any) => Number(r.metadata.resume_delay_seconds));
+      expect(delays).toEqual([0, 20, 40, 60]);
+      expect(runs.every((r: any) => r.metadata.resumed_overdue === true && r.status === 'waiting')).toBe(true);
+      // The first becomes due now; the rest are NOT due yet, so one tick finishes at most one of them.
+      await tick();
+      expect(await q(`select 1 from lead_activities where body='AFTER WAIT'`)).toHaveLength(1);
+    });
+
+    it('queued (not yet dialed) workflow calls are HELD while paused and released gradually after resume', async () => {
+      const wf = await publishFlow(callFlow(), c1, 'pause calls');
+      await new Promise((r) => setTimeout(r, 20));
+      const l1 = await newLead(); await assign(l1, c1);
+      await processWorkflowEvent(await eventOf('lead.assigned', l1), { db: h.client });
+      const l2 = await newLead(); await assign(l2, c1);
+      await processWorkflowEvent(await eventOf('lead.assigned', l2), { db: h.client });
+      await as(admin);
+      await q(`select wfg_set_paused($1,true)`, [wf.id]);
+      expect(await q(`select id from claim_ai_call_jobs(10, 'w1', 300, null) where lead_id in ($1,$2)`, [l1, l2])).toHaveLength(0);
+      await q(`select wfg_set_paused($1,false)`, [wf.id]);
+      const jobs = await q<any>(`select run_at from ai_call_jobs where lead_id in ($1,$2) order by run_at`, [l1, l2]);
+      expect(jobs).toHaveLength(2);
+      expect(new Date(jobs[1].run_at).getTime() - new Date(jobs[0].run_at).getTime()).toBeGreaterThanOrEqual(19_000);
+      // Not paused: claimable once due.
+      const claimed = await q<any>(`select lead_id from claim_ai_call_jobs(10, 'w1', 300, null)`);
+      expect(claimed.map((c: any) => c.lead_id).filter((id: string) => id === l1 || id === l2).length).toBeLessThanOrEqual(1);
+    });
+
+    it('a call result that arrives while paused is recorded but the run does not move; resume then continues it', async () => {
+      // (covered by "pausing parks a waiting call run"; here we also assert the wait stayed intact)
+      const { wf, lead, run } = await start(callFlow());
+      await as(admin);
+      await q(`select wfg_set_paused($1,true)`, [wf.id]);
+      const [job] = await jobsFor(lead);
+      await q(`update ai_call_jobs set status='no_answer' where id=$1`, [job.id]);
+      await tick();
+      expect(await notes(lead)).toEqual([]);
+      expect((await q(`select status from ai_call_jobs where id=$1`, [job.id]))[0].status).toBe('no_answer');
+      await q(`select wfg_set_paused($1,false)`, [wf.id]);
+      expect((await runsOf(wf.id))[0].id).toBe(run.id);
+      await new Promise((r) => setTimeout(r, 50));
+      await tick();
+      expect(await notes(lead)).toEqual(['NO ANSWER']);
+    });
+
+    it('pausing twice or resuming twice is harmless', async () => {
+      const wf = await publishFlow(callFlow(), c1, 'idempotent pause');
+      await as(admin);
+      await q(`select wfg_set_paused($1,true)`, [wf.id]);
+      const first = (await state(wf.id)).paused_at;
+      await q(`select wfg_set_paused($1,true)`, [wf.id]);
+      expect((await state(wf.id)).paused_at).toEqual(first);
+      await q(`select wfg_set_paused($1,false)`, [wf.id]);
+      const enroll = (await state(wf.id)).enroll_from;
+      await q(`select wfg_set_paused($1,false)`, [wf.id]);
+      expect((await state(wf.id)).enroll_from).toEqual(enroll);
     });
   });
 });

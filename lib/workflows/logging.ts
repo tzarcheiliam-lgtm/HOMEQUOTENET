@@ -36,6 +36,7 @@ export const WORKFLOW_LOG_CODES = [
   // Visual builder (graph engine)
   'run.skipped_pre_publish',
   'run.held_paused',
+  'run.skipped_paused',
   'run.suppressed',
   'run.retried',
   'node.branch_taken',

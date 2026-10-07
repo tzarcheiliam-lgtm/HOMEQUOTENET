@@ -67,7 +67,9 @@ alter table public.workflows
   add column if not exists published_at timestamptz,
   -- Events recorded BEFORE this instant never enroll (publish / resume never
   -- back-fills historical or paused-period events).
-  add column if not exists enroll_from timestamptz;
+  add column if not exists enroll_from timestamptz,
+  -- Set while paused (events recorded since then are logged as 'skipped while paused').
+  add column if not exists paused_at timestamptz;
 
 alter table public.workflows drop constraint if exists workflows_graph_shape;
 alter table public.workflows add constraint workflows_graph_shape check (
@@ -224,6 +226,36 @@ create index if not exists idx_ai_call_jobs_workflow_run on public.ai_call_jobs 
 alter table public.ai_calling_contractor_settings drop constraint if exists ai_calling_contractor_settings_mode_check;
 alter table public.ai_calling_contractor_settings add constraint ai_calling_contractor_settings_mode_check
   check (mode in ('off', 'manual_only', 'automatic', 'workflow_only'));
+
+-- A call that belongs to a PAUSED workflow is held: the queue worker will not claim it until the
+-- workflow resumes (resume re-releases held calls gradually, see wfg_set_paused). Same signature
+-- and behaviour as 0038 otherwise.
+create or replace function public.claim_ai_call_jobs(
+  p_limit int, p_worker text, p_lease_seconds int default 300, p_only uuid default null)
+returns setof public.ai_call_jobs
+language plpgsql security definer set search_path = public as $$
+begin
+  return query
+  with due as (
+    select j.id from public.ai_call_jobs j
+    where (p_only is null or j.id = p_only)
+      and ((j.status = 'queued' and j.run_at <= now())
+        or (j.status = 'dispatching' and j.locked_until < now()))
+      and not exists (
+        select 1 from public.workflow_runs r join public.workflows w on w.id = r.workflow_id
+         where r.id = j.workflow_run_id and w.graph_status = 'paused')
+    order by j.run_at
+    limit greatest(p_limit, 0)
+    for update of j skip locked)
+  update public.ai_call_jobs j
+     set status = 'dispatching', locked_by = p_worker,
+         locked_until = now() + make_interval(secs => p_lease_seconds), updated_at = now()
+    from due where j.id = due.id
+  returning j.*;
+end;
+$$;
+revoke all on function public.claim_ai_call_jobs(int, text, int, uuid) from public, anon, authenticated;
+grant execute on function public.claim_ai_call_jobs(int, text, int, uuid) to service_role;
 
 -- ---------------------------------------------------------------------------
 -- 8. Wake runs when something they wait for happens (never raises)
@@ -517,13 +549,17 @@ end $$;
 revoke all on function public.wfg_publish_internal(uuid, integer, uuid, text, text, jsonb, text[], text) from public, anon, authenticated;
 grant execute on function public.wfg_publish_internal(uuid, integer, uuid, text, text, jsonb, text[], text) to service_role;
 
--- Pause / resume. Defined semantics (see docs):
---   pause : new enrollments stop at once (events recorded while paused never enroll,
---           not even after resume); waiting runs are PARKED (their timers freeze);
---           a run mid-action finishes that action then parks; calls already placed
---           continue at the provider and are recorded, but the run does not advance.
---   resume: enrollment restarts from now; parked runs resume at their original wake
---           time (or immediately if it already passed).
+-- Pause / resume. Defined semantics (see docs/visual-workflow-builder.md, "Pause and resume"):
+--   pause : new enrollments stop at once; each skipped event is logged ('run.skipped_paused') and
+--           events recorded while paused never enroll, not even after resume; waiting runs are
+--           PARKED (timers freeze, resume_at = infinity); a run mid-action finishes that action
+--           then parks; queued (not yet dialed) workflow calls are HELD by claim_ai_call_jobs;
+--           calls already with the provider continue and are recorded, but the run does not advance;
+--           waits that are satisfied meanwhile stay satisfied; exit events still cancel parked runs.
+--   resume: enrollment restarts from now; parked runs whose wake time has not come yet resume at
+--           that time; OVERDUE runs (wake time passed, or their wait/call finished while paused) are
+--           released gradually, one every 20 seconds, so a long pause cannot cause a burst of calls
+--           or emails; held queued calls are released the same way. Nothing is discarded.
 create or replace function public.wfg_set_paused(p_workflow uuid, p_paused boolean)
 returns void language plpgsql security definer set search_path = public as $$
 declare wf public.workflows;
@@ -533,16 +569,44 @@ begin
   if not public.workflow_can_manage(wf.contractor_id) then raise exception 'not allowed' using errcode = '42501'; end if;
   if wf.published_version is null then raise exception 'publish the workflow before pausing it' using errcode = '22023'; end if;
   if p_paused then
-    update public.workflows set graph_status = 'paused', enabled = false, updated_by = auth.uid() where id = p_workflow;
+    if wf.graph_status = 'paused' then return; end if;
+    update public.workflows set graph_status = 'paused', enabled = false, paused_at = now(), updated_by = auth.uid() where id = p_workflow;
     update public.workflow_runs
        set metadata = metadata || jsonb_build_object('_parked_resume_at', resume_at), resume_at = 'infinity'
      where workflow_id = p_workflow and status in ('waiting', 'pending') and resume_at <> 'infinity';
   else
-    update public.workflows set graph_status = 'published', enabled = true, enroll_from = now(), updated_by = auth.uid() where id = p_workflow;
-    update public.workflow_runs
-       set resume_at = greatest(coalesce((metadata ->> '_parked_resume_at')::timestamptz, now()), now()),
-           metadata = metadata - '_parked_resume_at'
-     where workflow_id = p_workflow and status in ('waiting', 'pending') and resume_at = 'infinity';
+    if wf.graph_status <> 'paused' then return; end if;
+    update public.workflows set graph_status = 'published', enabled = true, enroll_from = now(), paused_at = null, updated_by = auth.uid() where id = p_workflow;
+    with parked as (
+      select r.id, r.created_at,
+             case when exists (
+                    select 1 from public.workflow_waits w left join public.ai_call_jobs j on j.id = w.call_job_id
+                     where w.run_id = r.id and (w.status = 'satisfied'
+                        or (w.kind = 'call' and w.status = 'open' and (
+                              j.status in ('no_answer', 'busy', 'failed', 'cancelled', 'expired', 'blocked')
+                           or (j.status = 'completed' and j.analysis is not null)))))
+                  then now()
+                  else coalesce((r.metadata ->> '_parked_resume_at')::timestamptz, now()) end as due
+        from public.workflow_runs r
+       where r.workflow_id = p_workflow and r.status in ('waiting', 'pending') and r.resume_at = 'infinity'),
+    ranked as (
+      select id, due, (due <= now()) as overdue,
+             row_number() over (partition by (due <= now()) order by due, created_at) as rn
+        from parked)
+    update public.workflow_runs r
+       set resume_at = case when ranked.overdue then now() + make_interval(secs => (ranked.rn - 1) * 20) else ranked.due end,
+           metadata = (r.metadata - '_parked_resume_at')
+                      || case when ranked.overdue
+                              then jsonb_build_object('resumed_overdue', true, 'resume_delay_seconds', (ranked.rn - 1) * 20)
+                              else '{}'::jsonb end
+      from ranked where r.id = ranked.id;
+    -- Calls queued for this workflow's runs but not yet dialed: release gradually too.
+    with held as (
+      select j.id, row_number() over (order by j.run_at, j.created_at) as rn
+        from public.ai_call_jobs j join public.workflow_runs r on r.id = j.workflow_run_id
+       where r.workflow_id = p_workflow and j.status = 'queued' and j.trigger_source = 'workflow')
+    update public.ai_call_jobs j set run_at = greatest(j.run_at, now() + make_interval(secs => (held.rn - 1) * 20))
+      from held where j.id = held.id;
   end if;
 end $$;
 revoke all on function public.wfg_set_paused(uuid, boolean) from public, anon;

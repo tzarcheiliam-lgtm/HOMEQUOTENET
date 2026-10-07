@@ -35,13 +35,15 @@ export interface GraphWorkflowListItem {
   triggerType: string;
   updatedAt: string;
   runCounts: { active: number; completed: number; failed: number };
+  /** Only while paused: when it was paused, how many runs are held, how many events were ignored since. */
+  paused: null | { since: string | null; heldRuns: number; skippedEvents: number };
 }
 
 export async function listGraphWorkflows(): Promise<GraphWorkflowListItem[]> {
   const db = await createClient();
   const { data: rows, error } = await db
     .from('workflows')
-    .select('id,name,description,contractor_id,graph_status,published_version,trigger_type,updated_at,contractor:contractors(name)')
+    .select('id,name,description,contractor_id,graph_status,published_version,trigger_type,updated_at,paused_at,contractor:contractors(name)')
     .eq('engine', 'graph').eq('is_template', false).is('archived_at', null).order('updated_at', { ascending: false });
   if (error) {
     // Migration 0041 not applied yet: there are simply no visual workflows.
@@ -55,6 +57,11 @@ export async function listGraphWorkflows(): Promise<GraphWorkflowListItem[]> {
     db.from('workflow_graph_drafts').select('workflow_id,graph').in('workflow_id', ids),
     db.from('workflow_versions').select('workflow_id,version,graph').in('workflow_id', ids),
   ]);
+  const pausedRows = (rows ?? []).filter((r) => r.graph_status === 'paused');
+  const skipped = new Map<string, number>();
+  await Promise.all(pausedRows.map(async (r) => {
+    skipped.set(r.id as string, await countSkippedWhilePaused(db, r.id as string, (r.paused_at as string | null) ?? null));
+  }));
   return (rows ?? []).map((r) => {
     const own = (runs ?? []).filter((x) => x.workflow_id === r.id);
     const contractor = Array.isArray(r.contractor) ? r.contractor[0] : r.contractor;
@@ -70,8 +77,19 @@ export async function listGraphWorkflows(): Promise<GraphWorkflowListItem[]> {
         completed: own.filter((x) => x.status === 'completed').length,
         failed: own.filter((x) => x.status === 'failed').length,
       },
+      paused: r.graph_status === 'paused'
+        ? { since: (r.paused_at as string | null) ?? null, heldRuns: own.filter((x) => ['pending', 'running', 'waiting'].includes(x.status)).length, skippedEvents: skipped.get(r.id as string) ?? 0 }
+        : null,
     };
   });
+}
+
+/** Distinct events a paused workflow ignored since it was paused (from the 'run.skipped_paused' log). */
+export async function countSkippedWhilePaused(db: Awaited<ReturnType<typeof createClient>>, workflowId: string, since: string | null): Promise<number> {
+  let query = db.from('workflow_logs').select('event_id').eq('workflow_id', workflowId).eq('code', 'run.skipped_paused').not('event_id', 'is', null).limit(5000);
+  if (since) query = query.gte('created_at', since);
+  const { data } = await query;
+  return new Set((data ?? []).map((x) => x.event_id as string)).size;
 }
 
 export interface GraphWorkflowDetail {
@@ -88,13 +106,14 @@ export interface GraphWorkflowDetail {
   published: { graph: WorkflowGraph; version: number } | null;
   hasUnpublishedChanges: boolean;
   versions: { version: number; publishedAt: string; note: string | null }[];
+  paused: null | { since: string | null; skippedEvents: number };
 }
 
 export async function getGraphWorkflow(id: string): Promise<GraphWorkflowDetail | null> {
   const db = await createClient();
   const { data: w } = await db
     .from('workflows')
-    .select('id,name,description,contractor_id,graph_status,published_version,published_at,archived_at,contractor:contractors(name)')
+    .select('id,name,description,contractor_id,graph_status,published_version,published_at,archived_at,paused_at,contractor:contractors(name)')
     .eq('id', id).eq('engine', 'graph').maybeSingle();
   if (!w) return null;
   const [{ data: draft }, { data: versions }] = await Promise.all([
@@ -113,6 +132,7 @@ export async function getGraphWorkflow(id: string): Promise<GraphWorkflowDetail 
     published: live && publishedGraph ? { graph: publishedGraph, version: live.version } : null,
     hasUnpublishedChanges: publishedGraph ? semanticGraph(publishedGraph) !== semanticGraph(draftGraph) : false,
     versions: (versions ?? []).map((v) => ({ version: v.version, publishedAt: v.published_at, note: v.note })),
+    paused: w.graph_status === 'paused' ? { since: (w.paused_at as string | null) ?? null, skippedEvents: await countSkippedWhilePaused(db, id, (w.paused_at as string | null) ?? null) } : null,
   };
 }
 
