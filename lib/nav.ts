@@ -53,6 +53,13 @@ export const NAV_ITEMS: NavItem[] = [
     icon: 'Phone',
     roles: ['admin', 'caller', 'setter'],
   },
+  // AI voice agent calls to new form leads and admin-initiated calls (admin only; server actions re-check the role).
+  {
+    label: 'AI Agent Calls',
+    href: '/app/ai-calls',
+    icon: 'Bot',
+    roles: ['admin'],
+  },
   {
     label: 'Appointments',
     href: '/app/appointments',
