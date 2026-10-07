@@ -509,6 +509,12 @@ or secrets by design).
   `dry-run-panel.tsx` for testing a workflow against a simulated event),
   `/app/workflows/[id]/runs` and `/app/workflows/runs/[runId]` (history/debug).
 - **Health check script**: `scripts/workflow-health.mjs`.
+- **Visual-builder run history** (graph-engine runs only): `/app/workflows/runs` (all runs),
+  `/app/workflows/[id]/runs` and `/app/workflows/runs/[runId]` render `components/workflows/runs/*`
+  (`RunList`, `RunDetailView`) when `getGraphWorkflow` / `getGraphRun` return data, else fall back to the
+  legacy pages. Detail shows the pinned graph with a `buildRunOverlay` path, a step timeline, Related
+  and (admin-only) Activity log. Cancel / Retry buttons show only when `caps.edit(run.contractorId)`;
+  AI-call record links are admin-only. Tests: `tests/workflow-run-views.test.tsx`.
 
 ## 11. Integrations
 
@@ -912,3 +918,13 @@ Full write-up: `docs/document-signing.md`. Summary:
 - **Rules**: same filters as the Leads page (`lib/leads/filters.ts`, shared parser); read in pages of 500 up to 20,000 leads (the bare list query stops at the database row cap); leads with neither email nor usable phone skipped; same email OR phone = one person; leads whose funnel session recorded `measurement_allowed = false` (website leads, matched by `external_lead_id` = session id) are left out; older leads with no recorded choice cannot be checked. Cells that could start a spreadsheet formula are defused.
 - **Security**: permission via `canExportCompanyData`; rows limited by the caller's RLS; cross-site requests refused (`Sec-Fetch-Site`); every export is written to `audit_logs` as `leads.export_facebook` with counts and filters, never the data; responses are `no-store`.
 - **Tests**: `tests/leads-facebook-export.test.ts`.
+
+
+## 21. Visual workflow builder (graph engine) — migration 0041, NOT yet applied/deployed (2026-10-07)
+
+A React Flow (`@xyflow/react`) canvas + durable graph executor beside the classic engine. Full design, semantics, rollback: `docs/visual-workflow-builder.md`.
+- **Data**: `workflows.engine` (`linear` default | `graph`), `workflow_graph_drafts`, immutable `workflow_versions`, `workflow_waits`, `workflow_tasks`, `workflow_builder_access`; `ai_call_jobs.trigger_source='workflow'` (+ `workflow_run_id`, per-node retry/window), contractor mode `workflow_only`. New events: `appointment.rescheduled`, `estimate.accepted`, `ai_call.completed|failed`, `task.completed`, `workflow.manual_enrollment`.
+- **Code**: pure model/validator/interpreter in `lib/workflows/graph/` (`model`, `validate`, `engine`, `dry-run`, `templates`, `call-outcomes`); server runtime `executor.server.ts`, `calls.server.ts`, `actions.server.ts`; actions `lib/actions/workflow-graph.ts`; reads `lib/data/workflow-graph.ts`; UI `components/workflows/builder|runs/`, pages under `app/app/workflows/` (list, new, [id] builder, runs, tasks, access).
+- **Rules**: graph = one trigger, named single-use output handles, no cycles; publish validates settings + integration readiness and creates an immutable version; runs are pinned; enrollment only for events recorded after publish/resume; opt-out stops all automated contact; Fish calls reuse the existing queue and guards and adopt an existing auto-call instead of double-calling.
+- **Tests**: `workflow-graph-model|engine|sql|runtime-db`, `workflow-config-panel`, `workflow-run-views` (PGlite, real migrations).
+- **Deploy**: apply 0041 then deploy (code falls back to classic-only if the migration is missing). Rollback: disable graph workflows BEFORE reverting code.

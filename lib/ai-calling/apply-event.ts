@@ -59,7 +59,7 @@ export async function applyFishEvent(payload: Payload, deps: ApplyDeps): Promise
       // dispatcher re-checks consent, opt-out and the calling window before it dials.
       if (job.attempts < job.max_attempts) {
         status = 'queued'; redial = true;
-        patch.run_at = new Date(now.getTime() + deps.settings.retry_delay_minutes * 60_000).toISOString();
+        patch.run_at = new Date(now.getTime() + (job.retry_delay_minutes ?? deps.settings.retry_delay_minutes) * 60_000).toISOString();
         patch.key_seq = job.key_seq + 1;
         patch.last_error = `redial_after_${dial}`;
       }

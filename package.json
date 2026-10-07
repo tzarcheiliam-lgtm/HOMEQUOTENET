@@ -14,6 +14,7 @@
     "@napi-rs/canvas": "^1.0.10",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.45.4",
+    "@xyflow/react": "12.12.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "fontkit": "^2.0.4",

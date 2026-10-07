@@ -10,7 +10,7 @@ export const JOB_STATUS_LABELS: Record<JobStatus, string> = {
 
 export interface AiCallJob {
   id: string;
-  trigger_source: 'auto_form' | 'manual';
+  trigger_source: 'auto_form' | 'manual' | 'workflow';
   dedupe_key: string;
   contractor_id: string | null;
   lead_id: string | null;
@@ -42,6 +42,13 @@ export interface AiCallJob {
   analysis: Record<string, unknown> | null;
   initiated_by: string | null;
   scheduled_for: string | null;
+  /** Set when a workflow call node placed (or adopted) this call. */
+  workflow_run_id?: string | null;
+  workflow_step_key?: string | null;
+  /** Per-job overrides from a workflow call node (bounded by the global settings). */
+  retry_delay_minutes?: number | null;
+  window_start_hour?: number | null;
+  window_end_hour?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -57,7 +64,7 @@ export interface AiCallingSettings {
 
 export interface ContractorCallSettings {
   contractor_id: string;
-  mode: 'off' | 'manual_only' | 'automatic';
+  mode: 'off' | 'manual_only' | 'automatic' | 'workflow_only';
   agent_id: string | null;
   phone_number_id: string | null;
   contractor_name?: string | null;

@@ -34,11 +34,12 @@ export function triggerConfigMatches(workflow: Workflow, event: WorkflowEvent): 
   if (workflow.trigger.type !== event.type) return false;
   const parsed = WORKFLOW_TRIGGER_CONFIG_SCHEMAS[event.type].safeParse(workflow.trigger.config);
   if (!parsed.success) return false;
-  const config = parsed.data as { fromStatuses?: string[]; toStatuses?: string[]; channels?: string[] };
+  const config = parsed.data as { fromStatuses?: string[]; toStatuses?: string[]; channels?: string[]; results?: string[] };
   const payload = event.payload as Record<string, unknown>;
   if (config.fromStatuses && !config.fromStatuses.includes(String(payload.fromStatus ?? ''))) return false;
   if (config.toStatuses && !config.toStatuses.includes(String(payload.toStatus ?? ''))) return false;
   if (config.channels && !config.channels.includes(String(payload.channel ?? ''))) return false;
+  if (config.results && !config.results.includes(String(payload.executionStatus ?? ''))) return false;
   return true;
 }
 

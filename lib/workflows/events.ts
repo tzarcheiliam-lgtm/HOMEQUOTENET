@@ -31,11 +31,17 @@ export const WORKFLOW_EVENT_TYPES = [
   'appointment.cancelled',
   'appointment.completed',
   'appointment.no_show',
+  'appointment.rescheduled',
   'estimate.sent',
+  'estimate.accepted',
   'deal.won',
   'deal.lost',
   'task.completed',
   'message.received',
+  // Visual builder (migration 0041): AI call results and explicit enrollment.
+  'ai_call.completed',
+  'ai_call.failed',
+  'workflow.manual_enrollment',
 ] as const;
 export type WorkflowEventType = (typeof WORKFLOW_EVENT_TYPES)[number];
 /** Triggers and events share one vocabulary. */
@@ -102,7 +108,18 @@ export const WORKFLOW_EVENT_PAYLOAD_SCHEMAS = {
   'appointment.cancelled': appointmentChange,
   'appointment.completed': appointmentChange,
   'appointment.no_show': appointmentChange,
+  'appointment.rescheduled': z
+    .object({
+      ...assignmentScope,
+      appointmentId: uuidSchema,
+      scheduledAt: isoDateTimeSchema.nullable(),
+      previousScheduledAt: isoDateTimeSchema.nullable(),
+    })
+    .strict(),
   'estimate.sent': z
+    .object({ ...assignmentScope, estimateId: uuidSchema, amount: z.number().nonnegative().nullable() })
+    .strict(),
+  'estimate.accepted': z
     .object({ ...assignmentScope, estimateId: uuidSchema, amount: z.number().nonnegative().nullable() })
     .strict(),
   'deal.won': z
@@ -113,6 +130,39 @@ export const WORKFLOW_EVENT_PAYLOAD_SCHEMAS = {
     .strict(),
   'task.completed': z
     .object({ taskId: uuidSchema, leadId: nullableUuid, completedBy: nullableUuid })
+    .strict(),
+  // Execution status only. The qualification result is read from the call record
+  // when a workflow needs it (it can arrive after the call ends).
+  'ai_call.completed': z
+    .object({
+      leadId: uuidSchema,
+      contractorId: uuidSchema,
+      callJobId: uuidSchema,
+      executionStatus: z.literal('completed'),
+      durationSeconds: z.number().int().nonnegative().nullable().optional(),
+      workflowRunId: nullableUuid.optional(),
+    })
+    .strict(),
+  'ai_call.failed': z
+    .object({
+      leadId: uuidSchema,
+      contractorId: uuidSchema,
+      callJobId: uuidSchema,
+      executionStatus: z.enum(['failed', 'expired', 'no_answer', 'busy']),
+      reason: z.string().max(200).nullable().optional(),
+      workflowRunId: nullableUuid.optional(),
+    })
+    .strict(),
+  // A person enrolled one lead into one specific workflow. `testRun` marks a live
+  // test (explicit test recipients; no real customer contact).
+  'workflow.manual_enrollment': z
+    .object({
+      leadId: uuidSchema,
+      workflowId: uuidSchema,
+      requestId: uuidSchema,
+      enrolledBy: uuidSchema,
+      testRun: z.boolean().optional(),
+    })
     .strict(),
   // Channel-agnostic: no provider type appears in the contract.
   'message.received': z
@@ -213,10 +263,20 @@ export const WORKFLOW_TRIGGERS = {
     type: 'appointment.no_show', label: 'Appointment no-show', entityTypes: ['appointment'], contractorScope: 'required', availability: 'ready',
     description: "appointments.status became 'no_show'.", emittedFrom: 'update of public.appointments.status',
   }),
+  'appointment.rescheduled': t({
+    idempotencyRef: 'appointment:<appointmentId>:rescheduled:<newScheduledAtMicros>',
+    type: 'appointment.rescheduled', label: 'Appointment rescheduled', entityTypes: ['appointment'], contractorScope: 'required', availability: 'ready',
+    description: 'appointments.scheduled_at moved to a different time (migration 0041).', emittedFrom: 'update of public.appointments.scheduled_at',
+  }),
   'estimate.sent': t({
     idempotencyRef: 'estimate:<estimateId>:sent',
     type: 'estimate.sent', label: 'Estimate sent', entityTypes: ['estimate'], contractorScope: 'required', availability: 'ready',
     description: "estimates.status became 'sent' (or an estimate was created as sent).", emittedFrom: 'insert/update of public.estimates.status',
+  }),
+  'estimate.accepted': t({
+    idempotencyRef: 'estimate:<estimateId>:accepted',
+    type: 'estimate.accepted', label: 'Estimate accepted', entityTypes: ['estimate'], contractorScope: 'required', availability: 'ready',
+    description: "estimates.status became 'accepted' (migration 0041).", emittedFrom: 'insert/update of public.estimates.status',
   }),
   'deal.won': t({
     idempotencyRef: 'sale:<saleId>:won',
@@ -230,13 +290,28 @@ export const WORKFLOW_TRIGGERS = {
   }),
   'task.completed': t({
     idempotencyRef: 'task:<taskId>:completed:<completedAtMicros>',
-    type: 'task.completed', label: 'Task completed', entityTypes: ['task'], contractorScope: 'optional', availability: 'needs_domain',
-    description: 'A task was completed. HomeQuote has no tasks table yet.', emittedFrom: '(none yet)',
+    type: 'task.completed', label: 'Task completed', entityTypes: ['task'], contractorScope: 'optional', availability: 'ready',
+    description: 'A workflow staff task was marked done (public.workflow_tasks, migration 0041).', emittedFrom: 'update of public.workflow_tasks.status',
   }),
   'message.received': t({
     idempotencyRef: 'message:<messageId>',
     type: 'message.received', label: 'Message received', entityTypes: ['message'], contractorScope: 'optional', availability: 'needs_domain',
     description: 'An inbound SMS/email reply from a lead. HomeQuote has no inbound messaging yet.', emittedFrom: '(none yet)',
+  }),
+  'ai_call.completed': t({
+    idempotencyRef: 'ai_call:<callJobId>:completed',
+    type: 'ai_call.completed', label: 'AI call completed', entityTypes: ['lead'], contractorScope: 'required', availability: 'ready',
+    description: 'A Fish Audio AI call ended (execution status only; it does not mean the lead qualified).', emittedFrom: "update of public.ai_call_jobs.status -> 'completed'",
+  }),
+  'ai_call.failed': t({
+    idempotencyRef: 'ai_call:<callJobId>:<failed|expired|no_answer|busy>',
+    type: 'ai_call.failed', label: 'AI call failed or unanswered', entityTypes: ['lead'], contractorScope: 'required', availability: 'ready',
+    description: 'An AI call ended without a conversation: failed, expired, no answer or busy with no redial left.', emittedFrom: 'update of public.ai_call_jobs.status',
+  }),
+  'workflow.manual_enrollment': t({
+    idempotencyRef: 'manual:<workflowId>:<leadId>:<requestId>',
+    type: 'workflow.manual_enrollment', label: 'Manual enrollment', entityTypes: ['lead'], contractorScope: 'optional', availability: 'ready',
+    description: 'An authorized user enrolled a lead into this workflow by hand (or started a live test).', emittedFrom: 'server action enrollLeadInWorkflowAction',
   }),
 } as const satisfies { [K in WorkflowEventType]: WorkflowTriggerDefinition<K> };
 
@@ -258,11 +333,16 @@ export const WORKFLOW_TRIGGER_CONFIG_SCHEMAS = {
   'appointment.cancelled': empty,
   'appointment.completed': empty,
   'appointment.no_show': empty,
+  'appointment.rescheduled': empty,
   'estimate.sent': empty,
+  'estimate.accepted': empty,
   'deal.won': empty,
   'deal.lost': empty,
   'task.completed': empty,
   'message.received': z.object({ channels: z.array(z.enum(['sms', 'email'])).min(1).optional() }).strict(),
+  'ai_call.completed': empty,
+  'ai_call.failed': z.object({ results: z.array(z.enum(['failed', 'expired', 'no_answer', 'busy'])).min(1).optional() }).strict(),
+  'workflow.manual_enrollment': empty,
 } as const satisfies Record<WorkflowEventType, z.ZodTypeAny>;
 
 export type WorkflowTriggerConfigMap = {

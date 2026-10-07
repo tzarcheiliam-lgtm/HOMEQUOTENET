@@ -83,6 +83,22 @@ function shape(type: WorkflowEventType, id: FixtureIds, network: boolean): Shape
       return appt('held');
     case 'appointment.no_show':
       return appt('no_show');
+    case 'appointment.rescheduled':
+      return {
+        entityType: 'appointment', entityId: id.appointmentId, contractorId: id.contractorId, ref: `appointment:${id.appointmentId}:rescheduled:${MICROS}`,
+        payload: { ...scoped, appointmentId: id.appointmentId, scheduledAt: '2026-10-02T17:00:00.000Z', previousScheduledAt: '2026-10-01T17:00:00.000Z' },
+      };
+    case 'estimate.accepted':
+      return { entityType: 'estimate', entityId: id.estimateId, contractorId: id.contractorId, ref: `estimate:${id.estimateId}:accepted`, payload: { ...scoped, estimateId: id.estimateId, amount: 42000 } };
+    case 'ai_call.completed':
+      return { entityType: 'lead', entityId: id.leadId, contractorId: id.contractorId, ref: `ai_call:${id.taskId}:completed`, payload: { leadId: id.leadId, contractorId: id.contractorId, callJobId: id.taskId, executionStatus: 'completed', durationSeconds: 95 } };
+    case 'ai_call.failed':
+      return { entityType: 'lead', entityId: id.leadId, contractorId: id.contractorId, ref: `ai_call:${id.taskId}:no_answer`, payload: { leadId: id.leadId, contractorId: id.contractorId, callJobId: id.taskId, executionStatus: 'no_answer' } };
+    case 'workflow.manual_enrollment':
+      return {
+        entityType: 'lead', entityId: id.leadId, contractorId: network ? null : id.contractorId, ref: `manual:${id.messageId}:${id.leadId}:${id.taskId}`,
+        payload: { leadId: id.leadId, workflowId: id.messageId, requestId: id.taskId, enrolledBy: id.contractorId },
+      };
     case 'estimate.sent':
       return { entityType: 'estimate', entityId: id.estimateId, contractorId: id.contractorId, ref: `estimate:${id.estimateId}:sent`, payload: { ...scoped, estimateId: id.estimateId, amount: 42000 } };
     case 'deal.won':

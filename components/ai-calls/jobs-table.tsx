@@ -28,7 +28,7 @@ export function JobsTable({ rows }: { rows: JobRow[] }) {
             <TableCell label="Created" className="whitespace-nowrap">{fmt(j.created_at)}</TableCell>
             <TableCell label="Contractor">{j.contractor?.name ?? '—'}</TableCell>
             <TableCell label="Contact"><div className="font-medium">{j.contact_name ?? 'Unknown'}</div><div className="text-xs text-muted-foreground">{maskPhone(j.contact_phone)}</div></TableCell>
-            <TableCell label="Source"><Badge variant={j.trigger_source === 'manual' ? 'outline' : 'secondary'}>{j.trigger_source === 'manual' ? 'Manual' : 'Automatic'}</Badge></TableCell>
+            <TableCell label="Source"><Badge variant={j.trigger_source === 'manual' ? 'outline' : 'secondary'}>{j.trigger_source === 'manual' ? 'Manual' : j.trigger_source === 'workflow' ? 'Automation' : 'Automatic'}</Badge></TableCell>
             <TableCell label="Status"><JobStatusBadge status={j.status} blockReason={j.block_reason} /></TableCell>
             <TableCell label="Run at" className="whitespace-nowrap">{j.status === 'queued' ? fmt(j.run_at) : '—'}</TableCell>
             <TableCell label="Duration">{dur(j.duration_seconds)}</TableCell>

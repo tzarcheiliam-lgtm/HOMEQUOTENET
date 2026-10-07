@@ -83,7 +83,7 @@ export const workflowDefinitionSchema = z
     description: z.string().max(2000).nullable().optional(),
     trigger: workflowTriggerSchema,
     conditions: workflowConditionGroupSchema.nullable().default(null),
-    exitEvents: z.array(workflowEventTypeSchema).max(14).default([]),
+    exitEvents: z.array(workflowEventTypeSchema).max(24).default([]),
     reentryPolicy: z.enum(WORKFLOW_REENTRY_POLICIES).default('once_per_event'),
     steps: z.array(workflowStepSchema).min(1).max(MAX_WORKFLOW_STEPS),
   })
@@ -167,7 +167,7 @@ export interface EnableIssue {
 export function mergeRootsForTrigger(type: WorkflowEventType, owner: { contractorId: string | null }): Set<string> {
   const roots = new Set(['homequote', 'lead']);
   if (type.startsWith('appointment.')) roots.add('appointment');
-  if (type === 'estimate.sent') roots.add('estimate');
+  if (type.startsWith('estimate.')) roots.add('estimate');
   if (owner.contractorId !== null || WORKFLOW_TRIGGERS[type].contractorScope === 'required') roots.add('contractor');
   return roots;
 }
@@ -189,6 +189,7 @@ export function validateWorkflowForEnable(def: WorkflowDefinition, owner: { cont
   for (const field of new Set(fields)) {
     const d = conditionField(field);
     if (d && d.availability !== 'ready') issues.push({ code: 'field_unavailable', message: `${field} is ${d.availability}` });
+    if (d?.graphOnly) issues.push({ code: 'field_unavailable', message: `${field} is only available in visual workflows` });
   }
   const assignmentScoped = trigger.contractorScope === 'required';
   for (const s of def.steps) {
