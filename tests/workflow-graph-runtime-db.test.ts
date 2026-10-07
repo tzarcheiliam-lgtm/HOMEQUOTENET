@@ -1,8 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { createHmac } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeSupabase } from './helpers/pglite-supabase';
+import { BASE_DDL } from './helpers/workflow-base-schema';
 
 /**
  * The REAL server runtime (event dispatch, enrollment rules, the graph executor, the call node, actions,
@@ -12,7 +14,7 @@ import { fakeSupabase } from './helpers/pglite-supabase';
 const h = vi.hoisted(() => ({ client: null as any, emailFails: 0, emailsProcessed: 0, queueKicks: 0 }));
 vi.mock('server-only', () => ({}));
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => h.client }));
-vi.mock('next/server', () => ({ after: (fn: () => unknown) => { void fn(); } }));
+vi.mock('next/server', () => ({ after: (fn: () => unknown) => { void fn(); }, NextRequest: Request, NextResponse: { json: (body: unknown, init?: ResponseInit) => Response.json(body, init) } }));
 vi.mock('@/lib/ai-calling/run.server', () => ({ runAiCallQueue: async () => { h.queueKicks += 1; return { claimed: 0, outcomes: [] }; }, dispatchJobNow: async () => ({ claimed: 0, outcomes: [] }) }));
 vi.mock('@/lib/notifications/outbox', () => ({ enqueueNotificationEvent: async () => true, flushNotificationsSoon: () => undefined }));
 vi.mock('@/lib/leads/notify', () => ({
@@ -85,38 +87,7 @@ const timePasses = async (run: string) => {
 
 beforeAll(async () => {
   db = new PGlite();
-  await db.exec(`
-    create role anon; create role authenticated; create role service_role;
-    create schema if not exists auth;
-    create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('test.uid', true), '')::uuid $$;
-    create function public.set_updated_at() returns trigger language plpgsql as $$ begin new.updated_at = now(); return new; end $$;
-    create type public.lead_status as enum ('new','contact_attempted','qualified','assigned','appointment_set','appointment_completed','estimate_sent','sold','lost','cancelled');
-    create type public.assignment_status as enum ('assigned','accepted','contacted','no_answer','qualified','appointment_set','appointment_held','estimate_given','sold','lost','not_qualified','returned');
-    create table public.profiles (id uuid primary key default gen_random_uuid(), role text, is_active boolean default true, contractor_id uuid, contractor_role text, full_name text, email text);
-    create table public.contractors (id uuid primary key default gen_random_uuid(), name text);
-    create function public.is_admin() returns boolean language sql stable security definer as $$ select exists (select 1 from public.profiles where id = auth.uid() and is_active and role = 'admin') $$;
-    create function public.auth_contractor_id() returns uuid language sql stable security definer as $$ select contractor_id from public.profiles where id = auth.uid() and is_active and role = 'contractor' $$;
-    create table public.verticals (id uuid primary key default gen_random_uuid(), name text);
-    create table public.sub_services (id uuid primary key default gen_random_uuid(), name text);
-    create table public.leads (id uuid primary key default gen_random_uuid(), first_name text, last_name text, email text, phone_e164 text, state text, zip text, city text,
-      consent_granted boolean default false, consent_at timestamptz, consent_source text, consent_disclosure text, archived_at timestamptz, project_description text,
-      status public.lead_status default 'new', qualification_status text default 'needs_qualification', source text, vertical_id uuid, sub_service_id uuid,
-      created_by uuid, created_at timestamptz default now(), updated_at timestamptz default now(), last_contact_date timestamptz);
-    create table public.lead_assignments (id uuid primary key default gen_random_uuid(), lead_id uuid references leads(id), contractor_id uuid references contractors(id),
-      status public.assignment_status default 'assigned', assigned_by uuid, assigned_at timestamptz default now(), updated_at timestamptz default now(), assigned_user_id uuid, unique(lead_id, contractor_id));
-    create table public.appointments (id uuid primary key default gen_random_uuid(), assignment_id uuid references lead_assignments(id), scheduled_at timestamptz,
-      status text default 'scheduled', location text, notes text, created_by uuid, created_at timestamptz default now(), updated_at timestamptz default now());
-    create table public.estimates (id uuid primary key default gen_random_uuid(), assignment_id uuid references lead_assignments(id), amount numeric, status text default 'pending',
-      created_by uuid, created_at timestamptz default now(), updated_at timestamptz default now());
-    create table public.sales (id uuid primary key default gen_random_uuid(), assignment_id uuid, sale_status text, amount numeric, updated_at timestamptz default now());
-    create table public.funnels (id uuid primary key default gen_random_uuid(), slug text, contractor_id uuid);
-    create table public.funnel_sessions (id uuid primary key default gen_random_uuid(), funnel_id uuid, lead_id uuid);
-    create table public.funnel_bookings (id uuid primary key default gen_random_uuid(), session_id uuid, appointment_id uuid, provider text, external_id text, scheduled_at timestamptz);
-    create table public.lead_email_deliveries (id uuid primary key default gen_random_uuid(), lead_id uuid, kind text, recipient_email text, subject text, status text default 'pending', provider_message_id text);
-    create table public.lead_activities (id uuid primary key default gen_random_uuid(), lead_id uuid, actor_id uuid, type text default 'note', body text, metadata jsonb default '{}', created_at timestamptz default now());
-    create table public.contractor_prospects (id uuid primary key default gen_random_uuid(), phone_e164 text, disposition text, do_not_call_at timestamptz);
-    create table public.email_templates (id uuid primary key default gen_random_uuid(), subject text, html_body text, text_body text, is_active boolean default true, contractor_visible boolean default true);
-  `);
+  await db.exec(BASE_DDL);
   await db.exec(`alter table public.lead_email_deliveries add constraint lead_email_deliveries_kind_check check (kind in ('new_lead_alert','qualified_lead'))`);
   for (const f of ['0020_workflow_automation_foundation.sql', '0024_workflow_runtime.sql', '0037_ai_call_events.sql', '0038_ai_calling_queue.sql', '0041_visual_workflow_builder.sql']) await db.exec(read(f));
   h.client = fakeSupabase(db);
@@ -892,6 +863,55 @@ describe('AI call node', () => {
       expect(await seen(admin, `select 1 from ai_call_opt_outs where phone_e164='${phone}'`)).toBe(1);
       // The owner's run view only ever shows the neutral outcome/reason, never who else heard the opt-out.
       const mine = await newLead({ phone }); await assign(mine, c1);
+    });
+  });
+
+  // ---- Verified Fish webhooks -> exactly one resume (route + signature + ledger + applyFishEvent + DB wake) --------
+  describe('Fish webhook -> workflow run (simulated signed deliveries, local database)', () => {
+    const SECRET = 'whsec_local_test_only';
+    const sign = (body: string, t = Math.floor(Date.now() / 1000)) => `t=${t},v1=${createHmac('sha256', SECRET).update(`${t}.${body}`).digest('hex')}`;
+    async function post(payload: unknown, sig?: string | null) {
+      const { POST } = await import('@/app/api/ai-calling/webhook/route');
+      const body = JSON.stringify(payload);
+      const headers: Record<string, string> = {};
+      if (sig !== null) headers['x-fish-webhook-signature'] = sig ?? sign(body);
+      return POST(new Request('http://localhost/api/ai-calling/webhook', { method: 'POST', body, headers }) as never);
+    }
+    beforeEach(() => { process.env.FISH_WEBHOOK_SECRET = SECRET; });
+
+    it('a duplicated / retried signed delivery advances the run exactly once; an unsigned or wrongly signed one changes nothing', async () => {
+      const { wf, lead, run } = await start(callFlow());
+      const [job] = await jobsFor(lead);
+      const sessionId = 'sess-' + Math.random().toString(36).slice(2);
+      await q(`update ai_call_jobs set status='accepted', provider_session_id=$2 where id=$1`, [job.id, sessionId]);
+      const meta = { id: sessionId, agent_id: 'agent-1', metadata: { job_id: job.id }, duration_seconds: 42, conversation_started_at: new Date(Date.now() - 5 * 60_000).toISOString(), conversation_ended_at: new Date().toISOString() };
+      const ended = { event: 'call.ended', session: meta, ended_reason: 'completed' };
+      const analyzed = { event: 'call.analyzed', session: meta, analysis: { status: 'completed', summary: 'Booked a visit', data: [{ name: 'appointment_booked', value: true }], finished_at: new Date().toISOString() } };
+
+      // Rejected deliveries: no signature, wrong signature, tampered body. Nothing is stored or applied.
+      expect((await post(ended, null)).status).toBe(401);
+      expect((await post(ended, 'v1=deadbeef')).status).toBe(401);
+      const goodSig = sign(JSON.stringify(ended));
+      expect((await post({ ...ended, ended_reason: 'tampered' }, goodSig)).status).toBe(401);
+      expect(await q(`select 1 from ai_call_events where session_id=$1`, [sessionId])).toHaveLength(0); // rejected requests store nothing
+      expect((await q<any>(`select status from ai_call_jobs where id=$1`, [job.id]))[0].status).toBe('accepted');
+
+      await book(lead, c1); // recorded during the call, after it started
+      // Verified deliveries, each sent twice (Fish retries at least once) and out of order.
+      expect((await post(analyzed)).status).toBe(200);
+      expect((await post(ended)).status).toBe(200);
+      expect((await post(analyzed)).status).toBe(200);
+      expect((await post(ended)).status).toBe(200);
+      await tick(); await tick();
+
+      expect(await notes(lead)).toEqual(expect.arrayContaining(['BOOKED']));
+      expect((await notes(lead)).filter((n: string) => n === 'BOOKED')).toHaveLength(1);   // the branch ran once
+      expect((await notes(lead)).filter((n: string) => n.startsWith('AI call'))).toHaveLength(2); // webhook notes are written once, not once per delivery
+      expect((await runsOf(wf.id))[0].status).toBe('completed');
+      expect((await stepsOf(run.id)).filter((x: any) => x.step_key === 'add_note_1')).toHaveLength(1);
+      expect(await jobsFor(lead)).toHaveLength(1);                                     // no second call
+      expect(await q(`select 1 from ai_call_events where session_id=$1`, [sessionId])).toHaveLength(2); // ledger de-duplicated
+      expect(h.queueKicks).toBeGreaterThanOrEqual(1);                                   // (the queue itself is faked: no real dial exists in this test)
     });
   });
 });

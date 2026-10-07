@@ -87,7 +87,8 @@ export async function applyFishEvent(payload: Payload, deps: ApplyDeps): Promise
 async function sideEffects(store: JobStore, job: AiCallJob, p: Payload, status: JobStatus, now: Date) {
   const lead = job.lead_id;
   // contractor_id in the metadata scopes the activity to that contractor (and staff) via RLS.
-  const note = (body: string) => lead ? store.addLeadActivity(lead, body, { source: 'ai_call', job_id: job.id, ...(job.contractor_id ? { contractor_id: job.contractor_id } : {}) }) : Promise.resolve();
+  const eventKey = `${p.session?.id ?? job.id}:${p.event}`;
+  const note = (body: string, kind = 'note') => lead ? store.addLeadActivity(lead, body, { source: 'ai_call', job_id: job.id, event_key: `${eventKey}:${kind}`, ...(job.contractor_id ? { contractor_id: job.contractor_id } : {}) }) : Promise.resolve();
 
   if (p.event === 'phone_call.dial_finished') {
     const d = p.dial_status ?? 'unknown';
@@ -102,7 +103,7 @@ async function sideEffects(store: JobStore, job: AiCallJob, p: Payload, status: 
   } else if (p.event === 'call.analyzed' && p.analysis) {
     const a = p.analysis;
     const flagged = (a.data ?? []).some((d) => (d.name === 'do_not_call' || d.name === 'opt_out') && truthy(d.value));
-    if (a.summary) await note(`AI call summary: ${a.summary}`);
+    if (a.summary) await note(`AI call summary: ${a.summary}`, 'summary');
     if (job.prospect_id && a.status === 'completed' && !flagged) {
       await store.recordProspectResult(job, { outcome: 'follow_up_required', notes: `AI agent call summary (review needed): ${a.summary ?? 'no summary'}` });
     }
@@ -111,7 +112,7 @@ async function sideEffects(store: JobStore, job: AiCallJob, p: Payload, status: 
       await store.addOptOut(job.contact_phone, 'call_analysis', 'Requested no further calls during an AI call');
       await store.cancelQueuedForPhone(job.contact_phone, job.id);
       if (job.prospect_id) await store.recordProspectResult(job, { outcome: 'do_not_call', notes: 'Asked not to be called again during an AI agent call' });
-      await note('Contact asked not to be called again; number added to the AI call opt-out list');
+      await note('Contact asked not to be called again; number added to the AI call opt-out list', 'opt_out');
     }
   }
 }

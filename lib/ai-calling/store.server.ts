@@ -77,6 +77,11 @@ export function createSupabaseJobStore(db: SupabaseClient = createAdminClient())
       if (error) throw new Error(`cancel queued: ${error.message}`);
     },
     async addLeadActivity(leadId, body, metadata) {
+      // Fish delivers at least once and a failed apply is retried: a note carrying an event_key is written once.
+      if (typeof metadata.event_key === 'string') {
+        const { data: seen } = await db.from('lead_activities').select('id').eq('lead_id', leadId).contains('metadata', { event_key: metadata.event_key }).limit(1);
+        if ((seen ?? []).length) return;
+      }
       const { error } = await db.from('lead_activities').insert({ lead_id: leadId, actor_id: null, type: 'contact_attempt', body, metadata });
       if (error) throw new Error(`lead activity: ${error.message}`);
     },
