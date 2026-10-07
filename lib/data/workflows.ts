@@ -22,9 +22,12 @@ export interface WorkflowListItem {
 
 export async function listWorkflows(): Promise<WorkflowListItem[]> {
   const db = await createClient();
-  const { data: rows, error } = await db.from('workflows')
+  const base = () => db.from('workflows')
     .select('id,name,description,enabled,trigger_type,contractor_id,template_key,version,updated_at,contractor:contractors(name)')
     .eq('is_template', false).is('archived_at', null).order('updated_at', { ascending: false });
+  // Visual (graph) workflows have their own list; before migration 0041 there is no `engine` column.
+  let { data: rows, error } = await base().eq('engine', 'linear');
+  if (error && /engine/i.test(error.message)) ({ data: rows, error } = await base());
   if (error) throw new Error('Workflow list is unavailable');
   const ids = (rows ?? []).map((row) => row.id);
   const { data: runs } = ids.length ? await db.from('workflow_runs').select('id,workflow_id,status,created_at').in('workflow_id', ids).order('created_at', { ascending: false }) : { data: [] };

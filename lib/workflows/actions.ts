@@ -276,6 +276,12 @@ export const WORKFLOW_SKIP_REASONS = [
   'anchor_missing',
   'anchor_past',
   'unavailable_action',
+  // Visual builder
+  'contact_suppressed',
+  'no_assignee',
+  'missing_lead',
+  'already_done',
+  'test_mode',
 ] as const;
 export type WorkflowSkipReason = (typeof WORKFLOW_SKIP_REASONS)[number];
 

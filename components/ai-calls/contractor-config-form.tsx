@@ -10,7 +10,7 @@ import { Select } from '@/components/ui/select';
 import { saveContractorCalling, type AiActionState } from '@/lib/actions/ai-calling';
 import type { ContractorCallingRow } from '@/lib/data/ai-calling';
 
-const MODE_LABEL = { off: 'Off', manual_only: 'Manual only', automatic: 'Automatic (new form leads)' } as const;
+const MODE_LABEL = { off: 'Off', manual_only: 'Manual only', workflow_only: 'Workflow only (published automations place the calls)', automatic: 'Automatic (new form leads, and workflows)' } as const;
 
 export function ContractorConfigForm({ row }: { row: ContractorCallingRow }) {
   const [state, action, pending] = useActionState<AiActionState, FormData>(saveContractorCalling, undefined);

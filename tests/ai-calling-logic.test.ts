@@ -57,6 +57,15 @@ const base = (o: Partial<EligibilityInput> = {}): EligibilityInput => ({
 const block = (o: Partial<EligibilityInput>) => { const d = evaluateEligibility(base(o)); return d.action === 'block' ? d.reason : d.action; };
 
 describe('eligibility', () => {
+  it('opt-out and do-not-call apply identically to automatic, manual and workflow calls (and for every contractor mode)', () => {
+    for (const trigger of ['auto_form', 'manual', 'workflow'] as const) {
+      for (const contractorMode of ['automatic', 'manual_only', 'workflow_only'] as const) {
+        const mode = trigger === 'auto_form' ? 'automatic' : trigger === 'workflow' && contractorMode === 'manual_only' ? 'workflow_only' : contractorMode;
+        expect(block({ trigger, contractorMode: mode, optedOut: true })).toBe('opted_out');
+        expect(block({ trigger, contractorMode: mode, doNotCall: true })).toBe('do_not_call');
+      }
+    }
+  });
   it('dispatches a fully eligible job', () => expect(evaluateEligibility(base()).action).toBe('dispatch'));
   it('blocks every failing precondition with its own reason', () => {
     expect(block({ contractorMode: 'off' })).toBe('contractor_off');

@@ -52,6 +52,8 @@ export interface ConditionFieldDefinition {
   /** Where the value is read from in the existing schema. */
   source: string;
   availability: Availability;
+  /** Only the visual builder's graph engine supplies this field (call results, fresh estimate state). */
+  graphOnly?: boolean;
 }
 
 const f = (d: ConditionFieldDefinition) => d;
@@ -79,6 +81,15 @@ export const CONDITION_FIELDS = [
   f({ field: 'assignment.status', label: 'Pipeline stage (contractor)', valueType: 'string', enumValues: ASSIGNMENT_STATUS_VALUES, source: 'lead_assignments.status', availability: 'ready' }),
   f({ field: 'appointment.status', label: 'Appointment status', valueType: 'string', enumValues: APPOINTMENT_STATUS_VALUES, source: 'appointments.status', availability: 'ready' }),
   f({ field: 'appointment.scheduled_at', label: 'Appointment time', valueType: 'datetime', source: 'appointments.scheduled_at', availability: 'ready' }),
+  f({ field: 'lead.email', label: 'Email address', valueType: 'string', source: 'leads.email', availability: 'ready' }),
+  f({ field: 'lead.phone', label: 'Phone number', valueType: 'string', source: 'leads.phone', availability: 'ready' }),
+  f({ field: 'lead.budget_range', label: 'Budget range', valueType: 'string', source: 'leads.budget_range', availability: 'ready' }),
+  f({ field: 'lead.timeline', label: 'Project timeline', valueType: 'string', source: 'leads.timeline', availability: 'ready' }),
+  f({ field: 'estimate.status', label: 'Estimate status', valueType: 'string', enumValues: ['pending', 'sent', 'accepted', 'rejected'], source: 'estimates.status (re-read when the step runs)', availability: 'ready', graphOnly: true }),
+  f({ field: 'estimate.amount', label: 'Estimate amount', valueType: 'number', source: 'estimates.amount', availability: 'ready', graphOnly: true }),
+  f({ field: 'call.outcome', label: 'AI call result', valueType: 'string', enumValues: ['booked', 'qualified_awaiting_scheduling', 'callback_requested', 'needs_human_review', 'no_answer', 'wrong_number', 'opted_out', 'failed', 'timed_out'], source: 'ai_call_jobs (latest call in this run)', availability: 'ready', graphOnly: true }),
+  f({ field: 'call.execution_status', label: 'AI call status', valueType: 'string', enumValues: ['queued', 'blocked', 'dispatching', 'accepted', 'answered', 'completed', 'no_answer', 'busy', 'failed', 'cancelled', 'expired'], source: 'ai_call_jobs.status (latest call in this run)', availability: 'ready', graphOnly: true }),
+  f({ field: 'call.attempts', label: 'AI call attempts', valueType: 'number', source: 'ai_call_jobs.attempts (latest call in this run)', availability: 'ready', graphOnly: true }),
   f({ field: 'lead.assigned_user_id', label: 'Assigned user', valueType: 'uuid', source: '(none: leads have no owner column yet)', availability: 'needs_domain' }),
   f({ field: 'lead.tags', label: 'Tags', valueType: 'string_array', source: '(none: no tags table yet)', availability: 'needs_domain' }),
 ] as const satisfies readonly ConditionFieldDefinition[];

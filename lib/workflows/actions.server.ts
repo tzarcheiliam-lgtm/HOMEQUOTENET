@@ -10,7 +10,7 @@ import { renderWorkflowTemplate as renderTemplate } from './merge';
 import { renderEmailTemplate, homequoteSystemValues, type EmailTemplateContext } from '@/lib/emails/variables';
 
 type WorkflowDb=ReturnType<typeof createAdminClient>;
-interface RuntimeActionContext { action:WorkflowAction; run:{id:string;workflowId:string;contractorId:string|null;leadId:string|null}; stepRun:{id:string;stepKey:string;attempt:number;idempotencyKey:string}; event:WorkflowEvent; now:Date }
+export interface RuntimeActionContext { action:WorkflowAction; run:{id:string;workflowId:string;contractorId:string|null;leadId:string|null}; stepRun:{id:string;stepKey:string;attempt:number;idempotencyKey:string}; event:WorkflowEvent; now:Date }
 export interface ExecuteWorkflowActionInput { db:WorkflowDb; context:RuntimeActionContext; values:WorkflowEvaluationContext }
 const wfError=(code:string,message:string,kind:'temporary'|'permanent'):WorkflowError=>({code,message,kind,retryable:kind==='temporary'});
 const temporary=(code:string,message:string):WorkflowActionResult=>({outcome:'temporary_failure',error:wfError(code,message,'temporary')});
@@ -32,7 +32,7 @@ function workflowValuesToEmailContext(values:WorkflowEvaluationContext):EmailTem
 }
 
 /** Loads a saved template and renders subject/html/text against this run's values. Falls back to a temporary failure if the template is missing or inactive so a retry can surface the misconfiguration instead of silently sending blanks. */
-async function resolveTemplateEmail(db:WorkflowDb,templateId:string,values:WorkflowEvaluationContext):Promise<{subject:string;html:string;text:string}|null>{
+export async function resolveTemplateEmail(db:WorkflowDb,templateId:string,values:WorkflowEvaluationContext):Promise<{subject:string;html:string;text:string}|null>{
   const {data,error}=await db.from('email_templates').select('subject, html_body, text_body, is_active').eq('id',templateId).maybeSingle();
   if(error||!data||!data.is_active) return null;
   const emailContext=workflowValuesToEmailContext(values);
@@ -45,9 +45,10 @@ async function recipientEmails(db:WorkflowDb,audience:{kind:'lead'}|{kind:'lead_
   if(error) throw new Error('recipient lookup failed');
   return Array.from(new Set((data??[]).map((row:{email:string})=>row.email.trim().toLowerCase()).filter(Boolean)));
 }
-async function deliverWorkflowEmail(input:ExecuteWorkflowActionInput,audience:{kind:'lead'}|{kind:'lead_alert_team'}|{kind:'recipients';recipientIds:string[]},subjectTemplate:string,messageTemplate:string,resolvedHtml?:string):Promise<WorkflowActionResult>{
+/** `recipientsOverride` (live tests) replaces the audience lookup so a test can only ever reach explicitly chosen addresses. */
+export async function deliverWorkflowEmail(input:ExecuteWorkflowActionInput,audience:{kind:'lead'}|{kind:'lead_alert_team'}|{kind:'recipients';recipientIds:string[]},subjectTemplate:string,messageTemplate:string,resolvedHtml?:string,recipientsOverride?:string[]):Promise<WorkflowActionResult>{
   const leadId=input.context.run.leadId;if(!leadId)return permanent('missing_lead','Workflow email needs a lead');
-  let recipients:string[];try{recipients=await recipientEmails(input.db,audience,input.values)}catch{return temporary('recipient_lookup_failed','Could not load workflow email recipients')}
+  let recipients:string[];try{recipients=recipientsOverride??await recipientEmails(input.db,audience,input.values)}catch{return temporary('recipient_lookup_failed','Could not load workflow email recipients')}
   if(!recipients.length)return {outcome:'skipped',reason:'missing_contact'};
   const subject=renderWorkflowTemplate(subjectTemplate,input.values),message=renderWorkflowTemplate(messageTemplate,input.values);
   const htmlMessage=resolvedHtml??textHtml(message);

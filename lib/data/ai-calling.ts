@@ -20,7 +20,7 @@ export async function listAiCallJobs(f: JobFilters): Promise<{ rows: JobRow[]; t
     .range((page - 1) * AI_CALLS_PAGE_SIZE, page * AI_CALLS_PAGE_SIZE - 1);
   if (f.contractor && UUID.test(f.contractor)) q = q.eq('contractor_id', f.contractor);
   if (f.status && STATUSES.includes(f.status)) q = q.eq('status', f.status);
-  if (f.trigger === 'auto_form' || f.trigger === 'manual') q = q.eq('trigger_source', f.trigger);
+  if (f.trigger === 'auto_form' || f.trigger === 'manual' || f.trigger === 'workflow') q = q.eq('trigger_source', f.trigger);
   if (f.from && ISO_DAY.test(f.from)) q = q.gte('created_at', `${f.from}T00:00:00Z`);
   if (f.to && ISO_DAY.test(f.to)) q = q.lt('created_at', new Date(new Date(`${f.to}T00:00:00Z`).getTime() + 86_400_000).toISOString());
   const { data, count, error } = await q;

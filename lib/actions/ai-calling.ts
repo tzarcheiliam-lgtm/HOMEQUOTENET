@@ -65,7 +65,7 @@ export async function saveCallingSettings(_p: AiActionState, fd: FormData): Prom
 
 const contractorSchema = z.object({
   contractor_id: z.string().uuid(),
-  mode: z.enum(['off', 'manual_only', 'automatic']),
+  mode: z.enum(['off', 'manual_only', 'automatic', 'workflow_only']),
   agent_id: z.string().trim().optional().nullable(),
   phone_number_id: z.string().trim().optional().nullable(),
 });
@@ -84,7 +84,7 @@ export async function saveContractorCalling(_p: AiActionState, fd: FormData): Pr
   if (error) return { ok: false, error: 'Could not save this contractor' };
   await audit(me.id, 'ai_calling.contractor', { contractor_id: d.contractor_id, mode: d.mode, agent_id: agent, phone_number_id: phone });
   refresh();
-  return { ok: true, message: d.mode === 'automatic' ? 'Saved. New form leads for this contractor will be called automatically.' : 'Saved' };
+  return { ok: true, message: d.mode === 'automatic' ? 'Saved. New form leads for this contractor will be called automatically.' : d.mode === 'workflow_only' ? 'Saved. Only published automations will place calls for this contractor.' : 'Saved' };
 }
 
 /* ---- Cancel / retry ------------------------------------------------------------------------ */
