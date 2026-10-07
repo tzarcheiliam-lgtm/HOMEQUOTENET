@@ -1,5 +1,5 @@
 import { aiCallingEnabled } from './config';
-import { evaluateEligibility } from './eligibility';
+import { evaluateEligibility, type Decision } from './eligibility';
 import type { AiCallJob, AiCallingSettings, JobStore } from './types';
 
 /**
@@ -30,7 +30,7 @@ export type DispatchOutcome =
   | { job: string; result: 'retry' | 'failed'; error: string }
   | { job: string; result: 'released' };
 
-const DUP_WINDOW_MS = { auto_form: 24 * 3_600_000, manual: 30 * 60_000 };
+const DUP_WINDOW_MS = { auto_form: 24 * 3_600_000, manual: 30 * 60_000, workflow: 24 * 3_600_000 };
 /** HTTP statuses that will not succeed on retry (bad request, auth, billing, not found, validation). */
 const PERMANENT_HTTP = new Set([400, 401, 402, 403, 404, 422]);
 
@@ -81,11 +81,16 @@ export async function decideForJob(store: JobStore, job: AiCallJob, settings: Ai
   const lead = job.lead_id ? await store.getLead(job.lead_id) : null;
   const cs = job.contractor_id ? await store.getContractorSettings(job.contractor_id) : null;
   const phone = lead?.phone_e164 ?? job.contact_phone;
+  // A workflow call node may NARROW the calling window, never widen it.
+  const window = {
+    startHour: Math.max(settings.window_start_hour, job.window_start_hour ?? 0),
+    endHour: Math.min(settings.window_end_hour, job.window_end_hour ?? 24),
+  };
   const consent = lead
     // A lead's consent is ONLY what the lead itself recorded (its own wording); a job-level basis never substitutes for it.
     ? { granted: lead.consent_granted, at: lead.consent_at, disclosure: lead.consent_disclosure, basis: null, reference: null }
     : { granted: !!job.consent_at, at: job.consent_at, disclosure: null, basis: job.consent_basis, reference: job.consent_reference };
-  const decision = evaluateEligibility({
+  const decision: Decision = window.startHour >= window.endHour ? { action: 'block', reason: 'no_calling_window' } : evaluateEligibility({
     trigger: job.trigger_source,
     now,
     // A call scheduled for later is judged from when it was meant to run, so it does not expire while it waits.
@@ -103,7 +108,7 @@ export async function decideForJob(store: JobStore, job: AiCallJob, settings: Ai
     recentDuplicate: await store.hasRecentDuplicate(job, new Date(now.getTime() - DUP_WINDOW_MS[job.trigger_source]).toISOString()),
     state: lead?.state ?? job.contact_state,
     zip: lead?.zip ?? job.contact_zip,
-    window: { startHour: settings.window_start_hour, endHour: settings.window_end_hour },
+    window,
   });
   return { decision, lead, cs, phone };
 }
@@ -143,7 +148,7 @@ async function dispatchOne(deps: DispatchDeps, job: AiCallJob, settings: AiCalli
         call_purpose: sanitizeContext(job.purpose, 200),
         call_context: sanitizeContext(job.context, 500),
       },
-      metadata: { job_id: job.id, lead_id: job.lead_id, contractor_id: job.contractor_id, trigger_source: job.trigger_source },
+      metadata: { job_id: job.id, lead_id: job.lead_id, contractor_id: job.contractor_id, trigger_source: job.trigger_source, ...(job.workflow_run_id ? { workflow_run_id: job.workflow_run_id } : {}) },
     });
     // Compare-and-set: if Fish's webhook already advanced the job (answered/completed), only record the session id.
     const advanced = await store.updateJobIf(job.id, 'dispatching', { status: 'accepted', provider_session_id: res.sessionId, last_error: null, block_reason: null, ...release });

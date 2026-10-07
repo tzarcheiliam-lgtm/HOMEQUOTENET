@@ -1,13 +1,32 @@
+import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { requireRole } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
-import { WORKFLOW_TEMPLATES } from '@/lib/workflows';
+import { loadCapabilities } from '@/lib/data/workflow-graph';
+import { GRAPH_TEMPLATES } from '@/lib/workflows/graph';
 import { PageHeader } from '@/components/ui/page-header';
-import { CreateWorkflowForm } from '@/components/workflows/create-workflow-form';
+import { CreateGraphForm } from '@/components/workflows/create-graph-form';
 
-export const metadata = { title: 'Create Workflow · HomeQuote Network' };
+export const metadata = { title: 'New automation · HomeQuote Network' };
+
 export default async function NewWorkflowPage() {
-  await requireRole(['admin']);
+  const profile = await requireRole(['admin', 'contractor']);
+  const caps = await loadCapabilities(profile);
+  const fixed = caps.scopeContractorId;
+  if (!caps.createNetwork && !caps.edit(fixed)) redirect('/app/workflows');
   const db = await createClient();
-  const { data } = await db.from('contractors').select('id,name').neq('status', 'inactive').order('name');
-  return <div className="space-y-6"><PageHeader title="Create workflow" description="Start blank or customize a proven HomeQuote journey." backHref="/app/workflows" backLabel="Automations" /><CreateWorkflowForm templates={WORKFLOW_TEMPLATES} contractors={data ?? []} /></div>;
+  const { data } = caps.createNetwork ? await db.from('contractors').select('id,name').neq('status', 'inactive').order('name') : { data: [] };
+  return (
+    <div className="space-y-6">
+      <PageHeader title="New automation" description="Start blank or from a proven journey. You’ll land in the visual builder with an unpublished draft." backHref="/app/workflows" backLabel="Automations">
+        {caps.createNetwork && <Link href="/app/workflows/new-classic" className="text-sm text-muted-foreground underline">Classic list builder</Link>}
+      </PageHeader>
+      <CreateGraphForm
+        templates={GRAPH_TEMPLATES.map(({ key, name, summary, description, requires }) => ({ key, name, summary, description, requires }))}
+        contractors={(data ?? []) as { id: string; name: string }[]}
+        fixedContractorId={fixed}
+        canPickNetwork={caps.createNetwork}
+      />
+    </div>
+  );
 }

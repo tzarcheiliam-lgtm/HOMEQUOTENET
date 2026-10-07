@@ -101,7 +101,7 @@ export function WorkflowCard({ item, admin }: { item: WorkflowListItem; admin: b
 
 export interface WorkflowFilters { status?: string; trigger?: string; kind?: string; contractor?: string }
 
-export function WorkflowsView({ all, filters, admin }: { all: WorkflowListItem[]; filters: WorkflowFilters; admin: boolean }) {
+export function WorkflowsView({ all, filters, admin, embedded = false }: { all: WorkflowListItem[]; filters: WorkflowFilters; admin: boolean; embedded?: boolean }) {
   const workflows = all.filter(item => (!filters.status || filters.status === 'all' || (filters.status === 'enabled') === item.enabled)
     && (!filters.trigger || filters.trigger === 'all' || item.triggerType === filters.trigger)
     && (!filters.kind || filters.kind === 'all' || (filters.kind === 'template') === !!item.templateKey)
@@ -118,7 +118,7 @@ export function WorkflowsView({ all, filters, admin }: { all: WorkflowListItem[]
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Workflow Automations" description="Build reliable follow-up, handoff, and appointment journeys without code.">{create}</PageHeader>
+      {!embedded && <PageHeader title="Workflow Automations" description="Build reliable follow-up, handoff, and appointment journeys without code.">{create}</PageHeader>}
       <SummaryStrip items={[
         { label: 'Total runs', value: totals.runs, meaning: 'Every run across all workflows', icon: WorkflowIcon },
         { label: 'Completed', value: totals.completed, meaning: 'Finished every step', icon: CheckCircle2 },

@@ -4,13 +4,23 @@ import { getWorkflowRun } from '@/lib/data/workflows';
 import { PageHeader } from '@/components/ui/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { getGraphRun, loadCapabilities } from '@/lib/data/workflow-graph';
+import { RunDetailView } from '@/components/workflows/runs/run-detail';
 
 const relation = <T,>(value: unknown): T | null => Array.isArray(value) ? (value[0] as T | undefined) ?? null : value as T | null;
 const readable = (value: string) => value.replaceAll('_', ' ').replaceAll('.', ' · ');
 
+export const dynamic = 'force-dynamic';
+
 export default async function WorkflowRunDetailPage({ params }: { params: Promise<{ runId: string }> }) {
-  await requireRole(['admin', 'contractor']);
-  const { runId } = await params; const detail = await getWorkflowRun(runId); if (!detail) notFound();
+  const profile = await requireRole(['admin', 'contractor']);
+  const { runId } = await params;
+  const graphRun = await getGraphRun(runId, profile.role === 'admin');
+  if (graphRun) {
+    const caps = await loadCapabilities(profile);
+    return <RunDetailView detail={graphRun} canManage={caps.edit(graphRun.run.contractorId)} isAdmin={profile.role === 'admin'} />;
+  }
+  const detail = await getWorkflowRun(runId); if (!detail) notFound();
   const workflow = relation<{ name?: string }>(detail.run.workflow); const lead = relation<{ first_name?: string; last_name?: string }>(detail.run.lead);
   return <div className="space-y-6"><PageHeader title={workflow?.name ?? 'Workflow run'} description={`${[lead?.first_name, lead?.last_name].filter(Boolean).join(' ') || detail.run.entity_type} · ${new Date(detail.run.created_at).toLocaleString()}`} backHref={`/app/workflows/${detail.run.workflow_id}/runs`} backLabel="Runs"><Badge variant={detail.run.status === 'completed' ? 'success' : detail.run.status === 'failed' ? 'warning' : 'secondary'}>{detail.run.status}</Badge></PageHeader>
     {detail.run.last_error && <Card className="border-destructive/30"><CardContent className="p-4 text-sm text-destructive"><strong>Run failed:</strong> {(detail.run.last_error as { message?: string }).message ?? 'The workflow could not continue.'}</CardContent></Card>}

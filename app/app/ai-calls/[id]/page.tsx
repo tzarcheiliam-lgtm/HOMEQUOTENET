@@ -32,7 +32,7 @@ export default async function AiCallDetailPage({ params }: { params: Promise<{ i
 
   return (
     <div className="space-y-6">
-      <PageHeader title={job.contact_name ?? 'AI call'} description={`${job.trigger_source === 'manual' ? 'Manual' : 'Automatic'} call · ${job.contractor?.name ?? 'No contractor'}`} backHref="/app/ai-calls" backLabel="AI Agent Calls">
+      <PageHeader title={job.contact_name ?? 'AI call'} description={`${job.trigger_source === 'manual' ? 'Manual' : job.trigger_source === 'workflow' ? 'Automation' : 'Automatic'} call · ${job.contractor?.name ?? 'No contractor'}`} backHref="/app/ai-calls" backLabel="AI Agent Calls">
         {canRetry && <ConfirmAction action={retryJob} fields={{ id: job.id }} triggerLabel="Retry call" triggerVariant="default"
           title="Retry this call?" description="The call is queued again and every check (consent, opt-out, calling window, switches) is re-run before anything is dialed." confirmLabel="Retry" />}
         {canCancel && <ConfirmAction action={cancelJob} fields={{ id: job.id }} triggerLabel="Cancel call" destructive triggerVariant="destructive"
