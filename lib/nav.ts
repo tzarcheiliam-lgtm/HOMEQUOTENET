@@ -22,6 +22,8 @@ const GROUP_BY_LABEL: Record<string, NavGroup> = {
   Contractors: 'Operations',
   'Lead Recipients': 'Operations',
   Calls: 'Operations',
+  'AI Agent Calls': 'Operations',
+  'Documents & Signing': 'Operations',
   Appointments: 'Operations',
   'Call Logs': 'Operations',
   'Call Appointments': 'Operations',
