@@ -142,7 +142,7 @@ export function TemplateEditor({ template }: { template?: EmailTemplateRow }) {
       </label>
 
       {state && !state.ok && <p className="text-sm text-destructive">{state.error}</p>}
-      {state && state.ok && <p className="text-sm text-emerald-600">{state.message}</p>}
+      {state && state.ok && <p className="text-sm text-emerald-700">{state.message}</p>}
       <Button type="submit" disabled={pending}>
         {pending ? 'Saving…' : isNew ? 'Create template' : 'Save changes'}
       </Button>

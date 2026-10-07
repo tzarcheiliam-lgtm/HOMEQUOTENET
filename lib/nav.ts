@@ -9,10 +9,53 @@ export interface NavItem {
   roles: UserRole[];
   /** Full page title when `label` is a shortened bottom-bar label. */
   title?: string;
+  /** Sidebar / menu section. Dashboard has none and sits above the headings. */
+  group?: NavGroup;
+}
+
+export type NavGroup = 'Operations' | 'Growth' | 'Administration';
+export const NAV_GROUP_ORDER: NavGroup[] = ['Operations', 'Growth', 'Administration'];
+
+const GROUP_BY_LABEL: Record<string, NavGroup> = {
+  Leads: 'Operations',
+  'My Leads': 'Operations',
+  Contractors: 'Operations',
+  'Lead Recipients': 'Operations',
+  Calls: 'Operations',
+  'AI Agent Calls': 'Operations',
+  'Documents & Signing': 'Operations',
+  Appointments: 'Operations',
+  'Call Logs': 'Operations',
+  'Call Appointments': 'Operations',
+  'Call Emails': 'Operations',
+  'Growth Tools': 'Growth',
+  'Service Requests': 'Growth',
+  Funnels: 'Growth',
+  Analytics: 'Growth',
+  Automations: 'Growth',
+  'Email Templates': 'Growth',
+  Sales: 'Administration',
+  Billing: 'Administration',
+  Team: 'Administration',
+  Integrations: 'Administration',
+  'Lead Intake': 'Administration',
+  'Audit Log': 'Administration',
+};
+
+/** Items in display order, bucketed by heading (ungrouped items first). */
+export function groupNavItems(items: NavItem[]): { group: NavGroup | null; items: NavItem[] }[] {
+  const out: { group: NavGroup | null; items: NavItem[] }[] = [];
+  const loose = items.filter((i) => !i.group);
+  if (loose.length) out.push({ group: null, items: loose });
+  for (const group of NAV_GROUP_ORDER) {
+    const inGroup = items.filter((i) => i.group === group);
+    if (inGroup.length) out.push({ group, items: inGroup });
+  }
+  return out;
 }
 
 // The UI is admin-first, but each item declares exactly which roles see it.
-export const NAV_ITEMS: NavItem[] = [
+const BASE_NAV_ITEMS: NavItem[] = [
   {
     label: 'Dashboard',
     href: '/app',
@@ -151,6 +194,8 @@ export const NAV_ITEMS: NavItem[] = [
   },
 ];
 
+export const NAV_ITEMS: NavItem[] = BASE_NAV_ITEMS.map((i) => ({ ...i, group: GROUP_BY_LABEL[i.label] }));
+
 export function navItemsForRole(role: UserRole): NavItem[] {
   return NAV_ITEMS.filter((item) => item.roles.includes(role));
 }
@@ -180,7 +225,7 @@ export function homePathFor(role: UserRole): string {
 /** Calling-workspace sub-pages: not in the sidebar (CallsSubnav covers them
  *  on desktop) but worth first-class phone navigation. Same guard as the
  *  pages themselves (requireCallWorkspace). */
-const CALL_WORKSPACE_EXTRAS: NavItem[] = [
+const CALL_WORKSPACE_EXTRAS: NavItem[] = ([
   {
     label: 'Call Logs',
     href: '/app/calls/logs',
@@ -199,7 +244,7 @@ const CALL_WORKSPACE_EXTRAS: NavItem[] = [
     icon: 'Mail',
     roles: ['admin', 'caller', 'setter'],
   },
-];
+] as NavItem[]).map((i) => ({ ...i, group: GROUP_BY_LABEL[i.label] }));
 
 /** Bottom-bar picks per role, in order. Label is the short phone label. */
 /**

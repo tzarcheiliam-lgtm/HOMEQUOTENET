@@ -29,7 +29,7 @@ export function PageHeader({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-3 lg:gap-4">
+    <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
       <div className="min-w-0">
         {backHref && (
           <Link
@@ -41,14 +41,14 @@ export function PageHeader({
         )}
         <h1
           className={cn(
-            'text-xl font-semibold tracking-tight lg:text-2xl',
+            'text-xl font-semibold tracking-tight text-foreground lg:text-[1.625rem] lg:leading-8',
             !backHref && !showTitleOnMobile && 'max-lg:sr-only'
           )}
         >
           {title}
         </h1>
         {description && (
-          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{description}</p>
         )}
       </div>
       {children && (

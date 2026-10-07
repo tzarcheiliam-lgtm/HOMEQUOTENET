@@ -91,41 +91,21 @@ function KpiCard({
   hero?: boolean;
 }) {
   return (
-    <Card
-      className={cn(
-        hero && 'border-emerald-600/20 bg-emerald-50/40',
-        hero && 'col-span-2 lg:col-span-1'
-      )}
-    >
-      <CardContent className="space-y-3 p-4 lg:space-y-4 lg:p-5">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            {label}
-          </span>
-          <span
-            className={
-              'flex size-8 items-center justify-center rounded-lg ' +
-              (hero
-                ? 'bg-emerald-600/10 text-emerald-700'
-                : 'bg-muted text-muted-foreground')
-            }
-          >
-            <Icon className="size-4" />
-          </span>
-        </div>
-        <div>
-          <p
-            className={
-              'font-semibold tabular-nums tracking-tight ' +
-              (hero
-                ? 'text-3xl text-emerald-700 lg:text-4xl'
-                : 'text-2xl lg:text-3xl')
-            }
-          >
-            {value}
-          </p>
-          {sub && <p className="mt-1 text-xs text-muted-foreground">{sub}</p>}
-        </div>
+    <Card className={cn('gap-0 py-0 lg:gap-0 lg:py-0', hero && 'col-span-2 lg:col-span-1')}>
+      <CardContent className="px-3.5 py-3 lg:px-4">
+        <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          <Icon className="size-3.5 shrink-0" aria-hidden="true" />
+          <span className="min-w-0">{label}</span>
+        </p>
+        <p
+          className={cn(
+            'mt-1 text-xl font-semibold leading-7 tabular-nums tracking-tight lg:text-2xl lg:leading-8',
+            hero && 'text-emerald-700'
+          )}
+        >
+          {value}
+        </p>
+        {sub && <p className="text-xs leading-4 text-muted-foreground">{sub}</p>}
       </CardContent>
     </Card>
   );
@@ -166,7 +146,7 @@ export function ContractorDashboard({
   growth?: { recommendation: Recommendation | null; openRequests: number } | null;
 }) {
   return (
-    <div className="mx-auto max-w-7xl space-y-5 lg:space-y-8">
+    <div className="mx-auto max-w-7xl space-y-4 lg:space-y-5">
       {/* Header */}
       <header className="flex flex-wrap items-end justify-between gap-3 lg:gap-4">
         <div>
@@ -192,7 +172,7 @@ export function ContractorDashboard({
       </header>
 
       {/* Primary KPIs */}
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <KpiCard
           label="Revenue this month"
           value={money(data.revenueThisMonth)}
@@ -225,7 +205,7 @@ export function ContractorDashboard({
       </section>
 
       {/* Main: active leads (focus) + right rail */}
-      <section className="flex flex-col gap-4 lg:grid lg:grid-cols-10 lg:gap-6">
+      <section className="flex flex-col gap-4 lg:grid lg:grid-cols-10 lg:gap-5">
         {/* Active leads — the focal point */}
         <Card className="order-2 lg:order-none lg:col-span-7">
           <CardHeader className="flex-row items-center justify-between border-b">

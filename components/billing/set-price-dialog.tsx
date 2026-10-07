@@ -75,7 +75,7 @@ function PriceForm({ requestId, companyName, serviceName, suggested, current }: 
     return (
       <div className="space-y-4">
         <DialogTitle className="flex items-center gap-2">
-          <CircleCheck aria-hidden className="size-5 text-emerald-600" /> Price sent
+          <CircleCheck aria-hidden className="size-5 text-emerald-700" /> Price sent
         </DialogTitle>
         <p role="status" className="text-sm text-muted-foreground">
           {state.message}

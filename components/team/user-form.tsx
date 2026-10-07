@@ -1,5 +1,6 @@
 'use client';
 
+import { keepValuesOnError } from '@/lib/forms/keep-values';
 import { useActionState, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,7 +26,7 @@ export function UserForm({
   const [role, setRole] = useState<UserRole>('setter');
 
   return (
-    <form action={formAction} className="max-w-xl space-y-4">
+    <form onSubmit={keepValuesOnError(formAction)} className="max-w-xl space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="full_name">Full name</Label>

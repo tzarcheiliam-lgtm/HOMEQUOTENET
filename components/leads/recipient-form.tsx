@@ -1,5 +1,6 @@
 'use client';
 
+import { keepValuesOnError } from '@/lib/forms/keep-values';
 import { useActionState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,7 +27,7 @@ export function RecipientForm({
   const idp = recipient ? `r-${recipient.id}-` : 'new-';
 
   return (
-    <form action={formAction} className="space-y-4">
+    <form onSubmit={keepValuesOnError(formAction)} className="space-y-4">
       {recipient && <input type="hidden" name="id" value={recipient.id} />}
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
@@ -88,7 +89,7 @@ export function RecipientForm({
         </span>
       </label>
       {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
-      {state?.success && <p className="text-sm text-emerald-600">Saved.</p>}
+      {state?.success && <p className="text-sm text-emerald-700">Saved.</p>}
       <Button type="submit" size="sm" disabled={pending}>
         {pending ? 'Saving…' : recipient ? 'Save changes' : 'Add recipient'}
       </Button>

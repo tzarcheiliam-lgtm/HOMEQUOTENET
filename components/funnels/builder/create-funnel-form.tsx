@@ -1,5 +1,6 @@
 'use client';
 
+import { keepValuesOnError } from '@/lib/forms/keep-values';
 import { useActionState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,7 +14,7 @@ export function CreateFunnelForm({ templates, contractors }: {
 }) {
   const [state, formAction, pending] = useActionState<BuilderActionState, FormData>(createFunnelAction, undefined);
   return (
-    <form action={formAction} className="max-w-xl space-y-4">
+    <form onSubmit={keepValuesOnError(formAction)} className="max-w-xl space-y-4">
       <div>
         <Label htmlFor="clientName" className="mb-1 block">Client name</Label>
         <Input id="clientName" name="clientName" required placeholder="e.g. Pool Masters LA" />

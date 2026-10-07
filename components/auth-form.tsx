@@ -1,5 +1,6 @@
 'use client';
 
+import { keepValuesOnError } from '@/lib/forms/keep-values';
 import Link from 'next/link';
 import { useActionState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -44,7 +45,7 @@ export function AuthForm({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form action={formAction} className="flex flex-col gap-4">
+        <form onSubmit={keepValuesOnError(formAction)} className="flex flex-col gap-4">
           {!isSignUp && next ? (
             <input type="hidden" name="next" value={next} />
           ) : null}

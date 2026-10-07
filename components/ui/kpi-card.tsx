@@ -3,8 +3,9 @@ import { cn } from '@/lib/utils';
 import type { LucideIcon } from 'lucide-react';
 
 /**
- * Standard KPI tile. Monetary metrics use `accent="money"` to render the value
- * in emerald — the one consistent splash of color across the whole product.
+ * Compact KPI tile: icon + label on one line, the number below, an optional
+ * one-line qualifier. Monetary metrics use `accent="money"` to render the
+ * value in emerald, the one consistent splash of color across the product.
  */
 export function KpiCard({
   label,
@@ -23,38 +24,21 @@ export function KpiCard({
 }) {
   const isMoney = accent === 'money';
   return (
-    <Card className={cn(isMoney && 'border-emerald-600/20 bg-emerald-50/40', className)}>
-      <CardContent className="space-y-2 p-4 lg:space-y-3 lg:p-5">
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground lg:text-xs">
-            {label}
-          </span>
-          {Icon && (
-            <span
-              className={cn(
-                'flex size-8 items-center justify-center rounded-lg',
-                isMoney
-                  ? 'bg-emerald-600/10 text-emerald-700'
-                  : 'bg-muted text-muted-foreground'
-              )}
-            >
-              <Icon className="size-4" />
-            </span>
+    <Card className={cn('gap-0 py-0 lg:gap-0 lg:py-0', className)}>
+      <CardContent className="px-3.5 py-3 lg:px-4">
+        <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          {Icon && <Icon className="size-3.5 shrink-0" aria-hidden="true" />}
+          <span className="min-w-0">{label}</span>
+        </p>
+        <p
+          className={cn(
+            'mt-1 text-xl font-semibold leading-7 tabular-nums tracking-tight lg:text-2xl lg:leading-8',
+            isMoney && 'text-emerald-700'
           )}
-        </div>
-        <div>
-          <p
-            className={cn(
-              'font-semibold tabular-nums tracking-tight',
-              isMoney
-                ? 'text-xl text-emerald-700 min-[400px]:text-2xl lg:text-3xl'
-                : 'text-xl min-[400px]:text-2xl lg:text-3xl'
-            )}
-          >
-            {value}
-          </p>
-          {sub && <p className="mt-1 text-xs text-muted-foreground">{sub}</p>}
-        </div>
+        >
+          {value}
+        </p>
+        {sub && <p className="text-xs leading-4 text-muted-foreground">{sub}</p>}
       </CardContent>
     </Card>
   );

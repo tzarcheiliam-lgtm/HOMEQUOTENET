@@ -10,6 +10,7 @@ import { NotificationBell } from '@/components/notifications/notification-bell';
 import { PortalPushBoot } from '@/components/notifications/portal-push-boot';
 import { SignOutForm } from '@/components/notifications/sign-out-form';
 import { Toaster } from '@/components/ui/toaster';
+import { BrandLogo } from '@/components/brand-logo';
 import { InstallHelper } from '@/components/notifications/install-helper';
 
 // The CRM draws edge to edge on notched phones (PWA / wrapper); the mobile
@@ -39,14 +40,14 @@ export default async function AppLayout({
   const { primary, secondary } = mobileNavForRole(profile.role);
 
   return (
-    <div className="flex min-h-[100dvh]">
+    <div className="flex min-h-[100dvh] bg-[var(--app-bg)]">
       <PortalPushBoot userId={profile.id} />
       <Toaster />
       {/* Sidebar */}
-      <aside className="hidden w-64 shrink-0 flex-col border-r bg-card lg:flex">
-        <div className="flex h-16 items-center border-b px-5">
-          <Link href="/app" className="font-semibold tracking-tight">
-            HomeQuote<span className="text-muted-foreground"> Network</span>
+      <aside className="sticky top-0 hidden h-[100dvh] w-[248px] shrink-0 flex-col border-r bg-card lg:flex">
+        <div className="flex h-14 shrink-0 items-center border-b px-5">
+          <Link href="/app" aria-label="HomeQuote Network home" className="block">
+            <BrandLogo priority className="w-[204px]" />
           </Link>
         </div>
         <AppSidebar items={items} />
@@ -54,8 +55,8 @@ export default async function AppLayout({
 
       {/* Main column */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="hidden min-h-16 items-center justify-between gap-3 border-b px-6 lg:flex">
-          <span className="text-sm text-muted-foreground">
+        <header className="hidden h-14 items-center justify-between gap-3 border-b bg-card px-8 lg:flex">
+          <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             {ROLE_LABELS[profile.role]}
           </span>
           <div className="flex items-center gap-3">

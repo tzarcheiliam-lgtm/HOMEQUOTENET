@@ -1,5 +1,6 @@
 'use client';
 
+import { keepValuesOnError } from '@/lib/forms/keep-values';
 import { useActionState } from 'react';
 import { Button } from '@/components/ui/button';
 import { setContractorVerticals, type FormState } from '@/lib/actions/contractors';
@@ -21,7 +22,7 @@ export function VerticalsForm({
   const selected = new Set(selectedIds);
 
   return (
-    <form action={formAction} className="space-y-4">
+    <form onSubmit={keepValuesOnError(formAction)} className="space-y-4">
       <input type="hidden" name="contractor_id" value={contractorId} />
       <div className="flex flex-wrap gap-3">
         {allVerticals.map((v) => (
@@ -42,7 +43,7 @@ export function VerticalsForm({
       </div>
 
       {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
-      {state?.success && <p className="text-sm text-emerald-600">Saved.</p>}
+      {state?.success && <p className="text-sm text-emerald-700">Saved.</p>}
 
       <Button type="submit" variant="outline" size="sm" disabled={pending}>
         {pending ? 'Saving…' : 'Save verticals'}

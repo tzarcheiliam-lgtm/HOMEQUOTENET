@@ -99,7 +99,7 @@ export function OutcomeForm({
               {outcome ? (
                 <div className="flex items-center justify-between gap-3 rounded-xl border bg-card p-3">
                   <span className="flex items-center gap-2 text-sm font-semibold">
-                    <Check className="size-4 text-emerald-600" aria-hidden="true" />
+                    <Check className="size-4 text-emerald-700" aria-hidden="true" />
                     {DISPOSITIONS.find((d) => d.value === outcome)?.label}
                   </span>
                   <Button type="button" size="sm" variant="outline" onClick={() => setOutcome('')}>
@@ -317,7 +317,7 @@ export function OutcomeForm({
             </p>
           ) : null}
           {state && state.ok && state.message ? (
-            <p className="text-sm text-emerald-600" role="status">
+            <p className="text-sm text-emerald-700" role="status">
               {state.message}
             </p>
           ) : null}

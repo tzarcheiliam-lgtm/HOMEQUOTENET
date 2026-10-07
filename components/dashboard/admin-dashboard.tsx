@@ -66,7 +66,7 @@ export function AdminDashboard({
   );
 
   return (
-    <div className="mx-auto max-w-7xl space-y-5 lg:space-y-8">
+    <div className="mx-auto max-w-7xl space-y-4 lg:space-y-5">
       <PageHeader
         showTitleOnMobile
         title={`Welcome${name ? `, ${name}` : ''}`}
@@ -85,7 +85,7 @@ export function AdminDashboard({
       </PageHeader>
 
       {/* Operations */}
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <KpiCard label="Total leads" value={data.totalLeads} icon={Users} />
         <KpiCard
           label="New leads"
@@ -107,7 +107,7 @@ export function AdminDashboard({
       </section>
 
       {/* Money */}
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <KpiCard label="Revenue" value={money(data.revenue)} icon={DollarSign} accent="money" />
         <KpiCard
           label="Commission earned"
@@ -130,7 +130,7 @@ export function AdminDashboard({
       </section>
 
       {/* Performance + activity */}
-      <section className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-6">
+      <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader className="flex-row items-center justify-between">
             <CardTitle className="text-base">Contractor performance</CardTitle>

@@ -56,8 +56,8 @@ const money = (n: number | null | undefined) =>
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex justify-between gap-4 border-b border-border/60 py-2 text-sm last:border-0">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="text-right font-medium">{value || '—'}</span>
+      <span className="shrink-0 text-muted-foreground">{label}</span>
+      <span className="min-w-0 break-words text-right font-medium">{value || '—'}</span>
     </div>
   );
 }
@@ -105,7 +105,7 @@ export default async function LeadDetailPage({
       : null;
 
   return (
-    <div className="space-y-4 lg:space-y-6">
+    <div className="space-y-4 lg:space-y-5">
       <PageHeader
         title={name}
         description={[serviceSummary, locationSummary].filter(Boolean).join('  ·  ')}
@@ -158,18 +158,26 @@ export default async function LeadDetailPage({
               </form>
             )}
             {isAdmin && (
-              <form action={deleteLead}>
-                <input type="hidden" name="id" value={lead.id} />
-                <Button type="submit" variant="outline" size="sm">
-                  <Trash2 className="size-4" /> Delete
-                </Button>
-              </form>
+              <ConfirmAction
+                action={deleteLead}
+                fields={{ id: lead.id }}
+                triggerLabel={
+                  <>
+                    <Trash2 className="size-4" /> Delete
+                  </>
+                }
+                triggerVariant="destructive-outline"
+                title="Delete this lead?"
+                description="This permanently removes the lead and its history. This cannot be undone."
+                confirmLabel="Delete lead"
+                destructive
+              />
             )}
           </div>
         )}
       </PageHeader>
 
-      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-3 lg:gap-6">
+      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-3 lg:gap-5">
         {/* Left: lead info. On phones the column wrappers dissolve (contents)
             and the cards are re-ordered so what a call needs comes first. */}
         <div className="contents lg:col-span-1 lg:block lg:space-y-6">
@@ -405,7 +413,7 @@ export default async function LeadDetailPage({
                         href={att.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-primary hover:underline"
+                        className="min-w-0 break-words py-2 text-primary hover:underline"
                       >
                         {att.name}
                       </a>
@@ -416,7 +424,7 @@ export default async function LeadDetailPage({
                           value={att.id}
                         />
                         <input type="hidden" name="lead_id" value={lead.id} />
-                        <Button type="submit" variant="ghost" size="sm">
+                        <Button type="submit" variant="ghost" size="icon" aria-label={`Delete attachment ${att.name}`}>
                           <Trash2 className="size-4" />
                         </Button>
                       </form>

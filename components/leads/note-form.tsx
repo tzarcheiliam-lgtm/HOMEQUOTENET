@@ -1,7 +1,8 @@
 'use client';
 
-import { useActionState, useRef, useEffect } from 'react';
+import { useActionState, useEffect, useId, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { addNote, type LeadFormState } from '@/lib/actions/leads';
 
@@ -16,26 +17,58 @@ export function NoteForm({
     addNote,
     undefined
   );
-  const ref = useRef<HTMLFormElement>(null);
+  // Controlled so a failed save keeps what was typed (React 19 resets
+  // uncontrolled fields after every action, success or not).
+  const [body, setBody] = useState('');
+  const [visibility, setVisibility] = useState('internal');
+  const id = useId();
 
   useEffect(() => {
-    if (state?.success) ref.current?.reset();
+    if (state?.success) setBody('');
   }, [state]);
 
+  const error = state?.error;
   return (
-    <form action={formAction} ref={ref} className="space-y-2">
+    <form action={formAction} className="space-y-2">
       <input type="hidden" name="lead_id" value={leadId} />
-      <Textarea name="body" placeholder="Add a note…" required />
+      <label htmlFor={`${id}-body`} className="block text-sm font-medium">
+        Add a note
+      </label>
+      <Textarea
+        id={`${id}-body`}
+        name="body"
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
+        placeholder="What happened, what the homeowner said, what is next"
+        required
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? `${id}-err` : undefined}
+      />
       {canChooseVisibility && (
-        <label className="flex items-center gap-2 text-sm text-muted-foreground">
-          <select name="visibility" defaultValue="internal" className="h-9 rounded-md border bg-background px-2 text-foreground">
+        <div>
+          <label htmlFor={`${id}-vis`} className="mb-1 block text-xs font-medium text-muted-foreground">
+            Who can see this note
+          </label>
+          <Select
+            id={`${id}-vis`}
+            name="visibility"
+            value={visibility}
+            onChange={(e) => setVisibility(e.target.value)}
+          >
             <option value="internal">HQN internal note</option>
             <option value="contractor">Visible to assigned contractors</option>
-          </select>
-        </label>
+          </Select>
+        </div>
       )}
-      {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
-      <Button type="submit" size="sm" disabled={pending}>
+      <div aria-live="polite">
+        {error && (
+          <p id={`${id}-err`} className="text-sm text-destructive">
+            {error}
+          </p>
+        )}
+        {state?.success && !error && <p className="text-sm text-emerald-700">Note added.</p>}
+      </div>
+      <Button type="submit" disabled={pending || !body.trim()} className="w-full sm:w-auto">
         {pending ? 'Adding…' : 'Add note'}
       </Button>
     </form>
