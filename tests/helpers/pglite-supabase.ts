@@ -1,0 +1,109 @@
+/**
+ * A tiny supabase-js look-alike backed by PGlite + an in-memory storage bucket, so the real service layer
+ * (lib/signing/*) can run end to end in tests against the real migration SQL. Supports exactly the query
+ * shapes the signing code uses: select/insert/update/delete with eq/in/is/order/limit, single/maybeSingle,
+ * head counts, rpc() with named args, and storage download/upload/signed URLs.
+ */
+import type { PGlite } from '@electric-sql/pglite';
+
+type Filter = { col: string; op: 'eq' | 'in' | 'is'; val: unknown };
+const ident = (s: string) => `"${s.replace(/"/g, '""')}"`;
+
+class Builder {
+  private filters: Filter[] = [];
+  private _order: { col: string; asc: boolean }[] = [];
+  private _limit: number | null = null;
+  private _single: 'single' | 'maybe' | null = null;
+  private _cols = '*';
+  private _count = false;
+  private _head = false;
+  private op: 'select' | 'insert' | 'update' | 'delete' = 'select';
+  private payload: any = null;
+  constructor(private db: PGlite, private table: string) {}
+  select(cols = '*', opts?: { count?: string; head?: boolean }) { if (this.op === 'select') this._cols = cols; this._count = !!opts?.count; this._head = !!opts?.head; return this; }
+  insert(p: any) { this.op = 'insert'; this.payload = p; return this; }
+  update(p: any) { this.op = 'update'; this.payload = p; return this; }
+  delete() { this.op = 'delete'; return this; }
+  eq(col: string, val: unknown) { this.filters.push({ col, op: 'eq', val }); return this; }
+  in(col: string, val: unknown[]) { this.filters.push({ col, op: 'in', val }); return this; }
+  is(col: string, val: unknown) { this.filters.push({ col, op: 'is', val }); return this; }
+  order(col: string, o?: { ascending?: boolean }) { this._order.push({ col, asc: o?.ascending !== false }); return this; }
+  limit(n: number) { this._limit = n; return this; }
+  single() { this._single = 'single'; return this; }
+  maybeSingle() { this._single = 'maybe'; return this; }
+  private where(params: unknown[]) {
+    if (!this.filters.length) return '';
+    return ' where ' + this.filters.map((f) => {
+      if (f.op === 'is') return `${ident(f.col)} is ${f.val === null ? 'null' : String(f.val)}`;
+      if (f.op === 'in') { const arr = f.val as unknown[]; if (!arr.length) return 'false'; return `${ident(f.col)} in (${arr.map((v) => { params.push(v); return `$${params.length}`; }).join(',')})`; }
+      params.push(f.val); return `${ident(f.col)} = $${params.length}`;
+    }).join(' and ');
+  }
+  private val(params: unknown[], v: unknown) {
+    if (v !== null && typeof v === 'object') { params.push(JSON.stringify(v)); return `$${params.length}::jsonb`; }
+    params.push(v); return `$${params.length}`;
+  }
+  async run(): Promise<{ data: any; error: { message: string } | null; count?: number }> {
+    try {
+      const params: unknown[] = [];
+      let sql: string;
+      if (this.op === 'insert') {
+        const rows = Array.isArray(this.payload) ? this.payload : [this.payload];
+        const cols = Object.keys(rows[0]);
+        sql = `insert into ${ident(this.table)} (${cols.map(ident).join(',')}) values ${rows.map((r: any) => `(${cols.map((c) => this.val(params, r[c])).join(',')})`).join(',')}`;
+      } else if (this.op === 'update') {
+        const cols = Object.keys(this.payload);
+        sql = `update ${ident(this.table)} set ${cols.map((c) => `${ident(c)} = ${this.val(params, this.payload[c])}`).join(',')}${this.where(params)}`;
+      } else if (this.op === 'delete') {
+        sql = `delete from ${ident(this.table)}${this.where(params)}`;
+      } else {
+        const cols = this._cols === '*' ? '*' : this._cols.split(',').map((c) => ident(c.trim())).join(',');
+        sql = `select ${this._head ? 'count(*)::int as n' : cols} from ${ident(this.table)}${this.where(params)}`;
+        if (!this._head) {
+          if (this._order.length) sql += ' order by ' + this._order.map((o) => `${ident(o.col)} ${o.asc ? 'asc' : 'desc'}`).join(',');
+          if (this._limit !== null) sql += ` limit ${this._limit}`;
+        }
+      }
+      const res = await this.db.query<any>(sql, params);
+      if (this.op !== 'select') return { data: null, error: null };
+      if (this._head) return { data: null, error: null, count: res.rows[0].n };
+      if (this._single === 'single') return res.rows.length === 1 ? { data: res.rows[0], error: null } : { data: null, error: { message: `expected 1 row, got ${res.rows.length}` } };
+      if (this._single === 'maybe') return { data: res.rows[0] ?? null, error: null };
+      return { data: res.rows, error: null };
+    } catch (e) {
+      return { data: null, error: { message: (e as Error).message } };
+    }
+  }
+  then(resolve: (v: any) => unknown, reject?: (e: unknown) => unknown) { return this.run().then(resolve, reject); }
+}
+
+export class FakeStorage {
+  files = new Map<string, Uint8Array>();
+  from(_bucket: string) {
+    return {
+      download: async (path: string) => { const f = this.files.get(path); return f ? { data: new Blob([f.slice().buffer as ArrayBuffer]), error: null } : { data: null, error: { message: 'not found' } }; },
+      upload: async (path: string, bytes: Uint8Array, o?: { upsert?: boolean }) => { if (this.files.has(path) && !o?.upsert) return { error: { message: 'exists' } }; this.files.set(path, new Uint8Array(bytes)); return { error: null }; },
+      createSignedUrl: async (path: string) => (this.files.has(path) ? { data: { signedUrl: `https://storage.test/signed/${encodeURIComponent(path)}?t=1` }, error: null } : { data: null, error: { message: 'not found' } }),
+      createSignedUploadUrl: async (path: string) => ({ data: { signedUrl: `https://storage.test/upload/${path}`, token: 'upload-token', path }, error: null }),
+      remove: async (paths: string[]) => { for (const p of paths) this.files.delete(p); return { error: null }; },
+    };
+  }
+}
+
+export function fakeSupabase(db: PGlite, storage = new FakeStorage()) {
+  return {
+    storage,
+    from: (table: string) => new Builder(db, table),
+    rpc: async (fn: string, args: Record<string, unknown> = {}) => {
+      try {
+        const params: unknown[] = [];
+        const named = Object.entries(args).map(([k, v]) => {
+          if (v !== null && typeof v === 'object') { params.push(JSON.stringify(v)); return `${k} := $${params.length}::jsonb`; }
+          params.push(v); return `${k} := $${params.length}`;
+        });
+        const res = await db.query<any>(`select ${fn}(${named.join(', ')}) as r`, params);
+        return { data: res.rows[0]?.r ?? null, error: null };
+      } catch (e) { return { data: null, error: { message: (e as Error).message } }; }
+    },
+  };
+}

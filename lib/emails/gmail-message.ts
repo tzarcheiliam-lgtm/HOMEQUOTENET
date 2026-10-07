@@ -12,11 +12,14 @@ export function buildRawGmailMessage(input: {
   html: string;
   /** Plain-text part as-is. Without it, `message` gets the prospect-email signature. */
   text?: string;
+  /** Optional Reply-To (must be a plain address; CR/LF are rejected). */
+  replyTo?: string;
 }): string {
   const boundary = 'hqn-prospect-email-boundary';
   const lines = [
     `From: HomeQuote Network <${input.fromEmail}>`,
     `To: ${input.toEmail}`,
+    ...(input.replyTo && /^[^\s<>@,;]+@[^\s<>@,;]+$/.test(input.replyTo) ? [`Reply-To: ${input.replyTo}`] : []),
     `Subject: ${encodedHeader(input.subject)}`,
     'MIME-Version: 1.0',
     `Content-Type: multipart/alternative; boundary="${boundary}"`,
@@ -40,7 +43,7 @@ export function buildRawGmailMessage(input: {
 
 export async function deliverGmailWithAccessToken(
   accessToken: string,
-  input: { fromEmail: string; toEmail: string; subject: string; message: string; html: string; text?: string },
+  input: { fromEmail: string; toEmail: string; subject: string; message: string; html: string; text?: string; replyTo?: string },
   request: typeof fetch = fetch
 ): Promise<{ id: string }> {
   const response = await request('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {

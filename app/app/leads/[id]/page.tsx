@@ -43,7 +43,8 @@ import { ConfirmAction } from '@/components/ui/confirm-action';
 import { sheetRowClass } from '@/components/mobile/mobile-card';
 import { telHref } from '@/lib/leads/lead-emails';
 import { getLeadDistribution, listRecipients } from '@/lib/data/lead-distribution';
-import { isContractorOwner } from '@/lib/permissions';
+import { canManageSigning, isContractorOwner } from '@/lib/permissions';
+import { DocumentsPanel } from '@/components/signing/documents-panel';
 
 export const metadata = { title: 'Lead · HomeQuote Network' };
 
@@ -369,6 +370,8 @@ export default async function LeadDetailPage({
               />
             </CardContent>
           </Card>
+
+          {canManageSigning(profile) && <DocumentsPanel leadId={lead.id} className="order-[7] lg:order-none" />}
 
           {/* Notes & activity */}
           <Card id="notes" className="order-6 scroll-mt-20 lg:order-none">

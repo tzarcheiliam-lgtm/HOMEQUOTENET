@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { Trash2, Plus } from 'lucide-react';
 import { requireRole } from '@/lib/auth';
+import { DocumentsPanel } from '@/components/signing/documents-panel';
 import { getContractor } from '@/lib/data/contractors';
 import { listVerticals } from '@/lib/data/verticals';
 import {
@@ -187,6 +188,8 @@ export default async function ContractorDetailPage({
           />
         </CardContent>
       </Card>
+
+      <DocumentsPanel contractorId={contractor.id} />
 
       {/* Verticals */}
       <Card>
