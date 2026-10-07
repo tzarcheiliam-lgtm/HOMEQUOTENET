@@ -49,6 +49,11 @@ async function newLead(opts: { phone?: string; consent?: boolean; disclosure?: s
 async function assign(lead: string, contractor: string) {
   return (await q<{ id: string }>(`insert into lead_assignments(lead_id, contractor_id) values ($1,$2) returning id`, [lead, contractor]))[0].id;
 }
+/** A real appointment for the lead + contractor (what a human or the booking flow records). */
+async function book(lead: string, contractor: string, status = 'scheduled') {
+  const a = (await q<{ id: string }>(`select id from lead_assignments where lead_id=$1 and contractor_id=$2`, [lead, contractor]))[0]?.id ?? (await assign(lead, contractor));
+  return (await q<{ id: string }>(`insert into appointments(assignment_id, scheduled_at, status) values ($1, now() + interval '2 days', $2) returning id`, [a, status]))[0].id;
+}
 const eventOf = async (type: string, lead: string) => (await q<{ id: string }>(`select id from workflow_events where type=$1 and lead_id=$2 order by recorded_at desc limit 1`, [type, lead]))[0]?.id;
 
 function chain(event: string, steps: [GraphNodeType, Record<string, unknown>?][], settings: Record<string, unknown> = {}): WorkflowGraph {
@@ -443,6 +448,7 @@ describe('AI call node', () => {
     expect(await jobsFor(lead)).toHaveLength(1);
     expect((await runsOf(wf.id))[0].status).toBe('waiting');
     // Webhook: call ended with a booked appointment. The DB trigger wakes the run; the next tick finishes it.
+    await book(lead, c1);
     await finish(jobs[0].id, 'completed', { status: 'completed', summary: 'ok', data: [{ name: 'appointment_booked', value: true }] });
     expect(new Date((await runsOf(wf.id))[0].resume_at).getTime()).toBeLessThanOrEqual(Date.now() + 1000);
     await tick();
@@ -466,6 +472,7 @@ describe('AI call node', () => {
   it('a duplicate or out-of-order webhook (completed twice, late status) cannot run the next steps twice', async () => {
     const { lead, run } = await start(callFlow());
     const [job] = await jobsFor(lead);
+    await book(lead, c1);
     await finish(job.id, 'completed', { status: 'completed', data: [{ name: 'appointment_booked', value: true }] });
     await finish(job.id, 'completed', { status: 'completed', data: [{ name: 'appointment_booked', value: true }] });
     await tick(); await tick();
@@ -507,6 +514,7 @@ describe('AI call node', () => {
     expect(await jobsFor(lead)).toHaveLength(1); // still just the production job
     const run = (await runsOf(wf.id))[0];
     expect((await stepsOf(run.id))[0].output).toMatchObject({ adopted: true, jobId: auto[0].id });
+    await book(lead, c2);
     await finish(auto[0].id, 'completed', { status: 'completed', data: [{ name: 'appointment_booked', value: true }] });
     await tick();
     expect(await notes(lead)).toEqual(['BOOKED']);
@@ -578,6 +586,7 @@ describe('AI call node', () => {
     await as(admin);
     await q(`select wfg_set_paused($1,true)`, [wf.id]);
     const [job] = await jobsFor(lead);
+    await book(lead, c1);
     await finish(job.id, 'completed', { status: 'completed', data: [{ name: 'appointment_booked', value: true }] });
     await tick();
     expect(await notes(lead)).toEqual([]); // held
@@ -586,6 +595,95 @@ describe('AI call node', () => {
     await q(`select workflow_sweep_waits()`);
     await tick();
     expect(await notes(lead)).toEqual(['BOOKED']);
+  });
+  // ---- Issue 1: a booked claim needs a real appointment for the same lead + contractor ----------------
+  describe('confirmed booking', () => {
+    const claimBooked = (job: string) => finish(job, 'completed', { status: 'completed', data: [{ name: 'appointment_booked', value: true }] });
+    const wake = async (run: string) => { await timePasses(run); await tick(); };
+
+    it('an agent claim with no matching appointment is NOT Booked: it waits, then goes to human review', async () => {
+      const { wf, lead, run } = await start(callFlow());
+      const [job] = await jobsFor(lead);
+      const other = await newLead(); await assign(other, c1);
+      await book(other, c1);                               // a different lead, same contractor
+      await book(lead, c2);                                // same lead, a different contractor
+      await book(lead, c1, 'cancelled');                   // right lead + contractor but cancelled
+      const early = await book(lead, c1);                  // right lead + contractor but made BEFORE the call
+      await q(`update appointments set created_at = now() - interval '1 day' where id=$1`, [early]);
+      await claimBooked(job.id);
+      await tick();
+      expect(await notes(lead)).toEqual([]);                // still inside the grace period
+      expect((await runsOf(wf.id))[0].status).toBe('waiting');
+      await q(`update ai_call_jobs set conversation_ended_at = now() - interval '2 hours' where id=$1`, [job.id]);
+      await wake(run.id);
+      expect(await notes(lead)).toEqual(['REVIEW']);
+      expect((await stepsOf(run.id)).find((x: any) => x.step_key === 'ai_call_1').output).toMatchObject({ outcome: 'needs_human_review', reason: 'booking_unconfirmed' });
+    });
+
+    it('an appointment recorded for the same lead + contractor after the call confirms it (and is linked)', async () => {
+      const { lead, run } = await start(callFlow());
+      const [job] = await jobsFor(lead);
+      await claimBooked(job.id);
+      await tick();
+      expect(await notes(lead)).toEqual([]);
+      const appt = await book(lead, c1);
+      await wake(run.id);
+      expect(await notes(lead)).toEqual(['BOOKED']);
+      expect((await stepsOf(run.id)).find((x: any) => x.step_key === 'ai_call_1').output).toMatchObject({ outcome: 'booked', reason: 'appointment_confirmed', appointmentId: appt });
+    });
+
+    it('other outcomes do not need an appointment (callback, no answer, review still work)', async () => {
+      const { lead } = await start(callFlow());
+      const [job] = await jobsFor(lead);
+      await finish(job.id, 'completed', { status: 'completed', data: [] });
+      await tick();
+      expect(await notes(lead)).toEqual(['REVIEW']);
+    });
+  });
+
+  // ---- Issue 2: which existing call may a workflow reuse? ------------------------------------------------
+  describe('call association and reuse', () => {
+    it('an OLD automatic call for the same lead is not reused and cannot complete a new workflow', async () => {
+      const wf = await publishFlow(callFlow(), c2, 'stale auto');
+      await new Promise((r) => setTimeout(r, 20));
+      const lead = await newLead(); await assign(lead, c2);
+      const [auto] = await jobsFor(lead);
+      await q(`update ai_call_jobs set created_at = now() - interval '3 hours' where id=$1`, [auto.id]);
+      await q(`update ai_call_jobs set status='completed', analysis=$2::jsonb, conversation_ended_at=now() - interval '3 hours' where id=$1`, [auto.id, JSON.stringify({ status: 'completed', data: [{ name: 'appointment_booked', value: true }] })]);
+      await processWorkflowEvent(await eventOf('lead.assigned', lead), { db: h.client });
+      const jobs = await jobsFor(lead);
+      expect(jobs).toHaveLength(2);
+      const run = (await runsOf(wf.id))[0];
+      expect((await stepsOf(run.id))[0].output).toMatchObject({ adopted: false, jobId: jobs.find((j: any) => j.trigger_source === 'workflow').id });
+      expect(run.status).toBe('waiting');
+      expect(await notes(lead)).toEqual([]);
+    });
+
+    it('a manual call (or another workflow\'s call) in flight is not reused: the run gets its own job', async () => {
+      const wf = await publishFlow(callFlow(), c1, 'manual in flight');
+      await new Promise((r) => setTimeout(r, 20));
+      const lead = await newLead(); await assign(lead, c1);
+      const phone = (await q<any>(`select phone_e164 from leads where id=$1`, [lead]))[0].phone_e164;
+      await q(`insert into ai_call_jobs(trigger_source, dedupe_key, contractor_id, lead_id, contact_phone, status) values ('manual','manual:tok1',$1,$2,$3,'accepted')`, [c1, lead, phone]);
+      await processWorkflowEvent(await eventOf('lead.assigned', lead), { db: h.client });
+      const jobs = await jobsFor(lead);
+      expect(jobs.map((j: any) => j.trigger_source).sort()).toEqual(['manual', 'workflow']);
+      const run = (await runsOf(wf.id))[0];
+      expect((await stepsOf(run.id))[0].output.adopted).toBe(false);
+    });
+
+    it('a call that belongs to another lead can never decide the run, even if it is repointed at it', async () => {
+      const a = await start(callFlow());
+      const b = await start(callFlow());
+      const [jobB] = await jobsFor(b.lead);
+      await q(`update ai_call_jobs set status='completed', analysis=$2::jsonb, conversation_ended_at=now() where id=$1`, [jobB.id, JSON.stringify({ status: 'completed', data: [{ name: 'appointment_booked', value: true }] })]);
+      await book(b.lead, c1);
+      await q(`update workflow_step_runs set output = jsonb_set(output, '{jobId}', to_jsonb($2::text)) where run_id=$1 and step_key='ai_call_1'`, [a.run.id, jobB.id]);
+      await timePasses(a.run.id);
+      await tick();
+      expect(await notes(a.lead)).toEqual(['FAILED']);
+      expect((await stepsOf(a.run.id)).find((x: any) => x.step_key === 'ai_call_1').output).toMatchObject({ outcome: 'failed', reason: 'call_association_mismatch' });
+    });
   });
 });
 

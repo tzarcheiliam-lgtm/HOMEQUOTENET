@@ -247,10 +247,56 @@ describe('engine: AI call node', () => {
     d = await advanceRun(callGraph(), ports, { deadline: deadline() });
     expect(d.kind).toBe('waiting');
     ports.callStatuses['job-1'] = { status: 'completed', conversation_ended_at: T0.toISOString(), analysis: { status: 'completed', data: [{ name: 'appointment_booked', value: true }] } };
+    ports.bookingEvidence['job-1'] = { confirmed: true, appointmentId: 'appt-1' };
     ports.clock = new Date(T0.getTime() + 60_000);
     await advanceRun(callGraph(), ports, { deadline: deadline() });
     expect(taken(ports)).toBe('booked');
-    expect(ports.steps.get('ai_call_1')!.output).toMatchObject({ outcome: 'booked', executionStatus: 'completed' });
+    expect(ports.steps.get('ai_call_1')!.output).toMatchObject({ outcome: 'booked', executionStatus: 'completed', reason: 'appointment_confirmed', appointmentId: 'appt-1' });
+  });
+
+  describe('a "booked" claim is only a claim', () => {
+    const claimed = (ports: MemoryPorts) => {
+      ports.callStatuses['job-1'] = { status: 'completed', conversation_ended_at: T0.toISOString(), analysis: { status: 'completed', data: [{ name: 'appointment_booked', value: true }] } };
+    };
+    it('without an appointment record the run waits, then goes to human review - never the Booked path', async () => {
+      const ports = new MemoryPorts(ctx(), T0);
+      requestPending(ports);
+      await advanceRun(callGraph(), ports, { deadline: deadline() });
+      claimed(ports);
+      ports.clock = new Date(T0.getTime() + 60_000);
+      const d = await advanceRun(callGraph(), ports, { deadline: deadline() });
+      expect(d).toMatchObject({ kind: 'waiting', why: 'call' }); // inside the grace period: still looking for the appointment
+      expect(ports.steps.get('ai_call_1')!.status).toBe('waiting');
+      ports.clock = new Date(T0.getTime() + 31 * 60_000);
+      await advanceRun(callGraph(), ports, { deadline: deadline() });
+      expect(taken(ports)).toBe('needs_human_review');
+      expect(ports.steps.get('ai_call_1')!.output).toMatchObject({ outcome: 'needs_human_review', reason: 'booking_unconfirmed' });
+    });
+
+    it('an appointment that is recorded during the grace period confirms the booking', async () => {
+      const ports = new MemoryPorts(ctx(), T0);
+      requestPending(ports);
+      await advanceRun(callGraph(), ports, { deadline: deadline() });
+      claimed(ports);
+      ports.clock = new Date(T0.getTime() + 60_000);
+      await advanceRun(callGraph(), ports, { deadline: deadline() });
+      ports.bookingEvidence['job-1'] = { confirmed: true, appointmentId: 'appt-9' };
+      ports.clock = new Date(T0.getTime() + 10 * 60_000);
+      await advanceRun(callGraph(), ports, { deadline: deadline() });
+      expect(taken(ports)).toBe('booked');
+    });
+
+    it('a call that is not this run\'s lead and contractor never decides the run', async () => {
+      const ports = new MemoryPorts(ctx(), T0);
+      requestPending(ports);
+      await advanceRun(callGraph(), ports, { deadline: deadline() });
+      claimed(ports);
+      ports.callStatuses['job-1'] = { ...ports.callStatuses['job-1']!, association: 'mismatch' };
+      ports.bookingEvidence['job-1'] = { confirmed: true, appointmentId: 'appt-1' };
+      await advanceRun(callGraph(), ports, { deadline: deadline() });
+      expect(taken(ports)).toBe('failed');
+      expect(ports.steps.get('ai_call_1')!.output).toMatchObject({ reason: 'call_association_mismatch' });
+    });
   });
 
   it('a completed call without a qualification signal goes to human review, never "qualified"', async () => {

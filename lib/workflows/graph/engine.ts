@@ -4,7 +4,7 @@ import { workflowResolver } from '../planner';
 import type { WorkflowLogCode } from '../logging';
 import { resolveZones } from '@/lib/ai-calling/timezone';
 import { nextBusinessWindow } from './business-hours';
-import { resolveCallOutcome, timedOutCallResult, type CallJobFacts, type CallOutcome, type CallResult } from './call-outcomes';
+import { confirmBooking, resolveCallOutcome, timedOutCallResult, type BookingEvidence, type CallJobFacts, type CallOutcome, type CallResult } from './call-outcomes';
 import {
   MAX_NODE_VISITS,
   NODE_CONFIG_SCHEMAS,
@@ -84,6 +84,8 @@ export interface EnginePorts {
   call: {
     request(node: GraphNode, config: Record<string, unknown>, ctx: GraphEvaluationContext, step: StepRecord): Promise<CallRequestResult>;
     status(jobId: string): Promise<CallJobFacts | null>;
+    /** Is there a real appointment for this call's lead + contractor? (A "booked" claim needs it.) */
+    bookingEvidence(jobId: string): Promise<BookingEvidence | null>;
   };
   openEventWait(node: GraphNode, config: Record<string, unknown>, ctx: GraphEvaluationContext, timeoutAt: Date): Promise<void>;
   getEventWait(nodeId: string): Promise<EventWaitState | null>;
@@ -340,7 +342,12 @@ async function runCall(node: GraphNode, config: Record<string, unknown>, existin
   const jobId = typeof step.output?.jobId === 'string' ? step.output.jobId : null;
   const timeoutAt = step.resumeAt ?? new Date(now.getTime() + timeoutMs);
   const facts = jobId ? await ports.call.status(jobId) : null;
-  const resolution = facts ? resolveCallOutcome(facts, { now, analysisGraceMinutes: Number(config.analysisGraceMinutes) }) : null;
+  let resolution = facts ? resolveCallOutcome(facts, { now, analysisGraceMinutes: Number(config.analysisGraceMinutes) }) : null;
+  if (facts && jobId && resolution?.state === 'final' && resolution.result.outcome === 'booked') {
+    // The agent's claim is not a booking: require a matching appointment record (or wait for it, then human review).
+    const evidence = await ports.call.bookingEvidence(jobId);
+    resolution = confirmBooking(resolution.result, evidence, { now, graceMinutes: Number(config.analysisGraceMinutes), endedAt: facts.conversation_ended_at ?? facts.updated_at ?? null });
+  }
 
   const finish = async (result: CallResult): Promise<NodeOutcome> => {
     await ports.updateStep(step!, {
@@ -348,6 +355,7 @@ async function runCall(node: GraphNode, config: Record<string, unknown>, existin
       output: {
         handle: result.outcome, outcome: result.outcome, executionStatus: result.executionStatus, reason: result.reason,
         attempts: result.attempts, jobId, adopted: step!.output?.adopted ?? false, callbackAt: result.callbackAt,
+        ...(result.appointmentId ? { appointmentId: result.appointmentId } : {}),
       },
     });
     await ports.log('info', 'call.outcome', 'AI call result recorded', { node_id: node.id, outcome: result.outcome, execution_status: result.executionStatus });

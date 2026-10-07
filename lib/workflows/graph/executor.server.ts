@@ -18,7 +18,7 @@ import {
   type WorkflowRunRow,
 } from '@/lib/workflows';
 import type { WorkflowLogCode } from '../logging';
-import { callJobFacts, requestWorkflowCall } from './calls.server';
+import { callBookingEvidence, callJobFacts, requestWorkflowCall } from './calls.server';
 import { executeGraphAction } from './actions.server';
 import { loadGraphContext } from './context.server';
 import {
@@ -182,7 +182,7 @@ export class DbPorts implements EnginePorts {
       if (this.mode === 'test') return { ok: true, jobId: null, adopted: false, simulated: this.simulatedCall as never };
       const result = await requestWorkflowCall({
         db: this.db, run: { id: this.run.id, contractorId: this.run.contractor_id }, stepRun: { id: step.id }, nodeId: node.id,
-        config, ctx, eventOccurredAt: this.event.occurredAt, now: new Date(), contractorIdFromEvent: this.event.contractorId,
+        config, ctx, eventType: this.event.type, eventOccurredAt: this.event.occurredAt, now: new Date(), contractorIdFromEvent: this.event.contractorId,
       });
       if (result.ok && result.jobId) {
         // The durable wait: its timeout is the run's wake time, and the call-status trigger / sweeper
@@ -197,7 +197,8 @@ export class DbPorts implements EnginePorts {
       }
       return result;
     },
-    status: (jobId: string) => callJobFacts(this.db, jobId),
+    status: (jobId: string) => callJobFacts(this.db, jobId, { leadId: this.run.lead_id, contractorId: this.run.contractor_id }),
+    bookingEvidence: (jobId: string) => callBookingEvidence(this.db, jobId),
   };
 
   async openEventWait(node: GraphNode, config: Record<string, unknown>, ctx: Awaited<ReturnType<EnginePorts['loadContext']>>, timeoutAt: Date) {

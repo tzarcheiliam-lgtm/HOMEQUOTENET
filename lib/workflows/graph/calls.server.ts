@@ -4,16 +4,28 @@ import { after } from 'next/server';
 import type { createAdminClient } from '@/lib/supabase/admin';
 import type { WorkflowError } from '@/lib/workflows';
 import { runAiCallQueue } from '@/lib/ai-calling/run.server';
-import type { CallJobFacts } from './call-outcomes';
+import type { BookingEvidence, CallJobFacts } from './call-outcomes';
 import type { CallRequestResult } from './engine';
 import { buildCallBrief, type GraphEvaluationContext } from './render';
 
 type Db = ReturnType<typeof createAdminClient>;
 
 const IN_FLIGHT = ['queued', 'dispatching', 'accepted', 'answered'];
-/** A call the form-to-call feature already made for THIS lead event (created with the assignment). */
-const AUTO_CALL_GRACE_MS = 2 * 60_000;
-const ADOPT_WINDOW_MS = 24 * 3_600_000;
+/**
+ * When may a workflow REUSE an existing call instead of placing its own?  (rule documented in
+ * docs/visual-workflow-builder.md, "Reusing the automatic call")
+ *
+ * Only the call the automatic form-to-call feature (`auto_form`) created for THIS enrollment:
+ *   - same lead, same contractor, same phone number as the lead has now,
+ *   - the workflow's trigger is the event that creates that call (a lead being assigned), and
+ *   - the job was created within a few minutes of the triggering event (either side),
+ *     so a call from an earlier day, an earlier assignment or an earlier enrollment is never reused.
+ * A manual call, another workflow's call, or any older call is NOT reused and never completes this
+ * run; the queue's own guards (24 h duplicate window, opt-out, calling window) still decide whether
+ * the workflow's own call may be placed, so the homeowner is not double-called.
+ */
+const AUTO_CALL_WINDOW_MS = 5 * 60_000;
+const ADOPT_TRIGGERS = new Set(['lead.assigned', 'lead.created']);
 
 const err = (code: string, message: string, kind: 'temporary' | 'permanent'): WorkflowError => ({ code, message, kind, retryable: kind === 'temporary' });
 
@@ -24,6 +36,7 @@ export interface WorkflowCallInput {
   nodeId: string;
   config: Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
   ctx: GraphEvaluationContext;
+  eventType: string;
   eventOccurredAt: string;
   now: Date;
   contractorIdFromEvent: string | null;
@@ -50,26 +63,26 @@ export async function requestWorkflowCall(input: WorkflowCallInput): Promise<Cal
   if (own.error) return { ok: false, error: err('call_lookup_failed', 'Could not look up the call', 'temporary') };
   if (own.data) return { ok: true, jobId: (own.data as { id: string }).id, adopted: false };
 
-  // 2. Never double-call: reuse a call that is already in flight (or that the form-to-call
-  //    feature created for this very lead event) instead of placing another.
-  const since = new Date(now.getTime() - ADOPT_WINDOW_MS).toISOString();
-  const existing = await db
-    .from('ai_call_jobs')
-    .select('id,status,trigger_source,created_at,workflow_run_id')
-    .eq('lead_id', leadId)
-    .eq('contractor_id', contractorId)
-    .gte('created_at', since)
-    .neq('status', 'cancelled')
-    .order('created_at', { ascending: false })
-    .limit(10);
-  if (existing.error) return { ok: false, error: err('call_lookup_failed', 'Could not look up existing calls', 'temporary') };
+  // 2. Reuse ONLY the automatic call made for this very enrollment (see ADOPT rule above).
+  const phone = typeof lead?.phone_e164 === 'string' ? lead.phone_e164 : null;
   const eventAt = Date.parse(input.eventOccurredAt);
-  const adoptable = ((existing.data ?? []) as { id: string; status: string; trigger_source: string; created_at: string; workflow_run_id: string | null }[]).find((j) => {
-    if (j.workflow_run_id === run.id) return false; // this run's own earlier call node: a deliberate second call
-    if (IN_FLIGHT.includes(j.status)) return true;
-    return j.trigger_source === 'auto_form' && !Number.isNaN(eventAt) && Date.parse(j.created_at) >= eventAt - AUTO_CALL_GRACE_MS;
-  });
-  if (adoptable) return { ok: true, jobId: adoptable.id, adopted: true };
+  if (ADOPT_TRIGGERS.has(input.eventType) && phone && !Number.isNaN(eventAt)) {
+    const existing = await db
+      .from('ai_call_jobs')
+      .select('id,status,trigger_source,created_at,contact_phone,workflow_run_id')
+      .eq('lead_id', leadId)
+      .eq('contractor_id', contractorId)
+      .eq('trigger_source', 'auto_form')
+      .eq('contact_phone', phone)
+      .gte('created_at', new Date(eventAt - AUTO_CALL_WINDOW_MS).toISOString())
+      .lte('created_at', new Date(eventAt + AUTO_CALL_WINDOW_MS).toISOString())
+      .neq('status', 'cancelled')
+      .order('created_at', { ascending: false })
+      .limit(1);
+    if (existing.error) return { ok: false, error: err('call_lookup_failed', 'Could not look up existing calls', 'temporary') };
+    const hit = ((existing.data ?? []) as { id: string }[])[0];
+    if (hit) return { ok: true, jobId: hit.id, adopted: true };
+  }
 
   // 3. Place a new pending job.
   const brief = buildCallBrief(config as never, ctx, { phone: process.env.HOMEQUOTE_PHONE, siteUrl: process.env.NEXT_PUBLIC_SITE_URL });
@@ -114,11 +127,42 @@ export async function requestWorkflowCall(input: WorkflowCallInput): Promise<Cal
   return { ok: true, jobId: (insert.data as { id: string }).id, adopted: false };
 }
 
-export async function callJobFacts(db: Db, jobId: string): Promise<CallJobFacts | null> {
+/**
+ * The call's facts for the run that is waiting on it. `association` is 'mismatch' when the job is not
+ * for the run's own lead + contractor, in which case the run must never take its result.
+ */
+export async function callJobFacts(db: Db, jobId: string, expected?: { leadId: string | null; contractorId: string | null }): Promise<CallJobFacts | null> {
   const { data } = await db
     .from('ai_call_jobs')
-    .select('status,dial_status,last_error,block_reason,attempts,max_attempts,analysis,conversation_ended_at,updated_at')
+    .select('status,dial_status,last_error,block_reason,attempts,max_attempts,analysis,conversation_ended_at,updated_at,lead_id,contractor_id')
     .eq('id', jobId)
     .maybeSingle();
-  return (data as CallJobFacts | null) ?? null;
+  if (!data) return null;
+  const { lead_id, contractor_id, ...facts } = data as CallJobFacts & { lead_id: string | null; contractor_id: string | null };
+  const mismatch = !!expected && ((expected.leadId && lead_id !== expected.leadId) || (expected.contractorId && contractor_id !== expected.contractorId));
+  return { ...facts, association: mismatch ? 'mismatch' : 'ok' };
+}
+
+/**
+ * A booked claim is confirmed only by an appointment for the SAME lead and contractor as the call
+ * (appointments hang off lead_assignments), created after the call began, and not cancelled/no-show.
+ */
+export async function callBookingEvidence(db: Db, jobId: string): Promise<BookingEvidence | null> {
+  const { data: job } = await db.from('ai_call_jobs').select('lead_id,contractor_id,created_at,conversation_started_at').eq('id', jobId).maybeSingle();
+  const j = job as { lead_id: string | null; contractor_id: string | null; created_at: string; conversation_started_at: string | null } | null;
+  if (!j?.lead_id || !j.contractor_id) return null;
+  const { data: assignments } = await db.from('lead_assignments').select('id').eq('lead_id', j.lead_id).eq('contractor_id', j.contractor_id);
+  const ids = ((assignments ?? []) as { id: string }[]).map((a) => a.id);
+  if (!ids.length) return { confirmed: false };
+  const since = j.conversation_started_at ?? j.created_at;
+  const { data: appts } = await db
+    .from('appointments')
+    .select('id,status,created_at')
+    .in('assignment_id', ids)
+    .in('status', ['scheduled', 'held', 'rescheduled'])
+    .gte('created_at', since)
+    .order('created_at', { ascending: false })
+    .limit(1);
+  const hit = ((appts ?? []) as { id: string }[])[0];
+  return hit ? { confirmed: true, appointmentId: hit.id } : { confirmed: false };
 }

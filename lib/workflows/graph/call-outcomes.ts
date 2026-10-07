@@ -9,6 +9,11 @@
  *                       analysis the Fish agent returned.
  * "completed" never implies "qualified": a finished call with no explicit signal in
  * its analysis resolves to `needs_human_review`.
+ *
+ * "booked" is a CLAIM until proven: the agent saying an appointment was agreed is not
+ * enough. `confirmBooking` only lets the run take the Booked path when an appointment
+ * record exists for the SAME lead and contractor, created after the call started and not
+ * cancelled. Otherwise the run waits briefly for it, then goes to human review.
  */
 
 export const CALL_OUTCOMES = [
@@ -25,7 +30,7 @@ export const CALL_OUTCOMES = [
 export type CallOutcome = (typeof CALL_OUTCOMES)[number];
 
 export const CALL_OUTCOME_LABELS: Record<CallOutcome, string> = {
-  booked: 'Booked an appointment',
+  booked: 'Booked (appointment confirmed)',
   qualified_awaiting_scheduling: 'Qualified, needs scheduling',
   callback_requested: 'Asked for a callback',
   needs_human_review: 'Needs human review',
@@ -58,6 +63,14 @@ export interface CallJobFacts {
   analysis?: { status?: string | null; summary?: string | null; data?: { name?: string; value?: unknown }[]; error?: string | null } | null;
   conversation_ended_at?: string | null;
   updated_at?: string | null;
+  /** Set by the loader: does this job belong to the run's lead and contractor? */
+  association?: 'ok' | 'mismatch';
+}
+
+/** Proof (or absence of proof) that an appointment really exists for the call's lead + contractor. */
+export interface BookingEvidence {
+  confirmed: boolean;
+  appointmentId?: string | null;
 }
 
 export interface CallResult {
@@ -67,6 +80,8 @@ export interface CallResult {
   reason: string;
   callbackAt: string | null;
   attempts: number;
+  /** Present only when a matching appointment record confirmed a booked outcome. */
+  appointmentId?: string | null;
 }
 
 export type CallResolution = { state: 'pending'; reason: string; recheckAt?: Date } | { state: 'final'; result: CallResult };
@@ -91,6 +106,8 @@ export function resolveCallOutcome(
     result: { ...base, outcome, reason, ...extra },
   });
 
+  // Defense in depth: a job that is not this run's lead + contractor never decides this run.
+  if (job.association === 'mismatch') return final('failed', 'call_association_mismatch');
   if (IN_FLIGHT.has(job.status)) return { state: 'pending', reason: `call_${job.status}` };
 
   switch (job.status) {
@@ -143,6 +160,27 @@ export function resolveCallOutcome(
   if (truthy(field(data, 'callback_requested'))) return final('callback_requested', 'analysis_callback_requested', { callbackAt });
   if (truthy(field(data, 'qualified'))) return final('qualified_awaiting_scheduling', 'analysis_qualified');
   return final('needs_human_review', 'no_explicit_outcome');
+}
+
+const BOOKING_RECHECK_MS = 5 * 60_000;
+
+/**
+ * Pure: turns a "booked" claim into a confirmed booking, a short wait for the appointment
+ * record to appear, or a human-review result. Every other outcome passes through untouched.
+ */
+export function confirmBooking(
+  result: CallResult,
+  evidence: BookingEvidence | null,
+  opts: { now: Date; graceMinutes: number; endedAt: string | null }
+): CallResolution {
+  if (result.outcome !== 'booked') return { state: 'final', result };
+  if (evidence?.confirmed) return { state: 'final', result: { ...result, reason: 'appointment_confirmed', appointmentId: evidence.appointmentId ?? null } };
+  const endedMs = Date.parse(opts.endedAt ?? '');
+  const deadline = (Number.isNaN(endedMs) ? opts.now.getTime() : endedMs) + opts.graceMinutes * 60_000;
+  if (opts.now.getTime() < deadline) {
+    return { state: 'pending', reason: 'awaiting_booking_confirmation', recheckAt: new Date(Math.min(deadline, opts.now.getTime() + BOOKING_RECHECK_MS)) };
+  }
+  return { state: 'final', result: { ...result, outcome: 'needs_human_review', reason: 'booking_unconfirmed' } };
 }
 
 /** A call node gave up waiting (no webhook within its timeout). */

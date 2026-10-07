@@ -66,6 +66,7 @@ export class MemoryPorts implements EnginePorts {
   actionHandler: (node: GraphNode, config: Record<string, unknown>, ctx: GraphEvaluationContext, step: StepRecord) => Promise<WorkflowActionResult> | WorkflowActionResult = () => ({ outcome: 'success' });
   callHandler: (node: GraphNode, config: Record<string, unknown>, ctx: GraphEvaluationContext, step: StepRecord) => Promise<CallRequestResult> | CallRequestResult = () => ({ ok: true, jobId: 'job-1', adopted: false, simulated: 'booked' });
   callStatuses: Record<string, import('./call-outcomes').CallJobFacts | null> = {};
+  bookingEvidence: Record<string, import('./call-outcomes').BookingEvidence | null> = {};
   contextFactory: () => GraphEvaluationContext;
   nodes = new Map<string, GraphNode>();
 
@@ -122,6 +123,7 @@ export class MemoryPorts implements EnginePorts {
   call = {
     request: async (node: GraphNode, config: Record<string, unknown>, ctx: GraphEvaluationContext, step: StepRecord) => this.callHandler(node, config, ctx, step),
     status: async (jobId: string) => this.callStatuses[jobId] ?? null,
+    bookingEvidence: async (jobId: string) => this.bookingEvidence[jobId] ?? null,
   };
   async openEventWait(node: GraphNode, config: Record<string, unknown>, _ctx: GraphEvaluationContext, timeoutAt: Date) {
     this.waits.set(node.id, { status: 'open', timeoutAt });
