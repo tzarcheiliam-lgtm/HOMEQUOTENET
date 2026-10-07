@@ -45,6 +45,7 @@ import { telHref } from '@/lib/leads/lead-emails';
 import { getLeadDistribution, listRecipients } from '@/lib/data/lead-distribution';
 import { canManageSigning, isContractorOwner } from '@/lib/permissions';
 import { DocumentsPanel } from '@/components/signing/documents-panel';
+import { OutcomeHistory } from '@/components/leads/outcome-history';
 
 export const metadata = { title: 'Lead · HomeQuote Network' };
 
@@ -339,6 +340,8 @@ export default async function LeadDetailPage({
               )}
             </CardContent>
           </Card>
+
+          <OutcomeHistory leadId={lead.id} isAdmin={isAdmin} />
 
           {/* Review & send: new leads go to the HomeQuote team first; a
               person qualifies them, then chooses who receives them. */}

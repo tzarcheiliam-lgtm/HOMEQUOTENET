@@ -53,7 +53,7 @@ export type MetaLeadEvent = {
 };
 
 /** Builds the Conversions API user_data object: hashed PII, raw IP/UA/fbp/fbc. */
-function buildUserData(user: MetaUserData): Record<string, string> {
+export function buildUserData(user: MetaUserData): Record<string, string> {
   const data: Record<string, string> = {};
   const em = hashed(normalizeEmail(user.email));
   const ph = hashed(normalizePhone(user.phone)?.replace(/^\+/, ''));

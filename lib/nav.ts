@@ -32,6 +32,7 @@ const GROUP_BY_LABEL: Record<string, NavGroup> = {
   'Service Requests': 'Growth',
   Funnels: 'Growth',
   Analytics: 'Growth',
+  'Meta Ads': 'Growth',
   Automations: 'Growth',
   'Email Templates': 'Growth',
   Sales: 'Administration',
@@ -149,6 +150,14 @@ const BASE_NAV_ITEMS: NavItem[] = [
     href: '/app/analytics',
     icon: 'BarChart3',
     roles: ['admin'],
+  },
+  // Meta Ads reporting + lead-outcome feedback. Admins see every account; contractor owners only campaigns an
+  // admin mapped to their company (enforced by RLS and lib/permissions.canViewMetaAds, not by this list).
+  {
+    label: 'Meta Ads',
+    href: '/app/meta-ads',
+    icon: 'Megaphone',
+    roles: ['admin', 'contractor'],
   },
   {
     label: 'Funnels',

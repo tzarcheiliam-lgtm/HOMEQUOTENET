@@ -1,0 +1,41 @@
+# Meta integration worker: every 5 minutes it (1) turns recorded lead outcomes into Conversions API events and sends
+# due ones, and (2) refreshes the Meta Ads reporting mirror when it is >6h old. Safe to overlap (events are claimed with
+# SKIP LOCKED and carry stable event ids). A no-op while Meta Ads > Setup > "Conversion delivery" is OFF (the default).
+#
+# Setup (once):
+#   Vercel (Production): META_TICK_SECRET = <long random string>
+#   GitHub -> Settings -> Secrets and variables -> Actions:
+#     META_TICK_SECRET = <the same string>
+#     META_TICK_URL    = https://<production domain>/api/meta/tick
+# Until both secrets exist the job skips without failing.
+name: Meta tick
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: meta-tick
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: POST /api/meta/tick
+        env:
+          TICK_URL: ${{ secrets.META_TICK_URL }}
+          CRON_SECRET: ${{ secrets.META_TICK_SECRET }}
+        run: |
+          if [ -z "$TICK_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "META_TICK_URL / META_TICK_SECRET not configured; skipping."
+            exit 0
+          fi
+          code=$(curl -sS --max-time 150 -o body.json -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer $CRON_SECRET" "$TICK_URL")
+          echo "HTTP $code"; cat body.json; echo
+          [ "$code" = "200" ]

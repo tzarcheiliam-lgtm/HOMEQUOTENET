@@ -88,7 +88,7 @@ components/            UI grouped by domain (billing, calls, contractors,
                        leads, marketing, team, workflows) + components/ui
                        (shared primitives: PageHeader, KpiCard, EmptyState,
                        StatusBadge, ConfirmAction, Table, Card, etc.)
-supabase/migrations/    sequential SQL files (latest 0039, see §6 and §19)
+supabase/migrations/    sequential SQL files (latest 0041, see §6, §19 and §21)
 content/                Marketing copy/data (per-niche site content)
 scripts/                Seeders, migration helpers, prospecting import, QA (§ below)
 tests/                  Vitest suites: pure logic + live-DB suites (see §13)
@@ -920,3 +920,12 @@ Full write-up: `docs/document-signing.md`. Summary:
 - Reusable: `ui/filter-panel.tsx` (collapsible-on-phone GET filter with active count + Reset), `ui/summary-strip.tsx`, Button variant `destructive-outline`, Badge variants `danger`/`info`.
 - Workflows page body is `components/workflows/workflows-view.tsx` (presentational); `app/app/workflows/page.tsx` only fetches.
 - Round 2 (2026-10-07, code-only, not browser-verified): `KpiCard` and the contractor dashboard tile are compact; desktop lead filters have visible labels, a "More filters" group, active count and Reset; lead note/contact forms are controlled with labels and success/error text; `LeadForm` labels are tied to inputs, submits via `lib/forms/keep-values.ts` (`keepValuesOnError`, also used by auth, password, contractor, user, prospect, recipient, send-lead, qualification, service-request, create-funnel forms) so a failed save no longer wipes typed values; desktop lead Delete now confirms; success text uses `emerald-700` for AA contrast.
+
+## 21. Meta Ads analytics + outcome feedback (2026-10-07, migration 0041 — NOT applied/deployed; delivery ships OFF)
+
+Full guide: `docs/meta-ads-setup.md`. Summary:
+- **Routes**: `/app/meta-ads` (admin + contractor *owners*; RLS-scoped), `/app/meta-ads/setup` and `/app/meta-ads/events` (admin), `POST /api/meta/tick` (Bearer `META_TICK_SECRET`, run every 5 min by `.github/workflows/meta-tick.yml`).
+- **Tables**: `meta_settings` (delivery_mode off|test|live, default off; ledger cursor), `meta_ad_accounts` (explicit contractor mapping, `show_spend_to_contractor`), `meta_campaigns` (optional contractor override), `meta_adsets`, `meta_ads`, `meta_insights_daily` (ad×day), `meta_sync_runs`, `lead_outcome_events` (append-only ledger via triggers on leads/appointments/sales/assignments), `meta_conversion_events` (outbox; unique `(dataset_id,event_id,test_mode)`; `claim_meta_conversion_events` SKIP LOCKED). New `leads.qualification_reason/_source/_evidence`, `sales.currency`. RLS: contractors see only campaigns mapped to them; spend only when opted in; queue/settings admin-only.
+- **Code**: `lib/meta/marketing-api.ts` (read-only Graph client, error classification, retries), `sync.ts`, `metrics.ts` + `hqn-metrics.ts` (pure, tested), `conversions.ts` (mapping/eligibility/payload), `queue.ts` (+`queue.server.ts`) feed+dispatch, `lib/data/meta-ads*.ts`, `lib/actions/meta-ads.ts`.
+- **Behavior change to know**: the old direct `QualifiedLead` send in `updateQualification` is replaced by the queue and therefore **does not send until an admin switches delivery to Test/Live**. `Lead` and `Schedule` still go directly from the funnel session route, unchanged; the queue skips them (`sent_directly_by_funnel`).
+- Verified locally only (unit tests with mocked fetch/in-memory store, PGlite migration + RLS tests, `next build`). **Nothing verified against Meta.** DB suites needing `SUPABASE_DB_URL` were not run.
