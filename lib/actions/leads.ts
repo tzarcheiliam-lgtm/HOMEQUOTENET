@@ -664,6 +664,8 @@ export async function scheduleAppointment(
     scheduled_at: new Date(scheduledAt).toISOString(),
     location: str(formData, 'location'),
     notes: str(formData, 'notes'),
+    // Where the booking happened, as the recorder states it (used only to label the Meta event source truthfully).
+    booked_via: ['phone_call', 'email', 'chat', 'in_person', 'other'].includes(str(formData, 'booked_via') ?? '') ? str(formData, 'booked_via') : null,
     created_by: await currentUserId(),
   });
   if (error) return { error: error.message };

@@ -53,7 +53,10 @@ export type SessionForMeta = {
   pixelId?: string; isDemo: boolean; slug?: string; bookedAt?: string | null;
 };
 
-/** What the outcome refers to, so separate appointments / sales on one lead stay separate events. */
+/**
+ * What the outcome refers to and WHERE the underlying action happened (provenance). The database record's author
+ * (person, AI or system) is deliberately not an input: an AI call only claims a booking, a person records the appointment.
+ */
 export type OutcomeRef = {
   appointmentId?: string | null; saleId?: string | null;
   /**
@@ -62,7 +65,14 @@ export type OutcomeRef = {
    * Schedule but NO server event exists, so the queue sends it - with the browser's event id, to de-duplicate.
    */
   funnelBooking?: 'calendly' | 'other' | null;
-  actorKind?: 'user' | 'ai' | 'system';
+  /** The recording person's own statement of how the booking was made (appointments.booked_via). */
+  bookedVia?: string | null;
+  /** A completed AI call for this lead + contractor reported a booking and began before the appointment was recorded. */
+  aiCallBooked?: boolean;
+  /** Qualification reason code (how the qualifying confirmation happened). */
+  reasonCode?: string | null;
+  /** This send retries a FAILED direct send (the funnel/legacy sender), so the 'already sent directly' skip does not apply. */
+  retryOfDirect?: boolean;
 };
 
 export type EligibilityInput = {
@@ -73,7 +83,7 @@ export type EligibilityInput = {
   ref?: OutcomeRef;
 };
 
-export type ActionSource = 'website' | 'system_generated' | 'other' | 'phone_call';
+export type ActionSource = 'website' | 'system_generated' | 'other' | 'phone_call' | 'email' | 'chat' | 'physical_store';
 export type Plan = {
   sourceKind: SourceKind; eventName: string; actionSource: ActionSource;
   datasetId: string; eventId: string; value: number | null; currency: string | null;
@@ -86,14 +96,29 @@ export type Decision =
 export const isLeadgenId = (v: string | null | undefined): v is string => !!v && /^\d{15,17}$/.test(v);
 
 /**
- * The real source of a website-lead outcome. `website` is reserved for what the visitor did on the site (Lead, and the
- * Calendly Schedule - both sent directly by the funnel). A person recording a qualification or a sale in HQN is NOT a
- * website conversion; an AI-call booking happened over the phone.
+ * Meta `action_source` = where the conversion actually happened (Meta: website = "made on your website", phone_call =
+ * "over the phone", email, chat = "messaging app, SMS...", physical_store = "in person", other = "not listed").
+ * Derived from provenance in this order; never from who wrote the row.
+ *  appointment: visitor's funnel booking -> website; person-stated channel; AI call that reported a booking -> phone_call; else other.
+ *  qualified:   how the confirmation happened (reason code): by phone / text / email; otherwise other.
+ *  won:         a sale is recorded off-platform and its channel is not captured -> other.
  */
-export function websiteOutcomeActionSource(stage: Stage, ref?: OutcomeRef): ActionSource {
-  if (stage === 'appointment' && ref?.actorKind === 'ai') return 'phone_call';
+export function actionSourceFor(stage: Stage, ref?: OutcomeRef): ActionSource {
+  if (stage === 'lead') return 'website'; // the visitor submitted the form on the site
+  if (stage === 'appointment') {
+    if (ref?.funnelBooking) return 'website';
+    const via = ({ phone_call: 'phone_call', email: 'email', chat: 'chat', in_person: 'physical_store' } as Record<string, ActionSource>)[ref?.bookedVia ?? ''];
+    if (via) return via;
+    return ref?.aiCallBooked ? 'phone_call' : 'other';
+  }
+  if (stage === 'qualified') {
+    return ({ confirmed_by_call: 'phone_call', confirmed_by_text: 'chat', confirmed_by_email: 'email' } as Record<string, ActionSource>)[ref?.reasonCode ?? ''] ?? 'other';
+  }
   return 'other';
 }
+
+/** AI-call booked evidence, using the SAME outcome rule the workflow builder uses (resolveCallOutcome), not a second parser. */
+export const AI_BOOKING_MAX_GAP_MS = 72 * 3600 * 1000;
 
 export function decide(i: EligibilityInput): Decision {
   const now = i.now ?? Date.now();
@@ -127,17 +152,17 @@ export function decide(i: EligibilityInput): Decision {
     if (i.session.isDemo) return { ok: false, reason: 'demo' };
     const eventName = WEBSITE_EVENT_NAME[i.stage];
     // Separate appointments / sales on one lead are separate conversions; qualification happens once per lead.
-    const visitorBooking = i.stage === 'appointment' && i.ref?.funnelBooking === 'other';
+    const visitorBooking = i.stage === 'appointment' && !!i.ref?.funnelBooking;
     const suffix = visitorBooking ? null : i.stage === 'appointment' ? i.ref?.appointmentId : i.stage === 'won' ? i.ref?.saleId : null;
     const plan: Partial<Plan> = {
       sourceKind: 'website_pixel', eventName,
-      // The visitor booking on the site IS a website conversion (and shares the browser Pixel's event id); anything a
-      // person records in HQN is not.
-      actionSource: visitorBooking ? 'website' : websiteOutcomeActionSource(i.stage, i.ref),
+      // Where the underlying action happened (see actionSourceFor); a visitor booking on the site is a website conversion
+      // and shares the browser Pixel's event id.
+      actionSource: actionSourceFor(i.stage, i.ref),
       eventId: suffix ? `${i.session.id}:${eventName}:${suffix}` : `${i.session.id}:${eventName}`, value: null, currency: null,
     };
-    if (i.stage === 'lead') return { ok: false, reason: 'sent_directly_by_funnel', plan };
-    if (i.stage === 'appointment' && i.ref?.funnelBooking === 'calendly') return { ok: false, reason: 'sent_directly_by_funnel', plan };
+    if (i.stage === 'lead' && !i.ref?.retryOfDirect) return { ok: false, reason: 'sent_directly_by_funnel', plan };
+    if (i.stage === 'appointment' && i.ref?.funnelBooking === 'calendly' && !i.ref?.retryOfDirect) return { ok: false, reason: 'sent_directly_by_funnel', plan };
     if (visitorBooking && !i.lead.landing_page_url) return { ok: false, reason: 'no_source_url', plan };
     if ((i.stage === 'appointment' || i.stage === 'won') && !suffix && !visitorBooking) return { ok: false, reason: 'missing_reference', plan };
     if (!i.session.pixelId) return { ok: false, reason: 'no_pixel', plan };

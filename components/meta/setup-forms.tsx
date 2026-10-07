@@ -56,7 +56,7 @@ export function CampaignMappingForm({ campaign, contractors }: { campaign: { id:
   );
 }
 
-export function DeliveryForm({ settings }: { settings: { legacy: boolean; mode: string; test_event_code: string | null; dataset_id: string | null; insights_days: number } }) {
+export function DeliveryForm({ settings }: { settings: { legacy: boolean; mode: string; test_event_code: string | null; test_dataset_id: string | null; dataset_id: string | null; insights_days: number } }) {
   const [state, action, pending] = useActionState<MetaActionState, FormData>(saveDeliverySettings, undefined);
   const [mode, setMode] = useState(settings.mode);
   return (
@@ -65,7 +65,7 @@ export function DeliveryForm({ settings }: { settings: { legacy: boolean; mode: 
         <legend className="text-sm font-medium">Conversion delivery</legend>
         {[
           ['off', 'Off (default)', 'Nothing is queued or sent to Meta from outcomes.'],
-          ['test', 'Test', 'Events go to Events Manager → Test events only (with your test code). They never count in reporting or optimization.'],
+          ['test', 'Test', 'Events go ONLY to a separate test dataset, with its Test Events code. Meta does not sandbox test events (they still feed whatever dataset receives them), so a test dataset is required and a production dataset is refused.'],
           ['live', 'Live', 'Real conversions are sent for outcomes recorded from now on. Nothing historical is sent.'],
         ].map(([v, l, h]) => (
           <label key={v} className="flex cursor-pointer items-start gap-2 rounded-md border px-3 py-2 text-sm has-[:checked]:border-primary has-[:checked]:bg-accent">
@@ -76,7 +76,8 @@ export function DeliveryForm({ settings }: { settings: { legacy: boolean; mode: 
       </fieldset>
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="space-y-1.5"><Label htmlFor="dataset_id">Dataset (Pixel) ID for Instant Form events</Label><Input id="dataset_id" name="dataset_id" inputMode="numeric" defaultValue={settings.dataset_id ?? ''} placeholder="digits only" /></div>
-        <div className="space-y-1.5"><Label htmlFor="test_event_code">Test Events code</Label><Input id="test_event_code" name="test_event_code" defaultValue={settings.test_event_code ?? ''} placeholder="TEST12345" /></div>
+        <div className="space-y-1.5"><Label htmlFor="test_dataset_id">Separate TEST dataset ID (Test mode only)</Label><Input id="test_dataset_id" name="test_dataset_id" inputMode="numeric" defaultValue={settings.test_dataset_id ?? ''} placeholder="a dataset used for nothing else" /></div>
+        <div className="space-y-1.5"><Label htmlFor="test_event_code">Test Events code (from that test dataset)</Label><Input id="test_event_code" name="test_event_code" defaultValue={settings.test_event_code ?? ''} placeholder="TEST12345" /></div>
         <div className="space-y-1.5"><Label htmlFor="insights_days">Days of insights to refresh</Label><Input id="insights_days" name="insights_days" type="number" min={1} max={90} defaultValue={settings.insights_days} /></div>
       </div>
       {mode === 'live' && settings.mode !== 'live' && (
@@ -88,7 +89,7 @@ export function DeliveryForm({ settings }: { settings: { legacy: boolean; mode: 
       <div className="rounded-md border bg-muted/40 p-3 text-sm">
         <p className="font-medium">Website “QualifiedLead” — how it is sent right now</p>
         <p className="text-muted-foreground">{settings.legacy
-          ? 'The original direct sender is ACTIVE: person-qualified website leads are still sent exactly as before, so deploying this feature caused no gap. Test mode leaves it running (test events never count). Switching to Live retires it and the queue takes over (same event id, so nothing is counted twice).'
+          ? 'The original direct sender is ACTIVE: person-qualified website leads are still sent exactly as before, so deploying this feature caused no gap. Test mode leaves it running (test mode only writes to the separate test dataset). Switching to Live retires it and the queue takes over (same event id, so nothing is counted twice).'
           : settings.mode === 'live' ? 'The queue sends it. The original direct sender is retired.'
           : 'NOT being sent: the direct sender is off and the queue is not live. Tick the box below (with delivery Off) to restore the original behavior.'}</p>
         {mode === 'off' && (

@@ -55,10 +55,10 @@ export async function sendQualifiedLeadEvent(db: SupabaseClient, leadId: string)
       .eq('id', leadId).maybeSingle();
     if (!lead) return;
     const { data: s } = await db.from('funnel_sessions')
-      .select('id, created_at, measurement_allowed, config_snapshot, funnels(is_demo, slug)')
+      .select('id, funnel_id, created_at, measurement_allowed, config_snapshot')
       .eq('lead_id', leadId).order('created_at', { ascending: true }).limit(1).maybeSingle();
+    const { data: funnel } = s ? await db.from('funnels').select('is_demo, slug').eq('id', s.funnel_id).maybeSingle() : { data: null };
     const config = s?.config_snapshot as { trackingPixels?: { metaPixelId?: string; consentMode?: 'opt_in' | 'opt_out' } } | undefined;
-    const funnel = (Array.isArray(s?.funnels) ? s?.funnels[0] : s?.funnels) as { is_demo?: boolean; slug?: string } | null | undefined;
     const reason = qualifiedEventSkipReason({
       qualificationStatus: lead.qualification_status, qualifiedAt: lead.qualified_at, qualifiedBy: lead.qualified_by, leadSource: lead.source,
       hasMetaSignal: !!(lead.fbc || lead.fbp || lead.fbclid || lead.ad_id),

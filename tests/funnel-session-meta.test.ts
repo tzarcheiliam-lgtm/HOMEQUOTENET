@@ -46,7 +46,7 @@ describe('website lead: fbp/fbc and the Schedule event', () => {
     const res = await patch({ version: 3, contact, meta: { fbp: 'fb.1.1.111', fbc: 'fb.1.2.cookie' } }); expect(await res.clone().json()).toEqual(expect.not.objectContaining({ error: expect.anything() })); expect(res.status).toBe(200);
     await flush();
     expect(m.remember).toHaveBeenCalledWith(expect.anything(), 'lead-9', { fbp: 'fb.1.1.111', fbc: 'fb.1.2.cookie' });
-    expect(m.send).toHaveBeenCalledWith(expect.objectContaining({ eventName: 'Lead', eventId: 'sess-1:Lead', user: expect.objectContaining({ fbp: 'fb.1.1.111', fbc: 'fb.1.2.cookie' }) }), expect.any(Function));
+    expect(m.send).toHaveBeenCalledWith(expect.objectContaining({ eventName: 'Lead', eventId: 'sess-1:Lead', user: expect.objectContaining({ fbp: 'fb.1.1.111', fbc: 'fb.1.2.cookie' }) }), expect.objectContaining({ reserve: expect.any(Function), finish: expect.any(Function) }));
   });
   it('stores nothing when the visitor has no cookie ids and arrived without an fbclid', async () => {
     m.session = { ...base, attribution: { landing_page_url: 'https://pool.example/estimate/pool' } };
@@ -68,14 +68,14 @@ describe('website lead: fbp/fbc and the Schedule event', () => {
     expect((await patch({ version: 3, calendlyBooking: { eventUri, inviteeUri } })).status).toBe(200);
     await flush();
     expect(m.load).toHaveBeenCalledWith(expect.anything(), 'lead-9');
-    expect(m.send).toHaveBeenCalledWith(expect.objectContaining({ eventName: 'Schedule', eventId: 'sess-1:Schedule', user: expect.objectContaining({ fbp: 'fb.1.1.111', fbc: 'fb.1.2.cookie' }) }), expect.any(Function));
+    expect(m.send).toHaveBeenCalledWith(expect.objectContaining({ eventName: 'Schedule', eventId: 'sess-1:Schedule', user: expect.objectContaining({ fbp: 'fb.1.1.111', fbc: 'fb.1.2.cookie' }) }), expect.objectContaining({ reserve: expect.any(Function), finish: expect.any(Function) }));
   });
   it('still sends Schedule (without ids) when the lead has none saved', async () => {
     m.session = { ...base, contact_submitted_at: 'now', current_step: 'calendar', lead_id: 'lead-9', contact };
     m.rpc.mockResolvedValue({ data: { ...base, booked_at: 'now' }, error: null });
     const eventUri = 'https://api.calendly.com/scheduled_events/ABC';
     await patch({ version: 3, calendlyBooking: { eventUri, inviteeUri: `${eventUri}/invitees/DEF` } }); await flush();
-    expect(m.send).toHaveBeenCalledWith(expect.objectContaining({ eventName: 'Schedule', user: expect.objectContaining({ fbp: undefined, fbc: undefined }) }), expect.any(Function));
+    expect(m.send).toHaveBeenCalledWith(expect.objectContaining({ eventName: 'Schedule', user: expect.objectContaining({ fbp: undefined, fbc: undefined }) }), expect.objectContaining({ reserve: expect.any(Function), finish: expect.any(Function) }));
   });
 });
 

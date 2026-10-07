@@ -87,9 +87,10 @@ export function buildFbc(fbclid: string | null | undefined, creationTimeMs: numb
 
 /**
  * Optional Events Manager "Test events" code (e.g. TEST12345). While META_TEST_EVENT_CODE is set,
- * every server event carries test_event_code, so Meta shows it only under Test Events and keeps it
- * out of reporting and ad optimization — which also means REAL conversions stop counting. Set it
- * only for a verification session and remove it afterwards. Malformed values are ignored.
+ * every server event carries test_event_code, so it ALSO appears under Test Events. IMPORTANT: Meta's documentation says events
+ * sent with test_event_code "are not dropped. They flow into Events Manager and are used for targeting and ads measurement
+ * purposes" - it is NOT a sandbox. Do not leave it set in production, and do not use it as protection against real counting.
+ * Use a separate test dataset for experiments. Malformed values are ignored.
  */
 export function testEventCode(env: string | undefined = process.env.META_TEST_EVENT_CODE): string | undefined {
   const code = (env ?? '').trim();
@@ -114,7 +115,14 @@ export function buildEventsPayload(event: MetaLeadEvent, testCode?: string) {
 let warnedTestMode = false;
 
 export type DirectSendResult = { status: 'accepted' | 'failed' | 'skipped'; httpStatus: number | null; code: string | null; message: string | null; fbtraceId: string | null; eventsReceived: number | null; testMode: boolean };
-export type DirectSendAudit = (event: MetaLeadEvent, result: DirectSendResult) => Promise<void>;
+/**
+ * reserve(): written BEFORE the request. 'duplicate' = a live/accepted row already exists for this event id (the queue, or
+ * another request, owns it) so this sender must NOT send. finish(): records what happened. An audit failure never blocks a send.
+ */
+export type DirectSendAudit = {
+  reserve(event: MetaLeadEvent): Promise<'ok' | 'duplicate'>;
+  finish(event: MetaLeadEvent, result: DirectSendResult): Promise<void>;
+};
 
 /**
  * Fire-and-forget: errors are logged (no PII, no token) and swallowed so a
@@ -129,7 +137,12 @@ export async function sendMetaEvent(event: MetaLeadEvent, audit?: DirectSendAudi
   if (!token || !event.pixelId) return { ...base, status: 'skipped', code: !token ? 'no_token' : 'no_pixel' };
   if (testCode && !warnedTestMode) {
     warnedTestMode = true;
-    console.warn('[meta-capi] META_TEST_EVENT_CODE is set: events are sent as TEST events and will not count toward reporting');
+    console.warn('[meta-capi] META_TEST_EVENT_CODE is set: events also appear in Test Events but STILL feed the dataset (Meta does not sandbox test events). Remove it from production.');
+  }
+  if (audit) {
+    let reserved: 'ok' | 'duplicate' = 'ok';
+    try { reserved = await audit.reserve(event); } catch { /* fail open: losing the audit row is better than losing the event */ }
+    if (reserved === 'duplicate') return { ...base, status: 'skipped', code: 'duplicate' };
   }
   let result: DirectSendResult;
   try {
@@ -153,6 +166,6 @@ export async function sendMetaEvent(event: MetaLeadEvent, audit?: DirectSendAudi
     console.error(`[meta-capi] ${event.eventName} failed`, error instanceof Error ? error.name : 'unknown');
     result = { ...base, status: 'failed', code: 'network', message: error instanceof Error ? error.name : 'unknown' };
   }
-  try { await audit?.(event, result); } catch { /* auditing must never break a funnel request */ }
+  try { await audit?.finish(event, result); } catch { /* auditing must never break a funnel request */ }
   return result;
 }

@@ -7,6 +7,8 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { runMetaSync } from '@/lib/meta/sync';
 import { LIVE_CONFIRMATION, META_MAX_EVENT_AGE_MS } from '@/lib/meta/conversions';
 import { redactSecrets } from '@/lib/meta/marketing-api';
+import { deliveryModePatch } from '@/lib/meta/settings';
+import { requeueFailedEvent } from '@/lib/meta/audit.server';
 
 export type MetaActionState = { error?: string; success?: string } | undefined;
 
@@ -55,6 +57,7 @@ const settingsSchema = z.object({
   mode: z.enum(['off', 'test', 'live']),
   test_event_code: z.string().regex(/^[A-Za-z0-9_-]{1,40}$/).nullable(),
   dataset_id: z.string().regex(/^[0-9]{5,20}$/).nullable(),
+  test_dataset_id: z.string().regex(/^[0-9]{5,20}$/).nullable(),
   insights_days: z.coerce.number().int().min(1).max(90),
 });
 
@@ -65,34 +68,37 @@ const settingsSchema = z.object({
 export async function saveDeliverySettings(_prev: MetaActionState, fd: FormData): Promise<MetaActionState> {
   const { profile } = await requireAdminProfile();
   const parsed = settingsSchema.safeParse({
-    mode: str(fd, 'mode') ?? 'off', test_event_code: str(fd, 'test_event_code'), dataset_id: str(fd, 'dataset_id'), insights_days: str(fd, 'insights_days') ?? '30',
+    mode: str(fd, 'mode') ?? 'off', test_event_code: str(fd, 'test_event_code'), dataset_id: str(fd, 'dataset_id'), test_dataset_id: str(fd, 'test_dataset_id'), insights_days: str(fd, 'insights_days') ?? '30',
   });
   if (!parsed.success) return { error: 'Check the test event code (letters/numbers), dataset id (digits) and days (1-90)' };
   const v = parsed.data;
   if (v.mode === 'test' && !v.test_event_code) return { error: 'Test mode needs the Test Events code from Events Manager (e.g. TEST12345)' };
+  if (v.mode === 'test' && !v.test_dataset_id) return { error: 'Test mode needs a SEPARATE test dataset ID. Meta does not sandbox test events: they still feed the dataset they are sent to.' };
   if (v.mode === 'live' && str(fd, 'confirm_live') !== LIVE_CONFIRMATION) return { error: `Type ${LIVE_CONFIRMATION} to confirm that real conversions will be sent to Meta` };
   if (v.mode !== 'off' && !process.env.META_CONVERSIONS_API_TOKEN) return { error: 'META_CONVERSIONS_API_TOKEN is not set on the server' };
   const db = createAdminClient();
+  if (v.test_dataset_id) {
+    // Refuse a test dataset that is a dataset real events go to (the CRM dataset or any funnel's Pixel).
+    const { data: fs } = await db.from('funnels').select('config').eq('is_demo', false);
+    const real = new Set([v.dataset_id, ...((fs ?? []) as { config: { trackingPixels?: { metaPixelId?: string } } | null }[]).map((f) => f.config?.trackingPixels?.metaPixelId)].filter(Boolean));
+    if (real.has(v.test_dataset_id)) return { error: 'That test dataset is also used for real events (the CRM dataset or a funnel Pixel). Create a separate dataset for testing.' };
+  }
   const { data: cur } = await db.from('meta_settings').select('delivery_mode').eq('id', true).maybeSingle();
-  const modeChanged = cur?.delivery_mode !== v.mode;
   const patch: Record<string, unknown> = {
-    delivery_mode: v.mode, test_event_code: v.test_event_code, dataset_id: v.dataset_id, insights_days: v.insights_days,
+    ...deliveryModePatch(cur?.delivery_mode, v.mode, fd.get('restore_legacy') === 'on'),
+    test_event_code: v.test_event_code, test_dataset_id: v.test_dataset_id, dataset_id: v.dataset_id, insights_days: v.insights_days,
     updated_at: new Date().toISOString(), updated_by: profile.id,
   };
-  if (modeChanged && v.mode !== 'off') { patch.ledger_cursor_at = new Date().toISOString(); patch.ledger_cursor_id = null; }
-  // Handover: the queue and the original direct QualifiedLead sender must never both send REAL events. Test mode leaves the
-  // direct sender alone (test events never count); Live retires it; Off keeps it only if you tick the box (rollback).
-  if (v.mode === 'live') patch.legacy_direct_qualified = false;
-  else if (v.mode === 'off') patch.legacy_direct_qualified = fd.get('restore_legacy') === 'on';
   const { error } = await db.from('meta_settings').update(patch).eq('id', true);
   if (error) return { error: 'Could not save settings' };
   revalidatePath('/app/meta-ads/setup');
-  return { success: v.mode === 'off' ? 'Conversion delivery is OFF.' : v.mode === 'test' ? 'Test mode: events go to Events Manager > Test events only.' : 'LIVE: new outcomes recorded from now on will be sent to Meta.' };
+  return { success: v.mode === 'off' ? 'Conversion delivery is OFF.' : v.mode === 'test' ? 'Test mode: events go to your separate test dataset only.' : 'LIVE: new outcomes recorded from now on will be sent to Meta.' };
 }
 
 /**
- * Safe retry: only FAILED events, only inside Meta's 7-day window, and the SAME stable event_id is reused,
- * so Meta de-duplicates a resend of an event that actually landed. Accepted events can never be retried.
+ * Safe retry of a FAILED event, always with the SAME stable event_id so Meta can de-duplicate a resend of an event that
+ * actually landed. A failed queue row is re-armed in place; a failed direct-send row is retried through a new queue row
+ * (retry_of). Accepted, in-flight and older-than-7-day events are refused; a failed row never blocks its own retry.
  */
 export async function retryConversionEvent(fd: FormData): Promise<void> {
   await requireRole(['admin']);
@@ -100,9 +106,10 @@ export async function retryConversionEvent(fd: FormData): Promise<void> {
   if (!id || !z.string().uuid().safeParse(id).success) return;
   const db = createAdminClient();
   const { data: ev } = await db.from('meta_conversion_events').select('status, event_time, origin').eq('id', id).maybeSingle();
-  if (!ev || ev.status !== 'failed' || ev.origin !== 'queue') return; // direct-send audit rows are history, not jobs
+  if (!ev || ev.status !== 'failed') return;
   if (Date.now() - new Date(ev.event_time).getTime() > META_MAX_EVENT_AGE_MS) return; // too old for Meta; never re-dated
-  await db.from('meta_conversion_events').update({
+  if (ev.origin === 'legacy_direct') await requeueFailedEvent(db, id);
+  else await db.from('meta_conversion_events').update({
     status: 'pending', attempt_count: 0, next_attempt_at: new Date().toISOString(), permanent_failure: false, last_error_code: null, last_error_message: null,
   }).eq('id', id).eq('status', 'failed');
   revalidatePath('/app/meta-ads/events');

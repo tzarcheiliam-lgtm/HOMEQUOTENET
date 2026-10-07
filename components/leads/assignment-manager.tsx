@@ -102,6 +102,14 @@ function ScheduleAppointmentForm({
       <input type="hidden" name="assignment_id" value={assignmentId} />
       <Input name="scheduled_at" type="datetime-local" className="w-auto" />
       <Input name="location" placeholder="Location" className="w-40" />
+      <Select name="booked_via" aria-label="How was it booked?" defaultValue="" className="w-44">
+        <option value="">How booked? (optional)</option>
+        <option value="phone_call">By phone call</option>
+        <option value="email">By email</option>
+        <option value="chat">By text / chat</option>
+        <option value="in_person">In person</option>
+        <option value="other">Other</option>
+      </Select>
       <Button type="submit" size="sm" variant="outline" disabled={pending}>
         {pending ? 'Saving…' : 'Schedule appointment'}
       </Button>

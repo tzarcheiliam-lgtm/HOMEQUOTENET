@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
 
-import { buildPayload, decide, identifierSummary, interpretResponse, backoffMinutes, websiteOutcomeActionSource, type EligibilityInput, type LeadForMeta, type Plan, type SessionForMeta } from '@/lib/meta/conversions';
+import { buildPayload, decide, identifierSummary, interpretResponse, backoffMinutes, actionSourceFor, type EligibilityInput, type LeadForMeta, type Plan, type SessionForMeta } from '@/lib/meta/conversions';
 import { dispatchBatch, feedFromLedger, type ClaimedEvent, type FinishPatch, type LedgerRow, type LoadedLead, type NewEvent, type QueueStore, type Settings } from '@/lib/meta/queue';
 
 const NOW = Date.parse('2026-10-07T12:00:00Z');
@@ -37,15 +37,37 @@ describe('website events (standard Pixel dataset)', () => {
     expect((decide(base({ stage: 'qualified' })) as { plan: Plan }).plan.eventId).toBe('sess-1:QualifiedLead');
     expect(decide(base({ stage: 'won' }))).toMatchObject({ ok: false, reason: 'missing_reference' });
   });
-  it('labels the REAL event source: staff-recorded outcomes are not website conversions', () => {
-    expect(websiteOutcomeActionSource('qualified')).toBe('other');
-    expect(websiteOutcomeActionSource('won', { saleId: 's' })).toBe('other');
-    expect(websiteOutcomeActionSource('appointment', { appointmentId: 'a', actorKind: 'user' })).toBe('other');
-    expect(websiteOutcomeActionSource('appointment', { appointmentId: 'a', actorKind: 'ai' })).toBe('phone_call');
+  it('labels the REAL source of the underlying action, not who wrote the record', () => {
+    // appointments: visitor booking > the recorder's stated channel > AI-call booked evidence > unknown
+    expect(actionSourceFor('appointment', { funnelBooking: 'other' })).toBe('website');
+    expect(actionSourceFor('appointment', { bookedVia: 'phone_call' })).toBe('phone_call');
+    expect(actionSourceFor('appointment', { bookedVia: 'in_person' })).toBe('physical_store');
+    expect(actionSourceFor('appointment', { bookedVia: 'email' })).toBe('email');
+    expect(actionSourceFor('appointment', { bookedVia: 'chat' })).toBe('chat');
+    expect(actionSourceFor('appointment', { aiCallBooked: true })).toBe('phone_call');
+    expect(actionSourceFor('appointment', { bookedVia: 'in_person', aiCallBooked: true })).toBe('physical_store'); // a person's statement wins
+    expect(actionSourceFor('appointment', {})).toBe('other');
+    // a person typing the appointment into the portal says nothing about WHERE it was booked
+    expect(actionSourceFor('appointment', { appointmentId: 'a' })).toBe('other');
+    // qualification: how the confirmation happened
+    expect(actionSourceFor('qualified', { reasonCode: 'confirmed_by_call' })).toBe('phone_call');
+    expect(actionSourceFor('qualified', { reasonCode: 'confirmed_by_text' })).toBe('chat');
+    expect(actionSourceFor('qualified', { reasonCode: 'confirmed_by_email' })).toBe('email');
+    expect(actionSourceFor('qualified', { reasonCode: 'meets_criteria_on_form' })).toBe('other');
+    expect(actionSourceFor('won', { saleId: 's' })).toBe('other');
   });
   it('covers a visitor booking through the GHL calendar (browser fires Schedule, no server event existed) with the browser event id and website source', () => {
     expect(decide(base({ stage: 'appointment', ref: { appointmentId: 'ap9', funnelBooking: 'other' } })))
       .toMatchObject({ ok: true, plan: { eventName: 'Schedule', eventId: 'sess-1:Schedule', actionSource: 'website' } });
+  });
+  it('a staff-stated phone booking and an AI-call booking are phone_call; a bare portal entry is other', () => {
+    expect(decide(base({ stage: 'appointment', ref: { appointmentId: 'p1', bookedVia: 'phone_call' } }))).toMatchObject({ ok: true, plan: { actionSource: 'phone_call' } });
+    expect(decide(base({ stage: 'appointment', ref: { appointmentId: 'p2', aiCallBooked: true } }))).toMatchObject({ ok: true, plan: { actionSource: 'phone_call' } });
+    expect(decide(base({ stage: 'qualified', ref: { reasonCode: 'confirmed_by_call' } }))).toMatchObject({ ok: true, plan: { actionSource: 'phone_call' } });
+  });
+  it('a failed direct Lead/Calendly Schedule can be retried through the queue with the same event id', () => {
+    expect(decide(base({ stage: 'lead', ref: { retryOfDirect: true } }))).toMatchObject({ ok: true, plan: { eventName: 'Lead', eventId: 'sess-1:Lead', actionSource: 'website' } });
+    expect(decide(base({ stage: 'appointment', ref: { appointmentId: 'x', funnelBooking: 'calendly', retryOfDirect: true } }))).toMatchObject({ ok: true, plan: { eventId: 'sess-1:Schedule', actionSource: 'website' } });
   });
   it('a portal-created appointment after a Calendly booking is NOT suppressed', () => {
     expect(decide(base({ stage: 'appointment', ref: { appointmentId: 'portal-2', funnelBooking: null } }))).toMatchObject({ ok: true, plan: { eventId: 'sess-1:Schedule:portal-2', actionSource: 'other' } });
@@ -122,15 +144,16 @@ describe('response handling', () => {
 // Queue orchestration with an in-memory store
 // ------------------------------------------------------------------------------------------------
 const bookings: Record<string, 'calendly' | 'other'> = {};
+const provenance: Record<string, { bookedVia?: string; aiCallBooked?: boolean }> = {};
 function memStore(settings: Partial<Settings>, leads: Record<string, LoadedLead>, ledger: LedgerRow[]) {
-  const s: Settings = { deliveryMode: 'live', testEventCode: null, datasetId: '555000111', cursorAt: '2026-10-01T00:00:00Z', cursorId: null, ...settings };
+  const s: Settings = { deliveryMode: 'live', testEventCode: null, testDatasetId: '999000111', datasetId: '555000111', cursorAt: '2026-10-01T00:00:00Z', cursorId: null, ...settings };
   const events: (NewEvent & { id: string; attempt_count: number; max_attempts: number; status: string; next_attempt_at: string; finished?: FinishPatch })[] = [];
   const store: QueueStore = {
     settings: async () => s,
     ledgerAfter: async (at) => ledger.filter((r) => !at || r.recorded_at > at),
     advanceCursor: async (r) => { s.cursorAt = r.recorded_at; s.cursorId = r.id; },
     loadLead: async (id) => leads[id] ?? null,
-    funnelBooking: async (id) => bookings[id] ?? null,
+    bookingProvenance: async (id) => ({ funnelBooking: bookings[id] ?? null, ...(provenance[id] ?? {}) }),
     insertEvent: async (e) => {
       if (events.some((x) => x.dataset_id === e.dataset_id && x.event_id === e.event_id && x.test_mode === e.test_mode)) return 'duplicate';
       events.push({ ...e, id: `ev${events.length + 1}`, attempt_count: 0, max_attempts: 5, next_attempt_at: new Date(0).toISOString() }); return 'inserted';
@@ -140,7 +163,7 @@ function memStore(settings: Partial<Settings>, leads: Record<string, LoadedLead>
   };
   return { store, events, s };
 }
-const lrow = (id: string, outcome: string, at: string, over: Partial<LedgerRow> = {}): LedgerRow => ({ id, lead_id: 'L1', outcome, occurred_at: at, recorded_at: at, actor_kind: 'user', amount: null, currency: null, appointment_id: null, sale_id: null, ...over });
+const lrow = (id: string, outcome: string, at: string, over: Partial<LedgerRow> = {}): LedgerRow => ({ id, lead_id: 'L1', outcome, occurred_at: at, recorded_at: at, actor_kind: 'user', amount: null, currency: null, appointment_id: null, sale_id: null, reason_code: null, ...over });
 const ok = { ok: true as const, body: { events_received: 1, fbtrace_id: 'TR' } };
 
 describe('feedFromLedger / dispatchBatch', () => {
@@ -181,6 +204,18 @@ describe('feedFromLedger / dispatchBatch', () => {
     const send = vi.fn(async () => ok);
     expect(await dispatchBatch(m.store, send, { now: NOW })).toMatchObject({ held: 'test_mode_needs_test_event_code' });
     expect(send).not.toHaveBeenCalled();
+  });
+  it('test mode needs a SEPARATE test dataset (Meta does not sandbox test events) and sends only there', async () => {
+    const none = memStore({ deliveryMode: 'test', testEventCode: 'TEST42', testDatasetId: null }, leads, [lrow('o1', 'qualified', '2026-10-06T10:00:00Z')]);
+    expect(await feedFromLedger(none.store, { now: NOW })).toMatchObject({ examined: 0 });
+    expect(none.events).toHaveLength(0);
+    expect(await dispatchBatch(none.store, vi.fn(async () => ok), { now: NOW })).toMatchObject({ held: 'test_mode_needs_test_dataset' });
+    const m = memStore({ deliveryMode: 'test', testEventCode: 'TEST42' }, leads, [lrow('o1', 'qualified', '2026-10-06T10:00:00Z')]);
+    await feedFromLedger(m.store, { now: NOW });
+    expect(m.events[0]).toMatchObject({ dataset_id: '999000111', test_mode: true });
+    const send = vi.fn(async () => ok);
+    await dispatchBatch(m.store, send, { now: NOW });
+    expect((send.mock.calls[0] as any)[0]).toMatchObject({ datasetId: '999000111', testMode: true });
   });
   it('test mode sends with test_event_code and marks rows test_mode', async () => {
     const m = memStore({ deliveryMode: 'test', testEventCode: 'TEST42' }, leads, [lrow('o1', 'qualified', '2026-10-06T10:00:00Z')]);

@@ -14,12 +14,12 @@ import {
 } from './conversions';
 
 export type DeliveryMode = 'off' | 'test' | 'live';
-export type Settings = { deliveryMode: DeliveryMode; testEventCode: string | null; datasetId: string | null; cursorAt: string | null; cursorId: string | null };
+export type Settings = { deliveryMode: DeliveryMode; testEventCode: string | null; testDatasetId: string | null; datasetId: string | null; cursorAt: string | null; cursorId: string | null };
 
 export type LedgerRow = {
   id: string; lead_id: string; outcome: string; occurred_at: string; recorded_at: string;
   actor_kind: 'user' | 'ai' | 'system'; amount: number | null; currency: string | null;
-  appointment_id: string | null; sale_id: string | null;
+  appointment_id: string | null; sale_id: string | null; reason_code: string | null;
 };
 export type LoadedLead = { lead: LeadForMeta; session: SessionForMeta | null; contractorId: string | null };
 
@@ -34,7 +34,7 @@ export type ClaimedEvent = {
   id: string; lead_id: string; dataset_id: string; event_id: string; event_time: string; event_name: string;
   action_source: ActionSource; source_kind: SourceKind; value: number | null; currency: string | null;
   appointment_id: string | null; sale_id: string | null;
-  test_mode: boolean; attempt_count: number; max_attempts: number;
+  test_mode: boolean; attempt_count: number; max_attempts: number; retry_of: string | null;
 };
 export type FinishPatch = {
   status: 'pending' | 'accepted' | 'failed' | 'skipped';
@@ -47,8 +47,8 @@ export interface QueueStore {
   ledgerAfter(cursorAt: string | null, cursorId: string | null, limit: number): Promise<LedgerRow[]>;
   advanceCursor(row: LedgerRow): Promise<void>;
   loadLead(leadId: string): Promise<LoadedLead | null>;
-  /** How the visitor booked this appointment through the funnel (funnel_bookings.appointment_id), or null if a person/AI created it. */
-  funnelBooking(appointmentId: string): Promise<'calendly' | 'other' | null>;
+  /** Where the booking actually happened: funnel booking record, the recorder's stated channel, AI-call booked evidence. */
+  bookingProvenance(appointmentId: string): Promise<Pick<OutcomeRef, 'funnelBooking' | 'bookedVia' | 'aiCallBooked'>>;
   insertEvent(e: NewEvent): Promise<'inserted' | 'duplicate'>;
   claim(limit: number, worker: string): Promise<ClaimedEvent[]>;
   finish(id: string, patch: FinishPatch): Promise<void>;
@@ -60,6 +60,8 @@ export async function feedFromLedger(store: QueueStore, opts: { now?: number; li
   const r: FeedResult = { examined: 0, enqueued: 0, skipped: 0, duplicates: 0, ignored: 0 };
   const s = await store.settings();
   if (s.deliveryMode === 'off' || !s.cursorAt) return r;           // off, or never activated: nothing to do
+  // Test events are NOT sandboxed by Meta (they feed the dataset they are sent to), so test mode only ever targets a dedicated test dataset.
+  if (s.deliveryMode === 'test' && !s.testDatasetId) return r;
   const rows = await store.ledgerAfter(s.cursorAt, s.cursorId, opts.limit ?? 200);
   for (const row of rows) {
     r.examined++;
@@ -70,7 +72,7 @@ export async function feedFromLedger(store: QueueStore, opts: { now?: number; li
     const loaded = await store.loadLead(row.lead_id);
     if (!loaded) { r.ignored++; await store.advanceCursor(row); continue; }
     const stagesToSend: { stage: Stage; at: string; ledger: string | null; value: number | null; currency: string | null; ref?: OutcomeRef }[] = [];
-    const ref: OutcomeRef = { appointmentId: row.appointment_id, saleId: row.sale_id, actorKind: row.actor_kind, funnelBooking: row.appointment_id ? await store.funnelBooking(row.appointment_id) : null };
+    const ref: OutcomeRef = { appointmentId: row.appointment_id, saleId: row.sale_id, reasonCode: row.reason_code, ...(row.appointment_id ? await store.bookingProvenance(row.appointment_id) : {}) };
     // Conversion Leads wants every stage starting from the initial lead.
     if (loaded.lead.source === 'meta' && stage !== 'lead') stagesToSend.push({ stage: 'lead', at: loaded.lead.created_at, ledger: null, value: null, currency: null });
     stagesToSend.push({ stage, at: row.occurred_at, ledger: row.id, value: row.amount, currency: row.currency, ref });
@@ -83,7 +85,7 @@ export async function feedFromLedger(store: QueueStore, opts: { now?: number; li
         lead_id: loaded.lead.id, contractor_id: loaded.contractorId, outcome_event_id: st.ledger, stage: st.stage,
         source_kind: p.sourceKind, event_name: p.eventName, action_source: p.actionSource,
         appointment_id: st.ref?.appointmentId ?? null, sale_id: st.ref?.saleId ?? null,
-        dataset_id: p.datasetId ?? 'unconfigured', event_id: p.eventId, event_time: st.at,
+        dataset_id: s.deliveryMode === 'test' ? s.testDatasetId! : p.datasetId ?? 'unconfigured', event_id: p.eventId, event_time: st.at,
         value: p.value ?? null, currency: p.currency ?? null,
         test_mode: s.deliveryMode === 'test', status: d.ok ? 'pending' : 'skipped', skip_reason: d.ok ? null : d.reason,
       });
@@ -106,6 +108,7 @@ export async function dispatchBatch(store: QueueStore, send: SendFn, opts: { now
   const s = await store.settings();
   if (s.deliveryMode === 'off') { r.held = 'delivery_off'; return r; }
   if (s.deliveryMode === 'test' && !s.testEventCode) { r.held = 'test_mode_needs_test_event_code'; return r; }
+  if (s.deliveryMode === 'test' && !s.testDatasetId) { r.held = 'test_mode_needs_test_dataset'; return r; }
   const now = opts.now ?? Date.now();
   const claimed = await store.claim(opts.limit ?? 20, opts.worker ?? `w-${now}`);
   r.claimed = claimed.length;
@@ -121,7 +124,7 @@ export async function dispatchBatch(store: QueueStore, send: SendFn, opts: { now
     if (!loaded) { await store.finish(ev.id, { status: 'skipped', skip_reason: 'lead_missing' }); continue; }
     // Re-check consent at send time: a later opt-out must stop events that are still waiting.
     const d = decide({ stage: stageOf(ev), occurredAt: ev.event_time, now, lead: loaded.lead, session: loaded.session, datasetId: ev.dataset_id, value: ev.value, currency: ev.currency,
-      ref: { appointmentId: ev.appointment_id, saleId: ev.sale_id, actorKind: ev.action_source === 'phone_call' ? 'ai' : 'user', funnelBooking: ev.appointment_id ? await store.funnelBooking(ev.appointment_id) : null } });
+      ref: { appointmentId: ev.appointment_id, saleId: ev.sale_id, retryOfDirect: !!ev.retry_of, ...(ev.appointment_id ? await store.bookingProvenance(ev.appointment_id) : {}) } });
     if (!d.ok) { await store.finish(ev.id, { status: 'skipped', skip_reason: d.reason }); continue; }
     const payload = buildPayload(ev, loaded.lead, { eventSourceUrl: loaded.lead.landing_page_url, testEventCode: ev.test_mode ? s.testEventCode : null });
     let out: SendOutcome;

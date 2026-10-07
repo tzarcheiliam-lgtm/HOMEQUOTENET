@@ -15,10 +15,11 @@ describe('direct sends are observable', () => {
   it('reports accepted only when Meta counted the event, and calls the audit hook', async () => {
     vi.stubEnv('META_CONVERSIONS_API_TOKEN', 't'); vi.stubEnv('META_TEST_EVENT_CODE', '');
     vi.stubGlobal('fetch', vi.fn(async () => json(200, { events_received: 1, fbtrace_id: 'TR1' })));
-    const audit = vi.fn(async () => undefined);
+    const audit = { reserve: vi.fn(async () => 'ok' as const), finish: vi.fn(async () => undefined) };
     const r = await sendMetaEvent(event, audit);
     expect(r).toMatchObject({ status: 'accepted', eventsReceived: 1, fbtraceId: 'TR1', testMode: false });
-    expect(audit).toHaveBeenCalledWith(event, expect.objectContaining({ status: 'accepted' }));
+    expect(audit.reserve).toHaveBeenCalledWith(event);
+    expect(audit.finish).toHaveBeenCalledWith(event, expect.objectContaining({ status: 'accepted' }));
   });
   it('success with 0 events received is a failure, a Graph error carries its code, a network error is recorded', async () => {
     vi.stubEnv('META_CONVERSIONS_API_TOKEN', 't'); vi.stubEnv('META_TEST_EVENT_CODE', '');
@@ -36,13 +37,22 @@ describe('direct sends are observable', () => {
   it('a failing audit never breaks the send', async () => {
     vi.stubEnv('META_CONVERSIONS_API_TOKEN', 't'); vi.stubEnv('META_TEST_EVENT_CODE', '');
     vi.stubGlobal('fetch', vi.fn(async () => json(200, { events_received: 1 })));
-    await expect(sendMetaEvent(event, async () => { throw new Error('db down'); })).resolves.toMatchObject({ status: 'accepted' });
+    const f = vi.fn(async () => json(200, { events_received: 1 })); vi.stubGlobal('fetch', f);
+    await expect(sendMetaEvent(event, { reserve: async () => { throw new Error('db down'); }, finish: async () => { throw new Error('db down'); } })).resolves.toMatchObject({ status: 'accepted' });
+    expect(f).toHaveBeenCalledTimes(1); // a failing audit fails OPEN: the event is still sent
   });
-  it('the audit row records origin legacy_direct, the real event time and no PII or token', async () => {
+  it('when the queue (or another request) already owns the event, the direct sender does NOT send', async () => {
+    vi.stubEnv('META_CONVERSIONS_API_TOKEN', 't'); vi.stubEnv('META_TEST_EVENT_CODE', '');
+    const f = vi.fn(); vi.stubGlobal('fetch', f);
+    const finish = vi.fn();
+    expect(await sendMetaEvent(event, { reserve: async () => 'duplicate', finish })).toMatchObject({ status: 'skipped', code: 'duplicate' });
+    expect(f).not.toHaveBeenCalled(); expect(finish).not.toHaveBeenCalled();
+  });
+  it('the reservation row records origin legacy_direct, the real event time and no PII or token', async () => {
     const inserts: Record<string, unknown>[] = [];
     const db = { from: () => ({ insert: async (r: Record<string, unknown>) => { inserts.push(r); return { error: null }; } }) };
-    await directSendAudit(db as never, { leadId: 'L1', stage: 'lead' })(event, { status: 'accepted', httpStatus: 200, code: null, message: null, fbtraceId: 'T', eventsReceived: 1, testMode: false });
-    expect(inserts[0]).toMatchObject({ origin: 'legacy_direct', event_id: 's1:Lead', status: 'accepted', dataset_id: '933962709362966', action_source: 'website', event_time: new Date(1_790_000_000_000).toISOString() });
+    await directSendAudit(db as never, { leadId: 'L1', stage: 'lead' }).reserve(event);
+    expect(inserts[0]).toMatchObject({ origin: 'legacy_direct', event_id: 's1:Lead', status: 'processing', dataset_id: '933962709362966', action_source: 'website', event_time: new Date(1_790_000_000_000).toISOString() });
     expect(JSON.stringify(inserts[0])).not.toMatch(/a@b\.co|token/i);
   });
 });

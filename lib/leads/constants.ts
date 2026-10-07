@@ -128,7 +128,8 @@ export const QUALIFICATION_DEFINITION =
 
 export const QUALIFIED_REASONS = [
   { value: 'confirmed_by_call', label: 'Confirmed by phone' },
-  { value: 'confirmed_by_message', label: 'Confirmed by text/email' },
+  { value: 'confirmed_by_text', label: 'Confirmed by text message' },
+  { value: 'confirmed_by_email', label: 'Confirmed by email' },
   { value: 'meets_criteria_on_form', label: 'Form answers meet all criteria' },
 ] as const;
 

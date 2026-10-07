@@ -20,7 +20,7 @@ export default async function MetaSetupPage() {
   const env = envStatus();
   const contractors = (await listContractors()).map((c) => ({ id: c.id, name: c.name }));
   const [{ data: settings }, { data: accounts }, { data: campaigns }, { data: runs }, { data: counts }] = await Promise.all([
-    db.from('meta_settings').select('delivery_mode, test_event_code, dataset_id, insights_days, legacy_direct_qualified').eq('id', true).maybeSingle(),
+    db.from('meta_settings').select('delivery_mode, test_event_code, test_dataset_id, dataset_id, insights_days, legacy_direct_qualified').eq('id', true).maybeSingle(),
     db.from('meta_ad_accounts').select('id, name, currency, timezone_name, contractor_id, show_spend_to_contractor, sync_enabled, last_synced_at, last_sync_error').order('name'),
     db.from('meta_campaigns').select('id, name, contractor_id, account_id').order('name').limit(200),
     db.from('meta_sync_runs').select('started_at, finished_at, status, trigger, counts, error_code, error_message').order('started_at', { ascending: false }).limit(5),
@@ -39,6 +39,7 @@ export default async function MetaSetupPage() {
   if (!(accounts ?? []).length) missing.push('No ad accounts imported yet — run a sync once the Marketing API token is set');
   if (mode !== 'off' && !settings?.dataset_id) missing.push('Dataset ID for Instant Form (CRM) events');
   if (mode === 'test' && !settings?.test_event_code) missing.push('Test Events code');
+  if (mode === 'test' && !settings?.test_dataset_id) missing.push('Separate test dataset ID');
 
   return (
     <div className="space-y-6">
@@ -86,7 +87,7 @@ export default async function MetaSetupPage() {
 
       <Card>
         <CardHeader><CardTitle>Conversion delivery</CardTitle><CardDescription>Currently <b>{mode.toUpperCase()}</b>. Queue: {Object.entries(tally).map(([k, v]) => `${v} ${k}`).join(' · ') || 'empty'}.</CardDescription></CardHeader>
-        <CardContent><DeliveryForm settings={{ legacy: settings?.legacy_direct_qualified ?? true, mode, test_event_code: settings?.test_event_code ?? null, dataset_id: settings?.dataset_id ?? null, insights_days: settings?.insights_days ?? 30 }} /></CardContent>
+        <CardContent><DeliveryForm settings={{ legacy: settings?.legacy_direct_qualified ?? true, mode, test_event_code: settings?.test_event_code ?? null, test_dataset_id: settings?.test_dataset_id ?? null, dataset_id: settings?.dataset_id ?? null, insights_days: settings?.insights_days ?? 30 }} /></CardContent>
       </Card>
 
       <Card>
@@ -122,20 +123,27 @@ export default async function MetaSetupPage() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Proposed event mappings</CardTitle><CardDescription>Not active until you switch delivery on. Website and Instant Form leads use different Meta mechanisms.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Event mappings and sources</CardTitle><CardDescription>Which Meta event each outcome becomes, and where Meta is told the action happened. Nothing here is active until delivery is switched on. Delivery to Meta is not the same as being usable for optimization - see the checks below.</CardDescription></CardHeader>
         <CardContent className="space-y-4 text-sm">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[34rem] text-left">
-              <thead className="text-xs uppercase tracking-wider text-muted-foreground"><tr><th className="py-2 pr-3">HQN outcome</th><th className="pr-3">Website lead (Pixel dataset)</th><th>Instant Form lead (CRM events)</th></tr></thead>
+            <table className="w-full min-w-[40rem] text-left">
+              <thead className="text-xs uppercase tracking-wider text-muted-foreground"><tr><th className="py-2 pr-3">HQN outcome</th><th className="pr-3">Website lead → funnel Pixel dataset</th><th>Instant Form lead → CRM dataset</th></tr></thead>
               <tbody className="divide-y align-top">
-                <tr><td className="py-2 pr-3">Lead received</td><td className="pr-3"><code>{WEBSITE_EVENT_NAME.lead}</code> standard — already sent by the funnel, not re-sent</td><td><code>{CRM_EVENT_NAME.lead}</code> (initial stage)</td></tr>
-                <tr><td className="py-2 pr-3">Qualified by a person</td><td className="pr-3"><code>{WEBSITE_EVENT_NAME.qualified}</code> custom</td><td><code>{CRM_EVENT_NAME.qualified}</code></td></tr>
-                <tr><td className="py-2 pr-3">Appointment booked</td><td className="pr-3"><code>{WEBSITE_EVENT_NAME.appointment}</code> standard (Calendly bookings are already sent by the funnel)</td><td><code>{CRM_EVENT_NAME.appointment}</code></td></tr>
-                <tr><td className="py-2 pr-3">Won job</td><td className="pr-3"><code>{WEBSITE_EVENT_NAME.won}</code> custom, value + currency only if a real sale amount is recorded. <b>Not</b> sent as Purchase.</td><td><code>{CRM_EVENT_NAME.won}</code></td></tr>
+                <tr><td className="py-2 pr-3">Lead received</td><td className="pr-3"><code>{WEBSITE_EVENT_NAME.lead}</code> standard · <code>website</code> · sent by the funnel</td><td><code>{CRM_EVENT_NAME.lead}</code> · <code>system_generated</code></td></tr>
+                <tr><td className="py-2 pr-3">Qualified by a person</td><td className="pr-3"><code>{WEBSITE_EVENT_NAME.qualified}</code> custom · where the confirmation happened: <code>phone_call</code> / <code>chat</code> / <code>email</code>, else <code>other</code></td><td><code>{CRM_EVENT_NAME.qualified}</code></td></tr>
+                <tr><td className="py-2 pr-3">Appointment booked</td><td className="pr-3"><code>{WEBSITE_EVENT_NAME.appointment}</code> standard · <code>website</code> if the visitor booked in the funnel; otherwise the stated channel, an AI call that reported the booking → <code>phone_call</code>, else <code>other</code></td><td><code>{CRM_EVENT_NAME.appointment}</code></td></tr>
+                <tr><td className="py-2 pr-3">Won job</td><td className="pr-3"><code>{WEBSITE_EVENT_NAME.won}</code> custom · <code>other</code> · value only if a real sale amount exists · never <code>Purchase</code></td><td><code>{CRM_EVENT_NAME.won}</code></td></tr>
               </tbody>
             </table>
           </div>
-          <p className="text-muted-foreground">Instant Form events: <code>action_source=system_generated</code>, <code>user_data.lead_id</code> = Meta&rsquo;s lead id, <code>custom_data.event_source=crm</code>. No name, email or phone is sent. Website events: <code>action_source=website</code>, <code>fbp/fbc</code> + hashed email/phone, shared <code>event_id</code> for browser/server de-duplication, only when the visitor allowed advertising measurement.</p>
+          <p className="text-muted-foreground">Instant Form events carry only Meta&rsquo;s lead id (no name, email or phone). Website events use <code>fbp/fbc</code> plus hashed email/phone, a shared event id for browser/server de-duplication, and only when the visitor allowed advertising measurement. Meta rejects any event older than 7 days.</p>
+          <ol className="list-decimal space-y-1 pl-5 text-muted-foreground">
+            <li><b className="text-foreground">Delivery accepted</b> — the API answered 200 with <code>events_received ≥ 1</code> (shown as “Accepted by Meta”).</li>
+            <li><b className="text-foreground">Received in the right dataset</b> — Events Manager → dataset → Overview shows the event under the expected connection method. Test Events only shows receipt, and test events are <b>not</b> sandboxed.</li>
+            <li><b className="text-foreground">Matched</b> — Event Match Quality and the customer parameters Meta reports for that event.</li>
+            <li><b className="text-foreground">Attributed</b> — conversions appear against ads in Ads Manager under the ad set&rsquo;s attribution setting.</li>
+            <li><b className="text-foreground">Eligible to optimize</b> — the campaign type and goal Meta documents for that event source are available and its fit guidelines are met (below).</li>
+          </ol>
         </CardContent>
       </Card>
 
@@ -146,8 +154,7 @@ export default async function MetaSetupPage() {
           <ul className="list-disc space-y-1 pl-5">
             <li><b className="text-foreground">Instant Form campaigns:</b> use the Leads objective with Instant Forms, and choose the conversion-leads optimization (“Maximize number of conversion leads”) so Meta learns from the CRM stages. Meta supports this only for native Facebook/Instagram Instant Form leads and needs the stages to arrive consistently first.</li>
             <li><b className="text-foreground">Website campaigns:</b> <code>QualifiedLead</code> and <code>WonJob</code> are custom events. Create a custom conversion on each in Events Manager (or use them as the campaign&rsquo;s conversion event) before an ad set can optimize for them. <code>Lead</code> and <code>Schedule</code> are standard events.</li>
-            <li>Verify arrival in Events Manager → Test events first (use Test mode above), then check the dataset&rsquo;s event match quality and volume before changing any budget or optimization goal.</li>
-            <li>“Accepted by Meta” here only means the API accepted the event. It does not mean Meta matched it to an ad or will use it.</li>
+            
           </ul>
         </CardContent>
       </Card>

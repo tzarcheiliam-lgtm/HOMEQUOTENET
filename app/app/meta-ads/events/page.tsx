@@ -46,7 +46,7 @@ export default async function MetaEventsPage({ searchParams }: { searchParams: P
         <ul className="space-y-3">
           {rows.map((r) => {
             const [label, tone] = LABEL[r.status] ?? [r.status, 'muted' as const];
-            const canRetry = r.status === 'failed' && r.origin === 'queue' && Date.now() - new Date(r.event_time).getTime() <= META_MAX_EVENT_AGE_MS;
+            const canRetry = r.status === 'failed' && Date.now() - new Date(r.event_time).getTime() <= META_MAX_EVENT_AGE_MS;
             return (
               <li key={r.id}>
                 <Card className="gap-2 p-4 text-sm">

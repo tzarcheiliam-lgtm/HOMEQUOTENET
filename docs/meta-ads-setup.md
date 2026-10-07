@@ -1,100 +1,133 @@
 # Meta Ads analytics and outcome feedback
 
-Migration **0042** (renumbered from 0041, see "Migrations and merge order"). Everything ships **dormant**: conversion delivery is OFF,
-no campaign is touched, no backfill runs, and nothing was verified against live Meta (no credentials in the build environment).
+Migration **0042**. Everything ships **dormant**: conversion delivery is OFF, no campaign or ad-account setting is touched, no backfill runs.
+Nothing here has been verified against live Meta or a real Supabase project (no credentials in the build environment); §10 separates what is
+tested locally from what is not.
 
-## What it does
-1. **Reporting (read-only)** - imports ad accounts, campaigns, ad sets, ads, daily ad-level insights, ad-set `promoted_object` and
-   ad `tracking_specs` through the Marketing API into `meta_*` tables. `/app/meta-ads` shows them beside HQN first-party outcomes
-   (drill-down campaign -> ad set -> ad -> HQN leads). `/app/meta-ads/setup` (admin) holds connection health, account->contractor
-   mapping, the dataset check, Instant Form readiness, delivery switch and eligibility report. `/app/meta-ads/events` (admin) is the redacted delivery view.
-2. **Outcomes** - `lead_outcome_events` is an append-only ledger written by DB triggers on `leads.qualification_status`, `appointments`,
-   `sales`, `lead_assignments.status`. It audits the existing tables; it is not a second status system.
-3. **Feedback to Meta** - `meta_conversion_events` is a durable outbox fed from the ledger. `POST /api/meta/tick` (5-minute worker) feeds and sends.
-   Events the funnel/QualifiedLead sender transmits directly are also recorded there (origin `legacy_direct`) so they are visible and cannot be re-sent.
+## 1. What it does
+1. **Reporting (read-only)** - imports ad accounts, campaigns, ad sets, ads, daily ad-level insights, ad-set `promoted_object` and ad `tracking_specs`
+   via the Marketing API into `meta_*` tables. `/app/meta-ads` shows them beside HQN first-party outcomes. `/app/meta-ads/setup` (admin) has connection health,
+   account -> contractor mapping, the dataset check, Instant Form readiness, delivery switch and eligibility report. `/app/meta-ads/events` (admin) is the redacted delivery view.
+2. **Outcomes** - `lead_outcome_events` is an append-only ledger written by DB triggers on `leads.qualification_status`, `appointments`, `sales`, `lead_assignments.status`. It audits the existing tables; it is not a second status system.
+3. **Feedback to Meta** - `meta_conversion_events` is a durable outbox fed from the ledger by `POST /api/meta/tick` (5-minute worker). Events the funnel / the original QualifiedLead sender transmit directly are recorded there too (origin `legacy_direct`).
 
-## Verified event mappings (against Meta documentation read 2026-10-07)
-Two different Meta mechanisms; never mixed.
+## 2. Database procedure (migrations)
+`main` contains migrations **0001-0041** (0041 = visual workflow builder, merged via PR #6); this work adds **0042**. There is no migration-history table to trust
+(migrations have been applied by hand and `scripts/apply-migrations.mjs` does not record them), so use the read-only planner, which inspects the database for what each file creates:
 
-### A. Website leads (HQN funnels; Pixel dataset; Conversions API web events)
-| HQN outcome | Event | Standard/custom | `action_source` | event_id | Status |
-|---|---|---|---|---|---|
-| Lead submitted | `Lead` | standard | `website` | `<session>:Lead` (= browser Pixel id) | **Valid, unchanged.** Sent by the funnel session route. Queue never re-sends it. |
-| Calendly booking | `Schedule` | standard | `website` | `<session>:Schedule` | **Valid, unchanged.** Visitor action on the site. |
-| GHL-calendar booking | `Schedule` | standard | `website` | `<session>:Schedule` | **Gap fixed.** The browser fired it but no server event existed; the queue now sends it with the browser's id. |
-| Portal / staff / AI-recorded appointment | `Schedule` | standard | `other` (`phone_call` if actor is an AI call) | `<session>:Schedule:<appointment id>` | **Corrected.** Not a website conversion, so not labeled `website`. Separate appointments are separate events. |
-| Qualified by a person | `QualifiedLead` | **custom** | `other` | `<session>:QualifiedLead` (once per lead) | **Corrected in the queue.** The pre-existing direct sender used `website` (kept running until you cut over, see rollout). |
-| Won job | `WonJob` | **custom** | `other` | `<session>:WonJob:<sale id>` | **Corrected.** Value+currency only if a real sale amount exists. Never `Purchase`. Two sales = two events. |
+```
+STAGING_PROJECT_REF=<ref> STAGING_CONFIRM=I-understand-this-is-not-production SUPABASE_DB_URL=<direct connection string> \
+  node scripts/staging/migration-plan.mjs
+```
+It refuses production unless you pass `--allow-production` (still read-only), never prints the connection string, and ends with the exact ordered list to apply.
 
-- Matching: `fbp`/`fbc` (stored write-once at submit) + SHA-256 of normalized email, phone, first/last name, zip. IP/user-agent are not stored, so not sent for these later events. An ad id alone is never a match key.
-- `event_source_url` is sent only when `action_source=website` (Meta requires it only there).
-- Only sent when the visitor allowed advertising measurement; re-checked at send time.
-- **Not verifiable from documentation:** whether Meta will use a custom event with `action_source=other` for ad-set optimization or a custom conversion. Meta's documented definition of `website` is "conversion made on your website", so labeling staff-recorded outcomes `website` would misstate the source; whether the `other` events still feed optimization must be confirmed in **Events Manager -> Test events** and then on the dataset. If Meta shows them as unusable, the fallback is to keep them for reporting only.
+- **Fresh Supabase project:** the plan is **all 43 files, 0001 -> 0042, in filename order** (not just 0040-0042: 0042 needs `profiles`, `contractors`, `leads`, `lead_assignments`, `appointments`, `sales`, `set_updated_at`, `is_admin/is_staff/auth_contractor_id`, `integrations`; 0041 needs the workflow, AI-calling and signing tables). Two files share the number 0027 - both are applied (`0027_email_templates_call_workspace`, `0027_workflow_retention`); sorted filename order is correct.
+  Dry-run everything in one rolled-back transaction, then apply for real:
+  `node scripts/apply-migrations.mjs --dry-run supabase/migrations/*.sql` then `node scripts/apply-migrations.mjs supabase/migrations/*.sql` (each file in its own transaction, stops at the first failure, reads `SUPABASE_DB_URL`, never prints it).
+  This exact chain was applied in an in-process PostgreSQL (PGlite) with Supabase's platform pieces stubbed (`tests/helpers/full-migrations.ts`); a real Supabase project is the remaining proof.
+- **Existing staging project:** run the planner. Expected outcomes: *Every migration present* (nothing to do); *Apply, in this order: 0041..., 0042...* (it stops at 0040); a **GAP** or **PARTIAL** report means stop and compare by hand - never apply on top of it. 0042 has no dependency on 0041's tables, but apply in numeric order anyway.
+- Three files (0022, 0027_email_templates_call_workspace, 0033) only change policies/triggers and cannot be auto-detected; the planner lists them as "assumed to follow their neighbours".
+- **Never renumber an applied migration.** 0041 belongs to the workflow builder and may already be applied somewhere; Meta Ads is 0042.
+
+## 3. Event mappings and the REAL event source
+Two Meta mechanisms, never mixed. `action_source` is derived from **where the underlying action happened** (Meta: `website` = "conversion was made on your website", `phone_call` = "over the phone", `email`, `chat` = "via a messaging app, SMS...", `physical_store` = "in person", `other` = "not listed"), **not** from whether a person, AI or system wrote the database row.
+
+### A. Website leads (HQN funnels; funnel Pixel dataset; web events)
+| Outcome | Event (std/custom) | `action_source` | event_id |
+|---|---|---|---|
+| Lead submitted | `Lead` (standard) | `website` | `<session>:Lead` (= browser Pixel id) - sent directly by the funnel |
+| Visitor books in the funnel (Calendly) | `Schedule` (standard) | `website` | `<session>:Schedule` - sent directly by the funnel |
+| Visitor books in the funnel (GHL calendar) | `Schedule` | `website` | `<session>:Schedule` - **was missing server-side**; now sent by the queue with the browser's id |
+| Any other appointment | `Schedule` | recorder's stated channel (phone/email/chat/in person) -> `phone_call`/`email`/`chat`/`physical_store`; else an AI call that **reported a booking before the appointment was recorded** -> `phone_call`; else `other` | `<session>:Schedule:<appointment id>` |
+| Qualified by a person | `QualifiedLead` (**custom**) | how the confirmation happened (reason code): by call -> `phone_call`, text -> `chat`, email -> `email`; else `other` | `<session>:QualifiedLead` (once per lead) |
+| Won job | `WonJob` (**custom**) | `other` (a sale is recorded off-platform; channel not captured) | `<session>:WonJob:<sale id>`, value+currency only if a real recorded amount exists. **Never `Purchase`.** |
+
+- **AI appointments (resolved with the workflow integration):** the workflow builder's AI "booked" result is only a *claim*; **a person records the appointment** (it never creates one). So the *author* of the row is irrelevant. HQN uses the workflow's own `resolveCallOutcome` rule: a completed AI call for the same lead + contractor whose analysis says booked, and which began before the appointment was recorded (within 72 h), is evidence the booking happened on a phone call -> `phone_call`. A person's explicit "How was it booked?" choice on the appointment form (new optional field `appointments.booked_via`) overrides it. No evidence -> `other`. This is a documented heuristic; correct it by choosing a channel when recording.
+- Matching: `fbp`/`fbc` (stored at submit) + SHA-256 of normalized email, phone, names, zip. No IP/user-agent for later events (not stored). An ad id is never a match key. `event_source_url` only when `action_source=website` (Meta requires it only there). Only sent when the visitor allowed advertising measurement (rechecked at send time).
+- Separate appointments and separate sales on one lead are separate events (ids above). Qualification is once per lead.
 
 ### B. Instant Form leads (Conversions API for CRM / Conversion Leads)
-| HQN outcome | `event_name` | `action_source` | event_id |
-|---|---|---|---|
-| Lead received (initial stage, queued before the first later stage) | `lead_received` | `system_generated` | `crm:<leadgen id>:lead` |
-| Qualified by a person | `qualified` | `system_generated` | `crm:<leadgen id>:qualified` |
-| Appointment booked | `appointment_booked` | `system_generated` | `crm:<leadgen id>:appointment` |
-| Won | `won` | `system_generated` | `crm:<leadgen id>:won` |
-
-Required by Meta's CRM payload spec: `event_name`, `event_time`, `action_source=system_generated`, `user_data` (at least one customer parameter),
-`custom_data.event_source=crm`, `custom_data.lead_event_source`, access token, and a dataset. The request HQN builds includes all of those; `user_data.lead_id`
-(the 15-17 digit leadgen id from the webhook) is Meta's highest-priority identifier and its documented example payload carries only that. HQN sends **no hashed email/phone** on this path
-(Meta says if email/phone are sent they must be hashed; HQN simply doesn't send them). If a lead has no valid leadgen id the event is recorded as skipped (`missing_meta_lead_id`), not sent with weaker identifiers.
-- One event per lead per **stage** (Meta's funnel model), not per appointment/sale.
-- **Dataset:** Meta's setup page recommends a *separate CRM dataset* (or, when converting an existing web dataset, event names distinct from web events - HQN's are). The integration is Pixel-based; don't switch datasets after it is working. Enter it on Setup.
-- Event names are free-form lead stages per Meta; `lead_received` replaces the earlier `lead` so it can't be confused with the web `Lead`.
-- **Optimization eligibility (Meta):** Instant Form campaigns only; Leads objective, conversion location Instant forms, goal "Conversion Leads" (not available in personal/lightweight ad accounts; can't be changed on a published campaign - duplicate it). Meta's fit guidelines: >=200 leads/month, the target stage within 28 days of lead creation, stage rate 1-40%, uploads at least daily. Setup shows these measured on your data. Meta decides.
-- Not verifiable offline: that Meta accepts this exact payload for your Page/dataset (Test events), and that the lead id needs no other form (string vs number).
+Events `lead_received`, `qualified`, `appointment_booked`, `won`; `action_source=system_generated`; `user_data.lead_id` = the 15-17 digit leadgen id; `custom_data.event_source=crm`, `custom_data.lead_event_source=HomeQuote Network`; event_id `crm:<leadgen id>:<stage>` (one per lead per stage, Meta's funnel model). Names are free-form stages per Meta; `lead_received` avoids colliding with the web `Lead` (Meta: if you convert an existing web dataset, CRM events need different names).
+Required by Meta's payload spec (all present in HQN's request): `event_name`, `event_time`, `action_source`, `user_data` with at least one customer parameter, `custom_data.event_source`, `custom_data.lead_event_source`, an access token, a dataset. `lead_id` is the highest-priority identifier and Meta's example payload carries only it; HQN sends no hashed email/phone here. **The lead id alone is not "a complete request" - the other fields above are what make it complete.** A lead without a valid leadgen id is recorded as skipped (`missing_meta_lead_id`), not sent with weaker identifiers.
 
 ### Time windows
-Meta's Conversions API reference: `event_time` may be up to **7 days** old and a request containing an older event is rejected whole. The CRM page repeats 7 days ("backfill up to 7 days"), and requires the event to be **after the lead was generated**. I found no documented longer window for any source in the pages read, so both paths use 7 days, and HQN never re-dates an event. (I did not rely on remembered 62-day offline limits.)
+Meta's Conversions API reference: `event_time` may be up to **7 days** before sending, and one older event rejects **the whole request**. The CRM page: "backfill up to 7 days", event must be after the lead was generated. No longer window is documented for any source on the pages read, so both paths use 7 days and HQN never re-dates an event. (Do not assume a longer window for "offline-style" sources.)
 
-## Duplicate prevention and coverage
-- Unique `(dataset_id, event_id, test_mode)`: repeated saves, replayed ledger rows, webhook retries and a direct-send audit row all collapse to one event.
-- Browser/server pairing only exists for `Lead` and `Schedule` (visitor actions). They share the browser's event id; Meta de-duplicates within 48h.
-- Every appointment creation path reaches the ledger because the trigger sits on `appointments`: portal, funnel Calendly, funnel GHL (`record_funnel_booking`, tested), workflow/AI inserts. A visitor-booked appointment is recognized through `funnel_bookings`; anything else is "recorded in HQN".
-- Meta also dedupes by `event_id`+`event_name` only for events it receives from both channels; for server-only events the unique index is the safeguard.
+## 4. Delivery is not optimization (five separate checks)
+Test Events proves very little. Verify each stage separately and don't proceed on the earlier one alone.
+1. **Delivery accepted** - Graph answers 200 with `events_received >= 1` (HQN shows "Accepted by Meta"; it also keeps `fbtrace_id`). Source: [Conversions API - using the API](https://developers.facebook.com/docs/marketing-api/conversions-api/using-the-api).
+2. **Received in the intended dataset** - Events Manager -> the dataset -> Overview shows "the number of raw, matched and attributed events we received" and the connection method; Meta says verification should be possible "within 20 minutes". The **Test Events window only shows that a request arrived**. **Test events are not sandboxed**: Meta states "Events sent with `test_event_code` are not dropped. They flow into Events Manager and are used for targeting and ads measurement purposes." (same page). HQN therefore requires a **separate test dataset** for Test mode and refuses one that real events use. The old `META_TEST_EVENT_CODE` env var gives **no** protection - remove it from production.
+3. **Matched** - Event Match Quality / customer-parameter coverage per event; Meta: matching needs the customer information parameters sent with each event ([end-to-end implementation guide](https://developers.facebook.com/documentation/ads-commerce/conversions-api/guides/end-to-end-implementation.md)). Browser/server de-duplication is verified in Events Manager by sending the pair and checking the correct one is dropped (same `event_id` + `event_name`, same Pixel, within 48 h).
+4. **Attributed** - conversions show against ads in Ads Manager under the ad set's attribution setting; timing matters: Meta says events sent in real time/within 1 hour can be used for attribution, >2 h late "can cause a significant decrease in performance", >=24 h late may have significant attribution issues. (HQN's queue sends within minutes of the outcome being recorded, but the outcome itself is often recorded later than the real action - which is a business-process limit on attribution, not a bug.)
+5. **Eligible to optimize** - a campaign setting Meta documents per source:
+   - *Instant Form / CRM*: native Instant Form campaigns only; Leads objective, conversion location "Instant forms", goal **Conversion Leads** (unavailable in personal/lightweight ad accounts; cannot be changed on a published campaign - duplicate it). Fit guidelines: >=200 leads per month, the target stage within 28 days of the lead, stage rate 1-40%, at least daily uploads. CRM events need a **Pixel/dataset set up as CRM** (Events Manager -> Connect Data Sources -> CRM); Meta recommends a new dedicated dataset. Source: [Conversions API for CRM](https://developers.facebook.com/documentation/ads-commerce/conversions-api/conversion-leads-integration.md), [getting started](https://developers.facebook.com/documentation/ads-commerce/conversions-api/conversion-leads-integration/crm-integration/2-getting-started-with-integration.md), [payload spec](https://developers.facebook.com/documentation/ads-commerce/conversions-api/conversion-leads-integration/payload-specification.md). *Setup shows these measured on your data.*
+   - *Website custom events*: `QualifiedLead` / `WonJob` are custom events; an ad set can optimize for one only through a custom conversion (or the event as a custom-event objective) on the dataset that receives it, and the ad set must use that same dataset. **I could not find official text on dataset-timing or other prerequisites for custom conversions, and none on whether an `action_source=other/phone_call` custom event is eligible for optimization; treat that as unverified until Events Manager/Ads Manager accepts it.** Standard `Lead`/`Schedule` have no such step.
 
-## Dataset mismatch (`933962709362966` vs `2057270381542607`)
-Trace: in the code, the browser Pixel (`lib/funnels/tracking.ts`, initialised from `config.trackingPixels.metaPixelId`) and the server events (`app/api/funnels/[slug]/session/route.ts`) read the **same** single value, `933962709362966`, from `content/funnels/clients/pool-masters-la.json` (the live config is the `funnels.config` row, which the builder can edit). `2057270381542607` appears **only** in the notes; no code references it. It was observed once in Ads Manager ("Pixel not active"); it could not be checked here (the Facebook Ads connector is unauthorized in this environment and no Meta credentials exist).
-Conclusion: unverified. Two benign explanations (an old/unused dataset in the ads' tracking specs while the ad set optimizes on the funnel's dataset, or a stale warning) and one harmful one (the ad sets optimize on a dataset the funnel never sends to, so Meta sees no conversions).
-Smallest safe correction path, none applied: (1) after a sync, open **Meta Ads -> Setup -> Dataset check** - it compares each ad set's `promoted_object.pixel_id` and each ad's `tracking_specs` with the funnel pixel (and the pixel recent sessions actually carried); (2) if ad sets use `2057...`, change the **ad set's dataset in Ads Manager** to `933...` (or, if `2057...` is the dataset you intend, change the funnel's Pixel ID in the funnel builder) - one value in one place, not both; (3) confirm in Events Manager that the chosen dataset shows `Lead` events.
+## 5. Which dataset receives which event (verify BEFORE changing anything)
+| Source | Dataset | Must match |
+|---|---|---|
+| Website `Lead`, `Schedule`, `QualifiedLead`, `WonJob` | the funnel's Pixel (`funnels.config.trackingPixels.metaPixelId`; Pool Masters today `933962709362966` per the repo) | the ad set's `promoted_object.pixel_id` (and the ads' `tracking_specs`) |
+| Instant Form CRM stages | the dedicated **CRM dataset** (Setup -> "Dataset ID for Instant Form events") | the dataset connected to the lead-ads integration |
+| Test mode (any source) | a **separate test dataset** (Setup -> "Separate TEST dataset ID") | nothing - never a dataset real events or ads use |
 
-## Access requirements (Meta documentation, 2026-10-07)
-- Reporting reads need **`ads_read`**. Meta: for **your own** ad accounts, Standard access to `ads_read` is enough; for **client** ad accounts you need Advanced access (App Review) - so what matters is who *owns* each ad account, not who runs the ads. Pool Masters' account ownership is unknown to me: if it is owned by your Business, Standard works; if it is the client's own Business and shared to you as a partner, plan for Advanced access.
-- Advanced access needs App Review per permission and keeping >=500 Marketing API calls in 15 days with <15% errors. Business verification is not mentioned on the pages read; Meta may still require it for Advanced access in practice - confirm in the App Dashboard.
-- Marketing API **access tier**: *Limited* (default, development-only, tight rate limits: score 60, 300s block) vs *Full* (app review; 9000 score). Insight pulls are small and cached, but Limited tier will rate-limit larger accounts; the client backs off on error codes 4, 17, 32, 613, 80000-80014.
-- System User token (Business Settings -> System users): doesn't expire, server-to-server, less likely to be invalidated than a user token. Limited tier allows one system user + one admin system user.
-- Conversions API: access token generated in Events Manager (dataset -> Settings); needs no extra permission beyond dataset access.
-- Existing Instant Form webhook/lead retrieval (`META_APP_SECRET`, `META_PAGE_ACCESS_TOKEN`, `META_WEBHOOK_VERIFY_TOKEN`) is untouched. Which app powers what: the Lead Ads webhook app owns `META_APP_SECRET`; the new reporting token is a System User token (`META_MARKETING_ACCESS_TOKEN`) that may belong to any app with `ads_read`. `META_APP_ID` (optional) must be the SAME app as `META_APP_SECRET` - used only to show token expiry.
-- Versions: Graph **v26.0** (introduced 2026-07-29) is the newest; v25.0 is supported until 2028-07-29. The Marketing API changelog lists **v25.0** as current, so reporting defaults to v25.0 (`META_MARKETING_API_VERSION`) and the Conversions API to v26.0 (`META_GRAPH_VERSION`). The connection check proves what Meta accepts.
+Reported mismatch (`933962709362966` funnel vs `2057270381542607` once seen in Ads Manager): in code both the browser Pixel and the server events read the same single value (`933962709362966`); `2057270381542607` appears only in notes. After the first sync, **Setup -> Dataset check** reports, from Meta's own configuration, which dataset each ad set optimizes on and each ad tracks, and which dataset recent sessions actually used. Only change ONE side after reading it (the ad set's dataset in Ads Manager, or the funnel's Pixel ID in the funnel builder). Nothing is changed automatically.
 
-## QualifiedLead behavior change and rollout (no reporting gap)
-Before this work, a person-qualified website lead triggered a direct `QualifiedLead` server event (action_source `website`). The queue replaces it but ships OFF, which would have stopped that signal. Fix: `meta_settings.legacy_direct_qualified` (default **true**) keeps the original direct sender running while the queue is Off, so deploy changes nothing. The queue and the direct sender never both send real events: only Live retires the direct sender (Test leaves it running); the event id is identical (`<session>:QualifiedLead`), so a handover cannot double count. Rollback: set delivery Off and tick "keep the original direct sender".
-Recommended sequence: deploy (nothing changes) -> **Test** mode with the Test Events code (the queue sends corrected `action_source=other` events to Test events only; the direct sender keeps sending real events, so there is no gap) -> verify in Events Manager -> **Live** (retires the direct sender in the same save; same event id, so no double count). Between deploy and Live you are on today's behavior. Rollback from Live: set delivery Off and tick "keep the original direct sender running".
-Caveat: while the direct sender is active it keeps today's `action_source=website` label; if Test shows `other` events are not usable for optimization, decide before cutover which label you want.
+## 6. Direct-sender handoff (proven, see §10)
+The original direct `QualifiedLead` sender keeps running until Live (`meta_settings.legacy_direct_qualified`, default true), so deploying causes no reporting gap.
+- **Off (default):** direct sender active; queue silent.
+- **Test:** direct sender stays active and keeps sending REAL events to the real dataset; the queue sends a copy **only to the separate test dataset** with the test code. No test event reaches a production dataset.
+- **Live:** saving Live retires the direct sender and moves the ledger cursor to "now" (only outcomes recorded afterwards are queued - no historical sweep). Same event id, so a handover cannot double count.
+- **Off again:** direct sender resumes only if you tick "keep the original direct sender running"; otherwise nothing is sent (explicit, visible).
+- **Reservation:** a direct send first writes a `processing` row; the unique index (dataset, event id, test_mode) over **non-failed** rows means the queue and the direct sender can never both own an event. An in-flight direct request blocks a queue send, and the reverse.
+- **Failed rows never block a retry:** the index excludes `failed`. A failed direct send is retried through the delivery view (creates a queue row, `retry_of`, SAME event id). A crashed direct send is swept to `failed` (`interrupted_ambiguous`, "may or may not have reached Meta") after 10 minutes and is then retryable. Retries of accepted / in-flight / >7-day-old events are refused.
+- Residual risk: a failed request that actually reached Meta (timeout) and is then retried can be counted twice; the shared event id lets Meta de-duplicate where it supports that (documented for browser+server pairs; not for server-only repeats).
 
-## Migrations and merge order
-- `main` ends at **0040**. The visual workflow builder branch `claude/magical-ride-pmer7r` adds `0041_visual_workflow_builder.sql`; this work originally also used 0041. No Meta branch other than this one exists; nothing is applied to a shared database from here. Because 0041 may already be applied to staging/production for the workflow builder, **it is not renumbered**; this work is **0042** (it has no dependency on 0041: it touches only `meta_*`, `lead_outcome_events`, `meta_conversion_events`, new columns on `leads`/`sales`).
-- Apply order: 0040 -> 0041 (workflow builder) -> 0042. 0042 also applies without 0041.
-- Code merge order: workflow builder first (it changes `tests/helpers/pglite-supabase.ts`, `vitest.config.ts`, `tsconfig.json`, `lib/nav.ts`-adjacent code), then this branch. Expected conflicts: `lib/nav.ts`/`components/nav-icons.ts` (one added item each), `HOMEQUOTE_CONTEXT.md` (appended sections), `lib/types.ts`. The workflow branch requires a *confirmed appointment* for "Booked"; this ledger independently records an appointment only when an `appointments` row exists, which is the same bar.
-- Integration point if another Meta dashboard appears: `/app/meta-ads` is the single Meta area; extend `lib/data/meta-ads.ts` (`loadMetaReport`) and `components/meta/*`; tokens live in env only; one queue (`meta_conversion_events`); one settings row (`meta_settings`). No other session or branch with Meta dashboard work was found.
+## 7. Credentials: exact requirements
+Your situation: **the Pool Masters ad account is owned by your client; you have full admin on the Page.** Page admin does **not** give access to the ad account or to the dataset - both are separate Business assets.
 
-## What is tested (and how)
-- Unit tests with mocked `fetch`/in-memory store: Graph error classification, retry/backoff/paging, redaction, metric math, timezone/DST ranges, mapping/eligibility, event ids, queue feed/dispatch, consent re-check, 7-day window, direct-send audit, legacy handover.
-- Local database tests: migration 0042 on a disposable in-process Postgres built from **all real migrations 0001-0040 + 0042** (`tests/helpers/full-migrations.ts`): triggers on real tables, funnel GHL booking RPC, RLS tenant isolation, queue uniqueness/claim, append-only ledger.
-- Browser: desktop (1280px) and phone (390px) render of the report, filters and delivery form with clearly labeled fixture data - no horizontal overflow, no console errors. The real pages need Supabase auth and were not exercised end to end.
-- **Not verified against real Meta or a real Supabase:** Marketing API import, token health check, Test Events delivery, `action_source=other` usability, CRM payload acceptance, rate-limit behavior, staging migration application.
+| Item | Required? | What exactly |
+|---|---|---|
+| Ad-account access for reporting | **Required** for reporting | The client must share the ad account with **your Business** as a partner (Business Settings -> Users -> Partners; "view/analyst"-level is enough for reading; admin level only if you will later manage ads) - menu labels vary, confirm in the live UI. Then assign that ad account to a **System User** in your Business (view performance). Official: for other people's ad accounts the app needs **Advanced access** to `ads_read`; for your own accounts Standard is enough ([Authorization](https://developers.facebook.com/documentation/ads-commerce/marketing-api/get-started/authorization.md)). |
+| `ads_read` Advanced access (App Review) | **Required for a client-owned account** in production | Per-permission App Review; Meta requires **Business Verification** "if your app will access sensitive data"; keep >=500 Marketing API calls per 15 days with <15% errors to keep Advanced/Full tier. Do **not** request `ads_management` (HQN never edits ads) or `business_management` (not needed for reading assigned accounts). |
+| Interim path while review is pending | optional | Meta states app admins/developers can make calls on behalf of ad-account admins/advertisers at the default tier. A *user* token needs the client to add the **person** as an ad-account admin and the person to hold an app role; it expires (~60 days) and ties to one individual - use only to try the import, not for production. |
+| `META_MARKETING_ACCESS_TOKEN` | **Required** (reporting) | System User token with `ads_read` only. System users don't expire but can be revoked. Limited tier allows 1 system user + 1 admin system user. Stored only as a Vercel server env var. |
+| Dataset access for sending events | **Required** (events) | The Pixel `933962709362966` is owned by whoever created it. If it is the **client's**, the client must share the dataset with your Business and you assign it to the System User (at least "use events dataset"/manage pixel permission - per Meta's guidance and partner docs; confirm labels in the live UI). If you own it, assign it directly. |
+| `META_CONVERSIONS_API_TOKEN` | **Required** (events; already exists for the funnel) | Generated in Events Manager -> dataset -> Settings -> Conversions API (or for the System User). Meta does not store tokens - save it once into Vercel. Must have access to the **CRM dataset** and, for Test mode, the **test dataset**. |
+| CRM dataset | **Required** for Instant Form events | Events Manager -> Connect Data Sources -> **CRM**; new dedicated dataset recommended; its ID goes in Setup. Needs admin access to create/convert a Pixel. Don't change datasets after it is working. |
+| Test dataset | **Required** for Test mode | A throwaway dataset used for nothing else + its Test Events code. |
+| `META_TICK_SECRET` + GitHub secrets `META_TICK_SECRET`, `META_TICK_URL` | **Required** (worker) | Random string; URL `https://<prod domain>/api/meta/tick`. |
+| `META_APP_ID` | optional | Same app as `META_APP_SECRET`; only to show token expiry. |
+| `META_MARKETING_API_VERSION` / `META_GRAPH_VERSION` | optional | Defaults v25.0 (Marketing API changelog's current) / v26.0 (newest Graph, introduced 2026-07-29; v25.0 supported to 2028-07-29). |
+| Existing Lead Ads webhook secrets | unchanged | `META_APP_SECRET`, `META_PAGE_ACCESS_TOKEN`, `META_WEBHOOK_VERIFY_TOKEN`. Page admin is what these use. |
+| Access tier | informational | Default **Limited** access = development rate limits (score 60, 300 s block); **Full** needs review. Insight pulls are small and cached. |
 
-## Corrections
-Changing a status adds a ledger entry (and a `correction` for refunded/cancelled sales); history is never edited. A Meta event already **accepted is not retracted**. "Accepted" means the API returned success with `events_received >= 1` - not that Meta matched an ad or will optimize on it. Retries reuse the same `event_id`; accepted, legacy-direct and >7-day-old events cannot be retried.
+## 8. Rollout (no reporting gap) and rollback
+**Order matters; production delivery stays Off until the end.**
+1. Merge the integration branch; apply migrations to **staging** (planner first, §2); verify the 0041 runbook and the Meta checks (§9).
+2. Production: run the planner **read-only** (`--allow-production`) to see what is missing; dry-run; apply 0041 (if absent) then 0042; deploy. **Behavior is unchanged**: legacy QualifiedLead keeps sending; the queue is Off.
+3. Set the production env vars (§7), run a sync, map each ad account to a contractor, read **Setup -> Dataset check**.
+4. Create/confirm the CRM dataset and the test dataset; enter IDs on Setup.
+5. **Test** mode on production only after a test dataset exists; verify acceptance (check 1-2), then matching (3), then attribution (4) on the real dataset using the direct sender's events.
+6. Decide the `QualifiedLead` `action_source` (still `website` while the direct sender runs; `phone_call`/`chat`/`email`/`other` once Live).
+7. **Live** (type `ENABLE LIVE`) - retires the direct sender in the same save.
+8. After Live: create custom conversions and adjust campaign optimization yourself (Meta-side; nothing here does it).
+**Rollback:** Live -> Off with "keep the original direct sender" ticked restores today's behavior immediately; accepted events cannot be retracted. Code rollback: revert the deploy; 0042 is additive and can stay. (`supabase/rollback/` has the workflow builder's soft rollback only; 0042 needs none.)
+
+## 9. Staging test checklist
+1. Planner on staging; apply remaining files; planner again = "Every migration present".
+2. `scripts/staging/verify-0041.mjs` (workflow builder) passes.
+3. Create admin, contractor-owner (A), contractor-owner (B); map an ad account to A; B sees nothing of A's; A sees spend only after opt-in.
+4. Qualify a test lead (delivery Off): the direct sender runs (needs a staging Pixel/token) or nothing is sent if none configured; outcome history shows it.
+5. Test mode with a separate test dataset: queue copy visible in delivery view as accepted; appears in that dataset's Test Events; **nothing** appears in any production dataset.
+6. Switch Live (staging dataset), qualify another lead: exactly one real event; delivery view "Accepted by Meta".
+7. Fail a send (bad token on staging): row `failed`, **Retry** works, same event id, one accepted.
+8. Off with rollback ticked: direct sender resumes.
+
+## 10. What is tested, and how
+- **Unit (mocked fetch / in-memory store):** Graph error classification and backoff, metric math, timezone/DST, mappings and `action_source` provenance, event ids, queue feed/dispatch, consent re-check, 7-day window, direct-send reservation.
+- **Disposable database from every real migration (PGlite):** ledger triggers on real tables incl. the GHL booking RPC; RLS tenant isolation; unique-index/retry semantics; the migration planner against fresh / full / stops-at-0040 / partial databases; **the Off -> Test -> Live -> Off handoff** with in-flight, failed, retried and crashed direct sends (`tests/meta-handoff.test.ts`), asserting no event id is ever accepted twice as a real conversion and no test event reaches a production dataset.
+- **Browser:** report, filters and delivery form at desktop and phone widths with labeled fixture data (earlier session); real pages need Supabase auth and were not exercised end to end.
+- **Not verified:** anything against real Meta (import, token check, Test Events, matching, attribution, optimization eligibility, `other`-source custom events), a real Supabase project, the 16 DB suites that need `SUPABASE_DB_URL`.
 
 ## Known limits
-- Cost per *acquired contractor* is not computed (no ad -> signed contractor link in the data).
-- Reach is only shown for a single ad on a single day.
-- Activity-basis "won" doesn't subtract a refund that occurs after the selected period.
-- AI-call booking is labeled `phone_call` only when its ledger actor is `ai`; today no writer sets that (AI-created appointments appear as `system` -> `other`). The workflow-builder branch should mark such appointments when it merges.
-- AI qualification is recorded with evidence if a writer sets `qualification_source='ai'` + `qualification_evidence`, and is never sent to Meta.
+Cost per acquired contractor is not computed. Reach is only shown for one ad on one day. Activity-basis "won" doesn't subtract a later refund. AI-qualification is recorded with evidence if a writer sets it but is never sent to Meta. Won-job `action_source` is always `other` (channel not captured).
