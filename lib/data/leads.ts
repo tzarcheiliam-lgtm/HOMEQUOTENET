@@ -39,7 +39,8 @@ function escapeForOr(value: string): string {
 
 /** List leads with related labels and assignment summary. RLS scopes rows by role. */
 export async function listLeads(
-  filters: LeadFilters = {}
+  filters: LeadFilters = {},
+  opts: { range?: [number, number] } = {}
 ): Promise<LeadListRow[]> {
   const supabase = await createClient();
 
@@ -62,7 +63,9 @@ export async function listLeads(
        sub_service:sub_services(name),
        lead_assignments(contractor:contractors(id, name))`
     )
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    // Tie-breaker so paged reads (exports) never repeat or skip rows that share a timestamp.
+    .order('id', { ascending: true });
 
   const archived = filters.archived ?? 'active';
   if (archived === 'active') query = query.is('archived_at', null);
@@ -108,6 +111,7 @@ export async function listLeads(
     }
   }
 
+  if (opts.range) query = query.range(opts.range[0], opts.range[1]);
   const { data } = await query;
 
   return (data ?? []).map((row: any) => {

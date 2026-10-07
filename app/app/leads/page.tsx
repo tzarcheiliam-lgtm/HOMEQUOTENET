@@ -1,7 +1,9 @@
 import Link from 'next/link';
-import { Plus } from 'lucide-react';
+import { Facebook, Plus } from 'lucide-react';
 import { requireProfile } from '@/lib/auth';
 import { listLeads, type LeadFilters } from '@/lib/data/leads';
+import { filtersToQuery, parseLeadFilters } from '@/lib/leads/filters';
+import { canExportCompanyData } from '@/lib/permissions';
 import { listVerticals, listSubServices } from '@/lib/data/verticals';
 import { listContractorOptions } from '@/lib/data/contractors';
 import { Button } from '@/components/ui/button';
@@ -9,7 +11,6 @@ import { LeadsTable } from '@/components/leads/leads-table';
 import { LeadFiltersBar } from '@/components/leads/lead-filters';
 import { PageHeader } from '@/components/ui/page-header';
 import { cn } from '@/lib/utils';
-import type { LeadStatus } from '@/lib/types';
 
 const QUICK_VIEWS: { label: string; href: string; match: (f: LeadFilters) => boolean }[] = [
   {
@@ -33,11 +34,6 @@ const QUICK_VIEWS: { label: string; href: string; match: (f: LeadFilters) => boo
 
 export const metadata = { title: 'Leads · HomeQuote Network' };
 
-function first(v: string | string[] | undefined): string | undefined {
-  const s = Array.isArray(v) ? v[0] : v;
-  return s && s.trim() !== '' ? s : undefined;
-}
-
 export default async function LeadsPage({
   searchParams,
 }: {
@@ -46,24 +42,10 @@ export default async function LeadsPage({
   const profile = await requireProfile();
   const sp = await searchParams;
 
-  const filters: LeadFilters = {
-    q: first(sp.q),
-    status: first(sp.status) as LeadStatus | undefined,
-    vertical_id: first(sp.vertical_id),
-    sub_service_id: first(sp.sub_service_id),
-    source: first(sp.source),
-    contractor_id: first(sp.contractor_id),
-    city: first(sp.city),
-    zip: first(sp.zip),
-    date_from: first(sp.date_from),
-    date_to: first(sp.date_to),
-    archived: (first(sp.archived) as LeadFilters['archived']) ?? 'active',
-    assigned: first(sp.assigned) as LeadFilters['assigned'],
-    qualification_status: (['needs_qualification', 'qualified', 'not_qualified'] as const).find(
-      (v) => v === first(sp.review)
-    ),
-  };
+  const filters: LeadFilters = parseLeadFilters(sp);
 
+  // null = this user may not export; otherwise the current filters, carried into the export page.
+  const exportQuery = canExportCompanyData(profile) ? filtersToQuery(sp) : null;
   const isContractor = profile.role === 'contractor';
 
   // Contractor view: only their assigned leads, read-only list.
@@ -74,7 +56,13 @@ export default async function LeadsPage({
         <PageHeader
           title="My Leads"
           description="Leads assigned to you. Open one to update status or add notes."
-        />
+        >
+          {exportQuery !== null && (
+            <Button asChild variant="outline">
+              <Link href="/app/leads/export"><Facebook className="size-4" /> Export for Facebook</Link>
+            </Button>
+          )}
+        </PageHeader>
         <LeadsTable rows={rows} contractors={[]} canDelete={false} readOnly />
       </div>
     );
@@ -93,6 +81,11 @@ export default async function LeadsPage({
         title="Leads"
         description={`${rows.length} lead${rows.length === 1 ? '' : 's'} shown.`}
       >
+        {exportQuery !== null && (
+          <Button asChild variant="outline" className="max-lg:hidden">
+            <Link href={`/app/leads/export${exportQuery ? `?${exportQuery}` : ''}`}><Facebook className="size-4" /> Export for Facebook</Link>
+          </Button>
+        )}
         <Button asChild className="max-lg:hidden">
           <Link href="/app/leads/new">
             <Plus className="size-4" /> New lead
