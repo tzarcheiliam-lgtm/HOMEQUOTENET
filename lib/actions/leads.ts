@@ -4,6 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { after } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { sendQualifiedLeadEvent } from '@/lib/meta/qualified';
+import { runMetaConversionTick } from '@/lib/meta/queue.server';
+import { reasonAllowed } from '@/lib/leads/constants';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth';
@@ -341,6 +343,10 @@ export async function updateQualification(
         ? 'qualified'
         : 'needs_qualification';
   const qualified = reviewStatus === 'qualified';
+  const reason = str(formData, 'qualification_reason');
+  if (reason && !reasonAllowed(reviewStatus, reason)) return { error: 'Choose a reason from the list' };
+  // A decline must say why; "qualified" may carry a reason but doesn't need one.
+  if (reviewStatus === 'not_qualified' && !reason) return { error: 'Choose a reason for not qualifying this lead' };
   const supabase = await createClient();
 
   const { data: before } = await supabase
@@ -355,6 +361,10 @@ export async function updateQualification(
     qualified,
     qualification_status: reviewStatus,
     qualification_notes: str(formData, 'qualification_notes'),
+    qualification_reason: reviewStatus === 'needs_qualification' ? null : reason,
+    // A person made this decision from this form. (AI/funnel-rule sources set their own value + evidence.)
+    qualification_source: 'human',
+    qualification_evidence: null,
     budget_range: str(formData, 'budget_range'),
     timeline: str(formData, 'timeline'),
     urgency: str(formData, 'urgency'),
@@ -375,10 +385,15 @@ export async function updateQualification(
   }
 
   const changed = before?.qualification_status !== reviewStatus;
-  // Meta feedback: only on a real transition INTO qualified by a person (a re-save of an already
-  // qualified lead sends nothing). Best-effort; eligibility/consent checks live in the helper.
+  // Meta feedback. The DB ledger trigger records this transition. Two mutually exclusive senders, so there is no
+  // reporting gap and no double send: while the conversion queue is OFF (default) the original direct QualifiedLead send
+  // keeps running; once an admin switches the queue to test/live the direct send turns itself off and the queue takes over.
+  // Best-effort and non-blocking; a re-save of an unchanged status records nothing.
   if (changed && reviewStatus === 'qualified') {
-    after(() => sendQualifiedLeadEvent(createAdminClient(), id));
+    after(async () => {
+      await sendQualifiedLeadEvent(createAdminClient(), id);
+      await runMetaConversionTick().then(() => undefined, () => undefined);
+    });
   }
   await recordActivity(
     id,
@@ -649,6 +664,9 @@ export async function scheduleAppointment(
     scheduled_at: new Date(scheduledAt).toISOString(),
     location: str(formData, 'location'),
     notes: str(formData, 'notes'),
+    // Where the booking happened, as the recorder states it (used only to label the Meta event source truthfully).
+    // Only sent when chosen, so an appointment can still be saved if this optional column were ever missing.
+    ...(['phone_call', 'email', 'chat', 'in_person', 'other'].includes(str(formData, 'booked_via') ?? '') ? { booked_via: str(formData, 'booked_via') } : {}),
     created_by: await currentUserId(),
   });
   if (error) return { error: error.message };

@@ -53,6 +53,15 @@ export function canManageSigning(profile: Profile): boolean {
 }
 
 /**
+ * Meta Ads reporting: HQN administrators, and contractor OWNERS (not staff) for the campaigns an admin mapped to their
+ * company. Which rows a contractor can see is enforced by RLS (meta_campaign_visible), not here.
+ */
+export function canViewMetaAds(profile: Profile): boolean {
+  return isHqnAdministrator(profile) ||
+    (isContractorOwner(profile) && profile.is_active && !!profile.contractor_id);
+}
+
+/**
  * Contracts & Templates (template library, wizard, sending, voiding): HQN administrators only.
  * Contractor users never manage contracts; they may only READ agreements that were sent to their own company
  * (canViewOwnContracts + RLS + server checks).

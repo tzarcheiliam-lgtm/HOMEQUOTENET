@@ -109,3 +109,44 @@ export const QUALIFICATION_STATUS_LABELS: Record<QualificationStatus, string> = 
 export function qualificationVariant(status: QualificationStatus): 'warning' | 'success' | 'muted' {
   return QUALIFICATION_STATUSES.find((s) => s.value === status)?.variant ?? 'muted';
 }
+
+// ---------------------------------------------------------------------------------------------------
+// Qualification definition and reasons (Meta outcome reporting uses these; keep them short and explicit)
+// ---------------------------------------------------------------------------------------------------
+/**
+ * What "qualified" means in HomeQuote Network. A form submission is NEVER automatically qualified: the funnel's
+ * rules only record a service-area / eligibility verdict. A lead is qualified when a person (or an AI call that
+ * followed these same criteria and saved its evidence) has confirmed ALL of:
+ *  1. a real, reachable homeowner (valid contact, not spam or a test);
+ *  2. a project in a service the network covers, inside the service area;
+ *  3. a stated timeline and budget that are plausible for the project;
+ *  4. consent to be contacted.
+ */
+export const QUALIFICATION_DEFINITION =
+  'Qualified = a person (or an AI call following these criteria, with its evidence saved) confirmed a reachable homeowner, ' +
+  'an in-area project in a covered service, a plausible timeline and budget, and consent to be contacted. A submission alone is never qualified.';
+
+export const QUALIFIED_REASONS = [
+  { value: 'confirmed_by_call', label: 'Confirmed by phone' },
+  { value: 'confirmed_by_text', label: 'Confirmed by text message' },
+  { value: 'confirmed_by_email', label: 'Confirmed by email' },
+  { value: 'meets_criteria_on_form', label: 'Form answers meet all criteria' },
+] as const;
+
+export const NOT_QUALIFIED_REASONS = [
+  { value: 'unreachable', label: 'Could not reach' },
+  { value: 'out_of_area', label: 'Outside service area' },
+  { value: 'service_not_offered', label: 'Service not offered' },
+  { value: 'not_homeowner', label: 'Not the homeowner' },
+  { value: 'budget_too_low', label: 'Budget too low' },
+  { value: 'not_ready', label: 'Not ready / just browsing' },
+  { value: 'duplicate', label: 'Duplicate' },
+  { value: 'spam_or_test', label: 'Spam or test' },
+  { value: 'other', label: 'Other' },
+] as const;
+
+export function reasonAllowed(status: string, reason: string): boolean {
+  if (status === 'qualified') return QUALIFIED_REASONS.some((r) => r.value === reason);
+  if (status === 'not_qualified') return NOT_QUALIFIED_REASONS.some((r) => r.value === reason);
+  return false;
+}

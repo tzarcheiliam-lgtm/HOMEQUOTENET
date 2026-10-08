@@ -189,6 +189,8 @@ export interface Lead {
   // Human review (migration 0016): the funnel's automatic check never sets this.
   qualification_status: QualificationStatus;
   qualification_notes: string | null;
+  qualification_reason: string | null;
+  qualification_source: 'human' | 'ai' | 'funnel_rules' | 'import' | null;
   budget_range: string | null;
   timeline: string | null;
   urgency: string | null;

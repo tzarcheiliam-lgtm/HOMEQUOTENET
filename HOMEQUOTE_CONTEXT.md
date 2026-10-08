@@ -88,7 +88,7 @@ components/            UI grouped by domain (billing, calls, contractors,
                        leads, marketing, team, workflows) + components/ui
                        (shared primitives: PageHeader, KpiCard, EmptyState,
                        StatusBadge, ConfirmAction, Table, Card, etc.)
-supabase/migrations/    sequential SQL files (latest 0039, see §6 and §19)
+supabase/migrations/    sequential SQL files (latest 0041, see §6, §19 and §21)
 content/                Marketing copy/data (per-niche site content)
 scripts/                Seeders, migration helpers, prospecting import, QA (§ below)
 tests/                  Vitest suites: pure logic + live-DB suites (see §13)
@@ -532,8 +532,8 @@ or secrets by design).
   land in `leads.answers` and map to `timeline`/`budget_range`/`project_description`.
   Tests: `meta-leadgen`, `meta-webhook-route`, `meta-intake-matching`.
   Website leads: `leads.fbp`/`fbc` are stored write-once at contact submit (`lib/meta/lead-ids.ts`,
-  migration 0035) and reused by the server Schedule event; `META_TEST_EVENT_CODE` (temporary!) routes
-  server events to Meta's Test Events. Setup + test checklist: `docs/meta-lead-ads-setup.md`;
+  migration 0035) and reused by the server Schedule event; `META_TEST_EVENT_CODE` (temporary!) ALSO shows
+  server events in Meta's Test Events - but Meta documents that test-coded events still feed the dataset (not a sandbox). Setup + test checklist: `docs/meta-lead-ads-setup.md`;
   duplicate-id pre-check: `supabase/scripts/meta-duplicate-leads.sql`.
   Migration 0036 (NOT applied yet): `funnel_sessions.measurement_allowed` persists the visitor's advertising-measurement choice;
   the session route gates every server Meta event and fbp/fbc storage on it (default per `consentMode` when never recorded; fails
@@ -942,6 +942,18 @@ A React Flow (`@xyflow/react`) canvas + durable graph executor beside the classi
 - Workflows page body is `components/workflows/workflows-view.tsx` (presentational); `app/app/workflows/page.tsx` only fetches.
 - Round 2 (2026-10-07, code-only, not browser-verified): `KpiCard` and the contractor dashboard tile are compact; desktop lead filters have visible labels, a "More filters" group, active count and Reset; lead note/contact forms are controlled with labels and success/error text; `LeadForm` labels are tied to inputs, submits via `lib/forms/keep-values.ts` (`keepValuesOnError`, also used by auth, password, contractor, user, prospect, recipient, send-lead, qualification, service-request, create-funnel forms) so a failed save no longer wipes typed values; desktop lead Delete now confirms; success text uses `emerald-700` for AA contrast.
 
+## 22. Meta Ads analytics + outcome feedback (2026-10-07, migration `0042_meta_ads_analytics_outcomes.sql` - applied to production by the owner 2026-10-08, confirm with the planner; delivery ships OFF)
+
+Full guide (database procedure, mappings, delivery-vs-optimization checks, credentials, rollout, staging checklist): `docs/meta-ads-setup.md`. Summary:
+- **Migrations**: main has 0041 (workflow builder) and `0042_contracts_templates.sql` (§20). Meta Ads is a SECOND file numbered 0042 (like the two 0027 files): unrelated tables, either order works, both applied; never renumber an applied file. `scripts/staging/migration-plan.mjs` (read-only) reports what a database is missing; a fresh database = all 44 files in filename order.
+- **Routes**: `/app/meta-ads` (admin + contractor *owners*; RLS-scoped), `/app/meta-ads/setup`, `/app/meta-ads/events` (admin), `POST /api/meta/tick` (Bearer `META_TICK_SECRET`; `.github/workflows/meta-tick.yml`). One Meta area: extend it, don't add another dashboard/queue/auth.
+- **Tables**: `meta_settings` (delivery_mode off|test|live default off; `test_dataset_id`; `legacy_direct_qualified` default true; ledger cursor), `meta_ad_accounts` (explicit contractor mapping, `show_spend_to_contractor`), `meta_campaigns`, `meta_adsets` (+`promoted_object`), `meta_ads` (+`tracking_pixel_ids`), `meta_insights_daily`, `meta_sync_runs`, `lead_outcome_events` (append-only ledger), `meta_conversion_events` (outbox; unique `(dataset_id,event_id,test_mode)` over NON-failed rows; `origin` queue|legacy_direct; `retry_of`). New `leads.qualification_reason/_source/_evidence`, `appointments.booked_via`, `sales.currency`.
+- **Event source rule**: `action_source` = where the action actually happened (website only for a visitor's on-site action; phone_call/email/chat/physical_store from the recorder's stated channel, the qualification reason, or AI-call-booked evidence via the workflow builder's `resolveCallOutcome`; else `other`), never from who wrote the row. AI "booked" is only a claim; a person records the appointment.
+- **Test events are NOT sandboxed** (Meta: they "flow into Events Manager and are used for targeting and ads measurement"). Test mode therefore needs a separate test dataset and refuses a production one; `META_TEST_EVENT_CODE` gives no protection and must not stay set in production.
+- **Handoff**: direct QualifiedLead sender stays on until Live; direct sends reserve a `processing` row first (mutual exclusion with the queue), failed rows never block retries, stale reservations are swept; proven in `tests/meta-handoff.test.ts`.
+- **Code**: `lib/meta/{marketing-api,sync,metrics,hqn-metrics,conversions,provenance,queue,queue.server,audit.server,settings,datasets,qualified,capi}.ts`, `lib/data/meta-ads*.ts`, `lib/actions/meta-ads.ts`, `components/meta/*`, `components/leads/outcome-history.tsx`.
+- **Access check**: `lib/meta/access-check.ts` (read-only, dependency-free) + `scripts/meta-access-check.mjs` + Setup button tell whether a token reaches the ad account/datasets and where access lives (personal vs HQN portfolio vs both). Ethan's Business owns the Pool Masters ad account; Advanced `ads_read` is needed for production because it is another business's account.
+- **Open**: dataset mismatch `933962709362966` vs `2057270381542607` unverified (Setup -> Dataset check after the first sync); custom-event optimization eligibility for non-website sources unverified; nothing verified against real Meta/Supabase.
 
 ## 20. Contracts & Templates (migration 0042, added 2026-10-08, NOT yet applied/deployed)
 Full write-up: `docs/contracts.md`. Admin-only template library + 6-step wizard; contracts render to PDF and go through the existing signing engine (section 19). Routes: `/app/contracts`, `/new`, `/[id]`, `/[id]/edit`, `/templates`, `/templates/[id]`; contractor users get a read-only `/app/contracts` of SENT agreements for their own company (RLS + `loadContract`). Tables: `contract_templates`, `contract_template_versions` (immutable), `contracts` (frozen once the signing request leaves draft), `contract_events`, `contract_attachments`, `contract_seed_log`; `contractors.logo_path`; private bucket `contract-assets`. Code: `lib/contracts/*` (types, variables, render-model, pdf, logo, library/starters, templates, contracts), `lib/actions/contracts.ts`, `components/contracts/*` (TipTap editor). Workflow vocabulary gained 7 `contract.*` events + entity type `contract` (SQL constraints in 0042, TS in `lib/workflows/events.ts`; drift test reads 0042). Permissions: `canManageContracts` (admin), `canViewOwnContracts`. Tests: `tests/contracts-{service,pdf,workflows}.test.ts`. **Deploy order: apply 0042 before deploying code.**

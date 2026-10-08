@@ -1,14 +1,17 @@
 'use client';
 
 import { keepValuesOnError } from '@/lib/forms/keep-values';
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import {
   BUDGET_RANGES,
+  NOT_QUALIFIED_REASONS,
+  QUALIFICATION_DEFINITION,
   QUALIFICATION_STATUSES,
+  QUALIFIED_REASONS,
   TIMELINE_OPTIONS,
   URGENCY_OPTIONS,
 } from '@/lib/leads/constants';
@@ -20,6 +23,8 @@ export function QualificationForm({ lead }: { lead: Lead }) {
     updateQualification,
     undefined
   );
+  const [status, setStatus] = useState<string>(lead.qualification_status);
+  const reasons = status === 'qualified' ? QUALIFIED_REASONS : status === 'not_qualified' ? NOT_QUALIFIED_REASONS : null;
 
   return (
     <form onSubmit={keepValuesOnError(formAction)} className="space-y-4">
@@ -37,6 +42,7 @@ export function QualificationForm({ lead }: { lead: Lead }) {
                 name="qualification_status"
                 value={s.value}
                 defaultChecked={lead.qualification_status === s.value}
+                onChange={() => setStatus(s.value)}
                 className="mt-0.5 size-4 accent-primary"
               />
               <span>
@@ -47,6 +53,34 @@ export function QualificationForm({ lead }: { lead: Lead }) {
           ))}
         </div>
       </fieldset>
+      <p className="text-xs text-muted-foreground">{QUALIFICATION_DEFINITION}</p>
+      {reasons && (
+        <div className="space-y-1.5">
+          <Label htmlFor="qualification_reason">
+            {status === 'qualified' ? 'Why qualified' : 'Why not qualified'}
+            {status === 'not_qualified' ? ' (required)' : ''}
+          </Label>
+          <Select
+            id="qualification_reason"
+            name="qualification_reason"
+            required={status === 'not_qualified'}
+            defaultValue={lead.qualification_reason ?? ''}
+          >
+            <option value="">{status === 'qualified' ? '—' : 'Choose a reason'}</option>
+            {reasons.map((r) => (
+              <option key={r.value} value={r.value}>
+                {r.label}
+              </option>
+            ))}
+          </Select>
+        </div>
+      )}
+      {lead.qualified_at && lead.qualification_status === 'qualified' && (
+        <p className="text-xs text-muted-foreground">
+          Marked qualified {new Date(lead.qualified_at).toLocaleString()} by{' '}
+          {lead.qualification_source === 'ai' ? 'an AI call (evidence saved)' : lead.qualification_source === 'funnel_rules' ? 'funnel rules' : 'a team member'}.
+        </p>
+      )}
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="space-y-1.5">
           <Label>Budget range</Label>
