@@ -11,6 +11,7 @@ const EVENT_GROUPS: { label: string; events: WorkflowEventType[] }[] = [
   { label: 'Appointments', events: ['appointment.booked', 'appointment.rescheduled', 'appointment.cancelled', 'appointment.completed', 'appointment.no_show'] },
   { label: 'Estimates and deals', events: ['estimate.sent', 'estimate.accepted', 'deal.won', 'deal.lost', 'assignment.status_changed'] },
   { label: 'AI calls', events: ['ai_call.completed', 'ai_call.failed'] },
+  { label: 'Contracts', events: ['contract.created', 'contract.sent', 'contract.viewed', 'contract.signed', 'contract.fully_signed', 'contract.declined', 'contract.expired'] },
 ];
 
 /** Friendlier wording than the technical registry descriptions. */
@@ -34,6 +35,13 @@ const EVENT_HELP: Record<WorkflowEventType, string> = {
   'ai_call.completed': 'An AI call ends. This only says the call finished, not that the homeowner qualified.',
   'ai_call.failed': 'An AI call ends without a conversation: it failed, expired, went unanswered or hit a busy line.',
   'workflow.manual_enrollment': 'Someone adds a lead to this workflow by hand.',
+  'contract.created': 'A draft agreement is created from a template.',
+  'contract.sent': 'An agreement is sent for signature.',
+  'contract.viewed': 'A signer opens the agreement for the first time.',
+  'contract.signed': 'One signer signs (runs once per signer). Signing does not mean payment was received.',
+  'contract.fully_signed': 'Everyone has signed. This does not activate billing; payment is confirmed separately.',
+  'contract.declined': 'A signer declines to sign.',
+  'contract.expired': 'The agreement passes its expiry date unsigned.',
 };
 
 const FAILED_RESULTS = [

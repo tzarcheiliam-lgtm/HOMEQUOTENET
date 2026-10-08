@@ -20,9 +20,9 @@ describe('migration planner', () => {
     const s = sentinelsOf(`-- create table public.nope(x int);\ncreate table if not exists public.a (id int);\ncreate or replace function public.f() returns int as $$ select 1 $$ language sql;\nalter table public.a add column if not exists b text, add column c int;\ncreate type public.t as enum ('x');`);
     expect([...s.tables]).toEqual(['a']); expect([...s.functions]).toEqual(['f']); expect([...s.types]).toEqual(['t']); expect(s.columns).toEqual([['a', 'b'], ['a', 'c']]);
   });
-  it('the real files include BOTH 0041 and 0042 and every file declares something checkable', () => {
+  it('the real files include 0041 and both 0042 files and every file declares something checkable', () => {
     const names = files.map((f) => f.name);
-    expect(names).toEqual(expect.arrayContaining(['0040_signing_templates_reminders_codes.sql', '0041_visual_workflow_builder.sql', '0042_meta_ads_analytics_outcomes.sql']));
+    expect(names).toEqual(expect.arrayContaining(['0040_signing_templates_reminders_codes.sql', '0041_visual_workflow_builder.sql', '0042_contracts_templates.sql', '0042_meta_ads_analytics_outcomes.sql']));
     // Policy/trigger-only migrations create nothing detectable; this list must not grow silently.
     const undetectable = files.filter((f) => !Object.values(sentinelsOf(f.sql)).some((v) => (v as { size?: number; length?: number }).size || (v as { length?: number }).length)).map((f) => f.name);
     expect(undetectable).toEqual(['0022_restore_contractor_activity_visibility.sql', '0027_email_templates_call_workspace.sql', '0033_workflow_send_push.sql']);
@@ -33,7 +33,7 @@ describe('migration planner', () => {
     const rows = await planMigrations(files, existsOn(db));
     expect(new Set(rows.map((r: { status: string }) => r.status))).toEqual(new Set(['missing', 'unknown']));
     const plan = nextSteps(rows);
-    expect(plan.ok).toBe(true); expect(plan.pending).toEqual(files.map((f) => f.name)); // the WHOLE chain, 0001 through 0042
+    expect(plan.ok).toBe(true); expect(plan.pending).toEqual(files.map((f) => f.name)); // the WHOLE chain, 0001 through the second 0042
     await db.close();
   }, 60_000);
   it('FULLY migrated database (0001-0042 applied for real): everything is applied', async () => {
@@ -43,7 +43,7 @@ describe('migration planner', () => {
     expect(nextSteps(rows)).toMatchObject({ ok: true, pending: [] });
     await db.close();
   }, 120_000);
-  it('EXISTING staging that stops at 0040: plan = 0041 then 0042, in that order', async () => {
+  it('EXISTING staging that stops at 0040: plan = 0041, then the two 0042 files in filename order', async () => {
     const db = new PGlite();
     await db.exec(`create role anon; create role authenticated; create role service_role; create role supabase_admin; create schema auth; create schema storage; create schema extensions;
       create table auth.users (id uuid primary key default gen_random_uuid(), email text, raw_user_meta_data jsonb default '{}', encrypted_password text);
@@ -56,7 +56,7 @@ describe('migration planner', () => {
       grant usage on schema auth, storage to anon, authenticated, service_role; grant execute on all functions in schema auth to anon, authenticated, service_role;`);
     for (const f of files.filter((x) => x.name < '0041')) await db.exec(f.sql.replace(/create extension if not exists ["']?pgcrypto["']?[^;]*;/gi, ''));
     const plan = nextSteps(await planMigrations(files, existsOn(db)));
-    expect(plan).toMatchObject({ ok: true, pending: ['0041_visual_workflow_builder.sql', '0042_meta_ads_analytics_outcomes.sql'] });
+    expect(plan).toMatchObject({ ok: true, pending: ['0041_visual_workflow_builder.sql', '0042_contracts_templates.sql', '0042_meta_ads_analytics_outcomes.sql'] }); // two files share 0042; both apply, in filename order
     await db.close();
   }, 120_000);
   it('flags a half-applied or gapped database instead of guessing', async () => {

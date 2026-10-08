@@ -536,3 +536,26 @@ summary:focus-visible,
     min-height: 2.75rem;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Contract editor (TipTap/ProseMirror). Mirrors the preview/PDF typography.
+   --------------------------------------------------------------------------- */
+.contract-prose { font-size: 15px; line-height: 1.6; color: #1e293b; }
+.contract-prose:focus { outline: none; }
+.contract-prose p { margin: 0.5rem 0; }
+.contract-prose h1 { font-size: 1.35rem; font-weight: 700; margin: 1rem 0 0.4rem; }
+.contract-prose h2 { font-size: 1.15rem; font-weight: 600; margin: 1rem 0 0.4rem; }
+.contract-prose h3 { font-size: 1.02rem; font-weight: 600; margin: 0.9rem 0 0.3rem; }
+.contract-prose ul { list-style: disc; padding-left: 1.5rem; margin: 0.5rem 0; }
+.contract-prose ol { list-style: decimal; padding-left: 1.5rem; margin: 0.5rem 0; }
+.contract-prose li > p { margin: 0.15rem 0; }
+.contract-prose table { border-collapse: collapse; width: 100%; margin: 0.75rem 0; table-layout: fixed; }
+.contract-prose th, .contract-prose td { border: 1px solid #cbd5e1; padding: 0.35rem 0.5rem; vertical-align: top; text-align: left; position: relative; }
+.contract-prose th { background: #f1f5f9; font-weight: 600; }
+.contract-prose .selectedCell:after { content: ""; position: absolute; inset: 0; background: rgba(59, 130, 246, 0.12); pointer-events: none; }
+.contract-prose div[data-page-break] { display: flex; align-items: center; gap: 0.5rem; margin: 1rem 0; color: #94a3b8; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; user-select: none; }
+.contract-prose div[data-page-break]::before, .contract-prose div[data-page-break]::after { content: ""; flex: 1; border-top: 1px dashed #cbd5e1; }
+.contract-prose div[data-page-break]::before { content: ""; }
+.contract-prose div[data-page-break] span { order: 0; }
+.contract-prose .ProseMirror-selectednode[data-page-break] { color: #2563eb; }
+.contract-prose hr { border: 0; border-top: 1px solid #cbd5e1; margin: 0.75rem 0; }

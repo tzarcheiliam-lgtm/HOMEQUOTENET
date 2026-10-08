@@ -2,6 +2,10 @@ import { notFound } from 'next/navigation';
 import { Trash2, Plus } from 'lucide-react';
 import { requireRole } from '@/lib/auth';
 import { DocumentsPanel } from '@/components/signing/documents-panel';
+import { ContractsPanel } from '@/components/contracts/contracts-panel';
+import { ContractorLogoCard } from '@/components/contracts/contractor-logo-card';
+import { assetUrl } from '@/lib/contracts/storage';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { getContractor } from '@/lib/data/contractors';
 import { listVerticals } from '@/lib/data/verticals';
 import {
@@ -158,6 +162,9 @@ export default async function ContractorDetailPage({
     );
   }
 
+  const { data: logoRow } = await createAdminClient().from('contractors').select('logo_path').eq('id', contractor.id).maybeSingle();
+  const logoUrl = await assetUrl(logoRow?.logo_path ?? null);
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -188,6 +195,10 @@ export default async function ContractorDetailPage({
           />
         </CardContent>
       </Card>
+
+      <ContractorLogoCard contractorId={contractor.id} name={contractor.name} logoUrl={logoUrl} />
+
+      <ContractsPanel actor={profile} contractorId={contractor.id} />
 
       <DocumentsPanel contractorId={contractor.id} />
 

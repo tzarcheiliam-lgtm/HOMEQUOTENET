@@ -12,7 +12,7 @@ tested locally from what is not.
 3. **Feedback to Meta** - `meta_conversion_events` is a durable outbox fed from the ledger by `POST /api/meta/tick` (5-minute worker). Events the funnel / the original QualifiedLead sender transmit directly are recorded there too (origin `legacy_direct`).
 
 ## 2. Database procedure (migrations)
-`main` contains migrations **0001-0041** (0041 = visual workflow builder, merged via PR #6); this work adds **0042**. There is no migration-history table to trust
+`main` contains migrations **0001-0042** (0041 = visual workflow builder, `0042_contracts_templates.sql` = Contracts). This work is **`0042_meta_ads_analytics_outcomes.sql`**: a second file with the same number (the repo already has two `0027_*`). Both have been applied by the owner; they touch unrelated tables, so order does not matter (filename order applies contracts first). It was first named 0041; it was NOT renumbered after being applied. There is no migration-history table to trust
 (migrations have been applied by hand and `scripts/apply-migrations.mjs` does not record them), so use the read-only planner, which inspects the database for what each file creates:
 
 ```
@@ -21,13 +21,13 @@ STAGING_PROJECT_REF=<ref> STAGING_CONFIRM=I-understand-this-is-not-production SU
 ```
 It refuses production unless you pass `--allow-production` (still read-only), never prints the connection string, and ends with the exact ordered list to apply.
 
-- **Fresh Supabase project:** the plan is **all 43 files, 0001 -> 0042, in filename order** (not just 0040-0042: 0042 needs `profiles`, `contractors`, `leads`, `lead_assignments`, `appointments`, `sales`, `set_updated_at`, `is_admin/is_staff/auth_contractor_id`, `integrations`; 0041 needs the workflow, AI-calling and signing tables). Two files share the number 0027 - both are applied (`0027_email_templates_call_workspace`, `0027_workflow_retention`); sorted filename order is correct.
+- **Fresh Supabase project:** the plan is **all 44 files, 0001 -> 0042 (including BOTH 0042 files), in filename order** (not just the last few: 0042 needs `profiles`, `contractors`, `leads`, `lead_assignments`, `appointments`, `sales`, `set_updated_at`, `is_admin/is_staff/auth_contractor_id`, `integrations`; 0041 needs the workflow, AI-calling and signing tables). Two files share the number 0027 - both are applied (`0027_email_templates_call_workspace`, `0027_workflow_retention`); sorted filename order is correct.
   Dry-run everything in one rolled-back transaction, then apply for real:
   `node scripts/apply-migrations.mjs --dry-run supabase/migrations/*.sql` then `node scripts/apply-migrations.mjs supabase/migrations/*.sql` (each file in its own transaction, stops at the first failure, reads `SUPABASE_DB_URL`, never prints it).
   This exact chain was applied in an in-process PostgreSQL (PGlite) with Supabase's platform pieces stubbed (`tests/helpers/full-migrations.ts`); a real Supabase project is the remaining proof.
-- **Existing staging project:** run the planner. Expected outcomes: *Every migration present* (nothing to do); *Apply, in this order: 0041..., 0042...* (it stops at 0040); a **GAP** or **PARTIAL** report means stop and compare by hand - never apply on top of it. 0042 has no dependency on 0041's tables, but apply in numeric order anyway.
+- **Existing staging project:** run the planner. Expected outcomes: *Every migration present* (nothing to do); *Apply, in this order: ... 0042_meta_ads_analytics_outcomes.sql* (it lists everything missing, e.g. 0041, 0042 if it stops at 0040); a **GAP** or **PARTIAL** report means stop and compare by hand - never apply on top of it. 0042 has no dependency on 0041's tables, but apply in numeric order anyway.
 - Three files (0022, 0027_email_templates_call_workspace, 0033) only change policies/triggers and cannot be auto-detected; the planner lists them as "assumed to follow their neighbours".
-- **Never renumber an applied migration.** 0041 belongs to the workflow builder and may already be applied somewhere; Meta Ads is 0042.
+- **Never renumber an applied migration.** 0041 (workflow builder) and 0042 (Contracts) belong to other features and may already be applied; Meta Ads is the second 0042 file. It needs neither 0041 nor the other 0042 (it applies on a database that stops at 0040).
 
 ## 3. Event mappings and the REAL event source
 Two Meta mechanisms, never mixed. `action_source` is derived from **where the underlying action happened** (Meta: `website` = "conversion was made on your website", `phone_call` = "over the phone", `email`, `chat` = "via a messaging app, SMS...", `physical_store` = "in person", `other` = "not listed"), **not** from whether a person, AI or system wrote the database row.
@@ -128,7 +128,7 @@ It reports, using only GET requests: token validity, the app/permissions/expiry 
 ## 8. Rollout (no reporting gap) and rollback
 **Order matters; production delivery stays Off until the end.**
 1. Merge the integration branch; apply migrations to **staging** (planner first, §2); verify the 0041 runbook and the Meta checks (§9).
-2. Production: run the planner **read-only** (`--allow-production`) to see what is missing; dry-run; apply 0041 (if absent) then 0042; deploy. **Behavior is unchanged**: legacy QualifiedLead keeps sending; the queue is Off.
+2. Production: run the planner **read-only** (`--allow-production`) to see what is missing; dry-run; apply whatever is missing in order, ending with 0042; deploy. **Behavior is unchanged**: legacy QualifiedLead keeps sending; the queue is Off.
 3. Set the production env vars (§7e), run **Setup -> Run read-only access check** (fix whatever it names), run a sync, map each ad account to a contractor, read **Setup -> Dataset check**.
 4. Create/confirm the CRM dataset and the test dataset; enter IDs on Setup.
 5. **Test** mode on production only after a test dataset exists; verify acceptance (check 1-2), then matching (3), then attribution (4) on the real dataset using the direct sender's events.
