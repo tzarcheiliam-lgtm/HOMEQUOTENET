@@ -1,5 +1,5 @@
 -- ============================================================================
--- 0041: Meta Ads analytics, lead-outcome ledger, Meta conversion-event queue
+-- 0042: Meta Ads analytics, lead-outcome ledger, Meta conversion-event queue
 -- ============================================================================
 -- Additive and idempotent. Nothing here sends anything to Meta or changes a live
 -- campaign. Conversion delivery ships OFF (meta_settings.delivery_mode = 'off').
@@ -22,11 +22,18 @@ create table if not exists public.meta_settings (
   delivery_mode   text not null default 'off' check (delivery_mode in ('off', 'test', 'live')),
   -- Events Manager "Test events" code (e.g. TEST12345). Not a secret. Used only in 'test' mode.
   test_event_code text check (test_event_code is null or test_event_code ~ '^[A-Za-z0-9_-]{1,40}$'),
+  -- A SEPARATE dataset used only in 'test' mode. Meta's docs: events sent with test_event_code "flow into Events Manager and are
+  -- used for targeting and ads measurement purposes" - they are NOT sandboxed, so Test mode must never target a production dataset.
+  test_dataset_id text check (test_dataset_id is null or test_dataset_id ~ '^[0-9]{5,20}$'),
   -- Dataset (pixel) id events are sent to. Falls back to the funnel's configured pixel for website events.
   dataset_id      text check (dataset_id is null or dataset_id ~ '^[0-9]{5,20}$'),
   insights_days   smallint not null default 30 check (insights_days between 1 and 90),
   -- Outcome-ledger position the queue feeder has processed. Set to now() whenever delivery is switched on from
   -- 'off', so outcomes recorded BEFORE activation are never swept up (no automatic backfill).
+  -- Until an admin switches delivery to test/live, the pre-existing direct QualifiedLead send (lib/meta/qualified.ts)
+  -- keeps running exactly as before, so deploying this migration does not silently stop that signal. Switching the
+  -- queue on turns it off (same event id either way, so a handover cannot double count).
+  legacy_direct_qualified boolean not null default true,
   ledger_cursor_at timestamptz,
   ledger_cursor_id uuid,
   updated_at      timestamptz not null default now(),
@@ -75,6 +82,9 @@ create table if not exists public.meta_adsets (
   effective_status   text,
   optimization_goal  text,
   attribution_spec   jsonb,
+  -- Dataset/pixel the ad set optimizes and attributes against (Graph: promoted_object.pixel_id) - used by the dataset
+  -- consistency check; read-only mirror.
+  promoted_object    jsonb,
   synced_at          timestamptz not null default now()
 );
 create index if not exists idx_meta_adsets_campaign on public.meta_adsets(campaign_id);
@@ -87,6 +97,8 @@ create table if not exists public.meta_ads (
   name             text,
   status           text,
   effective_status text,
+  -- Pixel ids named in the ad's tracking_specs (fb_pixel entries); read-only mirror.
+  tracking_pixel_ids text[],
   synced_at        timestamptz not null default now()
 );
 create index if not exists idx_meta_ads_adset on public.meta_ads(adset_id);
@@ -160,6 +172,13 @@ alter table public.leads add constraint leads_qualification_source_check
 alter table public.leads drop constraint if exists leads_ai_qualification_needs_evidence;
 alter table public.leads add constraint leads_ai_qualification_needs_evidence
   check (qualification_source is distinct from 'ai' or qualification_evidence is not null);
+
+-- Where a booking really happened, as stated by the person recording it (never 'website': a visitor's own on-site
+-- booking is identified through funnel_bookings). Used only to label the Meta action_source truthfully; NULL = not stated.
+alter table public.appointments add column if not exists booked_via text;
+alter table public.appointments drop constraint if exists appointments_booked_via_check;
+alter table public.appointments add constraint appointments_booked_via_check
+  check (booked_via is null or booked_via in ('phone_call', 'email', 'chat', 'in_person', 'other'));
 
 -- Sales gain an explicit currency so values are never silently mixed (existing rows: USD, the only
 -- currency the app has ever recorded).
@@ -330,7 +349,13 @@ create table if not exists public.meta_conversion_events (
   stage             text not null check (stage in ('lead', 'qualified', 'appointment', 'won')),
   source_kind       text not null check (source_kind in ('website_pixel', 'instant_form_crm')),
   event_name        text not null,
-  action_source     text not null check (action_source in ('website', 'system_generated')),
+  -- Real source of the conversion: 'website' only for something the visitor did on the site; staff-recorded outcomes are
+  -- 'other', AI-call bookings 'phone_call', Instant Form CRM stages 'system_generated' (Meta's CRM spec).
+  action_source     text not null check (action_source in ('website', 'system_generated', 'other', 'phone_call', 'email', 'chat', 'physical_store')),
+  -- 'queue' = built by the outbox; 'legacy_direct' = audit row for an event the funnel route/QualifiedLead sent directly.
+  origin            text not null default 'queue' check (origin in ('queue', 'legacy_direct')),
+  appointment_id    uuid references public.appointments(id) on delete set null,
+  sale_id           uuid references public.sales(id) on delete set null,
   dataset_id        text not null,
   -- Stable. Website: '<funnel session id>:<EventName>' (same scheme as the browser Pixel, so Meta de-duplicates).
   -- Instant Form: 'crm:<leadgen id>:<stage>'.
@@ -352,14 +377,18 @@ create table if not exists public.meta_conversion_events (
   fbtrace_id        text,
   events_received   integer,
   sent_at           timestamptz,
+  -- A queue row created to retry a FAILED row (typically a failed direct send) points at it.
+  retry_of          uuid references public.meta_conversion_events(id) on delete set null,
   skip_reason       text,
   -- 'accepted' means the Graph API returned 200 and events_received >= 1. Nothing more.
   created_at        timestamptz not null default now(),
   updated_at        timestamptz not null default now(),
   constraint mce_skipped_has_reason check (status <> 'skipped' or skip_reason is not null)
 );
--- Duplicate prevention: one row per (dataset, event id), separately for test and live.
-create unique index if not exists uq_mce_event on public.meta_conversion_events(dataset_id, event_id, test_mode);
+-- Duplicate prevention: at most ONE non-failed row per (dataset, event id), separately for test and live. A FAILED row is
+-- excluded on purpose: a failed attempt (queue or direct send) must never permanently block a legitimate retry. Pending,
+-- processing (incl. an in-flight direct send's reservation), accepted and skipped rows all still collide.
+create unique index if not exists uq_mce_event on public.meta_conversion_events(dataset_id, event_id, test_mode) where status <> 'failed';
 create index if not exists idx_mce_due on public.meta_conversion_events(next_attempt_at) where status in ('pending', 'processing');
 create index if not exists idx_mce_lead on public.meta_conversion_events(lead_id);
 create index if not exists idx_mce_status on public.meta_conversion_events(status, created_at desc);

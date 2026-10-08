@@ -31,7 +31,7 @@ Status: code written and unit-tested; **not deployed, migration 0035 not applied
 
 `META_APP_SECRET`, `META_PAGE_ACCESS_TOKEN`, `META_WEBHOOK_VERIFY_TOKEN`, optional `META_GRAPH_VERSION` (default v26.0), and the
 existing `META_CONVERSIONS_API_TOKEN`. Then at `/app/integrations/meta` set the Page ID and enable the integration, and redeploy.
-Verification only (temporary): `META_TEST_EVENT_CODE` — see §4. **Remove it afterwards: while set, real server events are hidden from reporting.**
+Verification only (temporary): `META_TEST_EVENT_CODE` — see §4. **Correction (2026-10-07):** Meta's Conversions API docs say events sent with `test_event_code` "are not dropped. They flow into Events Manager and are used for targeting and ads measurement purposes" - it is NOT a sandbox and does not hide real events. Remove it from production when the check is done; use a separate test dataset for experiments.
 
 ## 3. End-to-end checklist — Instant Form
 
@@ -60,7 +60,7 @@ Set `META_TEST_EVENT_CODE`, redeploy, open Events Manager → dataset 9339627093
 - [ ] Uncheck the box after submitting, then book: no Schedule event.
 - [ ] Book the Calendly slot → **Schedule** (Server, with fbp/fbc, event_id `<session>:Schedule`).
 - [ ] Tennessee ZIP → no appointment, no Lead event, `service_area_valid=false`.
-- [ ] Remove `META_TEST_EVENT_CODE`, redeploy, delete the test lead, confirm normal events resume in Overview.
+- [ ] Remove `META_TEST_EVENT_CODE`, redeploy, delete the test lead. (Test-coded events were NOT hidden from the dataset: expect the test events to remain counted there.)
 
 ## 5. Phase 2 (NOT implemented): CRM events for Instant Forms — for review
 

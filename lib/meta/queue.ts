@@ -10,28 +10,31 @@
  */
 import {
   OUTCOME_TO_STAGE, META_MAX_EVENT_AGE_MS, buildPayload, decide, identifierSummary, interpretResponse,
-  type LeadForMeta, type Plan, type SessionForMeta, type SourceKind, type Stage, type SendOutcome,
+  type ActionSource, type LeadForMeta, type OutcomeRef, type Plan, type SessionForMeta, type SourceKind, type Stage, type SendOutcome,
 } from './conversions';
 
 export type DeliveryMode = 'off' | 'test' | 'live';
-export type Settings = { deliveryMode: DeliveryMode; testEventCode: string | null; datasetId: string | null; cursorAt: string | null; cursorId: string | null };
+export type Settings = { deliveryMode: DeliveryMode; testEventCode: string | null; testDatasetId: string | null; datasetId: string | null; cursorAt: string | null; cursorId: string | null };
 
 export type LedgerRow = {
   id: string; lead_id: string; outcome: string; occurred_at: string; recorded_at: string;
   actor_kind: 'user' | 'ai' | 'system'; amount: number | null; currency: string | null;
+  appointment_id: string | null; sale_id: string | null; reason_code: string | null;
 };
 export type LoadedLead = { lead: LeadForMeta; session: SessionForMeta | null; contractorId: string | null };
 
 export type NewEvent = {
   lead_id: string; contractor_id: string | null; outcome_event_id: string | null;
-  stage: Stage; source_kind: SourceKind; event_name: string; action_source: 'website' | 'system_generated';
+  stage: Stage; source_kind: SourceKind; event_name: string; action_source: ActionSource;
+  appointment_id: string | null; sale_id: string | null;
   dataset_id: string; event_id: string; event_time: string; value: number | null; currency: string | null;
   test_mode: boolean; status: 'pending' | 'skipped'; skip_reason: string | null;
 };
 export type ClaimedEvent = {
   id: string; lead_id: string; dataset_id: string; event_id: string; event_time: string; event_name: string;
-  action_source: 'website' | 'system_generated'; source_kind: SourceKind; value: number | null; currency: string | null;
-  test_mode: boolean; attempt_count: number; max_attempts: number;
+  action_source: ActionSource; source_kind: SourceKind; value: number | null; currency: string | null;
+  appointment_id: string | null; sale_id: string | null;
+  test_mode: boolean; attempt_count: number; max_attempts: number; retry_of: string | null;
 };
 export type FinishPatch = {
   status: 'pending' | 'accepted' | 'failed' | 'skipped';
@@ -44,6 +47,8 @@ export interface QueueStore {
   ledgerAfter(cursorAt: string | null, cursorId: string | null, limit: number): Promise<LedgerRow[]>;
   advanceCursor(row: LedgerRow): Promise<void>;
   loadLead(leadId: string): Promise<LoadedLead | null>;
+  /** Where the booking actually happened: funnel booking record, the recorder's stated channel, AI-call booked evidence. */
+  bookingProvenance(appointmentId: string): Promise<Pick<OutcomeRef, 'funnelBooking' | 'bookedVia' | 'aiCallBooked'>>;
   insertEvent(e: NewEvent): Promise<'inserted' | 'duplicate'>;
   claim(limit: number, worker: string): Promise<ClaimedEvent[]>;
   finish(id: string, patch: FinishPatch): Promise<void>;
@@ -51,10 +56,12 @@ export interface QueueStore {
 
 export type FeedResult = { examined: number; enqueued: number; skipped: number; duplicates: number; ignored: number };
 
-export async function feedFromLedger(store: QueueStore, opts: { now?: number; limit?: number; siteUrl?: string | null } = {}): Promise<FeedResult> {
+export async function feedFromLedger(store: QueueStore, opts: { now?: number; limit?: number } = {}): Promise<FeedResult> {
   const r: FeedResult = { examined: 0, enqueued: 0, skipped: 0, duplicates: 0, ignored: 0 };
   const s = await store.settings();
   if (s.deliveryMode === 'off' || !s.cursorAt) return r;           // off, or never activated: nothing to do
+  // Test events are NOT sandboxed by Meta (they feed the dataset they are sent to), so test mode only ever targets a dedicated test dataset.
+  if (s.deliveryMode === 'test' && !s.testDatasetId) return r;
   const rows = await store.ledgerAfter(s.cursorAt, s.cursorId, opts.limit ?? 200);
   for (const row of rows) {
     r.examined++;
@@ -64,19 +71,21 @@ export async function feedFromLedger(store: QueueStore, opts: { now?: number; li
     if (!stage || !eligibleActor) { r.ignored++; await store.advanceCursor(row); continue; }
     const loaded = await store.loadLead(row.lead_id);
     if (!loaded) { r.ignored++; await store.advanceCursor(row); continue; }
-    const stagesToSend: { stage: Stage; at: string; ledger: string | null; value: number | null; currency: string | null }[] = [];
+    const stagesToSend: { stage: Stage; at: string; ledger: string | null; value: number | null; currency: string | null; ref?: OutcomeRef }[] = [];
+    const ref: OutcomeRef = { appointmentId: row.appointment_id, saleId: row.sale_id, reasonCode: row.reason_code, ...(row.appointment_id ? await store.bookingProvenance(row.appointment_id) : {}) };
     // Conversion Leads wants every stage starting from the initial lead.
     if (loaded.lead.source === 'meta' && stage !== 'lead') stagesToSend.push({ stage: 'lead', at: loaded.lead.created_at, ledger: null, value: null, currency: null });
-    stagesToSend.push({ stage, at: row.occurred_at, ledger: row.id, value: row.amount, currency: row.currency });
+    stagesToSend.push({ stage, at: row.occurred_at, ledger: row.id, value: row.amount, currency: row.currency, ref });
     for (const st of stagesToSend) {
-      const d = decide({ stage: st.stage, occurredAt: st.at, now: opts.now, lead: loaded.lead, session: loaded.session, datasetId: s.datasetId, value: st.value, currency: st.currency, siteUrl: opts.siteUrl });
+      const d = decide({ stage: st.stage, occurredAt: st.at, now: opts.now, lead: loaded.lead, session: loaded.session, datasetId: s.datasetId, value: st.value, currency: st.currency, ref: st.ref });
       if (!d.ok && d.reason === 'not_meta_lead') continue;
       const p = (d.ok ? d.plan : d.plan) as Partial<Plan> | undefined;
       if (!p?.eventId || !p.eventName || !p.sourceKind || !p.actionSource) continue;
       const out = await store.insertEvent({
         lead_id: loaded.lead.id, contractor_id: loaded.contractorId, outcome_event_id: st.ledger, stage: st.stage,
         source_kind: p.sourceKind, event_name: p.eventName, action_source: p.actionSource,
-        dataset_id: p.datasetId ?? 'unconfigured', event_id: p.eventId, event_time: st.at,
+        appointment_id: st.ref?.appointmentId ?? null, sale_id: st.ref?.saleId ?? null,
+        dataset_id: s.deliveryMode === 'test' ? s.testDatasetId! : p.datasetId ?? 'unconfigured', event_id: p.eventId, event_time: st.at,
         value: p.value ?? null, currency: p.currency ?? null,
         test_mode: s.deliveryMode === 'test', status: d.ok ? 'pending' : 'skipped', skip_reason: d.ok ? null : d.reason,
       });
@@ -94,11 +103,12 @@ export type SendFn = (args: { datasetId: string; payload: unknown; testMode: boo
 
 export type DispatchResult = { claimed: number; accepted: number; retried: number; failed: number; held: string | null };
 
-export async function dispatchBatch(store: QueueStore, send: SendFn, opts: { now?: number; limit?: number; worker?: string; siteUrl?: string | null } = {}): Promise<DispatchResult> {
+export async function dispatchBatch(store: QueueStore, send: SendFn, opts: { now?: number; limit?: number; worker?: string } = {}): Promise<DispatchResult> {
   const r: DispatchResult = { claimed: 0, accepted: 0, retried: 0, failed: 0, held: null };
   const s = await store.settings();
   if (s.deliveryMode === 'off') { r.held = 'delivery_off'; return r; }
   if (s.deliveryMode === 'test' && !s.testEventCode) { r.held = 'test_mode_needs_test_event_code'; return r; }
+  if (s.deliveryMode === 'test' && !s.testDatasetId) { r.held = 'test_mode_needs_test_dataset'; return r; }
   const now = opts.now ?? Date.now();
   const claimed = await store.claim(opts.limit ?? 20, opts.worker ?? `w-${now}`);
   r.claimed = claimed.length;
@@ -113,9 +123,10 @@ export async function dispatchBatch(store: QueueStore, send: SendFn, opts: { now
     const loaded = await store.loadLead(ev.lead_id);
     if (!loaded) { await store.finish(ev.id, { status: 'skipped', skip_reason: 'lead_missing' }); continue; }
     // Re-check consent at send time: a later opt-out must stop events that are still waiting.
-    const d = decide({ stage: stageOf(ev), occurredAt: ev.event_time, now, lead: loaded.lead, session: loaded.session, datasetId: ev.dataset_id, value: ev.value, currency: ev.currency, siteUrl: opts.siteUrl });
+    const d = decide({ stage: stageOf(ev), occurredAt: ev.event_time, now, lead: loaded.lead, session: loaded.session, datasetId: ev.dataset_id, value: ev.value, currency: ev.currency,
+      ref: { appointmentId: ev.appointment_id, saleId: ev.sale_id, retryOfDirect: !!ev.retry_of, ...(ev.appointment_id ? await store.bookingProvenance(ev.appointment_id) : {}) } });
     if (!d.ok) { await store.finish(ev.id, { status: 'skipped', skip_reason: d.reason }); continue; }
-    const payload = buildPayload(ev, loaded.lead, { eventSourceUrl: d.plan.eventSourceUrl, testEventCode: ev.test_mode ? s.testEventCode : null });
+    const payload = buildPayload(ev, loaded.lead, { eventSourceUrl: loaded.lead.landing_page_url, testEventCode: ev.test_mode ? s.testEventCode : null });
     let out: SendOutcome;
     try { out = interpretResponse(ev.attempt_count, ev.max_attempts, await send({ datasetId: ev.dataset_id, payload, testMode: ev.test_mode })); }
     catch (e) { out = interpretResponse(ev.attempt_count, ev.max_attempts, { ok: false, failure: { kind: 'transient', retryable: true, code: null, message: e instanceof Error ? e.name : 'send error', httpStatus: null, fbtraceId: null } }); }
@@ -135,7 +146,7 @@ export async function dispatchBatch(store: QueueStore, send: SendFn, opts: { now
 
 function stageOf(ev: ClaimedEvent): Stage {
   const n = ev.event_name;
-  if (n === 'Lead' || n === 'lead') return 'lead';
+  if (n === 'Lead' || n === 'lead_received') return 'lead';
   if (n === 'QualifiedLead' || n === 'qualified') return 'qualified';
   if (n === 'Schedule' || n === 'appointment_booked') return 'appointment';
   return 'won';

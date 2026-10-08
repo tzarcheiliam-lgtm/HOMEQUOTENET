@@ -2,6 +2,8 @@
 
 import { revalidatePath } from 'next/cache';
 import { after } from 'next/server';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { sendQualifiedLeadEvent } from '@/lib/meta/qualified';
 import { runMetaConversionTick } from '@/lib/meta/queue.server';
 import { reasonAllowed } from '@/lib/leads/constants';
 import { redirect } from 'next/navigation';
@@ -383,11 +385,15 @@ export async function updateQualification(
   }
 
   const changed = before?.qualification_status !== reviewStatus;
-  // Meta feedback: the DB ledger trigger records this transition; the conversion queue turns a person's
-  // 'qualified' decision into an event only when an admin has switched delivery on (it is OFF by default).
+  // Meta feedback. The DB ledger trigger records this transition. Two mutually exclusive senders, so there is no
+  // reporting gap and no double send: while the conversion queue is OFF (default) the original direct QualifiedLead send
+  // keeps running; once an admin switches the queue to test/live the direct send turns itself off and the queue takes over.
   // Best-effort and non-blocking; a re-save of an unchanged status records nothing.
   if (changed && reviewStatus === 'qualified') {
-    after(() => runMetaConversionTick().then(() => undefined, () => undefined));
+    after(async () => {
+      await sendQualifiedLeadEvent(createAdminClient(), id);
+      await runMetaConversionTick().then(() => undefined, () => undefined);
+    });
   }
   await recordActivity(
     id,
@@ -658,6 +664,8 @@ export async function scheduleAppointment(
     scheduled_at: new Date(scheduledAt).toISOString(),
     location: str(formData, 'location'),
     notes: str(formData, 'notes'),
+    // Where the booking happened, as the recorder states it (used only to label the Meta event source truthfully).
+    booked_via: ['phone_call', 'email', 'chat', 'in_person', 'other'].includes(str(formData, 'booked_via') ?? '') ? str(formData, 'booked_via') : null,
     created_by: await currentUserId(),
   });
   if (error) return { error: error.message };

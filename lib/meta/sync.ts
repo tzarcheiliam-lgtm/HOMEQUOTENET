@@ -5,6 +5,7 @@ import {
   type GraphOptions, type MetaInsightRow,
 } from './marketing-api';
 import { actionsToMap, addDays, zonedDate } from './metrics';
+import { pixelIdsFromTrackingSpecs } from './datasets';
 
 /**
  * Read-only import of Meta ad accounts, campaigns, ad sets, ads and daily ad-level insights into the HQN
@@ -55,8 +56,8 @@ export async function runMetaSync(db: SupabaseClient, graph: GraphOptions, opts:
         const stamp = new Date().toISOString();
         // Campaign upsert omits contractor_id so an admin's per-campaign override survives re-syncs.
         for (const b of chunk(campaigns, 200)) await db.from('meta_campaigns').upsert(b.map((c) => ({ id: c.id, account_id: acct.id, name: c.name ?? null, objective: c.objective ?? null, status: c.status ?? null, effective_status: c.effective_status ?? null, synced_at: stamp })), { onConflict: 'id' });
-        for (const b of chunk(adsets, 200)) await db.from('meta_adsets').upsert(b.map((s) => ({ id: s.id, account_id: acct.id, campaign_id: s.campaign_id, name: s.name ?? null, status: s.status ?? null, effective_status: s.effective_status ?? null, optimization_goal: s.optimization_goal ?? null, attribution_spec: s.attribution_spec ?? null, synced_at: stamp })), { onConflict: 'id' });
-        for (const b of chunk(ads, 200)) await db.from('meta_ads').upsert(b.map((a) => ({ id: a.id, account_id: acct.id, campaign_id: a.campaign_id, adset_id: a.adset_id, name: a.name ?? null, status: a.status ?? null, effective_status: a.effective_status ?? null, synced_at: stamp })), { onConflict: 'id' });
+        for (const b of chunk(adsets, 200)) await db.from('meta_adsets').upsert(b.map((s) => ({ id: s.id, account_id: acct.id, campaign_id: s.campaign_id, name: s.name ?? null, status: s.status ?? null, effective_status: s.effective_status ?? null, optimization_goal: s.optimization_goal ?? null, attribution_spec: s.attribution_spec ?? null, promoted_object: s.promoted_object ?? null, synced_at: stamp })), { onConflict: 'id' });
+        for (const b of chunk(ads, 200)) await db.from('meta_ads').upsert(b.map((a) => ({ id: a.id, account_id: acct.id, campaign_id: a.campaign_id, adset_id: a.adset_id, name: a.name ?? null, status: a.status ?? null, effective_status: a.effective_status ?? null, tracking_pixel_ids: pixelIdsFromTrackingSpecs(a.tracking_specs), synced_at: stamp })), { onConflict: 'id' });
         const until = zonedDate(now, acct.timezone_name || 'UTC');
         const since = addDays(until, -(days - 1));
         const insights = await listDailyInsights(acct.id, since, until, graph);

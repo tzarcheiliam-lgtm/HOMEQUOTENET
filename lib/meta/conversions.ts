@@ -36,7 +36,7 @@ export const CRM_SOURCE_NAME = 'HomeQuote Network';
 export const WEBSITE_EVENT_NAME: Record<Stage, string> = { lead: 'Lead', appointment: 'Schedule', qualified: 'QualifiedLead', won: 'WonJob' };
 /** Stages the funnel session route already sends directly; the queue must never duplicate them. */
 export const WEBSITE_LEGACY_DIRECT: ReadonlySet<Stage> = new Set<Stage>(['lead']);
-export const CRM_EVENT_NAME: Record<Stage, string> = { lead: 'lead', qualified: 'qualified', appointment: 'appointment_booked', won: 'won' };
+export const CRM_EVENT_NAME: Record<Stage, string> = { lead: 'lead_received', qualified: 'qualified', appointment: 'appointment_booked', won: 'won' };
 
 /** HQN ledger outcome -> stage. Everything else (not_qualified, lost, no_show, ...) is never sent. */
 export const OUTCOME_TO_STAGE: Record<string, Stage | undefined> = {
@@ -53,17 +53,40 @@ export type SessionForMeta = {
   pixelId?: string; isDemo: boolean; slug?: string; bookedAt?: string | null;
 };
 
+/**
+ * What the outcome refers to and WHERE the underlying action happened (provenance). The database record's author
+ * (person, AI or system) is deliberately not an input: an AI call only claims a booking, a person records the appointment.
+ */
+export type OutcomeRef = {
+  appointmentId?: string | null; saleId?: string | null;
+  /**
+   * Set when this exact appointment was created by the visitor's own booking in the funnel (funnel_bookings row).
+   * 'calendly': the session route already sent its Schedule server event. 'other' (GHL calendar): the browser fires
+   * Schedule but NO server event exists, so the queue sends it - with the browser's event id, to de-duplicate.
+   */
+  funnelBooking?: 'calendly' | 'other' | null;
+  /** The recording person's own statement of how the booking was made (appointments.booked_via). */
+  bookedVia?: string | null;
+  /** A completed AI call for this lead + contractor reported a booking and began before the appointment was recorded. */
+  aiCallBooked?: boolean;
+  /** Qualification reason code (how the qualifying confirmation happened). */
+  reasonCode?: string | null;
+  /** This send retries a FAILED direct send (the funnel/legacy sender), so the 'already sent directly' skip does not apply. */
+  retryOfDirect?: boolean;
+};
+
 export type EligibilityInput = {
   stage: Stage; occurredAt: string; now?: number;
   lead: LeadForMeta; session: SessionForMeta | null;
   datasetId: string | null;           // admin-configured dataset for CRM events
   value?: number | null; currency?: string | null;
-  siteUrl?: string | null;
+  ref?: OutcomeRef;
 };
 
+export type ActionSource = 'website' | 'system_generated' | 'other' | 'phone_call' | 'email' | 'chat' | 'physical_store';
 export type Plan = {
-  sourceKind: SourceKind; eventName: string; actionSource: 'website' | 'system_generated';
-  datasetId: string; eventId: string; value: number | null; currency: string | null; eventSourceUrl: string | null;
+  sourceKind: SourceKind; eventName: string; actionSource: ActionSource;
+  datasetId: string; eventId: string; value: number | null; currency: string | null;
 };
 export type Decision =
   | { ok: true; plan: Plan }
@@ -71,6 +94,31 @@ export type Decision =
   | { ok: false; reason: 'not_meta_lead' | string; plan?: Partial<Plan> };
 
 export const isLeadgenId = (v: string | null | undefined): v is string => !!v && /^\d{15,17}$/.test(v);
+
+/**
+ * Meta `action_source` = where the conversion actually happened (Meta: website = "made on your website", phone_call =
+ * "over the phone", email, chat = "messaging app, SMS...", physical_store = "in person", other = "not listed").
+ * Derived from provenance in this order; never from who wrote the row.
+ *  appointment: visitor's funnel booking -> website; person-stated channel; AI call that reported a booking -> phone_call; else other.
+ *  qualified:   how the confirmation happened (reason code): by phone / text / email; otherwise other.
+ *  won:         a sale is recorded off-platform and its channel is not captured -> other.
+ */
+export function actionSourceFor(stage: Stage, ref?: OutcomeRef): ActionSource {
+  if (stage === 'lead') return 'website'; // the visitor submitted the form on the site
+  if (stage === 'appointment') {
+    if (ref?.funnelBooking) return 'website';
+    const via = ({ phone_call: 'phone_call', email: 'email', chat: 'chat', in_person: 'physical_store' } as Record<string, ActionSource>)[ref?.bookedVia ?? ''];
+    if (via) return via;
+    return ref?.aiCallBooked ? 'phone_call' : 'other';
+  }
+  if (stage === 'qualified') {
+    return ({ confirmed_by_call: 'phone_call', confirmed_by_text: 'chat', confirmed_by_email: 'email' } as Record<string, ActionSource>)[ref?.reasonCode ?? ''] ?? 'other';
+  }
+  return 'other';
+}
+
+/** AI-call booked evidence, using the SAME outcome rule the workflow builder uses (resolveCallOutcome), not a second parser. */
+export const AI_BOOKING_MAX_GAP_MS = 72 * 3600 * 1000;
 
 export function decide(i: EligibilityInput): Decision {
   const now = i.now ?? Date.now();
@@ -86,9 +134,10 @@ export function decide(i: EligibilityInput): Decision {
   // ---- Instant Form (CRM) --------------------------------------------------------------------
   if (i.lead.source === 'meta') {
     if (!isLeadgenId(i.lead.external_lead_id)) return { ok: false, reason: 'missing_meta_lead_id' };
+    // One event per lead per STAGE: Meta's funnel model is "the lead reached stage X", not a transaction log.
     const plan: Partial<Plan> = {
       sourceKind: 'instant_form_crm', eventName: CRM_EVENT_NAME[i.stage], actionSource: 'system_generated',
-      eventId: `crm:${i.lead.external_lead_id}:${i.stage}`, value: null, currency: null, eventSourceUrl: null,
+      eventId: `crm:${i.lead.external_lead_id}:${i.stage}`, value: null, currency: null,
     };
     if (!i.datasetId) return { ok: false, reason: 'no_dataset', plan };
     const bad = tooOldOrEarly();
@@ -102,21 +151,27 @@ export function decide(i: EligibilityInput): Decision {
     if (!i.session || !hasSignal) return { ok: false, reason: 'not_meta_lead' };
     if (i.session.isDemo) return { ok: false, reason: 'demo' };
     const eventName = WEBSITE_EVENT_NAME[i.stage];
+    // Separate appointments / sales on one lead are separate conversions; qualification happens once per lead.
+    const visitorBooking = i.stage === 'appointment' && !!i.ref?.funnelBooking;
+    const suffix = visitorBooking ? null : i.stage === 'appointment' ? i.ref?.appointmentId : i.stage === 'won' ? i.ref?.saleId : null;
     const plan: Partial<Plan> = {
-      sourceKind: 'website_pixel', eventName, actionSource: 'website', eventId: `${i.session.id}:${eventName}`,
-      eventSourceUrl: i.lead.landing_page_url ?? (i.siteUrl && i.session.slug ? `${i.siteUrl}/estimate/${i.session.slug}` : null),
-      value: null, currency: null,
+      sourceKind: 'website_pixel', eventName,
+      // Where the underlying action happened (see actionSourceFor); a visitor booking on the site is a website conversion
+      // and shares the browser Pixel's event id.
+      actionSource: actionSourceFor(i.stage, i.ref),
+      eventId: suffix ? `${i.session.id}:${eventName}:${suffix}` : `${i.session.id}:${eventName}`, value: null, currency: null,
     };
-    if (WEBSITE_LEGACY_DIRECT.has(i.stage)) return { ok: false, reason: 'sent_directly_by_funnel', plan };
-    if (i.stage === 'appointment' && i.session.bookedAt) return { ok: false, reason: 'sent_directly_by_funnel', plan };
+    if (i.stage === 'lead' && !i.ref?.retryOfDirect) return { ok: false, reason: 'sent_directly_by_funnel', plan };
+    if (i.stage === 'appointment' && i.ref?.funnelBooking === 'calendly' && !i.ref?.retryOfDirect) return { ok: false, reason: 'sent_directly_by_funnel', plan };
+    if (visitorBooking && !i.lead.landing_page_url) return { ok: false, reason: 'no_source_url', plan };
+    if ((i.stage === 'appointment' || i.stage === 'won') && !suffix && !visitorBooking) return { ok: false, reason: 'missing_reference', plan };
     if (!i.session.pixelId) return { ok: false, reason: 'no_pixel', plan };
     plan.datasetId = i.session.pixelId;
     const allowed = i.session.measurementAllowed ?? i.session.consentMode === 'opt_out';
     if (!allowed) return { ok: false, reason: 'measurement_not_allowed', plan };
-    if (!plan.eventSourceUrl) return { ok: false, reason: 'no_source_url', plan };
     const bad = tooOldOrEarly();
     if (bad) return { ok: false, reason: bad, plan };
-    if (new Date(i.occurredAt).getTime() < new Date(i.session.createdAt).getTime()) return { ok: false, reason: 'before_lead_created', plan };
+    if (at < new Date(i.session.createdAt).getTime()) return { ok: false, reason: 'before_lead_created', plan };
     // Value only when a real recorded amount AND currency exist; a won event without them is sent value-less.
     if (i.stage === 'won' && i.value != null && i.value > 0 && /^[A-Z]{3}$/.test(i.currency ?? '')) { plan.value = i.value; plan.currency = i.currency!; }
     return { ok: true, plan: plan as Plan };
@@ -129,7 +184,7 @@ export function decide(i: EligibilityInput): Decision {
 // Payloads
 // --------------------------------------------------------------------------------------------------
 export type EventRow = {
-  event_name: string; event_id: string; event_time: string; action_source: 'website' | 'system_generated';
+  event_name: string; event_id: string; event_time: string; action_source: ActionSource;
   value: number | null; currency: string | null; source_kind: SourceKind;
 };
 
@@ -150,8 +205,10 @@ export function buildPayload(row: EventRow, lead: LeadForMeta, opts: { eventSour
       // Raw IP / user agent from the original request are deliberately never stored, so never sent.
     };
     event = {
-      event_name: row.event_name, event_time: eventTime, event_id: row.event_id, action_source: 'website',
-      event_source_url: opts.eventSourceUrl, user_data: buildUserData(user),
+      event_name: row.event_name, event_time: eventTime, event_id: row.event_id, action_source: row.action_source,
+      // event_source_url is required only for action_source=website; other sources omit it.
+      ...(row.action_source === 'website' && opts.eventSourceUrl ? { event_source_url: opts.eventSourceUrl } : {}),
+      user_data: buildUserData(user),
       ...(row.value != null && row.currency ? { custom_data: { value: row.value, currency: row.currency } } : {}),
     };
   }
