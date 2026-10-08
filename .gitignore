@@ -45,3 +45,6 @@ postgres_data/
 
 # supabase CLI scratch
 supabase/.temp/
+
+# local end-to-end harness output
+.e2e-out/

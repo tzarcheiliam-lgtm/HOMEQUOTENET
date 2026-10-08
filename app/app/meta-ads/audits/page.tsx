@@ -18,8 +18,14 @@ import { ProposalCard, type ProposalView } from '@/components/meta/studio/propos
 export const metadata = { title: 'Audits & Recommendations · HomeQuote Network' };
 export const dynamic = 'force-dynamic';
 
-export default async function AuditsPage() {
+const NOTICES: Record<string, string> = {
+  applied: 'Applied in Meta. The previous values were saved on the proposal. Reversing is a new proposal that needs approval, and spend or delivery already caused cannot be undone.',
+  rejected: 'Rejected. Nothing was changed in Meta.',
+};
+
+export default async function AuditsPage({ searchParams }: { searchParams: Promise<{ notice?: string }> }) {
   await requireRole(['admin']);
+  const notice = NOTICES[(await searchParams).notice ?? ''];
   const db = await createClient();
   const today = zonedDate(new Date(), HQN_TIMEZONE);
   const [{ data: accounts }, { data: audits }, { data: proposals }] = await Promise.all([
@@ -40,6 +46,7 @@ export default async function AuditsPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Audits & Recommendations" description="Evidence-based checks of your Meta account, and the changes they suggest. Nothing changes in Meta until you approve it." />
+      {notice && <p role="status" className="rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p>}
       <Card>
         <CardHeader><CardTitle>Run an audit</CardTitle><CardDescription>Method: {AUDIT_VERSION}. Checks that lack data or one of your thresholds say &ldquo;Not assessed&rdquo; instead of guessing. There is no made-up score.</CardDescription></CardHeader>
         <CardContent><RunAuditForm accounts={(accounts ?? []) as { id: string; name: string | null }[]} defaults={{ since: addDays(today, -30), until: addDays(today, -1) }} /></CardContent>

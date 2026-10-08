@@ -1,6 +1,7 @@
 import { buildPlan, draftTag, type DraftConfig, type PlanInput, type PlanStep, type StepName } from './draft';
 import type { MetaWriter } from './write-api';
-import { redactSecrets, type GraphFailure } from '@/lib/meta/marketing-api';
+import { type GraphFailure} from '@/lib/meta/marketing-api';
+import { redact } from './redact';
 
 /**
  * Paused ad creation as a resumable pipeline: media -> campaign -> ad set -> creative -> ad.
@@ -15,7 +16,7 @@ import { redactSecrets, type GraphFailure } from '@/lib/meta/marketing-api';
  *  - Concurrent submissions are prevented upstream by the atomic claim_meta_draft() status transition.
  */
 
-export type CreatedObjects = Partial<Record<'image_hash' | 'video_id' | 'campaign_id' | 'adset_id' | 'creative_id' | 'ad_id', string>>;
+export type CreatedObjects = Partial<Record<'image_hash' | 'thumb_hash' | 'video_id' | 'campaign_id' | 'adset_id' | 'creative_id' | 'ad_id', string>>;
 
 export interface DraftStore {
   saveObjects(patch: CreatedObjects): Promise<void>;
@@ -23,7 +24,7 @@ export interface DraftStore {
 
 export type MediaSource =
   | { kind: 'image'; bytesBase64: () => Promise<string> }
-  | { kind: 'video'; signedUrl: () => Promise<string> };
+  | { kind: 'video'; signedUrl: () => Promise<string>; /** cover frame captured at upload, uploaded as the video's image_hash */ thumbnailBase64: () => Promise<string | null> };
 
 export type ExecuteInput = {
   accountId: string; // act_...
@@ -45,7 +46,7 @@ export type ExecuteResult =
   | { status: 'partial' | 'failed'; objects: CreatedObjects; failedStep: StepName; failure: GraphFailure; message: string };
 
 const ID_KEY: Record<StepName, keyof CreatedObjects> = {
-  media: 'image_hash', campaign: 'campaign_id', adset: 'adset_id', creative: 'creative_id', ad: 'ad_id',
+  media: 'image_hash', thumbnail: 'thumb_hash', campaign: 'campaign_id', adset: 'adset_id', creative: 'creative_id', ad: 'ad_id',
 };
 
 export async function executeDraft(input: ExecuteInput): Promise<ExecuteResult> {
@@ -56,7 +57,7 @@ export async function executeDraft(input: ExecuteInput): Promise<ExecuteResult> 
 
   const fail = (step: StepName, failure: GraphFailure): ExecuteResult => ({
     status: Object.keys(have).some((k) => have[k as keyof CreatedObjects]) ? 'partial' : 'failed',
-    objects: have, failedStep: step, failure, message: redactSecrets(failure.message),
+    objects: have, failedStep: step, failure, message: redact(failure.message),
   });
 
   const buildSteps = async (): Promise<PlanStep[]> => buildPlan({
@@ -74,7 +75,7 @@ export async function executeDraft(input: ExecuteInput): Promise<ExecuteResult> 
     return (r.data.data ?? []).find((o) => o.name === step.findByName)?.id ?? null;
   };
 
-  const order: StepName[] = ['media', 'campaign', 'adset', 'creative', 'ad'];
+  const order: StepName[] = ['media', 'thumbnail', 'campaign', 'adset', 'creative', 'ad'];
   for (const name of order) {
     const planned = (await buildSteps()).find((s) => s.step === name);
     if (!planned) continue; // e.g. campaign/adset when reusing existing objects
@@ -108,6 +109,28 @@ export async function executeDraft(input: ExecuteInput): Promise<ExecuteResult> 
         await input.store.saveObjects({ video_id: have.video_id });
       }
       continue;
+    }
+
+    if (name === 'thumbnail') {
+      // Video cover image: uploaded to the ad account's image library and referenced by hash (video_data.image_hash).
+      const b64 = input.media.kind === 'video' ? await input.media.thumbnailBase64() : null;
+      if (!b64) return fail(name, { kind: 'invalid', retryable: false, httpStatus: null, code: null, subcode: null, message: 'The video has no cover image to upload', fbtraceId: null });
+      const r = await input.writer.post<{ images?: Record<string, { hash?: string }> }>(`${acct}/adimages`, { bytes: b64 });
+      if (!r.ok) return fail(name, r.failure);
+      const hash = Object.values(r.data.images ?? {})[0]?.hash;
+      if (!hash) return fail(name, { kind: 'unknown', retryable: false, httpStatus: null, code: null, subcode: null, message: 'Meta returned no image hash for the cover image', fbtraceId: null });
+      have.thumb_hash = hash;
+      await input.store.saveObjects({ thumb_hash: hash });
+      continue;
+    }
+
+    if (name === 'creative' && isVideo && have.video_id) {
+      // A video must finish processing before a creative can use it. Fail closed on anything not clearly 'ready'.
+      const v = await input.writer.get<{ status?: { video_status?: string } }>(have.video_id, { fields: 'status' });
+      if (!v.ok) return fail(name, v.failure);
+      const state = String(v.data.status?.video_status ?? '').toLowerCase();
+      if (state === 'error') return fail(name, { kind: 'invalid', retryable: false, httpStatus: null, code: null, subcode: null, message: 'Meta reports the video failed to process', fbtraceId: null });
+      if (state !== 'ready') return fail(name, { kind: 'transient', retryable: true, httpStatus: null, code: null, subcode: null, message: `Meta has not finished processing the video (status: ${state || 'not reported'}). Retry in a few minutes`, fbtraceId: null });
     }
 
     // Adopt an object left behind by an earlier attempt before creating anything.

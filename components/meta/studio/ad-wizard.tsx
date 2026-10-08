@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { CTA_TYPES, FB_POSITIONS, IG_POSITIONS, eligibleGoals, type DraftConfig } from '@/lib/meta/studio/draft';
+import { CTA_TYPES, LEAD_AD_CTA_TYPES, eligibleGoals, type DraftConfig } from '@/lib/meta/studio/draft';
 import { buildDestination } from '@/lib/meta/studio/url-params';
 import { zonedLocalToIso } from '@/lib/meta/studio/time';
 import { saveDraft } from '@/lib/actions/meta-studio';
@@ -24,8 +24,6 @@ export type WizardData = {
 };
 export type WizardInitial = { id?: string; name: string; contractor_id: string | null; account_id: string; creative_id: string | null; config: DraftConfig } | null;
 
-const FB_LABEL: Record<string, string> = { feed: 'Facebook Feed', story: 'Facebook Stories', video_feeds: 'Facebook video feeds', marketplace: 'Marketplace', right_hand_column: 'Right column', search: 'Facebook Search' };
-const IG_LABEL: Record<string, string> = { stream: 'Instagram Feed', story: 'Instagram Stories', reels: 'Instagram Reels' };
 const GOAL_LABEL: Record<string, string> = {
   LEAD_GENERATION: 'Maximize number of leads', QUALITY_LEAD: 'Maximize quality leads (needs outcome events)', OFFSITE_CONVERSIONS: 'Website conversions (Lead event)',
   LINK_CLICKS: 'Link clicks', LANDING_PAGE_VIEWS: 'Landing page views',
@@ -58,7 +56,7 @@ export function AdWizard({ data, initial }: { data: WizardData; initial: WizardI
     bid_strategy: c0?.bid.strategy ?? 'LOWEST_COST_WITHOUT_CAP', bid_amount: c0?.bid.amount ? String(c0.bid.amount) : '',
     start: '', end: '', countries: c0?.targeting.countries.join(', ') ?? 'US', age_min: String(c0?.targeting.age_min ?? 18), age_max: String(c0?.targeting.age_max ?? 65),
     gender: c0?.targeting.genders.length === 1 ? String(c0.targeting.genders[0]) : '', regions: c0?.targeting.regions.join(', ') ?? '',
-    placements: c0?.placements.mode ?? 'automatic', fb: c0?.placements.mode === 'manual' ? c0.placements.facebook : ([] as string[]), ig: c0?.placements.mode === 'manual' ? c0.placements.instagram : ([] as string[]),
+    probe: c0?.budget_unit_probe ?? false,
     primary_text: c0?.ad.primary_text ?? '', headline: c0?.ad.headline ?? '', description: c0?.ad.description ?? '', cta: c0?.ad.cta ?? 'GET_QUOTE',
   });
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((p) => ({ ...p, [k]: v }));
@@ -77,7 +75,7 @@ export function AdWizard({ data, initial }: { data: WizardData; initial: WizardI
   const goals = eligibleGoals(f.objective as 'OUTCOME_LEADS' | 'OUTCOME_TRAFFIC', f.location as 'instant_form' | 'website');
   const dest = useMemo(() => (f.location === 'website' && f.destination_url ? buildDestination(f.destination_url) : null), [f.location, f.destination_url]);
 
-  function toggle(list: 'fb' | 'ig', v: string) { set(list, f[list].includes(v) ? f[list].filter((x) => x !== v) : [...f[list], v]); }
+  const ctaOptions = f.location === 'instant_form' ? LEAD_AD_CTA_TYPES : CTA_TYPES;
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -93,7 +91,7 @@ export function AdWizard({ data, initial }: { data: WizardData; initial: WizardI
       bid: { strategy: f.bid_strategy, amount: num(f.bid_amount) },
       schedule: { start: startIso, end: endIso },
       targeting: { countries: f.countries.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean), age_min: Number(f.age_min), age_max: Number(f.age_max), genders: f.gender ? [Number(f.gender)] : [], regions: f.regions.split(',').map((s) => s.trim()).filter(Boolean) },
-      placements: f.placements === 'automatic' ? { mode: 'automatic' } : { mode: 'manual', facebook: f.fb, instagram: f.ig },
+      placements: { mode: 'automatic' }, budget_unit_probe: f.probe,
       ad: { primary_text: f.primary_text, headline: f.headline, description: f.description, cta: f.cta, destination_url: f.location === 'website' ? f.destination_url : null, lead_form_id: f.location === 'instant_form' ? f.lead_form_id || null : null },
     };
     start(async () => {
@@ -124,7 +122,7 @@ export function AdWizard({ data, initial }: { data: WizardData; initial: WizardI
         {f.mode === 'existing_adset' && <Field id="w-set" label="Existing ad set"><Select id="w-set" value={f.adset_id} onChange={(e) => set('adset_id', e.target.value)}><option value="">Choose…</option>{sets.map((s) => <option key={s.id} value={s.id}>{s.name ?? s.id}</option>)}</Select></Field>}
         <Field id="w-obj" label="Objective"><Select id="w-obj" value={f.objective} onChange={(e) => { const o = e.target.value; const loc = o === 'OUTCOME_TRAFFIC' ? 'website' : f.location; setF((p) => ({ ...p, objective: o as typeof f.objective, location: loc, goal: eligibleGoals(o as 'OUTCOME_LEADS', loc as 'website')[0] ?? p.goal })); }}>
           <option value="OUTCOME_LEADS">Leads</option><option value="OUTCOME_TRAFFIC">Traffic</option></Select></Field>
-        <Field id="w-loc" label="Where do people convert?"><Select id="w-loc" value={f.location} onChange={(e) => { const l = e.target.value; setF((p) => ({ ...p, location: l as typeof f.location, goal: eligibleGoals(p.objective as 'OUTCOME_LEADS', l as 'website')[0] ?? p.goal })); }}>
+        <Field id="w-loc" label="Where do people convert?"><Select id="w-loc" value={f.location} onChange={(e) => { const l = e.target.value; setF((p) => ({ ...p, location: l as typeof f.location, cta: l === 'instant_form' && !LEAD_AD_CTA_TYPES.includes(p.cta as never) ? 'GET_QUOTE' : p.cta, goal: eligibleGoals(p.objective as 'OUTCOME_LEADS', l as 'website')[0] ?? p.goal })); }}>
           <option value="instant_form" disabled={f.objective === 'OUTCOME_TRAFFIC'}>Instant Form (on Facebook/Instagram)</option><option value="website">My website</option></Select></Field>
         <Field id="w-goal" label="Optimize for" hint="Only goals that fit the choices above are listed."><Select id="w-goal" value={f.goal} onChange={(e) => set('goal', e.target.value as typeof f.goal)}>{goals.map((g) => <option key={g} value={g}>{GOAL_LABEL[g] ?? g}</option>)}</Select></Field>
         {f.location === 'website' && f.goal === 'OFFSITE_CONVERSIONS' && <Field id="w-ds" label="Dataset (Pixel)"><Select id="w-ds" value={f.dataset_id} onChange={(e) => set('dataset_id', e.target.value)}><option value="">Choose…</option>{datasets.map((d) => <option key={d.meta_id} value={d.meta_id}>{d.name ?? d.meta_id}</option>)}</Select></Field>}
@@ -143,14 +141,8 @@ export function AdWizard({ data, initial }: { data: WizardData; initial: WizardI
         <Field id="w-amin" label="Minimum age"><Input id="w-amin" type="number" min="18" max="65" value={f.age_min} onChange={(e) => set('age_min', e.target.value)} /></Field>
         <Field id="w-amax" label="Maximum age"><Input id="w-amax" type="number" min="18" max="65" value={f.age_max} onChange={(e) => set('age_max', e.target.value)} /></Field>
         <Field id="w-g" label="Gender"><Select id="w-g" value={f.gender} onChange={(e) => set('gender', e.target.value)}><option value="">All</option><option value="1">Men</option><option value="2">Women</option></Select></Field>
-        <Field id="w-pl" label="Placements"><Select id="w-pl" value={f.placements} onChange={(e) => set('placements', e.target.value as typeof f.placements)}><option value="automatic">Automatic (recommended by Meta)</option><option value="manual">Choose placements</option></Select></Field>
-        {f.placements === 'manual' && (
-          <fieldset className="space-y-2 sm:col-span-2"><legend className="text-sm font-medium">Placements</legend>
-            <div className="grid gap-1 sm:grid-cols-2">
-              {FB_POSITIONS.map((p) => <label key={p} className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" className="size-4" checked={f.fb.includes(p)} onChange={() => toggle('fb', p)} />{FB_LABEL[p]}</label>)}
-              {IG_POSITIONS.map((p) => <label key={p} className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" className="size-4" checked={f.ig.includes(p)} onChange={() => toggle('ig', p)} />{IG_LABEL[p]}</label>)}
-            </div></fieldset>
-        )}
+        <Field id="w-pl" label="Placements" hint="Automatic placements only. Manual placement values could not be verified against Meta&rsquo;s documentation, so choosing them is disabled; set placements in Ads Manager if you need them."><Select id="w-pl" value="automatic" disabled><option value="automatic">Automatic (recommended by Meta)</option></Select></Field>
+        <label className="flex min-h-11 items-start gap-2 text-sm sm:col-span-2"><input type="checkbox" className="mt-1 size-4" checked={f.probe} onChange={(e) => set('probe', e.target.checked)} /><span><b>This is a budget-unit probe</b> (paused, budget &le; 5.00). Use it once per ad account to confirm in Ads Manager that Meta reads the budget the way HQN sends it. Budgets for real ads stay blocked until you do.</span></label>
       </Section>
 
       <Section n={4} title="Creative" hint="Choose an uploaded file that passed validation. Upload new ones in the Creative Library.">
@@ -161,7 +153,7 @@ export function AdWizard({ data, initial }: { data: WizardData; initial: WizardI
         <Field id="w-pt" label="Primary text" wide hint={`${f.primary_text.length} characters. Over 125 may be cut off behind “See more”.`}><Textarea id="w-pt" required rows={4} maxLength={2200} value={f.primary_text} onChange={(e) => set('primary_text', e.target.value)} /></Field>
         <Field id="w-h" label="Headline" hint={`${f.headline.length}/40 recommended`}><Input id="w-h" maxLength={255} value={f.headline} onChange={(e) => set('headline', e.target.value)} /></Field>
         <Field id="w-d" label="Description (where shown)" hint={`${f.description.length}/30 recommended`}><Input id="w-d" maxLength={255} value={f.description} onChange={(e) => set('description', e.target.value)} /></Field>
-        <Field id="w-cta" label="Button"><Select id="w-cta" value={f.cta} onChange={(e) => set('cta', e.target.value as typeof f.cta)}>{CTA_TYPES.map((t) => <option key={t} value={t}>{t.replace(/_/g, ' ').toLowerCase().replace(/^./, (c) => c.toUpperCase())}</option>)}</Select></Field>
+        <Field id="w-cta" label="Button" hint={f.location === 'instant_form' ? 'Instant Form ads allow only these buttons (per Meta\u2019s lead-ads guide).' : undefined}><Select id="w-cta" value={f.cta} onChange={(e) => set('cta', e.target.value as typeof f.cta)}>{ctaOptions.map((t) => <option key={t} value={t}>{t.replace(/_/g, ' ').toLowerCase().replace(/^./, (c) => c.toUpperCase())}</option>)}</Select></Field>
         {f.location === 'instant_form'
           ? <Field id="w-form" label="Instant Form" hint="Forms are created in Meta; pick an existing one for this Page."><Select id="w-form" required value={f.lead_form_id} onChange={(e) => set('lead_form_id', e.target.value)}><option value="">{forms.length ? 'Choose…' : 'No forms found for this Page'}</option>{forms.map((x) => <option key={x.meta_id} value={x.meta_id}>{x.name ?? x.meta_id}</option>)}</Select></Field>
           : <Field id="w-url" label="Destination URL" wide><Input id="w-url" type="url" required inputMode="url" placeholder="https://…" value={f.destination_url} onChange={(e) => set('destination_url', e.target.value)} />

@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Msg } from './ui';
 import { deleteCreative, updateCreative, type StudioState } from '@/lib/actions/meta-studio';
+import { keepValuesOnError } from '@/lib/forms/keep-values';
 
 export type CreativeView = {
   id: string; name: string; kind: 'image' | 'video'; status: 'uploaded' | 'processing' | 'ready' | 'rejected'; width: number | null; height: number | null; duration_seconds: number | null;
@@ -40,14 +41,14 @@ export function CreativeCard({ c }: { c: CreativeView }) {
       {c.kind === 'video' && c.previewUrl && <video src={c.previewUrl} controls preload="none" playsInline className="max-h-56 w-full rounded" />}
       {c.validation.errors.map((e) => <p key={e.code} role="alert" className="text-sm text-destructive">{e.message}</p>)}
       {c.validation.warnings.map((w) => <p key={w.code} className="text-sm text-amber-700">Warning: {w.message}</p>)}
-      <form action={save} className="grid gap-2 sm:grid-cols-3">
+      <form onSubmit={keepValuesOnError(save)} className="grid gap-2 sm:grid-cols-3">
         <input type="hidden" name="id" value={c.id} />
         <div className="space-y-1"><Label htmlFor={`n-${c.id}`}>Name</Label><Input id={`n-${c.id}`} name="name" defaultValue={c.name} maxLength={120} /></div>
         <div className="space-y-1"><Label htmlFor={`c-${c.id}`}>Campaign</Label><Input id={`c-${c.id}`} name="campaign_label" defaultValue={c.campaign_label ?? ''} maxLength={120} /></div>
         <div className="space-y-1"><Label htmlFor={`t-${c.id}`}>Tags</Label><Input id={`t-${c.id}`} name="tags" defaultValue={c.tags.join(', ')} /></div>
         <div className="flex items-center gap-3 sm:col-span-3"><Button type="submit" size="sm" variant="outline" disabled={saving}>{saving ? 'Saving…' : 'Save details'}</Button><Msg s={saved} /></div>
       </form>
-      <form action={remove} className="flex items-center gap-3">
+      <form onSubmit={keepValuesOnError(remove)} className="flex items-center gap-3">
         <input type="hidden" name="id" value={c.id} />
         <Button type="submit" size="sm" variant="ghost" disabled={removing || c.usedBy > 0} title={c.usedBy > 0 ? 'Used by an ad draft' : undefined}>Delete</Button>
         {c.usedBy > 0 && <span className="text-xs text-muted-foreground">Used by {c.usedBy} draft(s)</span>}

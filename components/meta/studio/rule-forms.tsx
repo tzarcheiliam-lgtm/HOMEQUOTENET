@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Msg } from './ui';
 import { deleteRule, evaluateRulesNow, saveRule, setRuleEnabled, type StudioState } from '@/lib/actions/meta-studio';
+import { keepValuesOnError } from '@/lib/forms/keep-values';
 
 function F({ id, label, hint, children }: { id: string; label: string; hint?: string; children: React.ReactNode }) {
   return <div className="space-y-1.5"><Label htmlFor={id}>{label}</Label>{children}{hint && <p className="text-xs text-muted-foreground">{hint}</p>}</div>;
@@ -23,7 +24,7 @@ export function RuleForm({ accounts, campaigns, adsets }: { accounts: { id: stri
   const budget = act === 'budget_decrease' || act === 'budget_increase';
   const scopeOptions = scope === 'campaign' ? campaigns.filter((c) => c.account_id === acct) : scope === 'adset' ? adsets.filter((c) => c.account_id === acct) : [];
   return (
-    <form action={action} className="space-y-4">
+    <form onSubmit={keepValuesOnError(action)} className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
         <F id="r-name" label="Rule name"><Input id="r-name" name="name" required maxLength={120} /></F>
         <F id="r-acct" label="Ad account"><Select id="r-acct" name="account_id" required value={acct} onChange={(e) => setAcct(e.target.value)}><option value="">Choose…</option>{accounts.map((a) => <option key={a.id} value={a.id}>{a.name ?? a.id}</option>)}</Select></F>
@@ -86,7 +87,7 @@ export function RuleControls({ id, enabled, mode, expired }: { id: string; enabl
 export function EvaluateNow() {
   const [state, action, pending] = useActionState<StudioState, FormData>(async () => evaluateRulesNow(), undefined);
   return (
-    <form action={action} className="flex flex-wrap items-center gap-3">
+    <form onSubmit={keepValuesOnError(action)} className="flex flex-wrap items-center gap-3">
       <Button type="submit" variant="outline" size="sm" disabled={pending}>{pending ? 'Evaluating…' : 'Evaluate rules now'}</Button>
       <Msg s={state} />
     </form>

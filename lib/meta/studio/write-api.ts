@@ -1,4 +1,5 @@
-import { classifyGraphError, GRAPH_VERSION, graphGet, redactSecrets, type FetchLike, type GraphFailure } from '@/lib/meta/marketing-api';
+import { classifyGraphError, GRAPH_VERSION, graphGet, type FetchLike, type GraphFailure} from '@/lib/meta/marketing-api';
+import { redact } from './redact';
 
 /**
  * The ONLY place in HQN that sends a state-changing request to the Marketing API. It uses a separate
@@ -42,12 +43,13 @@ export function createMetaWriter(o: WriterOptions): MetaWriter {
         const json = await res.json().catch(() => null);
         if (res.ok && !(json as { error?: unknown } | null)?.error) return { ok: true, data: json };
         const failure = classifyGraphError(res.status, json);
+        failure.message = redact(failure.message); // exact-value scrub of held credentials, on top of pattern redaction
         // A 5xx may or may not have applied the change; a 4xx definitely did not.
         return { ok: false, failure, ambiguous: res.status >= 500 };
       } catch (e) {
         return {
           ok: false, ambiguous: true,
-          failure: { kind: 'transient', retryable: true, httpStatus: null, code: null, subcode: null, message: redactSecrets(e instanceof Error ? e.name : 'network error'), fbtraceId: null },
+          failure: { kind: 'transient', retryable: true, httpStatus: null, code: null, subcode: null, message: redact(e instanceof Error ? e.name : 'network error'), fbtraceId: null },
         };
       }
     },
@@ -55,7 +57,8 @@ export function createMetaWriter(o: WriterOptions): MetaWriter {
       try {
         return { ok: true, data: await graphGet(path, params, { token: o.token, fetchImpl: o.fetchImpl, version: o.version, maxRetries: 2 }) };
       } catch (e) {
-        const failure = (e as { failure?: GraphFailure }).failure;
+        const raw = (e as { failure?: GraphFailure }).failure;
+        const failure = raw ? { ...raw, message: redact(raw.message) } : undefined;
         return { ok: false, failure: failure ?? { kind: 'unknown', retryable: false, httpStatus: null, code: null, subcode: null, message: 'read failed', fbtraceId: null } };
       }
     },

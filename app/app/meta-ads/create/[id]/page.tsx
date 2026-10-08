@@ -69,7 +69,7 @@ export default async function DraftReviewPage({ params }: { params: Promise<{ id
           <CardHeader><CardTitle>What will be created</CardTitle><CardDescription>This is exactly what your confirmation covers.</CardDescription></CardHeader>
           <CardContent>
             <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-              {([['Ad account', review.summary.account], ['Facebook Page', review.summary.page], ['Objective', review.summary.objective], ['Optimization', review.summary.optimization_goal], ['Budget', review.summary.budget], ['Amount sent to Meta (minor units)', String(review.summary.budget_minor_units_sent)], ['Schedule', review.summary.schedule], ['Destination', review.summary.destination], ['Created as', review.summary.created_as]] as const).map(([k, v]) => (
+              {([['Ad account', review.summary.account], ['Facebook Page', review.summary.page], ['Objective', review.summary.objective], ['Optimization', review.summary.optimization_goal], ['Budget', review.summary.budget], ['Budget as sent to Meta (API integer)', review.summary.budget_sent_to_meta == null ? 'not sent (existing ad set keeps its budget)' : String(review.summary.budget_sent_to_meta)], ['Bidding', review.summary.bid], ['Schedule', review.summary.schedule], ['Destination', review.summary.destination], ['Created as', review.summary.created_as]] as const).map(([k, v]) => (
                 <div key={k}><dt className="text-xs text-muted-foreground">{k}</dt><dd className="break-words font-medium">{v}</dd></div>
               ))}
             </dl>
@@ -81,7 +81,7 @@ export default async function DraftReviewPage({ params }: { params: Promise<{ id
 
       {plan.length > 0 && (
         <Card>
-          <CardHeader><CardTitle>Exact Meta requests</CardTitle><CardDescription>Sent in this order, in your ad account, each with status PAUSED. Placeholders in [brackets] are filled by Meta&rsquo;s earlier responses. Budget units are unverified until the first paused test (see the setup guide).</CardDescription></CardHeader>
+          <CardHeader><CardTitle>Exact Meta requests</CardTitle><CardDescription>Sent in this order, in your ad account, each with status PAUSED. Placeholders in [brackets] are filled by Meta&rsquo;s earlier responses. Budget units are checked per ad account before any budget is sent (Activity &amp; settings; see the setup guide).</CardDescription></CardHeader>
           <CardContent className="space-y-2">
             {plan.map((s) => <details key={s.step} className="rounded border p-2"><summary className="cursor-pointer text-sm font-medium">{s.step} → POST /{draft.account_id}/{s.object}</summary><pre className="mt-2 overflow-x-auto text-xs">{JSON.stringify(s.body, null, 2)}</pre></details>)}
           </CardContent>

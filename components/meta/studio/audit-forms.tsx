@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Msg } from './ui';
 import { applyProposalAction, approveProposal, proposeFromFindingAction, rejectProposal, runAuditAction, type StudioState } from '@/lib/actions/meta-studio';
+import { keepValuesOnError } from '@/lib/forms/keep-values';
 
 export function RunAuditForm({ accounts, defaults }: { accounts: { id: string; name: string | null }[]; defaults: { since: string; until: string } }) {
   const router = useRouter();
@@ -17,7 +18,7 @@ export function RunAuditForm({ accounts, defaults }: { accounts: { id: string; n
     return r;
   }, undefined);
   return (
-    <form action={action} className="grid gap-3 sm:grid-cols-4 sm:items-end">
+    <form onSubmit={keepValuesOnError(action)} className="grid gap-3 sm:grid-cols-4 sm:items-end">
       <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="a-acct">Ad account</Label>
         <Select id="a-acct" name="account" required><option value="">{accounts.length ? 'Choose…' : 'No accounts imported yet'}</option>{accounts.map((a) => <option key={a.id} value={a.id}>{a.name ?? a.id}</option>)}</Select></div>
       <div className="space-y-1.5"><Label htmlFor="a-since">From</Label><Input id="a-since" name="since" type="date" defaultValue={defaults.since} required /></div>
@@ -43,13 +44,18 @@ export function ProposalActions({ id, status, canApply, gateReasons, needsApprov
   const router = useRouter();
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<StudioState>();
-  const run = (fn: () => Promise<StudioState>) => start(async () => { setMsg(await fn()); router.refresh(); });
+  // Applying or rejecting moves the card to "Decided changes", which would take its message with it, so success is shown as a
+  // fixed notice banner on the page (a code in the URL, never free text).
+  const run = (fn: () => Promise<StudioState>, notice?: 'applied' | 'rejected') => start(async () => {
+    const r = await fn(); setMsg(r);
+    if (notice && r?.success) router.replace(`/app/meta-ads/audits?notice=${notice}`); else router.refresh();
+  });
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
         {status === 'proposed' && <Button type="button" size="sm" disabled={pending} onClick={() => run(() => approveProposal(id))}>Approve</Button>}
-        {status === 'approved' && <Button type="button" size="sm" disabled={pending || !canApply || needsApproval} onClick={() => run(() => applyProposalAction(id))}>Apply in Meta now</Button>}
-        {(status === 'proposed' || status === 'approved') && <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => run(() => rejectProposal(id))}>Reject</Button>}
+        {status === 'approved' && <Button type="button" size="sm" disabled={pending || !canApply || needsApproval} onClick={() => run(() => applyProposalAction(id), 'applied')}>Apply in Meta now</Button>}
+        {(status === 'proposed' || status === 'approved') && <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => run(() => rejectProposal(id), 'rejected')}>Reject</Button>}
       </div>
       {status === 'approved' && !canApply && gateReasons.length > 0 && <p className="text-xs text-amber-800">Applying is switched off: {gateReasons.join(' ')}</p>}
       {status === 'approved' && canApply && <p className="text-xs text-muted-foreground">Applying re-reads the object from Meta first. If it was changed in Ads Manager, nothing is written.</p>}

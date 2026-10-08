@@ -5,7 +5,8 @@ import { buildDestination } from './url-params';
 import { confirmationSummary, draftConfigSchema, validateDraft, type DraftConfig, type DraftContext, type Issue } from './draft';
 import { executeDraft, type CreatedObjects } from './create-ad';
 import { accountGate, logActivity, writerOrNull } from './server';
-import { redactSecrets } from '@/lib/meta/marketing-api';
+import {} from '@/lib/meta/marketing-api';
+import { redact } from './redact';
 
 export const CREATIVE_BUCKET = 'meta-creatives';
 
@@ -22,18 +23,20 @@ type AssetRow = { kind: string; meta_id: string; parent_meta_id: string | null; 
  * (contractor_id null) can only use unmapped network-level assets. Everything is re-checked on the server.
  */
 export async function loadDraftContext(db: SupabaseClient, d: { account_id: string; contractor_id: string | null; creative_id: string | null }, config: DraftConfig): Promise<{ ctx: DraftContext; accountName: string | null; timezone: string | null; pageName: string | null; accountOk: boolean }> {
-  const [{ data: acct }, { data: assets }, { data: camps }, { data: sets }, creativeRes] = await Promise.all([
+  const [{ data: acct }, { data: assets }, { data: camps }, { data: sets }, creativeRes, { data: ctl }, { data: budgeted }] = await Promise.all([
     db.from('meta_ad_accounts').select('id, name, currency, timezone_name, contractor_id').eq('id', d.account_id).maybeSingle(),
     db.from('meta_assets').select('kind, meta_id, parent_meta_id, contractor_id, account_id'),
     db.from('meta_campaigns').select('id').eq('account_id', d.account_id),
     db.from('meta_adsets').select('id, campaign_id').eq('account_id', d.account_id),
-    d.creative_id ? db.from('meta_creatives').select('kind, status, contractor_id').eq('id', d.creative_id).maybeSingle() : Promise.resolve({ data: null }),
+    d.creative_id ? db.from('meta_creatives').select('kind, status, contractor_id, thumbnail_path').eq('id', d.creative_id).maybeSingle() : Promise.resolve({ data: null }),
+    db.from('meta_account_controls').select('budget_unit_currency, budget_unit_verified_at').eq('account_id', d.account_id).maybeSingle(),
+    db.from('meta_object_state').select('object_id').eq('account_id', d.account_id).eq('object_type', 'campaign').or('daily_budget_minor.not.is.null,lifetime_budget_minor.not.is.null'),
   ]);
   const all = (assets ?? []) as AssetRow[];
   const mine = (a: AssetRow) => a.contractor_id === d.contractor_id; // null === null → network-level
   const pages = all.filter((a) => a.kind === 'page' && mine(a));
   const pageIds = new Set(pages.map((p) => p.meta_id));
-  const creative = (creativeRes as { data: { kind: 'image' | 'video'; status: string; contractor_id: string | null } | null }).data;
+  const creative = (creativeRes as { data: { kind: 'image' | 'video'; status: string; contractor_id: string | null; thumbnail_path: string | null } | null }).data;
   const accountOk = !!acct && acct.contractor_id === d.contractor_id;
   const ctx: DraftContext = {
     currency: acct?.currency ?? null,
@@ -41,6 +44,9 @@ export async function loadDraftContext(db: SupabaseClient, d: { account_id: stri
     accountSyncedAdsetIds: new Map(((sets ?? []) as { id: string; campaign_id: string }[]).map((s) => [s.id, s.campaign_id])),
     creativeReady: !!creative && creative.status === 'ready' && creative.contractor_id === d.contractor_id,
     creativeKind: creative?.kind ?? null,
+    creativeHasThumbnail: !!creative?.thumbnail_path,
+    campaignsWithBudget: new Set(((budgeted ?? []) as { object_id: string }[]).map((r) => r.object_id)),
+    budgetUnit: { verifiedCurrency: ctl?.budget_unit_currency ?? null, verifiedAt: ctl?.budget_unit_verified_at ?? null },
     allowedPageIds: pageIds,
     allowedInstagramIds: new Set(all.filter((a) => a.kind === 'instagram' && a.parent_meta_id && pageIds.has(a.parent_meta_id)).map((a) => a.meta_id)),
     allowedDatasetIds: new Set(all.filter((a) => a.kind === 'dataset' && a.account_id === d.account_id).map((a) => a.meta_id)),
@@ -112,10 +118,11 @@ export async function createPausedObjects(db: SupabaseClient, draftId: string, a
 
   const storage = db.storage.from(CREATIVE_BUCKET);
   const result = await executeDraft({
-    accountId: draft.account_id, name: draft.name, idempotencyKey: draft.idempotency_key, config: c, currency: review.summary ? (await currencyOf(db, draft.account_id)) : 'USD',
+    accountId: draft.account_id, name: draft.name, idempotencyKey: draft.idempotency_key, config: c, currency: await currencyOf(db, draft.account_id),
     destination, existing: reuse, writer,
     media: cr.kind === 'video'
-      ? { kind: 'video', signedUrl: async () => { const { data } = await storage.createSignedUrl(cr.storage_path, 3600); if (!data?.signedUrl) throw new Error('could not sign creative URL'); return data.signedUrl; } }
+      ? { kind: 'video', signedUrl: async () => { const { data } = await storage.createSignedUrl(cr.storage_path, 3600); if (!data?.signedUrl) throw new Error('could not sign creative URL'); return data.signedUrl; },
+          thumbnailBase64: async () => { if (!cr.thumbnail_path) return null; const { data, error } = await storage.download(cr.thumbnail_path); return error || !data ? null : Buffer.from(await data.arrayBuffer()).toString('base64'); } }
       : { kind: 'image', bytesBase64: async () => { const { data, error } = await storage.download(cr.storage_path); if (error || !data) throw new Error('could not read creative'); return Buffer.from(await data.arrayBuffer()).toString('base64'); } },
     thumbnailUrl: null,
     store: { saveObjects: async (patch) => { const cur = (await db.from('meta_ad_drafts').select('created_objects').eq('id', draftId).maybeSingle()).data?.created_objects ?? {}; await db.from('meta_ad_drafts').update({ created_objects: { ...cur, ...patch } }).eq('id', draftId); } },
@@ -129,9 +136,9 @@ export async function createPausedObjects(db: SupabaseClient, draftId: string, a
     await logActivity(db, { actor_id: actorId, action: 'draft.created_paused', target_type: 'draft', target_id: draftId, account_id: draft.account_id, after: result.objects, provider_result: { effective_status: result.adStatus?.effective_status ?? null } });
     return { ok: true, status: 'created_paused', message: 'Created in Meta as PAUSED. Nothing is delivering.', objects: result.objects };
   }
-  await db.from('meta_ad_drafts').update({ status: result.status, created_objects: result.objects, last_error_class: result.failure.kind, last_error_message: redactSecrets(result.message) }).eq('id', draftId);
+  await db.from('meta_ad_drafts').update({ status: result.status, created_objects: result.objects, last_error_class: result.failure.kind, last_error_message: redact(result.message) }).eq('id', draftId);
   await logActivity(db, { actor_id: actorId, action: `draft.${result.status}`, target_type: 'draft', target_id: draftId, account_id: draft.account_id, after: result.objects, detail: { failed_step: result.failedStep, class: result.failure.kind } });
-  return { ok: false, status: result.status, message: `Stopped at "${result.failedStep}": ${redactSecrets(result.message)}. Objects already created remain in Meta (paused) and a retry will resume.`, objects: result.objects };
+  return { ok: false, status: result.status, message: `Stopped at "${result.failedStep}": ${redact(result.message)}. Objects already created remain in Meta (paused) and a retry will resume.`, objects: result.objects };
 }
 
 async function currencyOf(db: SupabaseClient, accountId: string) { return (await db.from('meta_ad_accounts').select('currency').eq('id', accountId).maybeSingle()).data?.currency ?? 'USD'; }
@@ -149,7 +156,7 @@ export async function refreshDraftStatus(db: SupabaseClient, draftId: string): P
   if (!adId) return { ok: false, message: 'No ad has been created for this draft yet.' };
   if (!writer) return { ok: false, message: 'Setup required: META_ADS_WRITE_TOKEN is not set (it is also used to read ad status).' };
   const r = await writer.get<{ status?: string; effective_status?: string; ad_review_feedback?: unknown }>(adId, { fields: 'status,effective_status,ad_review_feedback' });
-  if (!r.ok) return { ok: false, message: redactSecrets(r.failure.message) };
+  if (!r.ok) return { ok: false, message: redact(r.failure.message) };
   await db.from('meta_ad_drafts').update({ meta_effective_status: r.data.effective_status ?? r.data.status ?? null, meta_review_feedback: r.data.ad_review_feedback ?? null, meta_status_checked_at: new Date().toISOString() }).eq('id', draftId);
   return { ok: true, message: `Meta reports: ${r.data.effective_status ?? r.data.status ?? 'unknown'}.` };
 }

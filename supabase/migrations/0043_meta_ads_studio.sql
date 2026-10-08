@@ -40,6 +40,12 @@ create table if not exists public.meta_account_controls (
   automation_enabled   boolean not null default false,
   -- Optional account spending limit HQN expects to exist in Meta (informational; Meta enforces it).
   note                 text,
+  -- Meta's reference never states the unit of daily_budget / lifetime_budget. Budgets are blocked for an account until a
+  -- person confirms, against a paused probe ad in Ads Manager, that the budget shows exactly as entered (per currency).
+  budget_unit_currency    text,
+  budget_unit_verified_at timestamptz,
+  budget_unit_verified_by uuid references public.profiles(id) on delete set null,
+  budget_unit_evidence    jsonb,
   updated_at           timestamptz not null default now(),
   updated_by           uuid references public.profiles(id) on delete set null
 );
@@ -218,6 +224,8 @@ create table if not exists public.meta_rules (
   created_at            timestamptz not null default now(),
   updated_at            timestamptz not null default now(),
   constraint rule_scope_id check ((scope_type = 'account') = (scope_id is null)),
+  -- An account has no pause/budget action: only notify-only rules may cover a whole account.
+  constraint rule_account_scope_notify_only check (scope_type <> 'account' or action_type = 'notify'),
   constraint rule_budget_needs_pct check (action_type not in ('budget_decrease', 'budget_increase') or max_adjust_pct is not null),
   constraint rule_auto_needs_expiry check (mode <> 'auto' or expires_at is not null),
   constraint rule_auto_no_increase_without_ceiling check (action_type <> 'budget_increase' or budget_ceiling is not null)

@@ -50,17 +50,21 @@ export function CreativeUploader({ contractors }: { contractors: { id: string; n
     fd.set('kind', kind); fd.set('mime', file.type); fd.set('bytes', String(file.size));
     if (!fd.get('name')) fd.set('name', file.name.replace(/\.[^.]+$/, ''));
     setPhase('registering'); setMessage(null);
-    const started = await startCreativeUpload(undefined, fd);
+    let started: Awaited<ReturnType<typeof startCreativeUpload>>;
+    try { started = await startCreativeUpload(undefined, fd); }
+    catch { setPhase('error'); setMessage('Something went wrong while preparing the upload. Please try again.'); return; }
     if (started?.error || !started?.id) { setPhase('error'); setMessage(started?.error ?? 'Could not start the upload.'); return; }
     const info = started.data as { path: string; token: string };
     setPhase('uploading');
     const storage = createClient().storage.from(BUCKET);
-    const up = await storage.uploadToSignedUrl(info.path, info.token, file, { contentType: file.type });
+    let up: Awaited<ReturnType<typeof storage.uploadToSignedUrl>>;
+    try { up = await storage.uploadToSignedUrl(info.path, info.token, file, { contentType: file.type }); } catch { setPhase('error'); setMessage('Upload failed. Check your connection and try again.'); return; }
     if (up.error) { setPhase('error'); setMessage('Upload failed. Check your connection and try again.'); return; }
     const thumb = (started.data as { thumb: { path: string; token: string } | null }).thumb;
     if (thumb && kind === 'video') { const blob = await videoThumb(file); if (blob) await storage.uploadToSignedUrl(thumb.path, thumb.token, blob, { contentType: 'image/jpeg' }); }
     setPhase('checking');
-    const done = await finalizeCreativeUpload(started.id);
+    let done: Awaited<ReturnType<typeof finalizeCreativeUpload>>;
+    try { done = await finalizeCreativeUpload(started.id); } catch { setPhase('error'); setMessage('Something went wrong while checking the file. It was not added; please try again.'); return; }
     if (done?.error) { setPhase('error'); setMessage(done.error); return; }
     setPhase('done'); setMessage(done?.success ?? 'Ready.');
     setFile(null); setPreview(null); if (input.current) input.current.value = '';
@@ -87,7 +91,7 @@ export function CreativeUploader({ contractors }: { contractors: { id: string; n
           </div>
           <div className="space-y-1.5"><Label htmlFor="cu-campaign">Campaign or project (optional)</Label><Input id="cu-campaign" name="campaign_label" maxLength={120} disabled={busy} /></div>
           <div className="space-y-1.5"><Label htmlFor="cu-tags">Tags (comma separated)</Label><Input id="cu-tags" name="tags" maxLength={400} disabled={busy} /></div>
-          <input type="hidden" name="with_thumbnail" value="1" />
+          <input type="hidden" name="with_thumbnail" value={file?.type.startsWith('video/') ? '1' : ''} />
         </div>
         <div className="flex min-h-48 items-center justify-center rounded-lg border bg-muted/30 p-2">
           {!preview ? <p className="text-sm text-muted-foreground">Preview appears here</p>

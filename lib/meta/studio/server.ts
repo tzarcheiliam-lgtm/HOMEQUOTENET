@@ -1,8 +1,10 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { GraphError, graphGetAll, redactSecrets, type GraphOptions } from '@/lib/meta/marketing-api';
+import { GraphError, graphGetAll, type GraphOptions} from '@/lib/meta/marketing-api';
+import { redact } from './redact';
 import { checkAutomationGate, checkWriteGate, type GateResult } from './gate';
+import { budgetUnitGate } from './money';
 import { driftBetween, type ProposalStore } from './proposals';
 import { createMetaWriter, type MetaWriter } from './write-api';
 import type { Thresholds } from './audit';
@@ -58,6 +60,9 @@ export function proposalStore(db: SupabaseClient, actor: { id: string | null; ki
     async claim(id) {
       const { data } = await db.rpc('claim_meta_proposal', { p_id: id });
       return Array.isArray(data) ? data.length === 1 : !!data;
+    },
+    async release(id) {
+      await db.from('meta_change_proposals').update({ status: 'approved' }).eq('id', id).eq('status', 'applying');
     },
     async finish(id, patch) {
       await db.from('meta_change_proposals').update({
@@ -122,7 +127,7 @@ export async function syncObjectState(db: SupabaseClient, graph: GraphOptions, a
       }
       out.accounts++; out.objects += rows.length;
     } catch (e) {
-      out.errors.push(`${a.id}: ${redactSecrets(e instanceof GraphError ? e.failure.message : e instanceof Error ? e.message : 'error')}`);
+      out.errors.push(`${a.id}: ${redact(e instanceof GraphError ? e.failure.message : e instanceof Error ? e.message : 'error')}`);
     }
   }
   return out;
@@ -150,13 +155,13 @@ export async function discoverAssets(db: SupabaseClient, graph: GraphOptions): P
         if (forms.length) await upsert(forms.map((f) => ({ kind: 'lead_form', meta_id: f.id, name: f.name ?? null, parent_meta_id: p.id, details: { status: f.status ?? null }, last_seen_at: now, last_error: null })));
         out.leadForms += forms.length;
       } catch (e) {
-        const msg = redactSecrets(e instanceof GraphError ? `${e.failure.kind}: ${e.failure.message}` : 'error');
+        const msg = redact(e instanceof GraphError ? `${e.failure.kind}: ${e.failure.message}` : 'error');
         out.errors.push(`Lead forms for page ${p.id}: ${msg}`);
         await db.from('meta_assets').update({ last_error: `Lead forms: ${msg}` }).eq('kind', 'page').eq('meta_id', p.id);
       }
     }
   } catch (e) {
-    out.errors.push(`Pages: ${redactSecrets(e instanceof GraphError ? `${e.failure.kind}: ${e.failure.message}` : 'error')}`);
+    out.errors.push(`Pages: ${redact(e instanceof GraphError ? `${e.failure.kind}: ${e.failure.message}` : 'error')}`);
   }
   const { data: accounts } = await db.from('meta_ad_accounts').select('id').eq('sync_enabled', true);
   for (const a of (accounts ?? []) as { id: string }[]) {
@@ -165,8 +170,27 @@ export async function discoverAssets(db: SupabaseClient, graph: GraphOptions): P
       if (px.length) await upsert(px.map((x) => ({ kind: 'dataset', meta_id: x.id, name: x.name ?? null, account_id: a.id, last_seen_at: now, last_error: null })));
       out.datasets += px.length;
     } catch (e) {
-      out.errors.push(`Datasets for ${a.id}: ${redactSecrets(e instanceof GraphError ? `${e.failure.kind}: ${e.failure.message}` : 'error')}`);
+      out.errors.push(`Datasets for ${a.id}: ${redact(e instanceof GraphError ? `${e.failure.kind}: ${e.failure.message}` : 'error')}`);
     }
   }
   return out;
+}
+
+/**
+ * The gate evaluated at the moment a proposal is about to be written. Unattended (rule-approved) proposals need the
+ * automation gate; person-approved ones need the write gate. Budget changes additionally need the account's budget-unit
+ * check. Reads fresh state every call - nothing is cached between queueing and execution.
+ */
+export async function proposalGate(db: SupabaseClient, p: { account_id: string; change_type: string; approved_by: string | null; auto_approved_by_rule: string | null }): Promise<GateResult> {
+  const unattended = !p.approved_by && !!p.auto_approved_by_rule;
+  const base = await accountGate(db, p.account_id, { automation: unattended });
+  const reasons = [...base.reasons];
+  if (p.change_type === 'budget') {
+    const [{ data: acct }, { data: ctl }] = await Promise.all([
+      db.from('meta_ad_accounts').select('currency').eq('id', p.account_id).maybeSingle(),
+      db.from('meta_account_controls').select('budget_unit_currency, budget_unit_verified_at').eq('account_id', p.account_id).maybeSingle(),
+    ]);
+    reasons.push(...budgetUnitGate({ accountCurrency: acct?.currency ?? null, verifiedCurrency: ctl?.budget_unit_currency ?? null, verifiedAt: ctl?.budget_unit_verified_at ?? null, isProbe: false }).reasons);
+  }
+  return { allowed: reasons.length === 0, reasons };
 }

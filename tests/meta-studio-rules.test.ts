@@ -1,6 +1,6 @@
 // SIMULATED: pure-logic tests with fixtures and a fake Meta. They prove HQN's rules, not Meta's behaviour.
 import { describe, expect, it } from 'vitest';
-import { evaluateRule, findRuleConflicts, ruleWindow, validateRuleDef, type InsightDay, type RuleContext, type RuleDef } from '@/lib/meta/studio/rules-engine';
+import { evaluateRule, findRuleConflicts, proposalWithinRule, ruleWindow, validateRuleDef, type InsightDay, type RuleContext, type RuleDef } from '@/lib/meta/studio/rules-engine';
 import { applyProposal, budgetProposalValues, driftBetween, type ProposalRow, type ProposalStore } from '@/lib/meta/studio/proposals';
 import { AUDIT_VERSION, runAudit, type AuditInput } from '@/lib/meta/studio/audit';
 import type { MetaWriter, WriteResult } from '@/lib/meta/studio/write-api';
@@ -103,7 +103,7 @@ describe('rule definition + conflicts', () => {
 
 // ---- proposals ----------------------------------------------------------------------------------------------
 class FakeWriter implements MetaWriter {
-  live: Record<string, unknown> = { status: 'ACTIVE', effective_status: 'ACTIVE', daily_budget: '10000', lifetime_budget: undefined };
+  live: Record<string, unknown> = { status: 'ACTIVE', effective_status: 'ACTIVE', daily_budget: '10000', lifetime_budget: undefined, account_id: '1' };
   writes: Record<string, unknown>[] = [];
   failWrite: 'none' | 'reject' | 'ambiguous' = 'none';
   failRead = false;
@@ -120,11 +120,14 @@ class FakeWriter implements MetaWriter {
 }
 class FakeStore implements ProposalStore {
   claimed = false; final: { status: string; error_message?: string | null; previous_state?: unknown } | null = null; expected: unknown = null; logs: string[] = [];
+  released = 0;
   async claim() { if (this.claimed) return false; this.claimed = true; return true; }
+  async release() { this.claimed = false; this.released++; }
   async finish(_id: string, patch: { status: string; error_message?: string | null; previous_state?: unknown }) { this.final = patch; }
   async recordExpected(_t: unknown, f: Record<string, unknown>) { this.expected = f; }
   async log(e: { action: string }) { this.logs.push(e.action); }
 }
+const open = async () => ({ allowed: true, reasons: [] as string[] });
 const proposal = (o: Partial<ProposalRow> = {}): ProposalRow => ({
   id: 'p1', account_id: 'act_1', target_type: 'campaign', target_id: '111111', change_type: 'pause',
   current_value: { status: 'ACTIVE' }, proposed_value: { status: 'PAUSED' }, status: 'approved', approved_by: 'user-1', auto_approved_by_rule: null,
@@ -134,7 +137,7 @@ const proposal = (o: Partial<ProposalRow> = {}): ProposalRow => ({
 describe('applying proposals', () => {
   it('re-checks live state, writes only the proposed change, and records previous state + provider result', async () => {
     const w = new FakeWriter(); const s = new FakeStore();
-    const r = await applyProposal(proposal(), { writer: w, store: s, now: NOW });
+    const r = await applyProposal(proposal(), { writer: w, store: s, gate: open, now: NOW });
     expect(r.outcome).toBe('applied');
     expect(w.writes).toEqual([{ status: 'PAUSED' }]);
     expect(s.final).toMatchObject({ status: 'applied', previous_state: expect.objectContaining({ status: 'ACTIVE' }) });
@@ -144,34 +147,35 @@ describe('applying proposals', () => {
   it('marks the proposal stale and writes nothing when Meta changed since review (Ads Manager edit)', async () => {
     const w = new FakeWriter(); w.live.status = 'PAUSED';
     const s = new FakeStore();
-    const r = await applyProposal(proposal(), { writer: w, store: s, now: NOW });
+    const r = await applyProposal(proposal(), { writer: w, store: s, gate: open, now: NOW });
     expect(r.outcome).toBe('stale');
     expect(w.writes).toHaveLength(0);
     expect(s.final?.status).toBe('stale');
   });
+
   it('requires approval, and a human for budget increases', async () => {
     const w = new FakeWriter();
-    expect((await applyProposal(proposal({ approved_by: null }), { writer: w, store: new FakeStore(), now: NOW })).outcome).toBe('not_approved');
+    expect((await applyProposal(proposal({ approved_by: null }), { writer: w, store: new FakeStore(), gate: open, now: NOW })).outcome).toBe('not_approved');
     const v = budgetProposalValues(10000, 12000, 'USD');
     const inc = proposal({ change_type: 'budget', ...v, approved_by: null, auto_approved_by_rule: 'rule-1' });
-    expect((await applyProposal(inc, { writer: w, store: new FakeStore(), now: NOW })).outcome).toBe('not_approved');
+    expect((await applyProposal(inc, { writer: w, store: new FakeStore(), gate: open, now: NOW })).outcome).toBe('not_approved');
     expect(w.writes).toHaveLength(0);
-    const ok = await applyProposal({ ...inc, approved_by: 'user-1' }, { writer: w, store: new FakeStore(), now: NOW });
+    const ok = await applyProposal({ ...inc, approved_by: 'user-1' }, { writer: w, store: new FakeStore(), gate: open, now: NOW });
     expect(ok.outcome).toBe('applied');
     expect(w.writes).toEqual([{ daily_budget: '12000' }]);
   });
   it('cannot be applied twice and ignores expired proposals', async () => {
     const w = new FakeWriter(); const s = new FakeStore();
-    await applyProposal(proposal(), { writer: w, store: s, now: NOW });
-    expect((await applyProposal(proposal(), { writer: w, store: s, now: NOW })).outcome).toBe('not_claimable');
-    expect((await applyProposal(proposal({ expires_at: '2026-10-01T00:00:00Z' }), { writer: new FakeWriter(), store: new FakeStore(), now: NOW })).outcome).toBe('expired');
+    await applyProposal(proposal(), { writer: w, store: s, gate: open, now: NOW });
+    expect((await applyProposal(proposal(), { writer: w, store: s, gate: open, now: NOW })).outcome).toBe('not_claimable');
+    expect((await applyProposal(proposal({ expires_at: '2026-10-01T00:00:00Z' }), { writer: new FakeWriter(), store: new FakeStore(), gate: open, now: NOW })).outcome).toBe('expired');
   });
   it('fails closed with a clear message on credential failure or an unconfirmed write', async () => {
     const w1 = new FakeWriter(); w1.failRead = true; const s1 = new FakeStore();
-    expect((await applyProposal(proposal(), { writer: w1, store: s1, now: NOW })).outcome).toBe('failed');
+    expect((await applyProposal(proposal(), { writer: w1, store: s1, gate: open, now: NOW })).outcome).toBe('failed');
     expect(s1.final?.error_message).toMatch(/Could not re-check/);
     const w2 = new FakeWriter(); w2.failWrite = 'ambiguous'; const s2 = new FakeStore();
-    await applyProposal(proposal(), { writer: w2, store: s2, now: NOW });
+    await applyProposal(proposal(), { writer: w2, store: s2, gate: open, now: NOW });
     expect(s2.final?.status).toBe('failed');
     expect(s2.final?.error_message).toMatch(/did not confirm/);
   });
@@ -232,5 +236,83 @@ describe('audit', () => {
   it('M02 says acceptance is not attribution', () => {
     const r = runAudit(audit({ delivery: { mode: 'live', datasetId: '123456', accepted: 4, failed: 0, pending: 0, skipped: 0 } }));
     expect(r.findings.find((f) => f.control_id === 'M02')!.observation).toMatch(/not that it matched or used/);
+  });
+});
+
+describe('controls are checked when a queued action executes', () => {
+  it('re-evaluates the gate right before the write and keeps the proposal queued if a switch is off', async () => {
+    const w = new FakeWriter(); const s = new FakeStore();
+    let calls = 0;
+    const gate = async () => { calls++; return { allowed: false, reasons: ['Live writes are switched off for HQN (Meta Ads > Settings).'] }; };
+    const r = await applyProposal(proposal(), { writer: w, store: s, gate, now: NOW });
+    expect(r.outcome).toBe('blocked');
+    expect(calls).toBe(1);
+    expect(w.writes).toHaveLength(0);
+    expect(s.released).toBe(1); // back to "approved": still queued, not failed
+    expect(s.final).toBeNull();
+  });
+  it('the gate is read fresh on every attempt (a switch turned back on lets the same proposal proceed)', async () => {
+    const w = new FakeWriter(); const s = new FakeStore();
+    let allowed = false;
+    const gate = async () => ({ allowed, reasons: allowed ? [] : ['off'] });
+    expect((await applyProposal(proposal(), { writer: w, store: s, gate, now: NOW })).outcome).toBe('blocked');
+    allowed = true;
+    expect((await applyProposal(proposal(), { writer: w, store: s, gate, now: NOW })).outcome).toBe('applied');
+  });
+  it('re-reads Meta and refuses an object that belongs to a different ad account', async () => {
+    const w = new FakeWriter(); w.live.account_id = '999';
+    const s = new FakeStore();
+    const r = await applyProposal(proposal(), { writer: w, store: s, gate: open, now: NOW });
+    expect(r.outcome).toBe('failed');
+    expect(w.writes).toHaveLength(0);
+    expect(s.final?.error_message).toMatch(/does not belong to the ad account/);
+  });
+  it('refuses when Meta does not say which account an object belongs to', async () => {
+    const w = new FakeWriter(); delete w.live.account_id;
+    expect((await applyProposal(proposal(), { writer: w, store: new FakeStore(), gate: open, now: NOW })).outcome).toBe('failed');
+  });
+  it('unattended (rule-approved) proposals can only pause or lower a daily budget', async () => {
+    const auto = (o: Partial<ProposalRow>) => proposal({ approved_by: null, auto_approved_by_rule: 'rule-1', ...o });
+    const w = new FakeWriter();
+    for (const change of ['resume', 'schedule', 'targeting'] as const) {
+      expect((await applyProposal(auto({ change_type: change, proposed_value: { status: 'ACTIVE', start_time: 'x', targeting: {} } }), { writer: w, store: new FakeStore(), gate: open, now: NOW })).outcome, change).toBe('not_approved');
+    }
+    const up = budgetProposalValues(10000, 12000, 'USD');
+    expect((await applyProposal(auto({ change_type: 'budget', ...up }), { writer: w, store: new FakeStore(), gate: open, now: NOW })).outcome).toBe('not_approved');
+    const same = budgetProposalValues(10000, 10000, 'USD');
+    expect((await applyProposal(auto({ change_type: 'budget', ...same }), { writer: w, store: new FakeStore(), gate: open, now: NOW })).outcome).toBe('not_approved');
+    const lifetime = budgetProposalValues(10000, 9000, 'USD', 'lifetime');
+    expect((await applyProposal(auto({ change_type: 'budget', ...lifetime }), { writer: w, store: new FakeStore(), gate: open, now: NOW })).outcome).toBe('not_approved');
+    expect(w.writes).toHaveLength(0);
+    const down = budgetProposalValues(10000, 9000, 'USD');
+    expect((await applyProposal(auto({ change_type: 'budget', ...down }), { writer: w, store: new FakeStore(), gate: open, now: NOW })).outcome).toBe('applied');
+    expect(w.writes).toEqual([{ daily_budget: '9000' }]);
+  });
+});
+
+describe('a rule cannot exceed its configured scope', () => {
+  const r = (o: Partial<RuleDef> = {}) => rule({ scope_type: 'campaign', scope_id: '111111', action_type: 'budget_decrease', max_adjust_pct: 20, budget_floor: 50, ...o });
+  const p = (o: Record<string, unknown> = {}) => ({ account_id: 'act_1', target_type: 'campaign', target_id: '111111', change_type: 'budget', current_value: { daily_budget: '10000' }, proposed_value: { daily_budget: '8500' }, ...o });
+  it('accepts an in-scope decrease', () => expect(proposalWithinRule(r(), p(), 'USD', NOW)).toBeNull());
+  it('rejects a different target, account, or action', () => {
+    expect(proposalWithinRule(r(), p({ target_id: '222222' }), 'USD', NOW)).toMatch(/outside the rule/);
+    expect(proposalWithinRule(r(), p({ account_id: 'act_2' }), 'USD', NOW)).toMatch(/different ad account/);
+    expect(proposalWithinRule(r(), p({ change_type: 'pause' }), 'USD', NOW)).toMatch(/only change a budget/);
+    expect(proposalWithinRule(r({ action_type: 'pause' }), p(), 'USD', NOW)).toMatch(/only pause/);
+  });
+  it('rejects a change beyond max_adjust_pct, a non-decrease, or below the floor', () => {
+    expect(proposalWithinRule(r(), p({ proposed_value: { daily_budget: '7000' } }), 'USD', NOW)).toMatch(/exceeds/);
+    expect(proposalWithinRule(r(), p({ proposed_value: { daily_budget: '11000' } }), 'USD', NOW)).toMatch(/non-decrease/);
+    expect(proposalWithinRule(r({ budget_floor: 90, max_adjust_pct: 50 }), p({ proposed_value: { daily_budget: '8000' } }), 'USD', NOW)).toMatch(/floor/);
+  });
+  it('rejects once the rule is disabled or expired, and never lets an account-wide rule change objects', () => {
+    expect(proposalWithinRule(r({ enabled: false }), p(), 'USD', NOW)).toMatch(/disabled/);
+    expect(proposalWithinRule(r({ expires_at: '2026-01-01T00:00:00Z' }), p(), 'USD', NOW)).toMatch(/expired/);
+    expect(proposalWithinRule(r({ scope_type: 'account', scope_id: null, action_type: 'pause' }), p({ change_type: 'pause' }), 'USD', NOW)).toMatch(/Account-wide/);
+  });
+  it('account-wide rules may only notify', () => {
+    const base = { mode: 'recommend' as const, expires_at: null, max_adjust_pct: null, budget_ceiling: null, scope_type: 'account' as const, scope_id: null, condition: { metric: 'link_ctr' as const, op: 'lt' as const, threshold: 1 }, min_evidence: { min_spend: 1, min_impressions: 1 } };
+    expect(validateRuleDef({ ...base, action_type: 'pause' }).join(' ')).toMatch(/Account-wide rules can only notify/);
+    expect(validateRuleDef({ ...base, action_type: 'notify' })).toEqual([]);
   });
 });

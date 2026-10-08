@@ -18,6 +18,7 @@ class FakeMeta implements MetaWriter {
   /** type -> behaviour for the next POST of that type */
   next: Record<string, 'timeout_created' | 'timeout_lost' | 'reject'> = {};
   n = 1000;
+  videoStatus = 'ready';
   async post<T>(path: string, body: Record<string, unknown>): Promise<WriteResult<T>> {
     const type = path.split('/').pop()!;
     this.posts.push(type);
@@ -33,7 +34,8 @@ class FakeMeta implements MetaWriter {
   }
   async get<T>(path: string, params: Record<string, string>) {
     const type = path.split('/').pop()!;
-    if (/^\d+$/.test(path)) return { ok: true as const, data: { status: 'PAUSED', effective_status: 'PAUSED' } as T };
+    if (/^\d+$/.test(path) && params.fields === 'status') return { ok: true as const, data: { status: { video_status: this.videoStatus } } as T };
+    if (/^\d+$/.test(path)) return { ok: true as const, data: { status: 'PAUSED', effective_status: 'PAUSED', account_id: '1' } as T };
     const tag = params.filtering ? (JSON.parse(params.filtering)[0].value as string) : null;
     const data = this.objects.filter((o) => o.type === type && (!tag || o.name.includes(tag))).map((o) => ({ id: o.id, name: o.name, title: o.name }));
     return { ok: true as const, data: { data } as T };
@@ -44,7 +46,7 @@ class FakeMeta implements MetaWriter {
 const cfg = (over: Partial<DraftConfig> = {}): DraftConfig => draftConfigSchema.parse({
   structure: { mode: 'new' }, objective: 'OUTCOME_LEADS', conversion_location: 'instant_form', optimization_goal: 'LEAD_GENERATION',
   page_id: '1234567890', budget: { type: 'daily', amount: 25 }, bid: {}, schedule: { start: '2030-01-01T09:00:00-08:00' },
-  targeting: { countries: ['US'] }, placements: { mode: 'automatic' },
+  targeting: { countries: ['US'] }, placements: { mode: 'automatic' }, budget_unit_probe: false,
   ad: { primary_text: 'Free pool quote', headline: 'Get a quote', cta: 'GET_QUOTE', lead_form_id: '555000111' },
   ...over,
 });
@@ -149,7 +151,7 @@ describe('plan / payloads', () => {
 });
 
 const ctx = (over: Partial<DraftContext> = {}): DraftContext => ({
-  currency: 'USD', accountSyncedCampaignIds: new Set(['111111']), accountSyncedAdsetIds: new Map([['222222', '111111']]), creativeReady: true, creativeKind: 'image',
+  currency: 'USD', accountSyncedCampaignIds: new Set(['111111']), accountSyncedAdsetIds: new Map([['222222', '111111']]), creativeReady: true, creativeKind: 'image', creativeHasThumbnail: true, campaignsWithBudget: new Set<string>(), budgetUnit: { verifiedCurrency: 'USD', verifiedAt: '2026-10-01T00:00:00Z' },
   allowedPageIds: new Set(['1234567890']), allowedInstagramIds: new Set(), allowedDatasetIds: new Set(), allowedLeadFormIds: new Set(['555000111']),
   now: new Date('2029-12-01T00:00:00Z'), ...over,
 });
@@ -253,5 +255,79 @@ describe('destination URLs + attribution parameters', () => {
     for (const bad of ['http://x.com', 'javascript:alert(1)', 'https://user:pw@x.com', 'https://localhost/x', 'https://10.0.0.1/', 'not a url']) {
       expect(buildDestination(bad).ok).toBe(false);
     }
+  });
+});
+
+describe('video creatives (official lead-ad shape)', () => {
+  const vcfg = () => cfg();
+  const runVideo = (meta: FakeMeta, key: string, existing: CreatedObjects = {}) => executeDraft({
+    accountId: 'act_1', name: 'Pool video', idempotencyKey: key, config: vcfg(), currency: 'USD', destination: null, existing,
+    media: { kind: 'video', signedUrl: async () => 'https://signed.example/v.mp4', thumbnailBase64: async () => 'THUMB' }, writer: meta, store: { saveObjects: async () => {} },
+  });
+
+  it('uploads the cover image first and references it as video_data.image_hash, with the fb.me link + form id', async () => {
+    const meta = new FakeMeta();
+    const r = await runVideo(meta, 'v1');
+    expect(r.status).toBe('created_paused');
+    const creative = meta.objects.find((o) => o.type === 'adcreatives')!.body as { object_story_spec: { video_data: { image_hash: string; video_id: string; call_to_action: { type: string; value: Record<string, string> } } } };
+    const vd = creative.object_story_spec.video_data;
+    expect(vd.image_hash).toMatch(/^hash/);
+    expect(vd.video_id).toBeTruthy();
+    expect(vd.call_to_action.value).toEqual({ link: 'http://fb.me/', lead_gen_form_id: '555000111' });
+  });
+
+  it('stops (without creating the creative) while Meta is still processing the video, then resumes with no duplicates', async () => {
+    const meta = new FakeMeta();
+    meta.videoStatus = 'processing';
+    const first = await runVideo(meta, 'v2');
+    expect(first.status).toBe('partial');
+    expect(first.status === 'partial' && first.message).toMatch(/not finished processing/);
+    expect(meta.count('adcreatives')).toBe(0);
+    expect(first.objects.video_id).toBeTruthy();
+    meta.videoStatus = 'ready';
+    const second = await runVideo(meta, 'v2', first.objects);
+    expect(second.status).toBe('created_paused');
+    expect(meta.count('campaigns')).toBe(1);
+    expect(meta.count('advideos')).toBe(1);
+  });
+
+  it('fails closed on an unrecognized or error video status', async () => {
+    const meta = new FakeMeta();
+    meta.videoStatus = '???';
+    const r = await runVideo(meta, 'v3');
+    expect(r.status).toBe('partial');
+    expect(r.status === 'partial' && r.message).toMatch(/\?\?\?/);
+    const meta2 = new FakeMeta();
+    meta2.videoStatus = 'error';
+    expect((await runVideo(meta2, 'v4')).status === 'partial').toBe(true);
+  });
+});
+
+describe('lead-ad payload follows the official guide', () => {
+  const plan = (over: Partial<DraftConfig> = {}, kind: 'image' | 'video' = 'image') => buildPlan({ name: 'n', tag: 'T', config: cfg(over), currency: 'USD', have: {}, creativeKind: kind, destination: null });
+  it('image: link is exactly https://fb.me/ and the CTA value carries only lead_gen_form_id', () => {
+    const c = plan().find((s) => s.step === 'creative')!.body as { object_story_spec: { page_id: string; link_data: { link: string; call_to_action: { value: unknown } } } };
+    expect(c.object_story_spec.link_data.link).toBe('https://fb.me/');
+    expect(c.object_story_spec.link_data.call_to_action.value).toEqual({ lead_gen_form_id: '555000111' });
+  });
+  it('ad set: lead generation, ON_AD, page promoted_object, IMPRESSIONS billing, PAUSED', () => {
+    const b = plan().find((s) => s.step === 'adset')!.body;
+    expect(b).toMatchObject({ optimization_goal: 'LEAD_GENERATION', destination_type: 'ON_AD', billing_event: 'IMPRESSIONS', status: 'PAUSED', promoted_object: { page_id: '1234567890' } });
+  });
+  it('campaign: OUTCOME_LEADS, AUCTION, PAUSED, no special categories', () => {
+    expect(plan().find((s) => s.step === 'campaign')!.body).toMatchObject({ objective: 'OUTCOME_LEADS', buying_type: 'AUCTION', status: 'PAUSED', special_ad_categories: [] });
+  });
+  it('rejects buttons Meta does not allow on lead ads, allows the six documented ones', () => {
+    expect(validateDraft(cfg({ ad: { primary_text: 'x', cta: 'CONTACT_US', lead_form_id: '555000111', headline: '', description: '', destination_url: null } }), ctx()).errors.map((e) => e.code)).toContain('cta_not_allowed');
+    for (const t of ['APPLY_NOW', 'GET_QUOTE', 'LEARN_MORE', 'SIGN_UP', 'SUBSCRIBE'] as const) {
+      expect(validateDraft(cfg({ ad: { primary_text: 'x', cta: t, lead_form_id: '555000111', headline: '', description: '', destination_url: null } }), ctx()).errors.map((e) => e.code)).not.toContain('cta_not_allowed');
+    }
+  });
+  it('blocks manual placements (values unverified) and videos without a cover image', () => {
+    expect(validateDraft(cfg({ placements: { mode: 'manual', facebook: ['feed'], instagram: [] } }), ctx()).errors.map((e) => e.code)).toContain('placements_unverified');
+    expect(validateDraft(cfg(), ctx({ creativeKind: 'video', creativeHasThumbnail: false })).errors.map((e) => e.code)).toContain('video_thumbnail');
+  });
+  it('refuses a new ad set inside a campaign that owns its budget', () => {
+    expect(validateDraft(cfg({ structure: { mode: 'existing_campaign', campaign_id: '111111' } }), ctx({ campaignsWithBudget: new Set(['111111']) })).errors.map((e) => e.code)).toContain('campaign_owns_budget');
   });
 });

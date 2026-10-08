@@ -7,7 +7,7 @@ vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => { throw new Er
 describe('Studio server actions are admin-only', () => {
   const src = readFileSync(new URL('../lib/actions/meta-studio.ts', import.meta.url), 'utf8');
   // Split into top-level exported async functions.
-  const fns = [...src.matchAll(/export async function (\w+)\(([\s\S]*?)\n}\n/g)].map((m) => ({ name: m[1], body: m[0] }));
+  const fns = [...src.matchAll(/export async function (\w+)\(([\s\S]*?)\r?\n}\r?\n/g)].map((m) => ({ name: m[1], body: m[0] }));
 
   it('finds the actions', () => expect(fns.length).toBeGreaterThan(25));
 

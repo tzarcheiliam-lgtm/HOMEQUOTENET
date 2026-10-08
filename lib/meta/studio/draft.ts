@@ -1,5 +1,9 @@
 import { z } from 'zod';
 import { buildDestination } from './url-params';
+import { budgetUnitGate, currencyOffset, describeAmount, fromMinor, toMinor, type BudgetUnitState } from './money';
+
+/** Sanity ceilings in MAJOR units: stops a typo like an extra zero. 100,000 for cent-based currencies, 100,000,000 for whole-unit ones (COP, IDR, VND...). */
+const sanityMax = (currency: string | null) => (currencyOffset(currency) === 1 ? 100_000_000 : 100_000);
 
 /**
  * Ad draft model: what a human configures, the validation that decides whether it may be created, and the exact
@@ -11,13 +15,23 @@ import { buildDestination } from './url-params';
  *   - objectives OUTCOME_LEADS and OUTCOME_TRAFFIC (Advantage+ shopping/app creation is not offered)
  *   - special_ad_categories must be NONE (restricted-category setups are refused, not guessed)
  *   - every object is created PAUSED
- *   - budgets are sent in the account currency's MINOR units. The reference does not state the unit, so
- *     the review screen shows both the entered amount and the exact value sent, and the checklist asks the
- *     owner to confirm with one paused test ad before any live use.
+ *   - amounts are converted with lib/meta/studio/money.ts (Meta's documented currency-offset table). Bids are documented
+ *     in those units. Budget units are NOT documented, so budgets are blocked until a human verifies them per account
+ *     (budgetUnitGate). The review screen is generated from the exact integers that will be sent.
+ *   - lead-ad creatives follow https://developers.facebook.com/docs/marketing-api/guides/lead-ads/create (link must be
+ *     https://fb.me/, CTA types limited to APPLY_NOW, DOWNLOAD, GET_QUOTE, LEARN_MORE, SIGN_UP, SUBSCRIBE).
+ *   - manual placement values could not be verified against official documentation, so manual placements are blocked
+ *     (automatic placements are the supported, Meta-recommended setting).
  */
 
 export const OBJECTIVES = ['OUTCOME_LEADS', 'OUTCOME_TRAFFIC'] as const;
-export const CTA_TYPES = ['LEARN_MORE', 'GET_QUOTE', 'SIGN_UP', 'CONTACT_US', 'APPLY_NOW'] as const;
+export const CTA_TYPES = ['LEARN_MORE', 'GET_QUOTE', 'SIGN_UP', 'CONTACT_US', 'APPLY_NOW', 'SUBSCRIBE'] as const;
+/** Official lead-ads guide: only these CTA types are valid on an Instant Form ad. */
+export const LEAD_AD_CTA_TYPES: readonly (typeof CTA_TYPES[number])[] = ['APPLY_NOW', 'GET_QUOTE', 'LEARN_MORE', 'SIGN_UP', 'SUBSCRIBE'];
+/** Official lead-ads guide: the creative `link` of a lead ad can only be this value. */
+export const LEAD_AD_LINK = 'https://fb.me/';
+/** Manual placement values (publisher_platforms / *_positions) are not documented where we could verify them. */
+export const MANUAL_PLACEMENTS_VERIFIED = false as boolean;
 export const FB_POSITIONS = ['feed', 'story', 'video_feeds', 'marketplace', 'right_hand_column', 'search'] as const;
 export const IG_POSITIONS = ['stream', 'story', 'reels'] as const; // 'explore' is rejected by v26.0
 export const GOALS = ['LEAD_GENERATION', 'QUALITY_LEAD', 'OFFSITE_CONVERSIONS', 'LINK_CLICKS', 'LANDING_PAGE_VIEWS'] as const;
@@ -31,7 +45,7 @@ export function eligibleGoals(objective: (typeof OBJECTIVES)[number], location: 
 }
 
 const id = z.string().regex(/^[0-9]{5,25}$/, 'Must be a Meta id (digits)');
-const money = z.number().positive().max(100000);
+const money = z.number().positive().max(1_000_000_000); // per-currency sanity limit is enforced in validateDraft
 
 export const draftConfigSchema = z.object({
   structure: z.discriminatedUnion('mode', [
@@ -43,6 +57,8 @@ export const draftConfigSchema = z.object({
   conversion_location: z.enum(['instant_form', 'website']),
   optimization_goal: z.enum(GOALS),
   special_ad_categories: z.array(z.string()).default([]),
+  /** A tiny paused ad whose only purpose is to let a person check the budget unit in Ads Manager. */
+  budget_unit_probe: z.boolean().default(false),
   page_id: id,
   instagram_user_id: id.nullable().default(null),
   dataset_id: id.nullable().default(null), // required for website lead conversions
@@ -85,10 +101,11 @@ export const draftConfigSchema = z.object({
 });
 export type DraftConfig = z.infer<typeof draftConfigSchema>;
 
-/** Currencies whose Graph amounts have no minor unit (whole-unit). Everything else is x100. */
-const ZERO_DECIMAL = new Set(['JPY', 'KRW', 'VND', 'CLP', 'ISK', 'HUF', 'TWD', 'UGX', 'PYG']);
-export function toMinorUnits(amount: number, currency: string): number {
-  return Math.round(ZERO_DECIMAL.has(currency.toUpperCase()) ? amount : amount * 100);
+/** Throws if the amount cannot be converted exactly. validateDraft rejects such drafts before any plan is built. */
+export function toMinorUnits(amount: string | number, currency: string): number {
+  const r = toMinor(amount, currency);
+  if (!r.ok) throw new Error(r.message);
+  return r.minor;
 }
 
 export type Issue = { code: string; message: string; field?: string };
@@ -98,11 +115,15 @@ export type DraftContext = {
   accountSyncedAdsetIds: Map<string, string>; // adset id -> campaign id
   creativeReady: boolean;
   creativeKind: 'image' | 'video' | null;
+  creativeHasThumbnail: boolean;
+  /** Campaigns that own their budget (campaign budget optimization): an ad set created in one must not set its own. */
+  campaignsWithBudget: Set<string>;
   /** Meta ids of assets mapped to the same contractor (or network-level). */
   allowedPageIds: Set<string>;
   allowedInstagramIds: Set<string>;
   allowedDatasetIds: Set<string>;
   allowedLeadFormIds: Set<string>;
+  budgetUnit: BudgetUnitState;
   now: Date;
 };
 
@@ -114,6 +135,15 @@ export function validateDraft(c: DraftConfig, x: DraftContext): { errors: Issue[
   const w = (code: string, message: string, field?: string) => warnings.push({ code, message, field });
 
   if (!x.currency) e('currency_unknown', 'The ad account currency is unknown. Run a Meta sync first.');
+  const sendsBudget = c.structure.mode !== 'existing_adset';
+  if (sendsBudget) {
+    const bm = toMinor(c.budget.amount, x.currency);
+    if (!bm.ok) e(bm.code, bm.message, 'budget.amount');
+    else if (c.budget.amount > sanityMax(x.currency)) e('amount_too_large', `That budget is above ${sanityMax(x.currency).toLocaleString('en-US')} ${x.currency}; check for an extra zero.`, 'budget.amount');
+    for (const r of budgetUnitGate({ ...x.budgetUnit, accountCurrency: x.currency, isProbe: c.budget_unit_probe, amountMajor: c.budget.amount }).reasons) e('budget_unit', r, 'budget.amount');
+    if (c.budget_unit_probe) w('budget_probe', 'This is a budget-unit probe: after it is created, open it in Ads Manager, check that the budget shows exactly as entered, and record the result in Activity & settings. Delete it afterwards.', 'budget_unit_probe');
+  }
+  if (c.bid.amount != null) { const bd = toMinor(c.bid.amount, x.currency); if (!bd.ok) e(bd.code, bd.message, 'bid.amount'); }
   if (c.special_ad_categories.some((s) => s !== 'NONE')) e('special_category', 'Ads in a special ad category (housing, credit, employment, politics…) have restricted targeting and are not supported here. Create them in Ads Manager.', 'special_ad_categories');
   if (!eligibleGoals(c.objective, c.conversion_location).includes(c.optimization_goal)) {
     e('goal_not_eligible', `${c.optimization_goal} is not available for ${c.objective} with ${c.conversion_location === 'instant_form' ? 'an Instant Form' : 'a website'} destination.`, 'optimization_goal');
@@ -135,6 +165,10 @@ export function validateDraft(c: DraftConfig, x: DraftContext): { errors: Issue[
     }
   }
 
+  if (c.conversion_location === 'instant_form' && !LEAD_AD_CTA_TYPES.includes(c.ad.cta)) e('cta_not_allowed', `The button "${c.ad.cta}" is not valid for an Instant Form ad. Allowed: ${LEAD_AD_CTA_TYPES.join(', ')}.`, 'ad.cta');
+  if (c.placements.mode === 'manual' && !MANUAL_PLACEMENTS_VERIFIED) e('placements_unverified', 'Manual placements are disabled: their exact values could not be verified against Meta’s official documentation. Use automatic placements (recommended by Meta) or set placements in Ads Manager.', 'placements');
+  if (x.creativeKind === 'video' && !x.creativeHasThumbnail) e('video_thumbnail', 'This video has no thumbnail. Re-upload it so a frame can be captured; HQN uploads that frame as the video’s cover image.', 'creative');
+  if (c.structure.mode === 'existing_campaign' && x.campaignsWithBudget.has(c.structure.campaign_id)) e('campaign_owns_budget', 'That campaign sets the budget itself; a new ad set in it must not have its own budget. Pick an ad set instead, or a campaign without a campaign-level budget.', 'structure.campaign_id');
   if (c.targeting.age_min > c.targeting.age_max) e('age_range', 'Minimum age is above the maximum age.', 'targeting.age_min');
   if (c.budget.type === 'lifetime' && !c.schedule.end) e('lifetime_needs_end', 'A lifetime budget needs an end date.', 'schedule.end');
   if (c.schedule.end && new Date(c.schedule.end) <= new Date(c.schedule.start)) e('schedule_order', 'The end must be after the start.', 'schedule.end');
@@ -148,7 +182,7 @@ export function validateDraft(c: DraftConfig, x: DraftContext): { errors: Issue[
   }
 
   if (!x.creativeReady) e('creative_missing', 'Choose a creative that has passed validation.', 'creative');
-  if (c.placements.mode === 'manual' && c.placements.facebook.length + c.placements.instagram.length === 0) e('placements_empty', 'Pick at least one placement or use automatic placements.', 'placements');
+  if (c.placements.mode === 'manual' && MANUAL_PLACEMENTS_VERIFIED && c.placements.facebook.length + c.placements.instagram.length === 0) e('placements_empty', 'Pick at least one placement or use automatic placements.', 'placements');
   if (c.placements.mode === 'manual' && c.placements.instagram.length > 0 && !c.instagram_user_id) w('instagram_identity', 'Instagram placements are selected but no Instagram account is chosen; Meta will use the Page\'s identity.', 'instagram_user_id');
 
   const ad = c.ad;
@@ -160,7 +194,7 @@ export function validateDraft(c: DraftConfig, x: DraftContext): { errors: Issue[
 }
 
 // ---- Exact Meta payloads --------------------------------------------------------------------------------------
-export type StepName = 'media' | 'campaign' | 'adset' | 'creative' | 'ad';
+export type StepName = 'media' | 'thumbnail' | 'campaign' | 'adset' | 'creative' | 'ad';
 export type PlanStep = {
   step: StepName;
   object: 'adimages' | 'advideos' | 'campaigns' | 'adsets' | 'adcreatives' | 'ads';
@@ -182,7 +216,7 @@ export type PlanInput = {
   config: DraftConfig;
   currency: string;
   /** ids already known (existing objects or created earlier) */
-  have: Partial<Record<'image_hash' | 'video_id' | 'campaign_id' | 'adset_id' | 'creative_id', string>>;
+  have: Partial<Record<'image_hash' | 'thumb_hash' | 'video_id' | 'campaign_id' | 'adset_id' | 'creative_id', string>>;
   creativeKind: 'image' | 'video';
   /** Required for video media upload (Meta fetches it), image bytes are posted by the executor. */
   mediaUrl?: string;
@@ -205,6 +239,7 @@ export function buildPlan(p: PlanInput): PlanStep[] {
 
   if (p.creativeKind === 'video') {
     steps.push({ step: 'media', object: 'advideos', findByName: null, body: { file_url: p.mediaUrl ? '[signed storage URL, expires]' : null, name: p.name } });
+    steps.push({ step: 'thumbnail', object: 'adimages', findByName: null, body: { bytes: '[video cover frame captured at upload, base64]' } });
   } else {
     steps.push({ step: 'media', object: 'adimages', findByName: null, body: { bytes: '[original file bytes, base64]' } });
   }
@@ -253,18 +288,19 @@ export function buildPlan(p: PlanInput): PlanStep[] {
   }
 
   const creativeName = objectName(p.name, p.tag, 'Creative');
+  const instant = c.conversion_location === 'instant_form';
   const media = p.creativeKind === 'video'
     ? { video_data: {
         video_id: p.have.video_id ?? '[video id from media step]', message: c.ad.primary_text,
         ...(c.ad.headline ? { title: c.ad.headline } : {}), ...(c.ad.description ? { link_description: c.ad.description } : {}),
-        ...(p.thumbnailUrl ? { image_url: '[signed thumbnail URL]' } : {}),
-        call_to_action: callToAction(c, p.destination),
+        image_hash: p.have.thumb_hash ?? '[cover image hash from thumbnail step]',
+        call_to_action: callToAction(c, p.destination, true),
       } }
     : { link_data: {
         image_hash: p.have.image_hash ?? '[image hash from media step]', message: c.ad.primary_text,
-        link: c.conversion_location === 'instant_form' ? 'https://fb.me/' : (p.destination?.url ?? ''),
+        link: instant ? LEAD_AD_LINK : (p.destination?.url ?? ''),
         ...(c.ad.headline ? { name: c.ad.headline } : {}), ...(c.ad.description ? { description: c.ad.description } : {}),
-        call_to_action: callToAction(c, p.destination),
+        call_to_action: callToAction(c, p.destination, false),
       } };
   steps.push({
     step: 'creative', object: 'adcreatives', findByName: creativeName,
@@ -287,27 +323,46 @@ export function buildPlan(p: PlanInput): PlanStep[] {
   return steps;
 }
 
-function callToAction(c: DraftConfig, dest: { url: string } | null) {
-  return c.conversion_location === 'instant_form'
-    ? { type: c.ad.cta, value: { lead_gen_form_id: c.ad.lead_form_id } }
-    : { type: c.ad.cta, value: { link: dest?.url ?? '' } };
+/**
+ * Official lead-ads guide: link_data CTA value carries only lead_gen_form_id; video_data CTA value carries the fb.me link
+ * AND lead_gen_form_id. Website ads: the CTA link must equal the creative's link.
+ */
+function callToAction(c: DraftConfig, dest: { url: string } | null, isVideo: boolean) {
+  if (c.conversion_location === 'instant_form') {
+    return isVideo
+      ? { type: c.ad.cta, value: { link: 'http://fb.me/', lead_gen_form_id: c.ad.lead_form_id } }
+      : { type: c.ad.cta, value: { lead_gen_form_id: c.ad.lead_form_id } };
+  }
+  return { type: c.ad.cta, value: { link: dest?.url ?? '' } };
 }
 
-/** Plain-language summary a human must see (and the exact thing recorded as confirmed). */
+/**
+ * Plain-language summary a human must see (and the exact thing recorded as confirmed). The budget and bid lines are
+ * produced FROM the integers that will be sent, never from the typed text, so display and submission cannot diverge.
+ */
 export function confirmationSummary(input: {
   accountName: string | null; accountId: string; currency: string; pageName: string | null; config: DraftConfig; timezone: string | null;
 }) {
   const c = input.config;
+  const cur = input.currency.toUpperCase();
+  const budget = describeAmount(c.budget.amount, cur);
+  const sentBudget = budget.ok ? budget.sent : null;
+  const bid = c.bid.amount != null ? describeAmount(c.bid.amount, cur) : null;
+  const budgetSent = c.structure.mode !== 'existing_adset';
   const dest = c.conversion_location === 'instant_form' ? `Instant Form ${c.ad.lead_form_id}` : (c.ad.destination_url ?? '');
   return {
     account: `${input.accountName ?? input.accountId} (${input.accountId})`,
     page: input.pageName ?? c.page_id,
-    budget: `${c.budget.amount.toFixed(2)} ${input.currency} ${c.budget.type} (owned by ${c.structure.mode === 'existing_adset' ? 'the existing ad set' : c.budget.level})`,
-    budget_minor_units_sent: toMinorUnits(c.budget.amount, input.currency),
+    budget: !budgetSent
+      ? 'Not changed: this ad uses an existing ad set, which keeps its own budget'
+      : sentBudget == null ? 'INVALID' : `${fromMinor(sentBudget, cur)} ${cur} ${c.budget.type} (owned by ${c.budget.level === 'campaign' && c.structure.mode === 'new' ? 'the campaign' : 'the ad set'})`,
+    budget_sent_to_meta: budgetSent ? sentBudget : null,
+    bid: bid == null ? 'Lowest cost, no cap' : bid.ok ? `${c.bid.strategy.replace(/_/g, ' ').toLowerCase()} of ${bid.display} (sent as ${bid.sent})` : 'INVALID',
     schedule: `${c.schedule.start}${c.schedule.end ? ` to ${c.schedule.end}` : ' (no end)'}${input.timezone ? ` · account timezone ${input.timezone}` : ''}`,
     destination: dest,
     objective: c.objective,
     optimization_goal: c.optimization_goal,
     created_as: 'PAUSED (nothing delivers until you turn it on in Ads Manager)',
+    budget_unit_probe: c.budget_unit_probe,
   };
 }

@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { requireRole } from '@/lib/auth';
 import {
-  admin, accountGate, discoverAssets, loadStudioSettings, logActivity, proposalStore, readOptions, syncObjectState, writerOrNull,
+  admin, discoverAssets, loadStudioSettings, logActivity, proposalGate, proposalStore, readOptions, syncObjectState, writerOrNull,
 } from '@/lib/meta/studio/server';
 import { applyProposal, type ProposalRow } from '@/lib/meta/studio/proposals';
 import { CREATIVE_BUCKET, confirmDraft, createPausedObjects, newIdempotencyKey, refreshDraftStatus, reviewDraft, voidConfirmationOnEdit, type DraftRow } from '@/lib/meta/studio/drafts.server';
@@ -15,7 +15,9 @@ import { probeImage, probeVideoParts } from '@/lib/meta/studio/media-probe';
 import { runAndStoreAudit, proposalFromFinding } from '@/lib/meta/studio/audits.server';
 import { findRuleConflicts, validateRuleDef, type RuleDef } from '@/lib/meta/studio/rules-engine';
 import { runRulesTick } from '@/lib/meta/studio/rules.server';
-import { redactSecrets } from '@/lib/meta/marketing-api';
+import {} from '@/lib/meta/marketing-api';
+import { redact } from '@/lib/meta/studio/redact';
+import { evaluateBudgetProbe } from '@/lib/meta/studio/money';
 
 export type StudioState = { error?: string; success?: string; id?: string; data?: unknown } | undefined;
 
@@ -133,6 +135,18 @@ export async function mapAsset(_p: StudioState, fd: FormData): Promise<StudioSta
 const extFor = (mime: string) => ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'video/mp4': 'mp4', 'video/quicktime': 'mov' } as Record<string, string>)[mime] ?? 'bin';
 const MAX_SIGNED_UPLOAD = 50 * 1024 * 1024 * 1024;
 
+/** The real size of the stored object (the browser's claim is not trusted): HEAD, falling back to a 1-byte range read. */
+async function storedObjectSize(url: string): Promise<number | null> {
+  try {
+    const h = await fetch(url, { method: 'HEAD' });
+    const len = Number(h.headers.get('content-length'));
+    if (h.ok && Number.isFinite(len) && len > 0) return len;
+    const r = await fetch(url, { headers: { Range: 'bytes=0-0' } });
+    const m = /\/(\d+)$/.exec(r.headers.get('content-range') ?? '');
+    return m ? Number(m[1]) : null;
+  } catch { return null; }
+}
+
 /** Step 1: register the upload and hand the browser a one-time signed URL. The server never trusts the declared facts. */
 export async function startCreativeUpload(_p: StudioState, fd: FormData): Promise<StudioState> {
   const me = await requireRole(['admin']);
@@ -149,7 +163,7 @@ export async function startCreativeUpload(_p: StudioState, fd: FormData): Promis
   const db = admin();
   const folder = `${v.contractor_id ?? 'network'}/${crypto.randomUUID()}`;
   const path = `${folder}/original.${extFor(v.mime)}`;
-  const thumb = v.with_thumbnail ? `${folder}/thumb.jpg` : null;
+  const thumb = v.with_thumbnail && v.kind === 'video' ? `${folder}/thumb.jpg` : null;
   const { data: row, error } = await db.from('meta_creatives').insert({
     contractor_id: v.contractor_id, campaign_label: v.campaign_label, name: cleanCreativeName(v.name), tags: cleanTags((v.tags ?? '').split(',')), kind: v.kind, mime_type: v.mime, bytes: v.bytes,
     storage_path: path, thumbnail_path: thumb, status: 'uploaded', created_by: me.id, duration_seconds: v.kind === 'video' ? 0 : null,
@@ -172,24 +186,33 @@ export async function finalizeCreativeUpload(creativeId: string): Promise<Studio
   const storage = db.storage.from(CREATIVE_BUCKET);
   const signed = await storage.createSignedUrl(c.storage_path, 600);
   if (!signed.data?.signedUrl) { await db.from('meta_creatives').update({ status: 'rejected', validation: { errors: [{ code: 'missing', message: 'The file did not arrive in storage.' }], warnings: [] } }).eq('id', creativeId); return { error: 'The upload did not complete.' }; }
+  const size = await storedObjectSize(signed.data.signedUrl);
+  if (!size) { await db.from('meta_creatives').update({ status: 'rejected', validation: { errors: [{ code: 'missing', message: 'Could not read the stored file.' }], warnings: [] } }).eq('id', creativeId); return { error: 'Could not read the stored file.' }; }
   const range = async (r: string) => { const res = await fetch(signed.data!.signedUrl, { headers: { Range: r } }); return res.ok || res.status === 206 ? Buffer.from(await res.arrayBuffer()) : null; };
   let width: number | null = null, height: number | null = null, duration: number | null = null, probedMime: string | null = null, sha: string | null = null;
   if (c.kind === 'image') {
     const whole = await range('bytes=0-' + (31 * 1024 * 1024));
     const img = whole ? probeImage(whole) : null;
     if (img) { width = img.width; height = img.height; probedMime = img.mime; }
-    if (whole && whole.length === Number(c.bytes)) sha = createHash('sha256').update(whole).digest('hex');
+    if (whole && whole.length === size) sha = createHash('sha256').update(whole).digest('hex');
   } else {
     const head = await range('bytes=0-2097151');
-    const tail = Number(c.bytes) > 2097152 ? await range('bytes=-2097152') : null;
+    const tail = size > 2097152 ? await range('bytes=-2097152') : null;
     const vid = head ? probeVideoParts(head, tail) : null;
     if (vid) { width = vid.width; height = vid.height; duration = vid.durationSeconds; probedMime = vid.mime; }
   }
+  // A video's cover frame is captured in the browser and may not exist (undecodable codec, upload dropped). Verify it is really
+  // there; otherwise clear the path so the draft check "this video has no cover image" is truthful.
+  let thumbOk = false;
+  if (c.kind === 'video' && c.thumbnail_path) {
+    const ts = await storage.createSignedUrl(c.thumbnail_path, 60);
+    if (ts.data?.signedUrl) { const probe = await fetch(ts.data.signedUrl, { headers: { Range: 'bytes=0-3' } }); const head = probe.ok || probe.status === 206 ? Buffer.from(await probe.arrayBuffer()) : null; thumbOk = !!head && head.length >= 3 && head[0] === 0xff && head[1] === 0xd8; }
+  }
   const mismatch = reconcileDeclared({ mime: c.mime_type, width: null, height: null }, { mime: probedMime, width, height });
-  const v = validateCreative({ kind: c.kind, mime: probedMime ?? c.mime_type, bytes: Number(c.bytes), width, height, durationSeconds: duration });
+  const v = validateCreative({ kind: c.kind, mime: probedMime ?? c.mime_type, bytes: size, width, height, durationSeconds: duration });
   const errors = [...mismatch.filter((m) => m.code !== 'dimension_mismatch'), ...v.errors];
   const status = errors.length ? 'rejected' : 'ready';
-  const { error } = await db.from('meta_creatives').update({ status, width, height, duration_seconds: duration, sha256: sha, mime_type: probedMime ?? c.mime_type, validation: { errors, warnings: v.warnings } }).eq('id', creativeId);
+  const { error } = await db.from('meta_creatives').update({ status, thumbnail_path: c.kind === 'video' && thumbOk ? c.thumbnail_path : null, bytes: size, width, height, duration_seconds: duration, sha256: sha, mime_type: probedMime ?? c.mime_type, validation: { errors, warnings: v.warnings } }).eq('id', creativeId);
   if (error) {
     // The only unique constraint that can fire here is the exact-duplicate check (same file already in the library).
     await db.from('meta_creatives').update({ status: 'rejected', sha256: null, validation: { errors: [{ code: 'duplicate', message: 'This exact file is already in the library for this contractor.' }], warnings: [] } }).eq('id', creativeId);
@@ -340,18 +363,20 @@ export async function applyProposalAction(id: string): Promise<StudioState> {
   const db = admin();
   const { data: p } = await db.from('meta_change_proposals').select('*').eq('id', id).maybeSingle();
   if (!p) return { error: 'Proposal not found.' };
-  const gate = await accountGate(db, p.account_id);
-  if (!gate.allowed) return { error: gate.reasons.join(' ') };
+  const pre = await proposalGate(db, p as ProposalRow);
+  if (!pre.allowed) return { error: pre.reasons.join(' ') };
   const writer = writerOrNull();
   if (!writer) return { error: 'Setup required: META_ADS_WRITE_TOKEN is not set.' };
-  const r = await applyProposal(p as ProposalRow, { writer, store: proposalStore(db, { id: me.id, kind: 'user' }) });
+  // The gate runs again inside applyProposal right before the write; this early check only gives a quick, clear message.
+  const r = await applyProposal(p as ProposalRow, { writer, store: proposalStore(db, { id: me.id, kind: 'user' }), gate: () => proposalGate(db, p as ProposalRow) });
   touch();
   switch (r.outcome) {
     case 'applied': return { success: 'Applied in Meta. The previous values were saved; reversing is a new proposal that needs approval, and spend or delivery already caused cannot be undone.' };
     case 'stale': return { error: `Not applied: this changed in Meta after the proposal was made (${r.drift.map((d) => d.field).join(', ')}). Create a new proposal from the current state.` };
-    case 'failed': return { error: `Meta did not apply it: ${redactSecrets(r.message)}` };
+    case 'failed': return { error: `Meta did not apply it: ${redact(r.message)}` };
     case 'expired': return { error: 'This proposal expired.' };
     case 'not_approved': return { error: 'This change needs a person\'s approval first.' };
+    case 'blocked': return { error: `Not applied - a switch is off right now: ${r.reasons.join(' ')} The proposal stays approved and waiting.` };
     case 'not_claimable': return { error: 'This proposal is already being applied or was already applied.' };
     default: return { error: 'Nothing to apply.' };
   }
@@ -445,4 +470,33 @@ export async function evaluateRulesNow(): Promise<StudioState> {
   const r = await runRulesTick(admin());
   touch();
   return r.skipped ? { success: `Nothing evaluated: ${r.skipped}.` } : { success: `Evaluated ${r.evaluated} rule(s): ${Object.entries(r.byOutcome).map(([k, n]) => `${n} ${k}`).join(', ') || 'none'}. ${r.proposals} proposal(s), ${r.applied} applied.` };
+}
+
+/**
+ * A person records what Ads Manager shows for a budget-unit probe ad. This is the only way an account's budgets become
+ * unblocked. A mismatch clears any earlier verification and keeps budgets blocked.
+ */
+export async function recordBudgetUnitCheck(_p: StudioState, fd: FormData): Promise<StudioState> {
+  const me = await requireRole(['admin']);
+  const parsed = z.object({ account: z.string().regex(/^act_[0-9]+$/), draft: z.string().uuid(), observed: z.string().min(1).max(20) }).safeParse({ account: str(fd, 'account'), draft: str(fd, 'draft'), observed: str(fd, 'observed') });
+  if (!parsed.success) return { error: 'Choose the probe ad and type the budget Ads Manager shows.' };
+  const db = admin();
+  const [{ data: d }, { data: acct }] = await Promise.all([
+    db.from('meta_ad_drafts').select('id, account_id, status, config').eq('id', parsed.data.draft).maybeSingle(),
+    db.from('meta_ad_accounts').select('currency').eq('id', parsed.data.account).maybeSingle(),
+  ]);
+  const cfg = draftConfigSchema.safeParse(d?.config);
+  if (!d || d.account_id !== parsed.data.account || d.status !== 'created_paused' || !cfg.success || !cfg.data.budget_unit_probe) {
+    return { error: 'That is not a budget-unit probe ad that was created in this ad account.' };
+  }
+  const r = evaluateBudgetProbe(cfg.data.budget.amount, parsed.data.observed, acct?.currency);
+  if (!r.ok) return { error: r.message };
+  const evidence = { draft_id: d.id, entered: r.entered, sent: r.sent, observed: r.observed, match: r.match };
+  await db.from('meta_account_controls').upsert(r.match
+    ? { account_id: parsed.data.account, budget_unit_currency: acct!.currency, budget_unit_verified_at: new Date().toISOString(), budget_unit_verified_by: me.id, budget_unit_evidence: evidence, updated_at: new Date().toISOString(), updated_by: me.id }
+    : { account_id: parsed.data.account, budget_unit_currency: null, budget_unit_verified_at: null, budget_unit_verified_by: null, budget_unit_evidence: evidence, updated_at: new Date().toISOString(), updated_by: me.id },
+  { onConflict: 'account_id' });
+  await logActivity(db, { actor_id: me.id, action: r.match ? 'budget_unit.verified' : 'budget_unit.mismatch', target_type: 'account', target_id: parsed.data.account, account_id: parsed.data.account, after: evidence });
+  touch();
+  return r.match ? { success: r.message } : { error: r.message };
 }

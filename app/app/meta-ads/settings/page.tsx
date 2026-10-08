@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/ui/page-header';
 import { when } from '@/components/meta/format';
-import { AccountControlsForm, AssetMapRow, DiscoveryButton, SwitchForm, ThresholdsForm, VerifyTrackingButton } from '@/components/meta/studio/settings-forms';
+import { AccountControlsForm, AssetMapRow, BudgetUnitForm, DiscoveryButton, SwitchForm, ThresholdsForm, VerifyTrackingButton } from '@/components/meta/studio/settings-forms';
 import type { Thresholds } from '@/lib/meta/studio/audit';
 
 export const metadata = { title: 'Meta Ads settings · HomeQuote Network' };
@@ -25,6 +25,9 @@ export default async function StudioSettingsPage() {
     listContractors(),
     db.from('meta_activity_log').select('id, at, actor_kind, action, target_type, target_id, account_id, version_ref, detail').order('at', { ascending: false }).limit(40),
   ]);
+  const { data: probeRows } = await db.from('meta_ad_drafts').select('id, name, account_id, config').eq('status', 'created_paused');
+  const probesBy = new Map<string, { id: string; name: string }[]>();
+  for (const r of (probeRows ?? []) as { id: string; name: string; account_id: string; config: { budget_unit_probe?: boolean } }[]) if (r.config?.budget_unit_probe) probesBy.set(r.account_id, [...(probesBy.get(r.account_id) ?? []), { id: r.id, name: r.name }]);
   const contractors = contractorsAll.map((c) => ({ id: c.id, name: c.name }));
   const live = s?.live_writes_enabled ?? false;
   const auto = s?.automation_enabled ?? false;
@@ -64,7 +67,7 @@ export default async function StudioSettingsPage() {
       <Card>
         <CardHeader><CardTitle>Ad accounts</CardTitle><CardDescription>Writes and automation are off for every account until you switch them on here. Meta&rsquo;s own account spending limit (set in Business Settings) is the only hard spend ceiling; HQN checks periodically and cannot guarantee one.</CardDescription></CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-2">
-          {accounts.length === 0 ? <p className="text-sm text-muted-foreground">No ad accounts imported yet. Set the reporting token and run Sync now on Meta Ads &gt; Setup.</p> : accounts.map((a) => <AccountControlsForm key={a.id} account={a} />)}
+          {accounts.length === 0 ? <p className="text-sm text-muted-foreground">No ad accounts imported yet. Set the reporting token and run Sync now on Meta Ads &gt; Setup.</p> : accounts.map((a) => (<div key={a.id} className="space-y-2"><AccountControlsForm account={a} /><BudgetUnitForm account={a} probes={probesBy.get(a.id) ?? []} /></div>))}
         </CardContent>
       </Card>
 

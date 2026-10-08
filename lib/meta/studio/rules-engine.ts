@@ -1,4 +1,5 @@
 import { addDays } from '@/lib/meta/metrics';
+import { currencyOffset } from './money';
 
 /**
  * Optimization rule evaluation. Pure: the server layer loads the inputs and persists the outcome.
@@ -189,8 +190,7 @@ export function evaluateRule(rule: RuleDef, ctx: RuleContext): Evaluation {
   };
 }
 
-const ZERO_DECIMAL = new Set(['JPY', 'KRW', 'VND', 'CLP', 'ISK', 'HUF', 'TWD', 'UGX', 'PYG']);
-const minorFactor = (cur: string) => (ZERO_DECIMAL.has(cur.toUpperCase()) ? 1 : 100);
+const minorFactor = (cur: string) => currencyOffset(cur) ?? 100; // callers refuse unsupported currencies before acting
 
 // ---- conflicts between rules ---------------------------------------------------------------------------
 export type Hierarchy = { adsetToCampaign: Map<string, string> };
@@ -232,9 +232,41 @@ export function validateRuleDef(r: Pick<RuleDef, 'mode' | 'action_type' | 'expir
   if (!Number.isFinite(r.condition.threshold) || r.condition.threshold < 0) e.push('The threshold must be a number of zero or more.');
   if (!(r.min_evidence.min_spend > 0)) e.push('Minimum spend must be above zero so a rule cannot act on no evidence.');
   if (!(r.min_evidence.min_impressions > 0)) e.push('Minimum impressions must be above zero.');
+  if (r.scope_type === 'account' && r.action_type !== 'notify') e.push('Account-wide rules can only notify. Pause or budget rules must target one campaign or ad set.');
   if (r.mode === 'auto' && !r.expires_at) e.push('Automatic rules must have an expiry date.');
   if ((r.action_type === 'budget_decrease' || r.action_type === 'budget_increase') && !r.max_adjust_pct) e.push('Budget rules need a maximum adjustment percentage.');
   if (r.action_type === 'budget_increase' && r.budget_ceiling == null) e.push('Budget increases need a ceiling.');
   if (r.mode === 'auto' && r.action_type === 'budget_increase') e.push('Automatic budget increases are not allowed; use approval mode for increases.');
   return e;
+}
+
+/**
+ * Hard scope check for a rule-created proposal, run again at execution time: the proposal must target exactly what the
+ * rule covers, with the rule's own action and within its own limits. Returns null when in scope, else the reason.
+ */
+export function proposalWithinRule(
+  rule: Pick<RuleDef, 'account_id' | 'scope_type' | 'scope_id' | 'action_type' | 'max_adjust_pct' | 'budget_floor' | 'budget_ceiling' | 'enabled' | 'expires_at'>,
+  p: { account_id: string; target_type: string; target_id: string; change_type: string; current_value: Record<string, unknown>; proposed_value: Record<string, unknown> },
+  currency: string,
+  now: Date = new Date(),
+): string | null {
+  if (!rule.enabled) return 'The rule is disabled.';
+  if (rule.expires_at && new Date(rule.expires_at) <= now) return 'The rule has expired.';
+  if (p.account_id !== rule.account_id) return 'The proposal is for a different ad account than the rule.';
+  if (rule.scope_type === 'account') return 'Account-wide rules cannot change objects.';
+  if (p.target_type !== rule.scope_type || p.target_id !== rule.scope_id) return 'The proposal targets something outside the rule’s scope.';
+  if (rule.action_type === 'pause') return p.change_type === 'pause' ? null : 'A pause rule can only pause.';
+  if (rule.action_type === 'notify') return 'A notify rule cannot change anything.';
+  if (p.change_type !== 'budget') return 'A budget rule can only change a budget.';
+  const cur = Number(p.current_value.daily_budget ?? NaN);
+  const next = Number(p.proposed_value.daily_budget ?? NaN);
+  if (!Number.isFinite(cur) || !Number.isFinite(next) || cur <= 0) return 'The budget values are not usable.';
+  if (rule.action_type === 'budget_decrease' && !(next < cur)) return 'A decrease rule produced a non-decrease.';
+  if (rule.action_type === 'budget_increase' && !(next > cur)) return 'An increase rule produced a non-increase.';
+  const pct = (Math.abs(next - cur) / cur) * 100;
+  if (rule.max_adjust_pct != null && pct > rule.max_adjust_pct + 0.5) return `The change (${pct.toFixed(1)}%) exceeds the rule’s ${rule.max_adjust_pct}% limit.`;
+  const f = minorFactor(currency);
+  if (rule.budget_floor != null && next < Math.round(rule.budget_floor * f)) return 'The new budget is below the rule’s floor.';
+  if (rule.budget_ceiling != null && next > Math.round(rule.budget_ceiling * f)) return 'The new budget is above the rule’s ceiling.';
+  return null;
 }

@@ -43,7 +43,7 @@ describe('migration planner', () => {
     expect(nextSteps(rows)).toMatchObject({ ok: true, pending: [] });
     await db.close();
   }, 120_000);
-  it('EXISTING staging that stops at 0040: plan = 0041 then 0042, in that order', async () => {
+  it('EXISTING staging that stops at 0040: plan = 0041, 0042, 0043, in that order', async () => {
     const db = new PGlite();
     await db.exec(`create role anon; create role authenticated; create role service_role; create role supabase_admin; create schema auth; create schema storage; create schema extensions;
       create table auth.users (id uuid primary key default gen_random_uuid(), email text, raw_user_meta_data jsonb default '{}', encrypted_password text);
@@ -56,7 +56,7 @@ describe('migration planner', () => {
       grant usage on schema auth, storage to anon, authenticated, service_role; grant execute on all functions in schema auth to anon, authenticated, service_role;`);
     for (const f of files.filter((x) => x.name < '0041')) await db.exec(f.sql.replace(/create extension if not exists ["']?pgcrypto["']?[^;]*;/gi, ''));
     const plan = nextSteps(await planMigrations(files, existsOn(db)));
-    expect(plan).toMatchObject({ ok: true, pending: ['0041_visual_workflow_builder.sql', '0042_meta_ads_analytics_outcomes.sql'] });
+    expect(plan).toMatchObject({ ok: true, pending: ['0041_visual_workflow_builder.sql', '0042_meta_ads_analytics_outcomes.sql', '0043_meta_ads_studio.sql'] });
     await db.close();
   }, 120_000);
   it('flags a half-applied or gapped database instead of guessing', async () => {

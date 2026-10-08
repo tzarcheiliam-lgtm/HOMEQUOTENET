@@ -26,9 +26,9 @@ export async function loadAssets(db: SupabaseClient) {
 export async function loadAccountsWithControls(db: SupabaseClient) {
   const [{ data: accts }, { data: ctl }] = await Promise.all([
     db.from('meta_ad_accounts').select('id, name, currency, timezone_name, contractor_id, last_synced_at, last_sync_error').order('name'),
-    db.from('meta_account_controls').select('account_id, writes_enabled, automation_enabled, note'),
+    db.from('meta_account_controls').select('account_id, writes_enabled, automation_enabled, note, budget_unit_currency, budget_unit_verified_at, budget_unit_evidence'),
   ]);
-  const c = new Map(((ctl ?? []) as { account_id: string; writes_enabled: boolean; automation_enabled: boolean; note: string | null }[]).map((x) => [x.account_id, x]));
+  const c = new Map(((ctl ?? []) as { account_id: string; writes_enabled: boolean; automation_enabled: boolean; note: string | null; budget_unit_currency: string | null; budget_unit_verified_at: string | null; budget_unit_evidence: { observed?: string; entered?: string; match?: boolean } | null }[]).map((x) => [x.account_id, x]));
   return ((accts ?? []) as { id: string; name: string | null; currency: string | null; timezone_name: string | null; contractor_id: string | null; last_synced_at: string | null; last_sync_error: string | null }[])
-    .map((a) => ({ ...a, writes_enabled: c.get(a.id)?.writes_enabled ?? false, automation_enabled: c.get(a.id)?.automation_enabled ?? false, note: c.get(a.id)?.note ?? null }));
+    .map((a) => ({ ...a, writes_enabled: c.get(a.id)?.writes_enabled ?? false, automation_enabled: c.get(a.id)?.automation_enabled ?? false, note: c.get(a.id)?.note ?? null, budget_unit_currency: c.get(a.id)?.budget_unit_currency ?? null, budget_unit_verified_at: c.get(a.id)?.budget_unit_verified_at ?? null, budget_unit_evidence: c.get(a.id)?.budget_unit_evidence ?? null }));
 }

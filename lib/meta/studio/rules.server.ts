@@ -1,9 +1,9 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { rangeBoundsUtc, zonedDate } from '@/lib/meta/metrics';
-import { evaluateRule, findRuleConflicts, ruleWindow, type Evaluation, type InsightDay, type RuleDef, type TargetState } from './rules-engine';
+import { evaluateRule, findRuleConflicts, proposalWithinRule, ruleWindow, type Evaluation, type InsightDay, type RuleDef, type TargetState } from './rules-engine';
 import { applyProposal, budgetProposalValues, proposalKey, type ProposalRow } from './proposals';
-import { accountGate, loadStudioSettings, logActivity, proposalStore, writerOrNull } from './server';
+import { accountGate, loadStudioSettings, logActivity, proposalGate, proposalStore, writerOrNull } from './server';
 import { trackingHealth } from './health';
 
 /**
@@ -130,7 +130,15 @@ export async function runRulesTick(db: SupabaseClient, now = new Date()): Promis
       if (auto) {
         const writer = writerOrNull();
         if (!writer) continue;
-        const res = await applyProposal(prop as ProposalRow, { writer, store: proposalStore(db, { id: null, kind: 'rule' }), now });
+        // Re-read the rule and re-check scope + limits at execution time: a person may have disabled or edited it since evaluation.
+        const { data: fresh } = await db.from('meta_rules').select('*').eq('id', rule.id).maybeSingle();
+        const outOfScope = !fresh ? 'The rule no longer exists.' : proposalWithinRule(fresh as RuleDef, prop as ProposalRow & { target_type: string; account_id: string }, acct.currency ?? 'USD', now);
+        if (outOfScope) {
+          await db.from('meta_change_proposals').update({ status: 'failed', error_message: `Not applied automatically: ${outOfScope}` }).eq('id', prop.id).eq('status', 'approved');
+          await logActivity(db, { actor_kind: 'rule', action: 'proposal.out_of_scope', target_type: 'proposal', target_id: prop.id, account_id: rule.account_id, detail: { reason: outOfScope } });
+          continue;
+        }
+        const res = await applyProposal(prop as ProposalRow, { writer, store: proposalStore(db, { id: null, kind: 'rule' }), gate: () => proposalGate(db, prop as ProposalRow), now });
         if (res.outcome === 'applied') out.applied++;
       }
     }
