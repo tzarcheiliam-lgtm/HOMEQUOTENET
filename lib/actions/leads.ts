@@ -665,7 +665,8 @@ export async function scheduleAppointment(
     location: str(formData, 'location'),
     notes: str(formData, 'notes'),
     // Where the booking happened, as the recorder states it (used only to label the Meta event source truthfully).
-    booked_via: ['phone_call', 'email', 'chat', 'in_person', 'other'].includes(str(formData, 'booked_via') ?? '') ? str(formData, 'booked_via') : null,
+    // Only sent when chosen, so an appointment can still be saved if this optional column were ever missing.
+    ...(['phone_call', 'email', 'chat', 'in_person', 'other'].includes(str(formData, 'booked_via') ?? '') ? { booked_via: str(formData, 'booked_via') } : {}),
     created_by: await currentUserId(),
   });
   if (error) return { error: error.message };

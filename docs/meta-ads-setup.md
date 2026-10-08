@@ -12,7 +12,7 @@ tested locally from what is not.
 3. **Feedback to Meta** - `meta_conversion_events` is a durable outbox fed from the ledger by `POST /api/meta/tick` (5-minute worker). Events the funnel / the original QualifiedLead sender transmit directly are recorded there too (origin `legacy_direct`).
 
 ## 2. Database procedure (migrations)
-`main` contains migrations **0001-0041** (0041 = visual workflow builder, merged via PR #6); this work adds **0042**. There is no migration-history table to trust
+`main` contains migrations **0001-0042** (0041 = visual workflow builder, `0042_contracts_templates.sql` = Contracts). This work is **`0042_meta_ads_analytics_outcomes.sql`**: a second file with the same number (the repo already has two `0027_*`). Both have been applied by the owner; they touch unrelated tables, so order does not matter (filename order applies contracts first). It was first named 0041; it was NOT renumbered after being applied. There is no migration-history table to trust
 (migrations have been applied by hand and `scripts/apply-migrations.mjs` does not record them), so use the read-only planner, which inspects the database for what each file creates:
 
 ```
@@ -21,13 +21,13 @@ STAGING_PROJECT_REF=<ref> STAGING_CONFIRM=I-understand-this-is-not-production SU
 ```
 It refuses production unless you pass `--allow-production` (still read-only), never prints the connection string, and ends with the exact ordered list to apply.
 
-- **Fresh Supabase project:** the plan is **all 43 files, 0001 -> 0042, in filename order** (not just 0040-0042: 0042 needs `profiles`, `contractors`, `leads`, `lead_assignments`, `appointments`, `sales`, `set_updated_at`, `is_admin/is_staff/auth_contractor_id`, `integrations`; 0041 needs the workflow, AI-calling and signing tables). Two files share the number 0027 - both are applied (`0027_email_templates_call_workspace`, `0027_workflow_retention`); sorted filename order is correct.
+- **Fresh Supabase project:** the plan is **all 44 files, 0001 -> 0042 (including BOTH 0042 files), in filename order** (not just the last few: 0042 needs `profiles`, `contractors`, `leads`, `lead_assignments`, `appointments`, `sales`, `set_updated_at`, `is_admin/is_staff/auth_contractor_id`, `integrations`; 0041 needs the workflow, AI-calling and signing tables). Two files share the number 0027 - both are applied (`0027_email_templates_call_workspace`, `0027_workflow_retention`); sorted filename order is correct.
   Dry-run everything in one rolled-back transaction, then apply for real:
   `node scripts/apply-migrations.mjs --dry-run supabase/migrations/*.sql` then `node scripts/apply-migrations.mjs supabase/migrations/*.sql` (each file in its own transaction, stops at the first failure, reads `SUPABASE_DB_URL`, never prints it).
   This exact chain was applied in an in-process PostgreSQL (PGlite) with Supabase's platform pieces stubbed (`tests/helpers/full-migrations.ts`); a real Supabase project is the remaining proof.
-- **Existing staging project:** run the planner. Expected outcomes: *Every migration present* (nothing to do); *Apply, in this order: 0041..., 0042...* (it stops at 0040); a **GAP** or **PARTIAL** report means stop and compare by hand - never apply on top of it. 0042 has no dependency on 0041's tables, but apply in numeric order anyway.
+- **Existing staging project:** run the planner. Expected outcomes: *Every migration present* (nothing to do); *Apply, in this order: ... 0042_meta_ads_analytics_outcomes.sql* (it lists everything missing, e.g. 0041, 0042 if it stops at 0040); a **GAP** or **PARTIAL** report means stop and compare by hand - never apply on top of it. 0042 has no dependency on 0041's tables, but apply in numeric order anyway.
 - Three files (0022, 0027_email_templates_call_workspace, 0033) only change policies/triggers and cannot be auto-detected; the planner lists them as "assumed to follow their neighbours".
-- **Never renumber an applied migration.** 0041 belongs to the workflow builder and may already be applied somewhere; Meta Ads is 0042.
+- **Never renumber an applied migration.** 0041 (workflow builder) and 0042 (Contracts) belong to other features and may already be applied; Meta Ads is the second 0042 file. It needs neither 0041 nor the other 0042 (it applies on a database that stops at 0040).
 
 ## 3. Event mappings and the REAL event source
 Two Meta mechanisms, never mixed. `action_source` is derived from **where the underlying action happened** (Meta: `website` = "conversion was made on your website", `phone_call` = "over the phone", `email`, `chat` = "via a messaging app, SMS...", `physical_store` = "in person", `other` = "not listed"), **not** from whether a person, AI or system wrote the database row.
@@ -82,30 +82,54 @@ The original direct `QualifiedLead` sender keeps running until Live (`meta_setti
 - **Failed rows never block a retry:** the index excludes `failed`. A failed direct send is retried through the delivery view (creates a queue row, `retry_of`, SAME event id). A crashed direct send is swept to `failed` (`interrupted_ambiguous`, "may or may not have reached Meta") after 10 minutes and is then retryable. Retries of accepted / in-flight / >7-day-old events are refused.
 - Residual risk: a failed request that actually reached Meta (timeout) and is then retried can be counted twice; the shared event id lets Meta de-duplicate where it supports that (documented for browser+server pairs; not for server-only repeats).
 
-## 7. Credentials: exact requirements
-Your situation: **the Pool Masters ad account is owned by your client; you have full admin on the Page.** Page admin does **not** give access to the ad account or to the dataset - both are separate Business assets.
+## 7. Credentials and access: exact requirements
+**Your position (as stated):** Ethan owns the Pool Masters ad account; you have full permissions on it and on its datasets. I have no credentials in the build environment, so I could not check this live; the read-only checker below does it the moment a token exists.
 
-| Item | Required? | What exactly |
+### 7a. Where your access can live - and why it matters
+Meta access has three independent layers; having full permissions in one does not authorize the others:
+1. **Identity that holds the asset.** Either *(a)* your **personal profile** was given the ad account/dataset directly (by Ethan's Business), or *(b)* **HQN's Business Portfolio** holds it (Ethan's Business partner-shared it) and you are an admin there, or both. A **System User** (the right production credential) can only be assigned assets that its **own Business Portfolio** holds - **(a) alone gives a System User nothing.** A personal token sees what your profile sees.
+2. **The app's permission** (`ads_read`). It is granted per token, not inherited from your roles. Meta (Marketing API authorization): *"If your app is only managing your ad account, standard access to ads_read ... is sufficient"*; for **other people's** ad accounts *"you need advanced access"*, granted by **App Review per permission**, and Business Verification is required "if your app will access sensitive data". Ethan's account is "other people's" from HQN's side. Also from Meta: at the default access tier *"App admins or developers can make API calls on behalf of ad account admins or advertisers"* - i.e. **you** (holding a role on the HQN app AND admin on the ad account) can use your own token before Advanced access exists.
+3. **The token.** Must be issued by that same app with `ads_read` selected. Your personal permissions never authorize the app by themselves.
+
+### 7b. Which credential path
+| Path | Works when | Needs | Limits |
+|---|---|---|---|
+| **A. Your personal user token** (try-it path) | You hold a role (admin/developer/tester) on the HQN Meta app and are admin on the ad account | Graph API Explorer (or the app's login) with the HQN app selected, permission `ads_read`; extend to a long-lived token | Expires (~60 days), tied to you personally, a person leaving breaks it. **Not for production.** Unverified for an account owned by another Business - the checker will show it. |
+| **B. System User token** (production) | HQN's Business Portfolio holds the account (b above) | the account + datasets **assigned to the System User** in HQN's portfolio; `ads_read` token from the HQN app; **Advanced `ads_read`** (+ Business Verification) approved | No expiry; revocable; Limited tier allows 1 system user + 1 admin system user; default tier has low rate limits |
+
+### 7c. Find out in 30 seconds (no tokens, no CLI)
+In **HQN's Business Settings** (not Ethan's): **Accounts -> Ad accounts** - is *Pool Masters* listed? **Data sources -> Datasets** - are the Pixels listed?
+- **Listed** -> your access is via HQN's portfolio: assign them to the System User (Users -> System users -> Add assets). No one else is needed. The remaining work is the Advanced `ads_read` review (you / Meta).
+- **Not listed** -> your access is on your personal profile only. **Ethan (or an admin of his Business) must share the ad account and the Pixel(s) once with HQN's Business Portfolio as a partner** - the only action that can't be done from HQN's side. Don't ask for it before checking.
+
+### 7d. Verify with the read-only checker (once a token exists)
+Setup page: **Meta Ads -> Setup -> "Run read-only access check"**, or locally (tokens come from environment variables only and are scrubbed from the output):
+```
+META_MARKETING_ACCESS_TOKEN=<System User token>  META_PERSONAL_TOKEN=<your user token> \
+node scripts/meta-access-check.mjs --account act_<Pool Masters id> --hqn-business-id <HQN portfolio id> \
+  --dataset 933962709362966 --also-token-env META_PERSONAL_TOKEN
+```
+It reports, using only GET requests: token validity, the app/permissions/expiry (needs `META_APP_ID` + `META_APP_SECRET` of the **same** app), the ad accounts the token can see, whether the target is among them and who owns it, an insights read (this is where *app* permission shows), the datasets the ad sets/ads actually use (and how long since each last fired), and whether the Conversions API token can read each dataset (sending is never tested - that would write). With two tokens it states where the access lives: `personal_only` / `system_user_only` / `both` / `neither`. Every failure names who must act and exactly what (e.g. *assign act_X to the System User*, *the owner shares it with HQN's portfolio*, *App Review for Advanced ads_read*).
+
+### 7e. Required vs optional credentials
+| Item | Required? | Detail |
 |---|---|---|
-| Ad-account access for reporting | **Required** for reporting | The client must share the ad account with **your Business** as a partner (Business Settings -> Users -> Partners; "view/analyst"-level is enough for reading; admin level only if you will later manage ads) - menu labels vary, confirm in the live UI. Then assign that ad account to a **System User** in your Business (view performance). Official: for other people's ad accounts the app needs **Advanced access** to `ads_read`; for your own accounts Standard is enough ([Authorization](https://developers.facebook.com/documentation/ads-commerce/marketing-api/get-started/authorization.md)). |
-| `ads_read` Advanced access (App Review) | **Required for a client-owned account** in production | Per-permission App Review; Meta requires **Business Verification** "if your app will access sensitive data"; keep >=500 Marketing API calls per 15 days with <15% errors to keep Advanced/Full tier. Do **not** request `ads_management` (HQN never edits ads) or `business_management` (not needed for reading assigned accounts). |
-| Interim path while review is pending | optional | Meta states app admins/developers can make calls on behalf of ad-account admins/advertisers at the default tier. A *user* token needs the client to add the **person** as an ad-account admin and the person to hold an app role; it expires (~60 days) and ties to one individual - use only to try the import, not for production. |
-| `META_MARKETING_ACCESS_TOKEN` | **Required** (reporting) | System User token with `ads_read` only. System users don't expire but can be revoked. Limited tier allows 1 system user + 1 admin system user. Stored only as a Vercel server env var. |
-| Dataset access for sending events | **Required** (events) | The Pixel `933962709362966` is owned by whoever created it. If it is the **client's**, the client must share the dataset with your Business and you assign it to the System User (at least "use events dataset"/manage pixel permission - per Meta's guidance and partner docs; confirm labels in the live UI). If you own it, assign it directly. |
-| `META_CONVERSIONS_API_TOKEN` | **Required** (events; already exists for the funnel) | Generated in Events Manager -> dataset -> Settings -> Conversions API (or for the System User). Meta does not store tokens - save it once into Vercel. Must have access to the **CRM dataset** and, for Test mode, the **test dataset**. |
-| CRM dataset | **Required** for Instant Form events | Events Manager -> Connect Data Sources -> **CRM**; new dedicated dataset recommended; its ID goes in Setup. Needs admin access to create/convert a Pixel. Don't change datasets after it is working. |
-| Test dataset | **Required** for Test mode | A throwaway dataset used for nothing else + its Test Events code. |
-| `META_TICK_SECRET` + GitHub secrets `META_TICK_SECRET`, `META_TICK_URL` | **Required** (worker) | Random string; URL `https://<prod domain>/api/meta/tick`. |
-| `META_APP_ID` | optional | Same app as `META_APP_SECRET`; only to show token expiry. |
-| `META_MARKETING_API_VERSION` / `META_GRAPH_VERSION` | optional | Defaults v25.0 (Marketing API changelog's current) / v26.0 (newest Graph, introduced 2026-07-29; v25.0 supported to 2028-07-29). |
-| Existing Lead Ads webhook secrets | unchanged | `META_APP_SECRET`, `META_PAGE_ACCESS_TOKEN`, `META_WEBHOOK_VERIFY_TOKEN`. Page admin is what these use. |
-| Access tier | informational | Default **Limited** access = development rate limits (score 60, 300 s block); **Full** needs review. Insight pulls are small and cached. |
+| Ad account in HQN's portfolio, assigned to a System User | **Required** for production reporting | see 7a-7c |
+| `ads_read` **Advanced access** (App Review + Business Verification) | **Required** for production on Ethan's account | request only `ads_read`; not `ads_management`, not `business_management` (the diagnostic warns if the token holds more) |
+| `META_MARKETING_ACCESS_TOKEN` | **Required** | System User token, `ads_read` only; Vercel server env only |
+| `META_APP_ID` + `META_APP_SECRET` (same app as the token) | optional, recommended | lets the check read permissions/expiry; the secret already exists for the Lead Ads webhook |
+| Datasets assigned to the System User (at least "use events dataset") | **Required** to send events | Pixel `933962709362966` (funnel), the CRM dataset, the test dataset |
+| `META_CONVERSIONS_API_TOKEN` | **Required** for events (exists) | must reach the CRM + test datasets |
+| CRM dataset; separate test dataset + its Test Events code | **Required** for Instant Form events / Test mode | see section 5 |
+| `META_TICK_SECRET` + GitHub secrets `META_TICK_SECRET`, `META_TICK_URL` | **Required** (worker) | `https://<prod domain>/api/meta/tick` |
+| `META_MARKETING_API_VERSION` / `META_GRAPH_VERSION` | optional | defaults v25.0 / v26.0 |
+| Existing Lead Ads webhook secrets | unchanged | `META_APP_SECRET`, `META_PAGE_ACCESS_TOKEN`, `META_WEBHOOK_VERIFY_TOKEN` |
 
 ## 8. Rollout (no reporting gap) and rollback
 **Order matters; production delivery stays Off until the end.**
 1. Merge the integration branch; apply migrations to **staging** (planner first, §2); verify the 0041 runbook and the Meta checks (§9).
-2. Production: run the planner **read-only** (`--allow-production`) to see what is missing; dry-run; apply 0041 (if absent) then 0042; deploy. **Behavior is unchanged**: legacy QualifiedLead keeps sending; the queue is Off.
-3. Set the production env vars (§7), run a sync, map each ad account to a contractor, read **Setup -> Dataset check**.
+2. Production: run the planner **read-only** (`--allow-production`) to see what is missing; dry-run; apply whatever is missing in order, ending with 0042; deploy. **Behavior is unchanged**: legacy QualifiedLead keeps sending; the queue is Off.
+3. Set the production env vars (§7e), run **Setup -> Run read-only access check** (fix whatever it names), run a sync, map each ad account to a contractor, read **Setup -> Dataset check**.
 4. Create/confirm the CRM dataset and the test dataset; enter IDs on Setup.
 5. **Test** mode on production only after a test dataset exists; verify acceptance (check 1-2), then matching (3), then attribution (4) on the real dataset using the direct sender's events.
 6. Decide the `QualifiedLead` `action_source` (still `website` while the direct sender runs; `phone_call`/`chat`/`email`/`other` once Live).

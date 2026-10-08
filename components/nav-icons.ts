@@ -22,6 +22,7 @@ import {
   Mail,
   Bot,
   FileSignature,
+  FileStack,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -29,6 +30,7 @@ import {
 export const NAV_ICONS: Record<string, LucideIcon> = {
   Bot,
   FileSignature,
+  FileStack,
   LayoutDashboard,
   Users,
   Inbox,

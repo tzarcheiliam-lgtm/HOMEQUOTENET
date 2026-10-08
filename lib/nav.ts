@@ -23,6 +23,7 @@ const GROUP_BY_LABEL: Record<string, NavGroup> = {
   'Lead Recipients': 'Operations',
   Calls: 'Operations',
   'AI Agent Calls': 'Operations',
+  Contracts: 'Operations',
   'Documents & Signing': 'Operations',
   Appointments: 'Operations',
   'Call Logs': 'Operations',
@@ -112,6 +113,13 @@ const BASE_NAV_ITEMS: NavItem[] = [
   },
   // Electronic document signing. HQN admins see every company's documents; contractor owners/staff only their own
   // (enforced server-side in lib/signing/access.ts and by RLS, not by this list).
+  // Reusable agreements (admins prepare + send; a contractor user only reads agreements sent to their own company).
+  {
+    label: 'Contracts',
+    href: '/app/contracts',
+    icon: 'FileStack',
+    roles: ['admin', 'contractor'],
+  },
   {
     label: 'Documents & Signing',
     href: '/app/documents',

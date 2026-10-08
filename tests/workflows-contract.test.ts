@@ -92,10 +92,19 @@ describe('migration 0020 mirrors the TypeScript contract', () => {
       return;
     }
     if (column === 'trigger_type' || column === 'type') {
-      // 0041 added five event types; its constraint is the current truth, 0020 the historical base.
-      const later = readFileSync('supabase/migrations/0041_visual_workflow_builder.sql', 'utf8');
+      // 0041 added five event types and 0042 the contract.* events; 0042's constraint is the current truth, 0020 the historical base.
+      const later = readFileSync('supabase/migrations/0042_contracts_templates.sql', 'utf8');
       const m = later.match(new RegExp(`alter table public\\.${table} add constraint ${table}_${column}_check check \\(${column} in \\(([^)]*)\\)`));
       expect(m, `${table} 0041 check`).not.toBeNull();
+      expect(Array.from(m![1].matchAll(/'([^']+)'/g), (x) => x[1])).toEqual([...values]);
+      expect([...values]).toEqual(expect.arrayContaining(checkList(table, column)));
+      return;
+    }
+    if (column === 'entity_type') {
+      // 0042 added the 'contract' entity type.
+      const later = readFileSync('supabase/migrations/0042_contracts_templates.sql', 'utf8');
+      const m = later.match(new RegExp(`alter table public\\.${table} add constraint ${table}_entity_type_check check \\(entity_type in \\(([^)]*)\\)`));
+      expect(m, `${table} 0042 check`).not.toBeNull();
       expect(Array.from(m![1].matchAll(/'([^']+)'/g), (x) => x[1])).toEqual([...values]);
       expect([...values]).toEqual(expect.arrayContaining(checkList(table, column)));
       return;

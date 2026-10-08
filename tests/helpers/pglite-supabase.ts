@@ -10,6 +10,8 @@ import type { PGlite } from '@electric-sql/pglite';
 type Filter = { col: string; op: 'eq' | 'in' | 'is' | 'ilike' | 'neq' | 'gte' | 'lte' | 'lt' | 'gt' | 'notin' | 'or' | 'contains'; val: unknown };
 /** RPCs that return a table (called with `select * from fn(...)`). */
 const SET_RETURNING = new Set(['signing_claim_auto_reminders', 'claim_workflow_runs', 'claim_workflow_events', 'claim_ai_call_jobs']);
+/** Columns that are jsonb arrays (an empty or all-string array would otherwise be sent as text[]). */
+const JSONB_ARRAY_COLUMNS = new Set(['sections', 'signers', 'signer_roles']);
 const ident = (s: string) => `"${s.replace(/"/g, '""')}"`;
 
 class Builder {
@@ -70,7 +72,8 @@ class Builder {
       params.push(f.val); return `${ident(f.col)} = $${params.length}`;
     }).join(' and ');
   }
-  private val(params: unknown[], v: unknown) {
+  private val(params: unknown[], v: unknown, col?: string) {
+    if (col && JSONB_ARRAY_COLUMNS.has(col) && Array.isArray(v)) { params.push(JSON.stringify(v)); return `$${params.length}::jsonb`; }
     if (v instanceof Date) { params.push(v.toISOString()); return `$${params.length}`; }
     if (Array.isArray(v) && v.every((x) => typeof x === 'string')) { params.push(v); return `$${params.length}`; } // text[] / uuid[] columns
     if (v !== null && typeof v === 'object') { params.push(JSON.stringify(v)); return `$${params.length}::jsonb`; }
@@ -83,14 +86,14 @@ class Builder {
       if (this.op === 'insert') {
         const rows = Array.isArray(this.payload) ? this.payload : [this.payload];
         const cols = Object.keys(rows[0]);
-        sql = `insert into ${ident(this.table)} (${cols.map(ident).join(',')}) values ${rows.map((r: any) => `(${cols.map((c) => this.val(params, r[c])).join(',')})`).join(',')}`;
+        sql = `insert into ${ident(this.table)} (${cols.map(ident).join(',')}) values ${rows.map((r: any) => `(${cols.map((c) => this.val(params, r[c], c)).join(',')})`).join(',')}`;
         if (this._upsert) {
           const target = this._upsert.onConflict ? `(${this._upsert.onConflict.split(',').map((c) => ident(c.trim())).join(',')})` : '';
           sql += this._upsert.ignoreDuplicates ? ` on conflict ${target} do nothing` : ` on conflict ${target} do update set ${cols.map((c) => `${ident(c)} = excluded.${ident(c)}`).join(',')}`;
         }
       } else if (this.op === 'update') {
         const cols = Object.keys(this.payload);
-        sql = `update ${ident(this.table)} set ${cols.map((c) => `${ident(c)} = ${this.val(params, this.payload[c])}`).join(',')}${this.where(params)}`;
+        sql = `update ${ident(this.table)} set ${cols.map((c) => `${ident(c)} = ${this.val(params, this.payload[c], c)}`).join(',')}${this.where(params)}`;
       } else if (this.op === 'delete') {
         sql = `delete from ${ident(this.table)}${this.where(params)}`;
       } else {

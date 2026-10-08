@@ -101,18 +101,31 @@ export function DeliveryForm({ settings }: { settings: { legacy: boolean; mode: 
   );
 }
 
+const TONE = { pass: 'border-emerald-300 bg-emerald-50', fail: 'border-red-300 bg-red-50', warn: 'border-amber-300 bg-amber-50', skip: 'bg-muted/40' } as const;
+const WORD = { pass: 'Pass', fail: 'Fix needed', warn: 'Check', skip: 'Skipped' } as const;
+
+/** Read-only: GET requests only, nothing is sent or changed in Meta, no token is shown. */
 export function ConnectionCheck() {
-  const [state, action, pending] = useActionState<Awaited<ReturnType<typeof checkMetaConnection>> | undefined, FormData>(async () => checkMetaConnection(), undefined);
+  const [state, action, pending] = useActionState<Awaited<ReturnType<typeof checkMetaConnection>> | undefined, FormData>(checkMetaConnection, undefined);
   return (
     <form action={action} className="space-y-3">
-      <Button type="submit" variant="outline" size="sm" disabled={pending}>{pending ? 'Checking with Meta…' : 'Check connection now'}</Button>
-      <Msg s={state} />
-      {state?.permissions && (
-        <ul className="flex flex-wrap gap-1.5 text-xs">
-          {state.permissions.map((p) => <li key={p.permission} className={`rounded border px-2 py-0.5 ${p.status === 'granted' ? '' : 'text-destructive'}`}>{p.permission}: {p.status}</li>)}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1.5"><Label htmlFor="account">Ad account to check</Label><Input id="account" name="account" placeholder="act_1234567890 (Pool Masters)" autoComplete="off" /></div>
+        <div className="space-y-1.5"><Label htmlFor="business">HQN Business Portfolio ID (optional)</Label><Input id="business" name="business" inputMode="numeric" placeholder="digits; tells HQN-owned from client-owned" autoComplete="off" /></div>
+      </div>
+      <Button type="submit" variant="outline" size="sm" disabled={pending}>{pending ? 'Checking with Meta (read-only)…' : 'Run read-only access check'}</Button>
+      {state?.error && <p role="alert" className="text-sm text-destructive">{state.error}</p>}
+      {state?.result && (
+        <ul className="space-y-2 text-sm">
+          {state.result.checks.map((c) => (
+            <li key={c.id} className={`rounded-md border p-3 ${TONE[c.status]}`}>
+              <p className="font-medium">{WORD[c.status]} · {c.title}</p>
+              <p className="text-muted-foreground">{c.detail}</p>
+              {c.action && <p className="mt-1"><b>{c.action.who}:</b> {c.action.what}</p>}
+            </li>
+          ))}
         </ul>
       )}
-      {state?.expiresAt !== undefined && <p className="text-xs text-muted-foreground">Token expiry: {state.expiresAt ? new Date(state.expiresAt * 1000).toLocaleDateString() : 'does not expire (System User token) or unknown'}</p>}
     </form>
   );
 }

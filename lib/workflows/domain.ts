@@ -45,6 +45,7 @@ export const WORKFLOW_ENTITY_TYPES = [
   'sale',
   'task',
   'message',
+  'contract',
 ] as const;
 export type WorkflowEntityType = (typeof WORKFLOW_ENTITY_TYPES)[number];
 export const workflowEntityTypeSchema = z.enum(WORKFLOW_ENTITY_TYPES);

@@ -21,14 +21,19 @@ state-changing client (`lib/meta/studio/write-api.ts`).
 
 ## 2. Branch and migrations — what to merge
 
-- **Merge `meta-ads`** (the branch in the worktree `fullappcreator-meta-ads`). It contains, by ancestry: the visual workflow builder
-  (PR #6, migration 0041), the analytics layer through `5a9fadd`, and the Studio. `integration/meta-ads-workflow` on origin is the same
-  commit as the analytics branch tip (`5a9fadd`) — a subset of `meta-ads`, so do not merge it separately.
-- Final migration set, in apply order: `0041_visual_workflow_builder.sql` → `0042_meta_ads_analytics_outcomes.sql` → `0043_meta_ads_studio.sql`.
-  The old `0041_meta_ads_analytics_outcomes.sql` no longer exists anywhere in the tree. The analytics branch renumbered itself to 0042; nothing
-  that was applied to a shared database was renamed.
-- Check what a database already has before applying: `select version, name from supabase_migrations.schema_migrations where version >= '0037' order by version;`
-  `scripts/staging/` contains a migration planner (`tests/migration-plan.test.ts` shows its use). All three files are idempotent.
+*Re-verified 2026-10-08 against `origin/main` at `dcbc610`.*
+
+- **Main already contains** the visual workflow builder (0041), Contracts & Templates (`0042_contracts_templates.sql`) and the Meta analytics layer
+  (`0042_meta_ads_analytics_outcomes.sql`, PR #8). The `meta-ads` branch is `origin/main` **plus the Studio only** (migration 0043 and its code). Merging it
+  adds nothing else; `integration/meta-ads-workflow` and `claude/busy-lovelace-xzm9j9` are already in main and must not be merged again.
+- **Migration set and order:** `0041_visual_workflow_builder` → `0042_contracts_templates` and `0042_meta_ads_analytics_outcomes` (two files share the number;
+  both apply, in filename order, and share no objects) → **`0043_meta_ads_studio`**. 0043 is the only number above 0042 anywhere on any remote branch.
+- **No conflicts, checked three ways:** (1) a script compared every table, index, function, trigger, type, policy and altered column in 0043 with the other 44 migrations:
+  0 name collisions; (2) everything 0043 references (`contractors`, `profiles`, `meta_ad_accounts`) is created by an earlier file; (3) the whole chain was applied in order to a
+  fresh in-process Postgres, and 0041–0043 were applied a second time to prove idempotency. `tests/migration-plan.test.ts` encodes the exact order.
+- **Do not rename anything already applied to a shared database.** Before applying, check what a database already has:
+  `select version, name from supabase_migrations.schema_migrations where version >= '0037' order by version;` — note that the two 0042 files carry the same
+  version prefix, so check by `name`. If your migration tooling keys on the numeric version alone, apply the second 0042 file by hand rather than renaming it.
 
 ## 3. Verification status — read this before trusting anything
 

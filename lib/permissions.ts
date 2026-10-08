@@ -60,3 +60,16 @@ export function canViewMetaAds(profile: Profile): boolean {
   return isHqnAdministrator(profile) ||
     (isContractorOwner(profile) && profile.is_active && !!profile.contractor_id);
 }
+
+/**
+ * Contracts & Templates (template library, wizard, sending, voiding): HQN administrators only.
+ * Contractor users never manage contracts; they may only READ agreements that were sent to their own company
+ * (canViewOwnContracts + RLS + server checks).
+ */
+export function canManageContracts(profile: Profile): boolean {
+  return isHqnAdministrator(profile);
+}
+
+export function canViewOwnContracts(profile: Profile): boolean {
+  return profile.role === 'contractor' && profile.is_active && !!profile.contractor_id;
+}

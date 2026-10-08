@@ -24,6 +24,7 @@ export interface FixtureIds {
   saleId: string;
   messageId: string;
   taskId: string;
+  contractId: string;
 }
 
 export function fixtureIds(overrides: Partial<FixtureIds> = {}): FixtureIds {
@@ -36,6 +37,7 @@ export function fixtureIds(overrides: Partial<FixtureIds> = {}): FixtureIds {
     saleId: randomUUID(),
     messageId: randomUUID(),
     taskId: randomUUID(),
+    contractId: randomUUID(),
     ...overrides,
   };
 }
@@ -107,6 +109,15 @@ function shape(type: WorkflowEventType, id: FixtureIds, network: boolean): Shape
       return { entityType: 'lead_assignment', entityId: id.assignmentId, contractorId: id.contractorId, ref: `assignment:${id.assignmentId}:status:lost:${MICROS}`, payload: { ...scoped, fromStatus: 'estimate_given' } };
     case 'task.completed':
       return { entityType: 'task', entityId: id.taskId, contractorId: null, ref: `task:${id.taskId}:completed:${MICROS}`, payload: { taskId: id.taskId, leadId: id.leadId, completedBy: null } };
+    case 'contract.created':
+    case 'contract.sent':
+    case 'contract.viewed':
+    case 'contract.fully_signed':
+    case 'contract.declined':
+    case 'contract.expired':
+      return { entityType: 'contract', entityId: id.contractId, contractorId: null, ref: `contract:${id.contractId}`, payload: { contractId: id.contractId, contractNo: 7, clientContractorId: id.contractorId, templateName: 'Pay Per Booked Appointment Agreement' } };
+    case 'contract.signed':
+      return { entityType: 'contract', entityId: id.contractId, contractorId: null, ref: `contract:${id.contractId}:${id.taskId}`, payload: { contractId: id.contractId, contractNo: 7, clientContractorId: id.contractorId, recipientId: id.taskId, signerRole: 'Client' } };
     case 'message.received':
       return {
         entityType: 'message', entityId: id.messageId, contractorId: network ? null : id.contractorId, ref: `message:${id.messageId}`,
