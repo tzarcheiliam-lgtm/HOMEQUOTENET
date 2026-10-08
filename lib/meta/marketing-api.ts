@@ -41,7 +41,8 @@ export type GraphFailure = {
 };
 
 export class GraphError extends Error {
-  constructor(public failure: GraphFailure) { super(failure.message); this.name = 'GraphError'; }
+  failure: GraphFailure; // explicit field (not a parameter property) so Node can run this file directly for the CLI checks
+  constructor(failure: GraphFailure) { super(failure.message); this.name = 'GraphError'; this.failure = failure; }
 }
 
 /** Strip anything token-shaped from a message before it is stored or shown. */

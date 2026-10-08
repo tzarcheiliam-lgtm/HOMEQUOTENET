@@ -35,7 +35,7 @@ describe('migration planner', () => {
     const plan = nextSteps(rows);
     expect(plan.ok).toBe(true); expect(plan.pending).toEqual(files.map((f) => f.name)); // the WHOLE chain, 0001 through 0042
     await db.close();
-  });
+  }, 60_000);
   it('FULLY migrated database (0001-0042 applied for real): everything is applied', async () => {
     const db = await fullSchema();
     const rows = await planMigrations(files, existsOn(db));

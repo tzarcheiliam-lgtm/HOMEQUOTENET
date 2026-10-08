@@ -6,7 +6,6 @@ import { requireRole } from '@/lib/auth';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { runMetaSync } from '@/lib/meta/sync';
 import { LIVE_CONFIRMATION, META_MAX_EVENT_AGE_MS } from '@/lib/meta/conversions';
-import { redactSecrets } from '@/lib/meta/marketing-api';
 import { deliveryModePatch } from '@/lib/meta/settings';
 import { requeueFailedEvent } from '@/lib/meta/audit.server';
 
@@ -115,20 +114,45 @@ export async function retryConversionEvent(fd: FormData): Promise<void> {
   revalidatePath('/app/meta-ads/events');
 }
 
-/** Connection health: live calls to Meta, run on demand from the setup page. */
-export async function checkMetaConnection(): Promise<MetaActionState & { permissions?: { permission: string; status: string }[]; expiresAt?: number | null }> {
+/**
+ * Read-only access diagnostic for the configured System User token: can it reach the ad account and datasets, does the app
+ * hold the needed permission, and who must do what if not (see lib/meta/access-check.ts). GET requests only; no event is
+ * sent; the token never leaves the server or appears in the result.
+ */
+export async function checkMetaConnection(_prev: unknown, fd: FormData): Promise<{ error?: string; result?: import('@/lib/meta/access-check').AccessResult }> {
   await requireRole(['admin']);
   const token = process.env.META_MARKETING_ACCESS_TOKEN;
-  if (!token) return { error: 'META_MARKETING_ACCESS_TOKEN is not set' };
-  const { listGrantedPermissions, debugToken, GraphError } = await import('@/lib/meta/marketing-api');
-  try {
-    const permissions = await listGrantedPermissions({ token });
-    const dbg = await debugToken({ token }, process.env.META_APP_ID, process.env.META_APP_SECRET).catch(() => null);
-    return { success: 'Token accepted by Meta.', permissions, expiresAt: dbg?.expires_at ?? null };
-  } catch (e) {
-    if (e instanceof GraphError) return { error: `${e.failure.kind === 'auth' ? 'Token expired or revoked - generate a new System User token. ' : ''}${redactSecrets(e.failure.message)}` };
-    return { error: 'Could not reach Meta' };
+  if (!token) return { error: 'META_MARKETING_ACCESS_TOKEN is not set on the server. Add it in the Vercel environment settings, redeploy, then check again.' };
+  const account = str(fd, 'account');
+  if (account && !/^(act_)?\d{5,25}$/.test(account)) return { error: 'The ad account id should look like act_1234567890' };
+  const business = str(fd, 'business');
+  if (business && !/^\d{5,25}$/.test(business)) return { error: 'The Business id should be digits only' };
+  const { runAccessCheck } = await import('@/lib/meta/access-check');
+  const { graphGet, graphGetAll, redactSecrets } = await import('@/lib/meta/marketing-api');
+  const db = createAdminClient();
+  const { data: cfg } = await db.from('meta_settings').select('dataset_id, test_dataset_id').eq('id', true).maybeSingle();
+  const { data: funnels } = await db.from('funnels').select('slug, config').eq('is_demo', false).eq('published', true);
+  const datasets = new Map<string, string>();
+  for (const f of (funnels ?? []) as { slug: string; config: { trackingPixels?: { metaPixelId?: string } } | null }[]) {
+    const px = f.config?.trackingPixels?.metaPixelId; if (px) datasets.set(px, `funnel ${f.slug}`);
   }
+  if (cfg?.dataset_id) datasets.set(cfg.dataset_id, 'CRM (Instant Form) dataset');
+  if (cfg?.test_dataset_id) datasets.set(cfg.test_dataset_id, 'test dataset');
+  try {
+    const result = await runAccessCheck(
+      (path, params = {}, override) => {
+        const p = { ...params };
+        if (p.input_token === '__SELF__') { p.input_token = token; if (override) p.access_token = override; }
+        return graphGet(path, p, { token: override ?? token });
+      },
+      (path, params = {}) => graphGetAll(path, params, { token }),
+      { appId: process.env.META_APP_ID, appSecret: process.env.META_APP_SECRET, targetAccountId: account, hqnBusinessId: business,
+        datasets: [...datasets].map(([id, role]) => ({ id, role })), readDatasetWithToken: process.env.META_CONVERSIONS_API_TOKEN ?? null },
+    );
+    // Defence in depth: no check text may contain a token.
+    const scrub = (t: string) => redactSecrets([token, process.env.META_APP_SECRET, process.env.META_CONVERSIONS_API_TOKEN].filter(Boolean).reduce<string>((x, secret) => x.split(secret as string).join('[redacted]'), t));
+    return { result: { ...result, checks: result.checks.map((c) => ({ ...c, detail: scrub(c.detail) })) } };
+  } catch { return { error: 'The check could not run. Try again.' }; }
 }
 
 async function requireAdminProfile() {
