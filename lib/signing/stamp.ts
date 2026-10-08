@@ -29,7 +29,7 @@ export interface StampValue {
 }
 
 let unicodeFontBytes: Uint8Array | null = null;
-function loadUnicodeFont(): Uint8Array {
+export function loadUnicodeFont(): Uint8Array {
   if (!unicodeFontBytes) {
     const dir = process.env.SIGNING_ASSET_DIR || path.join(process.cwd(), 'lib', 'signing', 'assets');
     unicodeFontBytes = fs.readFileSync(path.join(dir, 'DejaVuSans.ttf'));

@@ -42,6 +42,14 @@ export const WORKFLOW_EVENT_TYPES = [
   'ai_call.completed',
   'ai_call.failed',
   'workflow.manual_enrollment',
+  // Contracts & Templates (migration 0042): emitted by database triggers on public.contracts / public.signing_events.
+  'contract.created',
+  'contract.sent',
+  'contract.viewed',
+  'contract.signed',
+  'contract.fully_signed',
+  'contract.declined',
+  'contract.expired',
 ] as const;
 export type WorkflowEventType = (typeof WORKFLOW_EVENT_TYPES)[number];
 /** Triggers and events share one vocabulary. */
@@ -65,6 +73,20 @@ const appointmentChange = z
     toStatus: appointmentStatusSchema,
   })
   .strict();
+
+const contractEvent = () =>
+  z
+    .object({
+      contractId: uuidSchema,
+      contractNo: z.number().int().positive(),
+      /** The CLIENT company the agreement is with. Not the event owner: contract events are network-level. */
+      clientContractorId: nullableUuid,
+      templateName: z.string().max(200).nullable().optional(),
+      signingVersionId: nullableUuid.optional(),
+      recipientId: nullableUuid.optional(),
+      signerRole: z.string().max(80).nullable().optional(),
+    })
+    .strict();
 
 export const WORKFLOW_EVENT_PAYLOAD_SCHEMAS = {
   'lead.created': z
@@ -164,6 +186,15 @@ export const WORKFLOW_EVENT_PAYLOAD_SCHEMAS = {
       testRun: z.boolean().optional(),
     })
     .strict(),
+  // Contract events are network-level (no contractor owner): they are visible to network workflows only.
+  // `clientContractorId` is the company the agreement is with (null for a client not yet in the CRM).
+  'contract.created': contractEvent(),
+  'contract.sent': contractEvent(),
+  'contract.viewed': contractEvent(),
+  'contract.signed': contractEvent(),
+  'contract.fully_signed': contractEvent(),
+  'contract.declined': contractEvent(),
+  'contract.expired': contractEvent(),
   // Channel-agnostic: no provider type appears in the contract.
   'message.received': z
     .object({
@@ -313,6 +344,41 @@ export const WORKFLOW_TRIGGERS = {
     type: 'workflow.manual_enrollment', label: 'Manual enrollment', entityTypes: ['lead'], contractorScope: 'optional', availability: 'ready',
     description: 'An authorized user enrolled a lead into this workflow by hand (or started a live test).', emittedFrom: 'server action enrollLeadInWorkflowAction',
   }),
+  'contract.created': t({
+    idempotencyRef: 'contract:<contractId>',
+    type: 'contract.created', label: 'Contract created', entityTypes: ['contract'], contractorScope: 'optional', availability: 'ready',
+    description: 'A draft agreement was created from a template (public.contracts, migration 0042).', emittedFrom: 'insert on public.contracts',
+  }),
+  'contract.sent': t({
+    idempotencyRef: 'contract:<contractId>',
+    type: 'contract.sent', label: 'Contract sent', entityTypes: ['contract'], contractorScope: 'optional', availability: 'ready',
+    description: 'An agreement was sent for signature.', emittedFrom: "insert on public.signing_events (event 'sent') for a contract",
+  }),
+  'contract.viewed': t({
+    idempotencyRef: 'contract:<contractId>',
+    type: 'contract.viewed', label: 'Contract viewed', entityTypes: ['contract'], contractorScope: 'optional', availability: 'ready',
+    description: 'The first signer opened the signing link (later views of the same agreement do not fire again).', emittedFrom: "insert on public.signing_events (event 'viewed')",
+  }),
+  'contract.signed': t({
+    idempotencyRef: 'contract:<contractId>:<recipientId>',
+    type: 'contract.signed', label: 'Contract signed by a recipient', entityTypes: ['contract'], contractorScope: 'optional', availability: 'ready',
+    description: 'One signer finished signing (fires once per signer). It does not mean every signer is done and it never activates billing.', emittedFrom: "insert on public.signing_events (event 'signed')",
+  }),
+  'contract.fully_signed': t({
+    idempotencyRef: 'contract:<contractId>',
+    type: 'contract.fully_signed', label: 'Contract fully signed', entityTypes: ['contract'], contractorScope: 'optional', availability: 'ready',
+    description: 'Every signer has signed. The final PDF is generated right after; payment and billing are NOT implied.', emittedFrom: "insert on public.signing_events (event 'completed')",
+  }),
+  'contract.declined': t({
+    idempotencyRef: 'contract:<contractId>',
+    type: 'contract.declined', label: 'Contract declined', entityTypes: ['contract'], contractorScope: 'optional', availability: 'ready',
+    description: 'A signer declined to sign.', emittedFrom: "insert on public.signing_events (event 'declined')",
+  }),
+  'contract.expired': t({
+    idempotencyRef: 'contract:<contractId>',
+    type: 'contract.expired', label: 'Contract expired', entityTypes: ['contract'], contractorScope: 'optional', availability: 'ready',
+    description: 'The signing request passed its expiry date unsigned.', emittedFrom: "insert on public.signing_events (event 'expired')",
+  }),
 } as const satisfies { [K in WorkflowEventType]: WorkflowTriggerDefinition<K> };
 
 // ---------------------------------------------------------------------------
@@ -343,6 +409,13 @@ export const WORKFLOW_TRIGGER_CONFIG_SCHEMAS = {
   'ai_call.completed': empty,
   'ai_call.failed': z.object({ results: z.array(z.enum(['failed', 'expired', 'no_answer', 'busy'])).min(1).optional() }).strict(),
   'workflow.manual_enrollment': empty,
+  'contract.created': empty,
+  'contract.sent': empty,
+  'contract.viewed': empty,
+  'contract.signed': empty,
+  'contract.fully_signed': empty,
+  'contract.declined': empty,
+  'contract.expired': empty,
 } as const satisfies Record<WorkflowEventType, z.ZodTypeAny>;
 
 export type WorkflowTriggerConfigMap = {
