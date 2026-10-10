@@ -159,6 +159,7 @@ export default async function ContractorLandingPage() {
             <Link href="/privacy" className="py-2 hover:text-[var(--hq-text)]">Privacy Policy</Link>
             <Link href="/terms" className="py-2 hover:text-[var(--hq-text)]">Terms</Link>
             <a href={`mailto:${site.contact.email}`} className="py-2 hover:text-[var(--hq-text)]">{site.contact.email}</a>
+            <a href={`mailto:${site.contact.founderEmail}`} className="py-2 hover:text-[var(--hq-text)]">{site.contact.founderEmail}</a>
           </nav>
           <MeasurementToggle pixelId={pixelId} />
         </Container>

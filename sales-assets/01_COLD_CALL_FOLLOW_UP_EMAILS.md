@@ -1,7 +1,7 @@
 # Cold-Call Follow-Up Emails
 
 **Sender identity:** Liam, Founder of HomeQuote Network
-**Reply-to:** `homequotenetwork@gmail.com`
+**Reply-to:** `info@homequotenet.com`
 
 ## How to use these
 

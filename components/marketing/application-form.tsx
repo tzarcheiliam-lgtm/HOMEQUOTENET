@@ -338,6 +338,13 @@ export function ApplicationForm({
                   className="font-medium text-[var(--hq-accent-bright)] hover:underline"
                 >
                   {site.contact.email}
+                </a>{' '}
+                or{' '}
+                <a
+                  href={`mailto:${site.contact.founderEmail}`}
+                  className="font-medium text-[var(--hq-accent-bright)] hover:underline"
+                >
+                  {site.contact.founderEmail}
                 </a>
                 .
               </p>
