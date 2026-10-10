@@ -148,7 +148,8 @@ export default function PrivacyPage() {
         <LegalSection heading="Deletion requests">
           <p>
             To request access to or deletion of your information, email{' '}
-            <strong>{site.contact.email}</strong> with the phone number and email
+            <strong>{site.contact.email}</strong> or{' '}
+            <strong>{site.contact.founderEmail}</strong> with the phone number and email
             you submitted. We will verify and process your request within the
             timeframe required by applicable law.
           </p>
@@ -166,7 +167,8 @@ export default function PrivacyPage() {
         <LegalSection heading="Contact">
           <p>
             Questions about this policy? Email{' '}
-            <strong>{site.contact.email}</strong>.
+            <strong>{site.contact.email}</strong> or{' '}
+            <strong>{site.contact.founderEmail}</strong>.
           </p>
         </LegalSection>
       </div>

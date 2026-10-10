@@ -154,7 +154,8 @@ export default function TermsPage() {
         <LegalSection heading="11. Contact">
           <p>
             Questions about these terms? Email{' '}
-            <strong>{site.contact.email}</strong>.
+            <strong>{site.contact.email}</strong> or{' '}
+            <strong>{site.contact.founderEmail}</strong>.
           </p>
         </LegalSection>
       </div>
