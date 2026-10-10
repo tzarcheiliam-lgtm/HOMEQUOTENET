@@ -32,6 +32,7 @@ const GROUP_BY_LABEL: Record<string, NavGroup> = {
   'Growth Tools': 'Growth',
   'Service Requests': 'Growth',
   Funnels: 'Growth',
+  'Contractor Funnel': 'Growth',
   Analytics: 'Growth',
   'Meta Ads': 'Growth',
   Automations: 'Growth',
@@ -171,6 +172,13 @@ const BASE_NAV_ITEMS: NavItem[] = [
     label: 'Funnels',
     href: '/app/funnels',
     icon: 'BarChart3',
+    roles: ['admin'],
+  },
+  // Contractors who completed Check My Fit: prospective clients, kept apart from homeowner Leads.
+  {
+    label: 'Contractor Funnel',
+    href: '/app/contractor-funnel',
+    icon: 'Handshake',
     roles: ['admin'],
   },
   {
