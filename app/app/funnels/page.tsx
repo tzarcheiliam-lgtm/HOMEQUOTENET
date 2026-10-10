@@ -93,6 +93,7 @@ export default async function FunnelsPage({ searchParams }: { searchParams: Prom
 
   return <div className="space-y-6">
     <PageHeader title="Lead funnels" description="Find and manage every funnel — search, filter and sort instead of scrolling.">
+      <Button asChild variant="outline"><Link href="/app/funnels/contractor-prospects">Contractor prospects</Link></Button>
       <Button asChild><Link href="/app/funnels/new">Create funnel</Link></Button>
     </PageHeader>
 
