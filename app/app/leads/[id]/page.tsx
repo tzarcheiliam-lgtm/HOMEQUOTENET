@@ -37,6 +37,8 @@ import { ActivityTimeline } from '@/components/leads/activity-timeline';
 import { LeadDistributionPanel } from '@/components/leads/lead-distribution-panel';
 import { ContactCard } from '@/components/leads/contact-card';
 import { ProjectSummaryCard } from '@/components/leads/project-summary-card';
+import { FunnelAnswersCard } from '@/components/leads/funnel-answers-card';
+import { getLeadFunnelAnswers } from '@/lib/data/lead-funnel-answers';
 import { CallTextActions } from '@/components/leads/lead-quick-actions';
 import { LeadActionBar } from '@/components/leads/lead-action-bar';
 import { ConfirmAction } from '@/components/ui/confirm-action';
@@ -86,6 +88,7 @@ export default async function LeadDetailPage({
         listRecipients({ activeOnly: true }),
       ])
     : [[], null, []];
+  const funnelAnswers = await getLeadFunnelAnswers(lead.id).catch(() => []);
   const companyUsers = canAssignUsers ? await listAssignableCompanyUsers() : [];
 
   const name =
@@ -203,6 +206,12 @@ export default async function LeadDetailPage({
             description={lead.project_description}
           />
           </div>
+
+          {funnelAnswers.length > 0 && (
+            <div className="order-2 lg:order-none">
+              <FunnelAnswersCard sets={funnelAnswers} />
+            </div>
+          )}
 
           {/* Attribution — internal HomeQuote routing detail, staff only */}
           {isStaff && (
