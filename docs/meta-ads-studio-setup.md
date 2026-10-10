@@ -31,6 +31,7 @@ state-changing client (`lib/meta/studio/write-api.ts`).
 - **No conflicts, checked three ways:** (1) a script compared every table, index, function, trigger, type, policy and altered column in 0043 with the other 44 migrations:
   0 name collisions; (2) everything 0043 references (`contractors`, `profiles`, `meta_ad_accounts`) is created by an earlier file; (3) the whole chain was applied in order to a
   fresh in-process Postgres, and 0041–0043 were applied a second time to prove idempotency. `tests/migration-plan.test.ts` encodes the exact order.
+- **Applied to production 2026-10-10:** `0043_meta_ads_studio.sql` (dry run rolled back clean first; production already had 0041 and both 0042 files). Main has since gained `0045_contractor_prospect_funnel.sql` (only `contractor_funnel_*` tables, no overlap with 0043); it is not part of this change.
 - **Do not rename anything already applied to a shared database.** Before applying, check what a database already has:
   `select version, name from supabase_migrations.schema_migrations where version >= '0037' order by version;` — note that the two 0042 files carry the same
   version prefix, so check by `name`. If your migration tooling keys on the numeric version alone, apply the second 0042 file by hand rather than renaming it.

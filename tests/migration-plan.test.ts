@@ -43,7 +43,7 @@ describe('migration planner', () => {
     expect(nextSteps(rows)).toMatchObject({ ok: true, pending: [] });
     await db.close();
   }, 120_000);
-  it('EXISTING staging that stops at 0040: plan = 0041, both 0042 files in filename order, then 0043', async () => {
+  it('EXISTING staging that stops at 0040: plan = 0041, both 0042 files in filename order, then 0043 and 0045', async () => {
     const db = new PGlite();
     await db.exec(`create role anon; create role authenticated; create role service_role; create role supabase_admin; create schema auth; create schema storage; create schema extensions;
       create table auth.users (id uuid primary key default gen_random_uuid(), email text, raw_user_meta_data jsonb default '{}', encrypted_password text);
@@ -56,7 +56,7 @@ describe('migration planner', () => {
       grant usage on schema auth, storage to anon, authenticated, service_role; grant execute on all functions in schema auth to anon, authenticated, service_role;`);
     for (const f of files.filter((x) => x.name < '0041')) await db.exec(f.sql.replace(/create extension if not exists ["']?pgcrypto["']?[^;]*;/gi, ''));
     const plan = nextSteps(await planMigrations(files, existsOn(db)));
-    expect(plan).toMatchObject({ ok: true, pending: ['0041_visual_workflow_builder.sql', '0042_contracts_templates.sql', '0042_meta_ads_analytics_outcomes.sql', '0043_meta_ads_studio.sql'] }); // two files share 0042; both apply, in filename order
+    expect(plan).toMatchObject({ ok: true, pending: ['0041_visual_workflow_builder.sql', '0042_contracts_templates.sql', '0042_meta_ads_analytics_outcomes.sql', '0043_meta_ads_studio.sql', '0045_contractor_prospect_funnel.sql'] }); // two files share 0042; both apply, in filename order
     await db.close();
   }, 120_000);
   it('flags a half-applied or gapped database instead of guessing', async () => {
@@ -65,5 +65,5 @@ describe('migration planner', () => {
     const rows = await planMigrations(files, existsOn(db));
     expect(nextSteps(rows).ok).toBe(false); // profiles exists (0001's table) but nothing else of 0001 does -> partial
     await db.close();
-  });
+  }, 120_000);
 });
