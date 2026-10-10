@@ -34,8 +34,8 @@ export const funnelSchema = z.object({
   version: z.literal(1),
   clientName: text,
   clientLogo: z.string().refine(v => /^\/(?!\/)/.test(v) || httpsUrl.safeParse(v).success).optional(),
-  primaryColor: readableColor.default('#196dcc'),
-  secondaryColor: readableColor.default('#042247'),
+  primaryColor: readableColor.default('#0038B8'),
+  secondaryColor: readableColor.default('#0A1B3D'),
   industry: text,
   // zipPrefixes (3 digits) cover whole regions without listing every ZIP.
   // strictStates (optional, default none = unrestricted, unchanged for every existing funnel):

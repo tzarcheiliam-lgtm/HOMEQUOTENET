@@ -6,7 +6,7 @@ Design skill and conform to this document. Reusable primitives live in
 
 ## Design language
 
-- **Foundation:** shadcn/ui (new-york) on Tailwind v4, `zinc` base, Manrope.
+- **Foundation:** shadcn/ui (new-york) on Tailwind v4, HomeQuote brand tokens (Blue #0038B8, Navy #0A1B3D, Gold #F5B700 accent only, Mist #F4F7FC, Slate #5B6B8C), Sora headings + DM Sans body. See `docs/rebrand/REBRAND_NOTES.md`.
 - **Signature — money is the only color.** Monetary values (revenue, commission,
   amounts owed, won-sale amounts) render in **emerald**. Everything else stays
   neutral zinc. Color marks money and nothing else, so the numbers that matter

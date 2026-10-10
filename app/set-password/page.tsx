@@ -28,7 +28,7 @@ export default async function SetPasswordPage() {
   } = await supabase.auth.getUser();
 
   return (
-    <main className="flex min-h-[100dvh] items-center justify-center p-4">
+    <main className="flex min-h-[100dvh] bg-secondary items-center justify-center p-4">
       {user ? (
         <SetPasswordForm action={setPasswordAction} email={user.email ?? null} />
       ) : (

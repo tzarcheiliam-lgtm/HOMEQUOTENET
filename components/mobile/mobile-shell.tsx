@@ -158,7 +158,7 @@ export function MobileChrome({
               aria-label="HomeQuote home"
               className="flex h-11 min-w-11 shrink-0 items-center justify-center"
             >
-              <BrandLogo variant="mark" priority className="w-[52px]" />
+              <BrandLogo variant="mark" priority className="w-[40px]" />
             </Link>
           )}
           <p className="min-w-0 flex-1 truncate text-[17px] font-semibold tracking-tight">

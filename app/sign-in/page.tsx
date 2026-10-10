@@ -30,7 +30,7 @@ export default async function SignInPage({
   const notice = one(sp.error) ? NOTICES[one(sp.error) as string] : undefined;
 
   return (
-    <main className="flex min-h-[100dvh] flex-col items-center justify-center gap-4 p-4">
+    <main className="flex min-h-[100dvh] bg-secondary flex-col items-center justify-center gap-4 p-4">
       {notice ? (
         <p
           role="status"

@@ -31,13 +31,13 @@ export function buildPriceReadyEmail(
     'The HomeQuote team',
   ];
   const text = lines.join('\n');
-  const html = `<div style="font-family:Arial,sans-serif;color:#243447;font-size:15px;line-height:1.5">
+  const html = `<div style="font-family:Arial,sans-serif;color:#0A1B3D;font-size:15px;line-height:1.5">
 <p>${escapeHtml(greeting)}</p>
 <p>Your price for <strong>${escapeHtml(service)}</strong> is ready:</p>
 <p style="font-size:22px;font-weight:bold;margin:8px 0">${escapeHtml(price)}</p>
-${d.quote.price_description ? `<p style="color:#65758b">${escapeHtml(d.quote.price_description)}</p>` : ''}
+${d.quote.price_description ? `<p style="color:#5B6B8C">${escapeHtml(d.quote.price_description)}</p>` : ''}
 <p><a href="${escapeHtml(payUrl)}" style="display:inline-block;background:#0f172a;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:bold">Review &amp; pay</a></p>
-<p style="color:#65758b;font-size:13px">${escapeHtml(terms)}</p>
+<p style="color:#5B6B8C;font-size:13px">${escapeHtml(terms)}</p>
 <p>Questions? Just reply to this email.<br>The HomeQuote team</p>
 </div>`;
   return { subject: `Your HomeQuote price for ${service}`, text, html };

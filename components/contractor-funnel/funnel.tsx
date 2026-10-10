@@ -225,7 +225,7 @@ export function ContractorFunnel({ pixelId, fallbackContactEmail }: { pixelId: s
                   <ArrowLeft className="size-4" aria-hidden="true" /> Back
                 </button>
               )}
-              <button type="submit" disabled={submitting || !hydrated} className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-[var(--hq-accent)] px-6 text-[15px] font-semibold text-white hover:bg-[var(--hq-accent-bright)] disabled:opacity-60">
+              <button type="submit" disabled={submitting || !hydrated} className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-[var(--hq-cta)] px-6 text-[15px] font-semibold text-[var(--hq-cta-ink)] hover:bg-[var(--hq-cta-hover)] disabled:opacity-60">
                 {submitting ? (<><Loader2 className="size-4 animate-spin" aria-hidden="true" /> Saving…</>) : step === 'contact' ? (<>{submitError ? 'Try again' : 'Check my fit'} <ArrowRight className="size-4" aria-hidden="true" /></>) : (<>Continue <ArrowRight className="size-4" aria-hidden="true" /></>)}
               </button>
             </div>
@@ -427,7 +427,7 @@ function Result({ outcome, contact, submissionId, pixelId, headingRef, fallbackC
   const slow = calendarSlow && booking === 'idle';
   const fallbackLink = (
     <a href={cal.url} target="_blank" rel="noopener noreferrer"
-      className={cn('mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full px-6 text-[15px] font-semibold', embedSrc && !slow ? 'border border-[var(--hq-line-strong)] text-[var(--hq-text-muted)] hover:bg-[var(--hq-surface-2)]' : 'bg-[var(--hq-accent)] text-white hover:bg-[var(--hq-accent-bright)]')}>
+      className={cn('mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full px-6 text-[15px] font-semibold', embedSrc && !slow ? 'border border-[var(--hq-line-strong)] text-[var(--hq-text-muted)] hover:bg-[var(--hq-surface-2)]' : 'bg-[var(--hq-cta)] text-[var(--hq-cta-ink)] hover:bg-[var(--hq-cta-hover)]')}>
       {embedSrc ? 'Calendar not loading? Open it in a new tab' : 'Open booking calendar'} <ExternalLink className="size-4" aria-hidden="true" />
     </a>
   );

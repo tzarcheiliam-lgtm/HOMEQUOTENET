@@ -1,38 +1,54 @@
-import Image from 'next/image';
 import { cn } from '@/lib/utils';
 
 /*
- * HomeQuote artwork, served from /assets/brand. Transparent PNGs derived from
- * the supplied logo files (originals untouched), drawn on light surfaces only:
- * the navy wordmark does not hold contrast on dark backgrounds.
+ * HomeQuote artwork, served from /brand (extracted from the brand guidelines).
+ * The files already carry the guideline clear space (one quote-mark width on
+ * every side), so size them directly and do not add tight padding or crop them.
  *
- * - horizontal: house + wordmark + NETWORK rule. The tagline is intentionally
- *   cropped out; it is unreadable below ~400px wide.
- * - mark: the house-and-fence icon alone, for tight spaces.
+ * - tone="primary":  blue/navy logo for white and Mist surfaces.
+ * - tone="reversed": white/gold logo for Navy and Blue surfaces. Never use the
+ *   primary logo on Blue (guideline).
+ * - variant="mark":  the house-and-quote icon alone, for tight spaces.
+ *
+ * Plain <img> on purpose: these are small SVGs, so next/image optimisation
+ * adds nothing.
  */
 const ART = {
-  horizontal: { src: '/assets/brand/hq-logo-horizontal.png', width: 720, height: 111 },
-  mark: { src: '/assets/brand/hq-mark.png', width: 160, height: 68 },
+  horizontal: {
+    primary: '/brand/homequote-logo-primary-horizontal.svg',
+    reversed: '/brand/homequote-logo-reversed-horizontal.svg',
+    width: 1200,
+    height: 348,
+  },
+  mark: {
+    primary: '/brand/homequote-icon-primary.svg',
+    reversed: '/brand/homequote-icon-reversed.svg',
+    width: 1,
+    height: 1,
+  },
 } as const;
 
 export function BrandLogo({
   variant = 'horizontal',
+  tone = 'primary',
   className,
   priority,
 }: {
   variant?: keyof typeof ART;
+  tone?: 'primary' | 'reversed';
   className?: string;
   priority?: boolean;
 }) {
   const art = ART[variant];
   return (
-    <Image
-      src={art.src}
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={art[tone]}
       width={art.width}
       height={art.height}
-      alt="HomeQuote Network"
-      priority={priority}
-      sizes={variant === 'mark' ? '64px' : '204px'}
+      alt="HomeQuote"
+      loading={priority ? 'eager' : 'lazy'}
+      decoding="async"
       className={cn('h-auto', className)}
     />
   );

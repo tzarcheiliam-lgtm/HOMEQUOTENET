@@ -181,7 +181,11 @@ export function FunnelExperience({ slug, initialConfig, demo, previewMode, jumpT
   const calendarUrl = config.calendarUrl ? new URL(config.calendarUrl) : null;
   if (calendarUrl && session && !calendly) calendarUrl.searchParams.set('hqn_session_id', session.id);
 
-  return <main className="hqn-funnel" style={{ '--funnel-primary': config.primaryColor, '--funnel-secondary': config.secondaryColor } as CSSProperties}>
+  // Funnels still carrying the pre-rebrand default colours render in the HomeQuote brand blue/navy; custom colours are respected.
+  const primaryColor = config.primaryColor.toLowerCase() === '#196dcc' ? '#0038B8' : config.primaryColor;
+  const secondaryColor = config.secondaryColor.toLowerCase() === '#042247' ? '#0A1B3D' : config.secondaryColor;
+
+  return <main className="hqn-funnel" style={{ '--funnel-primary': primaryColor, '--funnel-secondary': secondaryColor } as CSSProperties}>
     <div className="funnel-shell">
       <header className="funnel-header">
         <div className="funnel-brand">{config.clientLogo && <Image src={config.clientLogo} alt="" width={44} height={44} unoptimized className={wideLogo ? 'funnel-logo-wide' : undefined} onLoad={e => setWideLogo(e.currentTarget.naturalWidth > e.currentTarget.naturalHeight * 1.3)} />}<span>{config.clientName}<small>YOUR NEXT HOME PROJECT</small></span></div>

@@ -70,7 +70,7 @@ function messageHtml(message: string): string {
       const content = escapeHtml(paragraph)
         .replace(
           /https:\/\/homequotenet\.com\/?/gi,
-          '<a href="https://homequotenet.com/" style="color:#1267a8;text-decoration:underline;">homequotenet.com</a>'
+          '<a href="https://homequotenet.com/" style="color:#0038B8;text-decoration:underline;">homequotenet.com</a>'
         )
         .replace(/\n/g, '<br>');
       return `<p style="margin:0 0 16px 0;">${content}</p>`;
@@ -82,16 +82,16 @@ function messageHtml(message: string): string {
 export function buildProspectEmailHtml(message: string, logoUrl: string): string {
   const safeLogoUrl = escapeHtml(logoUrl);
   return [
-    '<div style="margin:0;padding:0;background:#ffffff;color:#243447;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.65;">',
+    '<div style="margin:0;padding:0;background:#ffffff;color:#0A1B3D;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.65;">',
     '<div style="max-width:600px;margin:0;padding:4px 0;">',
     messageHtml(message),
-    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:24px;border-top:1px solid #d9e5f2;padding-top:16px;border-collapse:separate;">',
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:24px;border-top:1px solid #DCE4F2;padding-top:16px;border-collapse:separate;">',
     '<tr>',
     `<td style="padding:0 14px 0 0;vertical-align:middle;"><img src="${safeLogoUrl}" width="72" height="72" alt="HomeQuote Network" style="display:block;width:72px;height:72px;border:0;outline:none;text-decoration:none;"></td>`,
     '<td style="padding:0;vertical-align:middle;font-family:Arial,Helvetica,sans-serif;line-height:1.4;">',
-    '<div style="font-size:16px;font-weight:700;color:#082f63;">Liam</div>',
-    '<div style="font-size:14px;font-weight:700;color:#1267a8;">HomeQuote Network</div>',
-    '<div style="font-size:13px;color:#65758b;">Homeowner qualification &amp; pool project appointments</div>',
+    '<div style="font-size:16px;font-weight:700;color:#0A1B3D;">Liam</div>',
+    '<div style="font-size:14px;font-weight:700;color:#0038B8;">HomeQuote Network</div>',
+    '<div style="font-size:13px;color:#5B6B8C;">Homeowner qualification &amp; pool project appointments</div>',
     '</td>',
     '</tr>',
     '</table>',
@@ -128,18 +128,18 @@ export function buildBrandedEmailHtml(paragraphs: string[], options: BrandedEmai
   const safeLogoUrl = escapeHtml(options.logoUrl);
   const cta =
     options.ctaText && options.ctaUrl
-      ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 20px 0;"><tr><td style="border-radius:8px;background:#1267a8;"><a href="${escapeHtml(options.ctaUrl)}" style="display:inline-block;padding:12px 22px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">${escapeHtml(options.ctaText)}</a></td></tr></table>`
+      ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 20px 0;"><tr><td style="border-radius:8px;background:#0038B8;"><a href="${escapeHtml(options.ctaUrl)}" style="display:inline-block;padding:12px 22px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">${escapeHtml(options.ctaText)}</a></td></tr></table>`
       : '';
   return [
-    '<div style="margin:0;padding:0;background:#ffffff;color:#243447;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.65;">',
+    '<div style="margin:0;padding:0;background:#ffffff;color:#0A1B3D;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.65;">',
     '<div style="max-width:600px;margin:0;padding:4px 0;">',
     `<img src="${safeLogoUrl}" width="40" height="40" alt="HomeQuote Network" style="display:block;width:40px;height:40px;margin-bottom:20px;border:0;outline:none;text-decoration:none;">`,
     paragraphsHtml(paragraphs),
     cta,
-    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:16px;border-top:1px solid #d9e5f2;padding-top:16px;border-collapse:separate;">',
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:16px;border-top:1px solid #DCE4F2;padding-top:16px;border-collapse:separate;">',
     '<tr><td style="padding:0;vertical-align:middle;font-family:Arial,Helvetica,sans-serif;line-height:1.4;">',
-    '<div style="font-size:14px;font-weight:700;color:#1267a8;">HomeQuote Network</div>',
-    `<div style="font-size:13px;color:#65758b;">${escapeHtml(options.footerNote ?? 'Homeowner qualification & contractor appointments')}</div>`,
+    '<div style="font-size:14px;font-weight:700;color:#0038B8;">HomeQuote Network</div>',
+    `<div style="font-size:13px;color:#5B6B8C;">${escapeHtml(options.footerNote ?? 'Homeowner qualification & contractor appointments')}</div>`,
     '</td></tr>',
     '</table>',
     '</div>',

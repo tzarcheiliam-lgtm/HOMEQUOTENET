@@ -1,6 +1,6 @@
 import './globals.css';
 import type { Metadata, Viewport } from 'next';
-import { Manrope } from 'next/font/google';
+import { DM_Sans, Sora } from 'next/font/google';
 import { rootMetadata } from '@/lib/site-metadata';
 
 /*
@@ -14,7 +14,9 @@ export const viewport: Viewport = {
   maximumScale: 1,
 };
 
-const manrope = Manrope({ subsets: ['latin'] });
+// Brand type: Sora for headlines and the wordmark, DM Sans for body text.
+const sora = Sora({ subsets: ['latin'], weight: ['600', '700', '800'], variable: '--font-sora', display: 'swap' });
+const dmSans = DM_Sans({ subsets: ['latin'], weight: ['400', '500', '700'], variable: '--font-dm-sans', display: 'swap' });
 
 export default function RootLayout({
   children,
@@ -22,7 +24,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={manrope.className}>
+    <html lang="en" className={`${sora.variable} ${dmSans.variable} ${dmSans.className}`}>
       <body className="min-h-[100dvh] bg-background text-foreground antialiased">
         {children}
       </body>

@@ -23,7 +23,7 @@ export const dynamic = 'force-dynamic';
 
 const CHECK_FIT = '/contractor-appointments/check-fit';
 const ctaClass =
-  'inline-flex min-h-13 items-center justify-center gap-2 rounded-full bg-[var(--hq-accent)] px-8 py-3.5 text-[15px] font-semibold text-white shadow-[0_8px_24px_-8px_rgba(61,125,255,0.6)] transition-colors hover:bg-[var(--hq-accent-bright)]';
+  'inline-flex min-h-13 items-center justify-center gap-2 rounded-full bg-[var(--hq-cta)] px-8 py-3.5 text-[15px] font-semibold text-[var(--hq-cta-ink)] shadow-[0_8px_24px_-8px_rgba(245,183,0,0.28)] transition-colors hover:bg-[var(--hq-cta-hover)]';
 
 const steps = [
   { icon: MessageSquareText, title: 'We generate homeowner interest', body: 'We run and pay for the advertising that gets homeowners asking about the projects you do.' },
