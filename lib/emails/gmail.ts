@@ -48,19 +48,44 @@ export function gmailEnvironmentReady(): boolean {
   }
 }
 
+/**
+ * Gmail always sends as the Google account that granted access, whatever the
+ * From header says. These extra scopes let the callback read which account that
+ * was so a wrong pick (e.g. the browser's default Google login) is rejected
+ * instead of silently sending from the wrong address.
+ */
+export const GMAIL_IDENTITY_SCOPES = ['openid', 'email'];
+
+export function authorizedAccountMatches(authorizedEmail: string, fromEmail: string): boolean {
+  return authorizedEmail.trim().toLowerCase() === fromEmail.trim().toLowerCase();
+}
+
+export async function fetchAuthorizedEmail(
+  accessToken: string,
+  request: typeof fetch = fetch
+): Promise<string | null> {
+  const response = await request('https://openidconnect.googleapis.com/v1/userinfo', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!response.ok) return null;
+  const json = (await response.json().catch(() => ({}))) as { email?: string };
+  return json.email?.trim() || null;
+}
+
 export async function saveGmailConnection(input: {
   refreshToken: string;
   scope: string;
   connectedBy: string;
+  /** The Google account that actually granted access (verified by the caller). */
+  authorizedEmail: string;
 }) {
   if (!input.scope.split(/\s+/).includes(GMAIL_SEND_SCOPE)) {
     throw new Error('Google did not grant the Gmail send permission');
   }
-  const { fromEmail } = gmailOAuthConfig();
   const admin = createAdminClient();
   const { error } = await admin.from('gmail_connections').upsert({
     id: CONNECTION_ID,
-    email_address: fromEmail,
+    email_address: input.authorizedEmail,
     encrypted_refresh_token: encryptRefreshToken(input.refreshToken),
     granted_scope: input.scope,
     connected_by: input.connectedBy,

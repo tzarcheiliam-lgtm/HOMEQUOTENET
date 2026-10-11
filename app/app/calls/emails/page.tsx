@@ -26,6 +26,8 @@ const GMAIL_MESSAGES: Record<string, string> = {
   invalid_state: 'Google connection expired or failed its security check. Try again.',
   cancelled: 'Google connection was cancelled.',
   token_error: 'Google did not return a usable Gmail connection. Check the OAuth setup and try again.',
+  wrong_account:
+    'You signed in with a different Google account than GMAIL_FROM_EMAIL. Gmail sends as the account you approve, so nothing was saved. Try again and pick the sender account.',
   not_configured: 'Gmail OAuth environment variables are incomplete.',
 };
 
