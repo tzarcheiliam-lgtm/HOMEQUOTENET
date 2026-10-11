@@ -1,7 +1,12 @@
 import { timingSafeEqual } from 'node:crypto';
 import { NextResponse, type NextRequest } from 'next/server';
 import { getProfile } from '@/lib/auth';
-import { gmailOAuthConfig, saveGmailConnection } from '@/lib/emails/gmail';
+import {
+  authorizedAccountMatches,
+  fetchAuthorizedEmail,
+  gmailOAuthConfig,
+  saveGmailConnection,
+} from '@/lib/emails/gmail';
 
 function sameState(left: string | null, right: string | undefined): boolean {
   if (!left || !right) return false;
@@ -45,14 +50,21 @@ export async function GET(request: NextRequest) {
       }),
     });
     const token = (await response.json().catch(() => ({}))) as {
+      access_token?: string;
       refresh_token?: string;
       scope?: string;
     };
-    if (!response.ok || !token.refresh_token || !token.scope) return finish(request, 'token_error');
+    if (!response.ok || !token.access_token || !token.refresh_token || !token.scope) {
+      return finish(request, 'token_error');
+    }
+    const authorizedEmail = await fetchAuthorizedEmail(token.access_token);
+    if (!authorizedEmail) return finish(request, 'token_error');
+    if (!authorizedAccountMatches(authorizedEmail, config.fromEmail)) return finish(request, 'wrong_account');
     await saveGmailConnection({
       refreshToken: token.refresh_token,
       scope: token.scope,
       connectedBy: me.id,
+      authorizedEmail,
     });
     return finish(request, 'connected');
   } catch {

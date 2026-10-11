@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { NextResponse, type NextRequest } from 'next/server';
 import { getProfile } from '@/lib/auth';
-import { GMAIL_SEND_SCOPE, gmailOAuthConfig } from '@/lib/emails/gmail';
+import { GMAIL_IDENTITY_SCOPES, GMAIL_SEND_SCOPE, gmailOAuthConfig } from '@/lib/emails/gmail';
 
 export async function GET(request: NextRequest) {
   const me = await getProfile();
@@ -15,9 +15,12 @@ export async function GET(request: NextRequest) {
     url.searchParams.set('client_id', config.clientId);
     url.searchParams.set('redirect_uri', config.redirectUri);
     url.searchParams.set('response_type', 'code');
-    url.searchParams.set('scope', GMAIL_SEND_SCOPE);
+    url.searchParams.set('scope', [GMAIL_SEND_SCOPE, ...GMAIL_IDENTITY_SCOPES].join(' '));
     url.searchParams.set('access_type', 'offline');
-    url.searchParams.set('prompt', 'consent');
+    // Always show the account chooser (otherwise Google reuses the browser's
+    // default login) and pre-select the configured sender.
+    url.searchParams.set('prompt', 'select_account consent');
+    url.searchParams.set('login_hint', config.fromEmail);
     url.searchParams.set('state', state);
 
     const response = NextResponse.redirect(url);

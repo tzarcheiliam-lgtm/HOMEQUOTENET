@@ -293,6 +293,14 @@ Lives at `/app/calls` (admin/caller/setter).
   `lib/emails/template-library.ts` (as of `7e83887`), not a bespoke template;
   Gmail OAuth (`lib/emails/gmail.ts`, `gmail-message.ts`, `token-crypto.ts`
   for AES-256-GCM refresh-token encryption) is the only send transport.
+  Gmail sends as whichever Google account granted access, regardless of the
+  From header. The OAuth start route therefore forces the account chooser
+  (`prompt=select_account consent`, `login_hint=GMAIL_FROM_EMAIL`) and adds
+  `openid email` scopes; the callback reads the granting account from the
+  userinfo endpoint, stores that address in `gmail_connections.email_address`,
+  and rejects the connection (`?gmail=wrong_account`) if it differs from
+  `GMAIL_FROM_EMAIL`. Changing the sender means updating `GMAIL_FROM_EMAIL`
+  in the host env and reconnecting while signed in to that Google account.
 
 ## 8. Lead & Appointment Flow
 
