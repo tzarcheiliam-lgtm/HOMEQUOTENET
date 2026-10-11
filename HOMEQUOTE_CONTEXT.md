@@ -293,14 +293,23 @@ Lives at `/app/calls` (admin/caller/setter).
   `lib/emails/template-library.ts` (as of `7e83887`), not a bespoke template;
   Gmail OAuth (`lib/emails/gmail.ts`, `gmail-message.ts`, `token-crypto.ts`
   for AES-256-GCM refresh-token encryption) is the only send transport.
-  Gmail sends as whichever Google account granted access, regardless of the
-  From header. The OAuth start route therefore forces the account chooser
-  (`prompt=select_account consent`, `login_hint=GMAIL_FROM_EMAIL`) and adds
-  `openid email` scopes; the callback reads the granting account from the
-  userinfo endpoint, stores that address in `gmail_connections.email_address`,
-  and rejects the connection (`?gmail=wrong_account`) if it differs from
-  `GMAIL_FROM_EMAIL`. Changing the sender means updating `GMAIL_FROM_EMAIL`
-  in the host env and reconnecting while signed in to that Google account.
+  **Senders (migration 0046):** `gmail_connections` holds one shared
+  `automation` sender (workflows, signing, lead/billing emails, and the
+  fallback) plus at most one `user` sender per team member. Gmail sends as
+  whichever Google account approved access regardless of the From header, so
+  the OAuth start route forces the account chooser (`prompt=select_account
+  consent`) and adds `openid email` scopes; the callback reads the granting
+  account from the userinfo endpoint and stores *that* address. Any
+  admin/caller/setter connects their own sender (`/api/integrations/gmail/oauth/start?kind=user`);
+  only admins connect the automation sender (`?kind=automation`, hint
+  `GMAIL_AUTOMATION_EMAIL`, default `info@homequotenet.com`). Changing a sender
+  is just "Change account" on `/app/calls/emails`; no env edit. Manual sends
+  pass `senderUserId` to `sendGmailMessage` (own connection, else automation);
+  every other caller omits it and uses the automation sender.
+  `GMAIL_FROM_EMAIL` is no longer required (only feeds the `supportEmail`
+  template variable). **Deploy order: apply 0046 before deploying.** The
+  pre-existing singleton row becomes the automation sender with its old token;
+  reconnect it as info@ after deploy.
 
 ## 8. Lead & Appointment Flow
 
