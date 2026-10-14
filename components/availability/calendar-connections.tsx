@@ -46,8 +46,11 @@ export function CalendarConnections({
   hasFeedLink: boolean;
 }) {
   const google = connections.find((c) => c.provider === 'google');
+  // Direct Google sign-in is optional and hidden until an admin sets it up; the calendar link below works for everyone.
+  const showGoogleSignIn = googleConfigured || !!google;
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
+    <div className={showGoogleSignIn ? 'grid gap-4 lg:grid-cols-2' : 'grid gap-4'}>
+      {showGoogleSignIn && (
       <section className="space-y-3 rounded-lg border p-4">
         <div className="flex items-center justify-between gap-2">
           <h3 className="font-semibold">Google Calendar</h3>
@@ -97,22 +100,20 @@ export function CalendarConnections({
               </form>
             </div>
           </>
-        ) : googleConfigured ? (
-          <Button asChild><a href="/api/integrations/google-calendar/oauth/start">Connect Google Calendar</a></Button>
         ) : (
-          <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">Google Calendar isn’t set up on this site yet. Ask your HomeQuote admin to finish setup.</p>
+          <Button asChild><a href="/api/integrations/google-calendar/oauth/start">Connect Google Calendar</a></Button>
         )}
       </section>
+      )}
 
       <section className="space-y-3 rounded-lg border p-4">
         <div className="flex items-center justify-between gap-2">
-          <h3 className="font-semibold">Apple Calendar (and any other app)</h3>
+          <h3 className="font-semibold">Add appointments to your calendar</h3>
           <Badge variant={hasFeedLink ? 'success' : 'muted'}>{hasFeedLink ? 'Link active' : 'Not set up'}</Badge>
         </div>
         <p className="text-sm text-muted-foreground">
-          Apple doesn’t allow a one-click sign-in for web apps, so HomeQuote gives you a private calendar link instead. Add it once and your
-          appointments show up in Apple Calendar, Outlook or any app that supports calendar subscriptions. This direction only — busy times on
-          your Apple calendar can’t be read back into HomeQuote; block them above if needed.
+          Tap the button, pick Apple or Google, and confirm. From then on every appointment HomeQuote books for you — and any change or
+          cancellation — shows up in your calendar automatically. Works with Apple Calendar, Google Calendar, Outlook and more.
         </p>
         <FeedLink hasLink={hasFeedLink} />
         <p className="text-xs text-muted-foreground">You can also download any single appointment as an .ics file from the Appointments page.</p>

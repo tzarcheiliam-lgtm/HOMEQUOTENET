@@ -15,7 +15,13 @@ Shipped in migration `0047_contractor_availability_calendar_sync.sql`. Read `HOM
 - Busy times from a connected Google calendar count as unavailable (`calendar_busy`). Only start/end are read — never event titles.
 - Not covered: appointments booked by the external Calendly/GHL calendar inside a funnel, or created by workflows/RPCs, are not checked against availability (they are still synced to calendars).
 
-## Google setup (one-time, by you)
+## Quick path: no keys needed
+Contractors tap **Add to my calendar** on `/app/availability`, then **Add to Apple Calendar** or **Add to Google Calendar**. It subscribes their calendar to a private link, so no Google Cloud setup is required. It is one-way (HomeQuote → calendar); busy times on their own calendar are not read back, so they block those under "Time off". Calendar apps refresh subscriptions on their own schedule (Apple: hours; Google: up to ~a day).
+
+## Optional: direct Google sign-in (not needed)
+Everything below is only for the optional two-way Google sign-in (instant updates + busy-time import). The button stays hidden until these variables are set.
+
+## Google setup (optional, one-time, by you)
 1. Google Cloud Console → create/choose a project → **APIs & Services → Library → enable "Google Calendar API"**.
 2. **OAuth consent screen**: External, app name HomeQuote, support email, authorized domain `homequotenet.com`, privacy policy URL. Add scopes `…/auth/calendar.events` and `…/auth/calendar.freebusy` (plus `openid`, `email`). These are **sensitive scopes**: until Google verifies the app, only listed *test users* can connect and refresh tokens expire after 7 days; verification is also needed to go past 100 users. Submit for verification before onboarding contractors broadly.
 3. **Credentials → Create OAuth client ID → Web application**. Authorized redirect URI: `https://<your-domain>/api/integrations/google-calendar/oauth/callback` (and the same on your Vercel preview/localhost if you test there).
