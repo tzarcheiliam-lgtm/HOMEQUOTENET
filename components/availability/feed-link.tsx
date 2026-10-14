@@ -23,13 +23,15 @@ export function FeedLink({ hasLink }: { hasLink: boolean }) {
     });
 
   const webcal = url ? url.replace(/^https?:\/\//, 'webcal://') : null;
+  // Google Calendar's "add by URL" flow; it accepts the webcal address and asks the user to confirm.
+  const google = webcal ? `https://calendar.google.com/calendar/render?cid=${encodeURIComponent(webcal)}` : null;
 
   return (
     <div className="space-y-3">
       {!url ? (
         <div className="flex flex-wrap gap-2">
           <Button type="button" onClick={() => load(false)} disabled={pending}>
-            {pending ? 'Preparing…' : active ? 'Show my calendar link' : 'Add to Apple Calendar'}
+            {pending ? 'Preparing…' : 'Add to my calendar'}
           </Button>
           {active && (
             <Button
@@ -51,7 +53,10 @@ export function FeedLink({ hasLink }: { hasLink: boolean }) {
         <div className="space-y-2">
           <div className="flex flex-wrap gap-2">
             <Button asChild>
-              <a href={webcal!}>Open in Apple Calendar</a>
+              <a href={webcal!}>Add to Apple Calendar</a>
+            </Button>
+            <Button asChild>
+              <a href={google!} target="_blank" rel="noreferrer">Add to Google Calendar</a>
             </Button>
             <Button
               type="button"
@@ -77,8 +82,9 @@ export function FeedLink({ hasLink }: { hasLink: boolean }) {
       )}
       {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
       <p className="text-xs text-muted-foreground">
-        Anyone with this private link can see your appointments, so don’t share it. Apple and Google refresh subscribed calendars every few
-        hours, so new or changed appointments can take a while to appear — connect Google Calendar for instant updates.
+        Anyone with this private link can see your appointments, so don’t share it. Your calendar app checks for changes on its own schedule:
+        Apple usually within a few hours, Google can take up to a day. Time you’re busy elsewhere isn’t read back into HomeQuote, so block it
+        under “Time off” above.
       </p>
     </div>
   );
