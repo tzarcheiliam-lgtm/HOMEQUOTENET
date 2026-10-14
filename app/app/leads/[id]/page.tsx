@@ -384,6 +384,7 @@ export default async function LeadDetailPage({
                 contractors={contractors}
                 canManage={isAdmin}
                 canUnassign={isAdmin}
+                isStaff={isStaff}
                 isAdmin={isAdmin}
                 companyUsers={companyUsers}
                 canAssignUsers={canAssignUsers}

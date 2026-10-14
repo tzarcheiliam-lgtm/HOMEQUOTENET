@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { equalSecret } from '@/lib/funnels/server';
+import { runCalendarMaintenance } from '@/lib/calendar/sync.server';
 import { runNotificationMaintenance } from '@/lib/notifications/outbox';
 import { signingMaintenance } from '@/lib/signing/service';
 import { processWorkflowTick, pruneWorkflowHistory } from '@/lib/workflows/runtime.server';
@@ -23,9 +24,16 @@ export async function POST(request: Request) {
     } catch {
       notifications = { error: 'notification maintenance failed' };
     }
+    // Calendar sync backstop (retries failed Google writes; best effort, never affects the tick result).
+    let calendar: unknown = null;
+    try {
+      calendar = await runCalendarMaintenance();
+    } catch {
+      calendar = { error: 'calendar sync failed' };
+    }
     // Documents & Signing: expire overdue requests, retry stuck completed-PDF generation. Best effort.
     const signing = await signingMaintenance();
-    return NextResponse.json({ ...result, retention, notifications, signing }, { status: result.failures ? 207 : 200 });
+    return NextResponse.json({ ...result, retention, notifications, calendar, signing }, { status: result.failures ? 207 : 200 });
   } catch {
     return NextResponse.json({ error: 'Workflow processing unavailable' }, { status: 503 });
   }

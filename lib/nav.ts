@@ -26,6 +26,7 @@ const GROUP_BY_LABEL: Record<string, NavGroup> = {
   Contracts: 'Operations',
   'Documents & Signing': 'Operations',
   Appointments: 'Operations',
+  Availability: 'Operations',
   'Call Logs': 'Operations',
   'Call Appointments': 'Operations',
   'Call Emails': 'Operations',
@@ -111,6 +112,15 @@ const BASE_NAV_ITEMS: NavItem[] = [
     href: '/app/appointments',
     icon: 'CalendarDays',
     roles: ['admin', 'setter', 'contractor'],
+  },
+  // Contractors set when they can't take appointments and connect their calendar; admins/setters read it per contractor.
+  {
+    label: 'Availability',
+    href: '/app/availability',
+    icon: 'CalendarClock',
+    // Setters stay at their five sections (product decision); they read a contractor's availability from the
+    // contractor's page and via the booking warning, both of which link to /app/availability?contractor=.
+    roles: ['admin', 'contractor'],
   },
   // Electronic document signing. HQN admins see every company's documents; contractor owners/staff only their own
   // (enforced server-side in lib/signing/access.ts and by RLS, not by this list).

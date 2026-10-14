@@ -18,6 +18,10 @@ import {
 import { resolvePricingAgreementId } from '@/lib/data/contractors';
 import { leadFormToObject, leadInputSchema } from '@/lib/validation/leads';
 import { enqueueNotificationEvent, flushNotificationsSoon } from '@/lib/notifications/outbox';
+import { flushCalendarSyncSoon } from '@/lib/calendar/sync.server';
+import { checkContractorSlot } from '@/lib/availability/enforce.server';
+import { parseWallTime } from '@/lib/availability/time';
+import { DEFAULT_TZ } from '@/components/calls/format';
 import type { ActivityType, LeadStatus } from '@/lib/types';
 
 export type LeadFormState =
@@ -658,18 +662,51 @@ export async function scheduleAppointment(
   catch { return { error: 'Assignment not found or access denied' }; }
   const leadId = access.assignment.lead_id;
 
+  // The form sends a zone-less datetime-local value. Read it as workspace wall time (the zone every appointment
+  // list displays in) instead of the server's own zone, so what staff type is what gets stored and checked.
+  const startMs = parseWallTime(scheduledAt, DEFAULT_TZ);
+  if (startMs === null) return { error: 'Pick a valid date and time' };
+
+  // Contractor availability: HomeQuote staff cannot book a contractor into a time they marked unavailable unless
+  // they explicitly override (audited). Contractors scheduling their own work are not blocked by their own settings.
+  const isStaff = access.profile.role === 'admin' || access.profile.role === 'setter';
+  let overridden: string | null = null;
+  if (isStaff) {
+    try {
+      const check = await checkContractorSlot(access.assignment.contractor_id, scheduledAt);
+      if (!check.ok) {
+        if (formData.get('override_availability') !== 'on') {
+          return { error: `${check.message} Tick “Book anyway” to schedule it regardless.` };
+        }
+        overridden = check.reason ?? 'unavailable';
+      }
+    } catch {
+      /* availability data unreachable: never block booking on a lookup failure */
+    }
+  }
+
   const supabase = await createClient();
-  const { error } = await supabase.from('appointments').insert({
+  const { data: created, error } = await supabase.from('appointments').insert({
     assignment_id: assignmentId,
-    scheduled_at: new Date(scheduledAt).toISOString(),
+    scheduled_at: new Date(startMs).toISOString(),
     location: str(formData, 'location'),
     notes: str(formData, 'notes'),
     // Where the booking happened, as the recorder states it (used only to label the Meta event source truthfully).
     // Only sent when chosen, so an appointment can still be saved if this optional column were ever missing.
     ...(['phone_call', 'email', 'chat', 'in_person', 'other'].includes(str(formData, 'booked_via') ?? '') ? { booked_via: str(formData, 'booked_via') } : {}),
     created_by: await currentUserId(),
-  });
+  }).select('id').single();
   if (error) return { error: error.message };
+
+  if (overridden) {
+    // Service role: audit_logs is insert-restricted to admins by RLS, but setters may override too.
+    await createAdminClient().from('audit_logs').insert({
+      actor_id: await currentUserId(),
+      action: 'appointment.availability_override',
+      target_user_id: null,
+      metadata: { appointment_id: created?.id, contractor_id: access.assignment.contractor_id, reason: overridden, scheduled_at: new Date(startMs).toISOString() },
+    });
+  }
 
   await supabase
     .from('lead_assignments')
@@ -691,6 +728,7 @@ export async function scheduleAppointment(
     revalidateLead(leadId);
   }
   flushNotificationsSoon();
+  flushCalendarSyncSoon();
   return { success: true };
 }
 
@@ -720,5 +758,6 @@ export async function updateAppointmentStatus(
     await recordActivity(leadId, 'appointment', 'Appointment completed');
   }
   flushNotificationsSoon();
+  flushCalendarSyncSoon();
   if (leadId) revalidateLead(leadId);
 }
