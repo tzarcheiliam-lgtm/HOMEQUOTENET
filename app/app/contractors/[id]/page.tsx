@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Trash2, Plus } from 'lucide-react';
 import { requireRole } from '@/lib/auth';
@@ -84,6 +85,9 @@ function ContractorReadOnly({
         backLabel="Contractors"
       >
         <Badge variant="muted">{contractor.status}</Badge>
+        <Button asChild variant="outline" size="sm">
+          <Link href={`/app/availability?contractor=${contractor.id}`}>View availability</Link>
+        </Button>
       </PageHeader>
 
       <Card>
@@ -173,6 +177,9 @@ export default async function ContractorDetailPage({
         backLabel="Contractors"
       >
         <Badge variant="muted">{contractor.status}</Badge>
+        <Button asChild variant="outline" size="sm">
+          <Link href={`/app/availability?contractor=${contractor.id}`}>View availability</Link>
+        </Button>
         <form action={deleteContractor}>
           <input type="hidden" name="id" value={contractor.id} />
           <Button type="submit" variant="outline" size="sm">

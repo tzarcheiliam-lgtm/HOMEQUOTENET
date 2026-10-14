@@ -7,7 +7,7 @@ import { PGlite } from '@electric-sql/pglite';
  * the pgcrypto CREATE EXTENSION line is skipped (gen_random_uuid is built in). It never touches a shared database.
  * Set `app.uid` (set_config) to act as a signed-in user.
  */
-export async function fullSchema(): Promise<PGlite> {
+export async function fullSchema(opts: { supabaseGrants?: boolean } = {}): Promise<PGlite> {
   const dir = new URL('../../supabase/migrations/', import.meta.url);
   const db = new PGlite();
   await db.exec(`
@@ -23,6 +23,12 @@ export async function fullSchema(): Promise<PGlite> {
     grant usage on schema auth, storage to anon, authenticated, service_role;
     grant execute on all functions in schema auth to anon, authenticated, service_role;
   `);
+  // Real Supabase grants new public tables to the API roles by default; RLS then decides. Opt in to mimic that.
+  if (opts.supabaseGrants) {
+    await db.exec(`alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+      alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
+      alter default privileges in schema public grant execute on functions to anon, authenticated, service_role;`);
+  }
   for (const f of readdirSync(dir).filter((x) => x.endsWith('.sql')).sort()) {
     const sql = readFileSync(new URL(f, dir), 'utf8').replace(/create extension if not exists ["']?pgcrypto["']?[^;]*;/gi, '');
     try { await db.exec(sql); } catch (e) { throw new Error(`migration ${f} failed: ${(e as Error).message}`); }

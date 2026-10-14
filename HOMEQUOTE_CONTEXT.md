@@ -124,6 +124,7 @@ auth callback route handler).
   `/app/calls/appointments`, `/app/calls/emails` — the partner cold-calling
   workspace (admin/caller/setter only)
 - `/app/appointments`, `/app/service-requests`
+- `/app/availability` (contractor owner/staff, admin; setters via `?contractor=` from a contractor page) — availability + calendar connections (§24)
 - `/app/growth`, `/app/growth/[service]` — Growth Tools catalog (contractor)
 - `/app/sales`, `/app/billing`, `/app/analytics` (admin)
 - `/app/pay/[id]` — the pay page a priced Growth Tools request links to (§12)
@@ -155,6 +156,7 @@ auth callback route handler).
 - `POST /api/stripe/webhook` — Stripe webhook (Checkout + subscription events)
 - `POST /api/ai-calling/webhook` — Fish Audio post-call webhooks, signature-verified (§18)
 - `POST /api/ai-calling/tick` — AI-calling scheduler gate (Bearer `AI_CALLING_CRON_SECRET`); does not dial yet (§18)
+- `GET /api/integrations/google-calendar/oauth/{start,callback}` — contractor Google Calendar connect (§24); `GET /api/calendar/feed/[token]` (public, token = credential) and `GET /api/calendar/appointment/[id]` (.ics) (§24)
 - `POST /api/workflows/tick` — the workflow scheduler tick (Bearer
   `WORKFLOW_CRON_SECRET`), called every 5 min by the GitHub Actions workflow
   `.github/workflows/workflow-tick.yml`
@@ -989,3 +991,14 @@ Full guide: `docs/meta-ads-studio-setup.md` (requirements, env vars, merge order
 
 ## Brand (Oct 2026 rebrand, branch `rebrand`)
 Brand Guidelines v1.0 applied: tokens in `app/globals.css` and `app/(marketing)/marketing.css`, logos in `public/brand/` via `components/brand-logo.tsx`, fonts Sora + DM Sans in `app/layout.tsx`. Gold is the CTA colour on Navy marketing/ad pages only. Details and copy flags: `docs/rebrand/REBRAND_NOTES.md`.
+
+
+## 24. Contractor availability + calendar sync (migration 0047, added 2026-10-14, NOT yet applied/deployed)
+- **Data** (all keyed by `contractors.id`): `contractor_availability_settings` (tz, `weekly_schedule_enabled`, notice, buffer, daily cap, default duration), `contractor_availability_rules` (weekly windows, weekday 0=Sun, local minutes), `contractor_availability_exceptions` (blocked/available, date range or weekly repeat, optional hours). RLS: read = staff (admin/setter) or same company; write = admin or contractor **owner** of that company. No settings/rules/exceptions ⇒ unrestricted.
+- **Calendar tables**: `calendar_connections` (per user; encrypted credentials; clients get column-level SELECT on safe columns only, no client writes), `appointment_calendar_events` (appointment↔external event; no FK so deleted appointments can still be cleaned up), `calendar_sync_jobs` (outbox, one pending job per appointment, filled by trigger `trg_appointments_calendar_sync`, claimed via `claim_calendar_sync_jobs`), `calendar_feed_tokens` (service-role only). Tests: `tests/availability-db.test.ts` (runs the real migration chain in PGlite; `fullSchema({supabaseGrants:true})`).
+- **Logic**: `lib/availability/{time,slots}.ts` pure (DST-safe; `unavailableReason`, `bookableSlots`, `unavailableIntervals`), `data.server.ts` loads context (service role), `enforce.server.ts` `checkContractorSlot`. Tests: `availability-slots.test.ts`.
+- **Enforcement**: `scheduleAppointment` (`lib/actions/leads.ts`) — admin/setter are rejected for unavailable times unless "Book anyway" (audited as `appointment.availability_override` via service role); contractors are not blocked by their own rules; lookup failures never block. The datetime-local value is now parsed as workspace time (`DEFAULT_TZ`) rather than the server zone. Funnel/Calendly bookings and workflow-created appointments are NOT checked.
+- **Google**: `lib/calendar/{config,google,connections.server,busy.server,sync.server,appointment-event.server}.ts`; OAuth with PKCE + state cookie bound to the user (`hqn_gcal_oauth_*`), scopes `calendar.events` + `calendar.freebusy`, refresh token AES-256-GCM (`CALENDAR_TOKEN_ENCRYPTION_KEY` or `GMAIL_TOKEN_ENCRYPTION_KEY`). Env: `GOOGLE_CALENDAR_CLIENT_ID/_SECRET/_REDIRECT_URI` (dormant until set). Deterministic event ids make retries idempotent; revoked grant ⇒ `needs_reconnect`. Sync is flushed with `flushCalendarSyncSoon()` and retried by `/api/workflows/tick` (`runCalendarMaintenance`). Primary calendar only; busy times read as start/end only.
+- **Apple**: no OAuth exists; shipped = private subscribe `.ics` feed + per-appointment `.ics`. Two-way CalDAV NOT built.
+- **UI**: `app/app/availability/page.tsx`, `components/availability/*`; nav item "Availability" for admin+contractor only (setter nav is pinned to five sections by `tests/setter-access.test.ts`; setters use "View availability" on `/app/contractors/[id]` and the booking warning in `components/leads/assignment-manager.tsx`). Guide: `docs/contractor-availability-calendar.md`.
+- **Known gaps**: no push alert for needs-reconnect; no calendar picker; disconnect leaves already-written events; Google sensitive-scope verification required beyond test users.
