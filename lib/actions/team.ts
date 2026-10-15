@@ -4,13 +4,15 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
+import { publicSiteUrl } from '@/lib/auth/site-url';
+import { sendPasswordReset } from '@/lib/auth/password-reset';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireRole } from '@/lib/auth';
 import type { AccountStatus, UserRole } from '@/lib/types';
 
 export type TeamState = { error?: string; success?: boolean } | undefined;
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
+const SITE_URL = publicSiteUrl();
 
 // --- helpers ----------------------------------------------------------------
 
@@ -275,10 +277,7 @@ export async function resetPassword(fd: FormData): Promise<void> {
   const email = await emailFor(userId);
   if (!email) return;
 
-  const supabase = await createClient();
-  await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${SITE_URL}/auth/callback?next=/set-password`,
-  });
+  await sendPasswordReset(email);
   await logAudit('user.password_reset', userId, { email });
   revalidatePath(`/app/team/${userId}`);
 }
