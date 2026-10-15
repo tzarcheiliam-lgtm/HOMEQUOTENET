@@ -3,6 +3,10 @@ import { Trash2, Wallet, CheckCircle2, Receipt } from 'lucide-react';
 import { ConfirmAction } from '@/components/ui/confirm-action';
 import { MobileCard } from '@/components/mobile/mobile-card';
 import { requireRole } from '@/lib/auth';
+import { createClient } from '@/lib/supabase/server';
+import { SendPaymentDialog, type CompanyOption } from '@/components/billing/send-payment-dialog';
+import { PaymentLinks, type PaymentLinkRow } from '@/components/billing/payment-links';
+import { describeAmount } from '@/lib/billing/payment-request';
 import { listBillingEvents } from '@/lib/data/sales';
 import { updateBillingEvent, deleteBillingEvent } from '@/lib/actions/outcomes';
 import { BILLING_STATUSES } from '@/lib/outcomes/constants';
@@ -29,6 +33,29 @@ const money = (n: number) => `$${n.toLocaleString()}`;
 export default async function BillingPage() {
   await requireRole(['admin']);
   const rows = await listBillingEvents();
+  const supabase = await createClient();
+  const [{ data: companyRows }, { data: linkRows }] = await Promise.all([
+    supabase.from('contractors').select('id, name, email').order('name'),
+    supabase
+      .from('payment_requests')
+      .select('id, created_at, description, customer_name, amount_cents, interval, setup_fee_cents, status, url, emailed_at, contractor:contractors(name)')
+      .order('created_at', { ascending: false })
+      .limit(25),
+  ]);
+  const companies = (companyRows ?? []) as CompanyOption[];
+  const paymentLinks: PaymentLinkRow[] = (linkRows ?? []).map((r) => {
+    const company = (Array.isArray(r.contractor) ? r.contractor[0] : r.contractor) as { name: string } | null;
+    return {
+      id: r.id,
+      created_at: r.created_at,
+      description: r.description,
+      who: company?.name ?? r.customer_name ?? '',
+      amountText: describeAmount({ amount: r.amount_cents, interval: r.interval, setup_fee: r.setup_fee_cents }),
+      status: r.status,
+      url: r.url,
+      emailed: !!r.emailed_at,
+    };
+  });
 
   const totalOwed = rows
     .filter((r) => r.status === 'pending' || r.status === 'overdue')
@@ -39,8 +66,17 @@ export default async function BillingPage() {
     <div className="space-y-4 lg:space-y-6">
       <PageHeader
         title="Billing"
-        description="Commission billing per contractor and assignment."
-      />
+        description="Commission billing per contractor and assignment, and Stripe payments you send."
+      >
+        <SendPaymentDialog companies={companies} />
+      </PageHeader>
+
+      {paymentLinks.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-base font-semibold">Payment links</h2>
+          <PaymentLinks rows={paymentLinks} />
+        </section>
+      )}
 
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:gap-4">
         <KpiCard label="Outstanding" value={money(totalOwed)} icon={Wallet} accent="money" />
