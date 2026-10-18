@@ -50,9 +50,10 @@ const ago = (days: number, hour = 10) => new Date(Date.now() - days * DAY + (hou
 const ahead = (days: number, hour = 10) => new Date(Date.now() + days * DAY + (hour - 10) * 3_600_000).toISOString();
 const dateOnly = (iso: string) => iso.slice(0, 10);
 
-function must<T>(res: { data: T | null; error: { message: string } | null }, what: string): NonNullable<T> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function must(res: { data: any; error: { message: string } | null }, what: string): any {
   if (res.error) throw new Error(`${what}: ${res.error.message}`);
-  return res.data as NonNullable<T>;
+  return res.data;
 }
 
 /**
@@ -108,12 +109,12 @@ export async function seedDemoContractor(db: SupabaseClient, contractorId: strin
   }));
   const leads = must(await db.from('leads').insert(leadRows).select('id, created_at'), 'insert leads');
   // Insert returns rows in insert order.
-  const leadIds = leads.map(l => l.id as string);
+  const leadIds = leads.map((l: { id: string }) => l.id);
 
   const asgs = must(await db.from('lead_assignments').insert(LEADS.map(([, , , , , , , , , , age, stage], i) => ({
     lead_id: leadIds[i], contractor_id: contractorId, pricing_agreement_id: pricing.id, status: STAGE[stage].assignment, assigned_at: ago(age),
   }))).select('id, lead_id'), 'insert assignments');
-  const asgId = (i: number) => asgs.find(a => a.lead_id === leadIds[i])!.id as string;
+  const asgId = (i: number) => asgs.find((a: { id: string; lead_id: string }) => a.lead_id === leadIds[i])!.id as string;
 
   const appointments: Record<string, unknown>[] = [], estimates: Record<string, unknown>[] = [], sales: Record<string, unknown>[] = [],
     billing: Record<string, unknown>[] = [], activities: Record<string, unknown>[] = [];
