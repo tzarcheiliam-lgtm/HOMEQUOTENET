@@ -18,6 +18,8 @@ import { ContractorForm } from '@/components/contractors/contractor-form';
 import { VerticalsForm } from '@/components/contractors/verticals-form';
 import { PricingAgreementForm } from '@/components/contractors/pricing-agreement-form';
 import { Button } from '@/components/ui/button';
+import { ConfirmAction } from '@/components/ui/confirm-action';
+import { loadDemoData } from '@/lib/actions/demo';
 import { Badge } from '@/components/ui/badge';
 import {
   Card,
@@ -180,6 +182,16 @@ export default async function ContractorDetailPage({
         <Button asChild variant="outline" size="sm">
           <Link href={`/app/availability?contractor=${contractor.id}`}>View availability</Link>
         </Button>
+        {/test|demo/i.test(contractor.name) && (
+          <ConfirmAction
+            action={loadDemoData}
+            fields={{ id: contractor.id }}
+            triggerLabel="Load demo data"
+            title="Load demo data?"
+            description="Fills this account with placeholder leads, appointments, sales and billing for walkthroughs. Re-running replaces only the previous demo data."
+            confirmLabel="Load demo data"
+          />
+        )}
         <form action={deleteContractor}>
           <input type="hidden" name="id" value={contractor.id} />
           <Button type="submit" variant="outline" size="sm">
