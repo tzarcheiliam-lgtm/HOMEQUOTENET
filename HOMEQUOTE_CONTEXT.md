@@ -458,6 +458,10 @@ system and no migration:
   against production as of this writing**; until it is, Part 1 above ships
   in code but the workflow row does not exist live.
 
+### 9c. Demo contractor seed (2026-10-18)
+
+`scripts/seed-demo-contractor.mjs` fills the "Test Contractor" account with placeholder leads (every pipeline stage), appointments, estimates, won sales, lead-fee billing events and activity so the CRM looks lived-in for contractor walkthroughs. Run by a person with `SUPABASE_DB_URL`: `node --env-file=.env.local scripts/seed-demo-contractor.mjs --dry-run` first (rolls back), then without the flag. Aborts unless exactly one contractor matches the name (`--name` to override). Idempotent: rows are tagged (`leads.consent_source = 'demo-seed'`, billing/sales notes start `demo-seed`) and only those are replaced on re-run. Fake data only (example.com emails, 555-01xx phones), and the `workflow_events` the insert triggers enqueue are deleted in the same transaction so no workflow emails/SMS/push fire. Not yet run against any database as of this writing.
+
 ## 10. Workflow Automations
 
 A general trigger → conditions → ordered-steps automation engine, built in
