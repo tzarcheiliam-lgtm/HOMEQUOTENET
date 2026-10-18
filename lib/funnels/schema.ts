@@ -30,6 +30,7 @@ export const questionSchema = z.object({
   options: z.array(z.object({ value: z.string().regex(/^[a-z0-9_]{1,50}$/), label: text, detail: z.string().max(120).optional(), featured: z.boolean().optional() })).max(20).default([]),
   showWhen: z.array(conditionSchema).max(10).default([]),
 });
+const usPhone = (v: string) => /^(1)?[2-9]\d{2}[2-9]\d{6}$/.test(v.replace(/\D/g, ''));
 export const funnelSchema = z.object({
   version: z.literal(1),
   clientName: text,
@@ -56,6 +57,9 @@ export const funnelSchema = z.object({
   calendarProvider: z.enum(['ghl', 'calendly']).default('ghl'),
   calendarHeadline: text.optional(),
   thankYouPage: z.object({ headline: text, message: text }),
+  // Optional. When a phone is set, the thank-you screen offers a "Save to contacts" button (vCard)
+  // so the homeowner recognises the business's call. Unset keeps the screen unchanged.
+  contactCard: z.object({ phone: z.string().trim().refine(v => usPhone(v), 'Enter a valid US phone number'), email: z.string().trim().email().max(254).optional(), website: httpsUrl.optional() }).optional(),
   // Optional link-preview / <title> overrides. Unset keeps the HomeQuote defaults.
   seo: z.object({ title: z.string().trim().min(1).max(70).optional(), description: z.string().trim().min(1).max(200).optional() }).optional(),
   // opt_in (default): the pixel stays off until the visitor ticks the footer box.
@@ -87,7 +91,6 @@ export const funnelSchema = z.object({
 export type FunnelConfig = z.infer<typeof funnelSchema>;
 export type Question = FunnelConfig['questions'][number];
 export type Answers = Record<string, string>;
-const usPhone = (v: string) => /^(1)?[2-9]\d{2}[2-9]\d{6}$/.test(v.replace(/\D/g, ''));
 export const contactSchema = z.object({
   firstName: z.string().trim().min(1, 'Enter your first name').max(80),
   lastName: z.string().trim().min(1, 'Enter your last name').max(80),

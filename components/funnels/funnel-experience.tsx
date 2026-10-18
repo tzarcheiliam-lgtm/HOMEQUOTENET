@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import Image from 'next/image';
-import { ArrowLeft, ArrowRight, Check, CheckCircle2, ClipboardList, LockKeyhole, MapPin, ShieldCheck, Sparkles } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, CheckCircle2, ClipboardList, UserPlus, LockKeyhole, MapPin, ShieldCheck, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,8 +10,20 @@ import { Textarea } from '@/components/ui/textarea';
 import { DEFAULT_PLACEHOLDERS, MAX_ANSWER_LENGTH, calendlyEmbedUrl, consentText, contactSchema, isRequired, isTextQuestion, serviceAreaValid, validateAnswer, visibleQuestions, type FunnelConfig, type Session } from '@/lib/funnels/schema';
 import { previewAdvance } from '@/lib/funnels/builder';
 import { trackFunnel } from '@/lib/funnels/tracking';
+import { buildContactVCard, vcardFileName } from '@/lib/funnels/vcard';
 
 const STATE_NAMES: Record<string, string> = { CA: 'California' };
+
+/** Downloads (iOS/Android open it straight into Contacts) the business's vCard. */
+function saveToContacts(config: FunnelConfig) {
+  const vcard = buildContactVCard(config);
+  if (!vcard) return;
+  const url = URL.createObjectURL(new Blob([vcard], { type: 'text/vcard;charset=utf-8' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = vcardFileName(config.clientName);
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 /**
  * `previewMode` (used only by the funnel builder's live preview, never the
@@ -261,7 +273,8 @@ export function FunnelExperience({ slug, initialConfig, demo, previewMode, jumpT
           <iframe title={`Book an estimate with ${config.clientName}`} src={calendlySrc ?? calendarUrl.toString()} referrerPolicy="strict-origin-when-cross-origin" allow="payment" />
           <p>Booking confirmation will appear here after the calendar confirms your appointment. If no times work, the team has your request and can follow up.</p>
         </div>}
-        {done && <div className="funnel-result"><div className="funnel-success"><CheckCircle2 size={36} /></div><p>{demo ? 'You’ve completed the demo. In a published client funnel, these details reach HomeQuote and the connected CRM.' : session?.booked_at ? 'Your appointment has been confirmed. Please check your calendar confirmation for the details.' : config.thankYouPage.message}</p></div>}
+        {done && <div className="funnel-result"><div className="funnel-success"><CheckCircle2 size={36} /></div><p>{demo ? 'You’ve completed the demo. In a published client funnel, these details reach HomeQuote and the connected CRM.' : session?.booked_at ? 'Your appointment has been confirmed. Please check your calendar confirmation for the details.' : config.thankYouPage.message}</p>
+          {buildContactVCard(config) && <><p>Save our number so you recognise us when we call about your estimate.</p><Button className="funnel-primary" type="button" onClick={() => saveToContacts(config)}><UserPlus size={18} /> Save {config.clientName} to my contacts</Button></>}</div>}
         {error && <div className="funnel-error" role="alert">{error}{!session && <button onClick={() => void start()} disabled={busy}>Try again</button>}</div>}
         {busy && session && <span className="sr-only" role="status">Saving your progress</span>}
       </section>
