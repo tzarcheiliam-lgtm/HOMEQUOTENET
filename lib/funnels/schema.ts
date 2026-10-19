@@ -176,6 +176,8 @@ export function qualify(config: FunnelConfig, answers: Answers): boolean | null 
   return inServiceArea(config, zip) && serviceAreaValid(config, zip) && config.qualificationRules.every(rule => matches(rule, answers));
 }
 export function inServiceArea(config: FunnelConfig, zip: string) {
+  // No ZIP list at all = no restriction (targeting is done in the ad platform), so every ZIP passes.
+  if (!config.serviceArea.zipCodes.length && !config.serviceArea.zipPrefixes.length) return true;
   return config.serviceArea.zipCodes.includes(zip) || config.serviceArea.zipPrefixes.some(prefix => zip.startsWith(prefix));
 }
 /**

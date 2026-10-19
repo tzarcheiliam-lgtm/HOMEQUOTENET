@@ -36,7 +36,7 @@ export function uniqueId(base: string, used: Set<string>, pattern: RegExp = ID_P
 export function blankFunnelConfig(clientName: string, industry: string): FunnelConfig {
   return funnelSchema.parse({
     version: 1, clientName, industry,
-    serviceArea: { label: 'Set your service area', zipCodes: [], zipPrefixes: [] },
+    serviceArea: { label: 'your area', zipCodes: [], zipPrefixes: [] },
     questions: [
       { id: 'service', type: 'choice', headline: 'What would you like help with?', options: [
         { value: 'option_1', label: 'Option 1' }, { value: 'option_2', label: 'Option 2' },

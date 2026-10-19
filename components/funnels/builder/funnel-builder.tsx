@@ -193,8 +193,9 @@ export function FunnelBuilder({
           </CardContent></Card>
 
           <Card><CardContent className="space-y-3 p-4">
-            <h3 className="text-sm font-semibold">Service area &amp; qualification</h3>
-            <Field label="Area label"><Input value={config.serviceArea.label} onChange={e => patch({ ...config, serviceArea: { ...config.serviceArea, label: e.target.value } })} /></Field>
+            <h3 className="text-sm font-semibold">Service area (optional)</h3>
+            <p className="text-xs text-muted-foreground">Leave the ZIP fields empty to accept every ZIP — handy when your ad already targets the right areas. Only fill them in if you want the funnel itself to reject ZIPs outside a list.</p>
+            <Field label="Area label (shown while checking)"><Input value={config.serviceArea.label} onChange={e => patch({ ...config, serviceArea: { ...config.serviceArea, label: e.target.value } })} /></Field>
             <Field label="ZIP codes (comma-separated)">
               <Textarea value={config.serviceArea.zipCodes.join(', ')} onChange={e => patch({ ...config, serviceArea: { ...config.serviceArea, zipCodes: splitList(e.target.value) } })} />
             </Field>
