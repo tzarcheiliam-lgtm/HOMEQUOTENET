@@ -458,6 +458,8 @@ system and no migration:
   against production as of this writing**; until it is, Part 1 above ships
   in code but the workflow row does not exist live.
 
+**Re-adding a deleted user (2026-10-19):** team "delete" is a soft delete (`profiles.deleted_at`; the `auth.users` login stays), so re-creating the same email used to fail with "already registered". `createUser`/`inviteUser` in `lib/actions/team.ts` now detect a soft-deleted profile by email and restore it (new password for Create; a set-password email for Invite) with the newly chosen role/contractor, clearing `deleted_at`. A live account with that email returns a clear "already exists" error instead.
+
 ### 9c. Demo contractor data (2026-10-18)
 
 Admins see a **Load demo data** button on `/app/contractors/[id]` for any contractor whose name contains "test" or "demo" (`loadDemoData` in `lib/actions/demo.ts`, enforced server-side too). It runs `seedDemoContractor()` (`lib/demo/seed-contractor.ts`) with the service-role client: 24 placeholder leads at every pipeline stage plus appointments, estimates, won sales, lead-fee billing events and activity, so the CRM looks lived-in for contractor walkthroughs. Idempotent: rows are tagged (`leads.consent_source = 'demo-seed'`, billing/sales notes start `demo-seed`) and only those are replaced on re-run. Fake data only (example.com emails, 555-01xx phones); the `workflow_events` the insert triggers enqueue are deleted right after so no workflow email/SMS/push fires. (Replaced an earlier `scripts/seed-demo-contractor.mjs` that needed a local DB URL.) Not yet exercised against a live database.
