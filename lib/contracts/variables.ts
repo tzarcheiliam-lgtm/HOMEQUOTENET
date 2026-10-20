@@ -5,7 +5,7 @@
 import type { ContractClient, ContractSection, DocNode } from '@/lib/contracts/types';
 
 export type VariableKind = 'text' | 'longtext' | 'money' | 'date';
-export type VariableGroup = 'Client' | 'HomeQuote' | 'Dates' | 'Service' | 'Pricing' | 'Terms' | 'Branding';
+export type VariableGroup = 'Client' | 'HomeQuote' | 'Dates' | 'Service' | 'Pricing' | 'Terms' | 'Branding' | 'Customer' | 'Project';
 export type VariableSource = 'crm' | 'system' | 'input' | 'branding';
 
 export interface VariableDef {
@@ -45,6 +45,20 @@ export const VARIABLES: VariableDef[] = [
   { key: 'refund_policy', label: 'Refund / replacement policy', group: 'Terms', kind: 'longtext', source: 'input', example: 'Describe the agreed refund or replacement rules.' },
   { key: 'qualification_standards', label: 'Appointment qualification standards', group: 'Terms', kind: 'longtext', source: 'input', example: 'Homeowner, in service area, project budget confirmed.' },
   { key: 'governing_law', label: 'Governing law / venue', group: 'Terms', kind: 'text', source: 'input', example: 'State of California' },
+  // ---- Customer documents (work orders / proposals / contracts issued to a homeowner for a lead) ----
+  // Customer + project fields are pre-filled from the lead record by the server and can be corrected before saving.
+  // Price, scope and payment terms are NEVER pre-filled or invented: the person issuing the document supplies them.
+  { key: 'customer_name', label: 'Customer name', group: 'Customer', kind: 'text', source: 'input', example: 'Sarah Lee' },
+  { key: 'customer_email', label: 'Customer email', group: 'Customer', kind: 'text', source: 'input', example: 'sarah@example.com' },
+  { key: 'customer_phone', label: 'Customer phone', group: 'Customer', kind: 'text', source: 'input', example: '(555) 010-0142' },
+  { key: 'customer_address', label: 'Customer mailing address', group: 'Customer', kind: 'longtext', source: 'input', example: '12 Main St, Springfield CA 90001' },
+  { key: 'project_address', label: 'Project address', group: 'Project', kind: 'longtext', source: 'input', example: '12 Main St, Springfield CA 90001' },
+  { key: 'project_description', label: 'Project description', group: 'Project', kind: 'longtext', source: 'input', example: 'Resurface the pool and replace the tile.' },
+  { key: 'contractor_company', label: 'Contractor company', group: 'Project', kind: 'text', source: 'input', example: 'Acme Pools LLC' },
+  { key: 'total_price', label: 'Total price', group: 'Pricing', kind: 'money', source: 'input', example: '$24,500.00' },
+  { key: 'deposit_amount', label: 'Deposit', group: 'Pricing', kind: 'money', source: 'input', optional: true, emptyText: 'None.', example: '$2,000.00' },
+  { key: 'start_date', label: 'Planned start date', group: 'Dates', kind: 'date', source: 'input', optional: true, emptyText: 'To be scheduled.', example: 'November 3, 2026' },
+  { key: 'completion_date', label: 'Planned completion date', group: 'Dates', kind: 'date', source: 'input', optional: true, emptyText: 'To be scheduled.', example: 'December 1, 2026' },
   { key: 'additional_terms', label: 'Additional terms', group: 'Terms', kind: 'longtext', source: 'input', optional: true, emptyText: 'None.', example: 'Any custom terms agreed with this client.' },
 ];
 
@@ -171,3 +185,6 @@ export function resolveVariables(sections: ContractSection[], raw: Record<string
   }
   return { values, missing, invalid, unknown };
 }
+
+/** Fields the assistant may pre-fill from the lead record. Everything else must come from the person issuing the document. */
+export const LEAD_PREFILL_KEYS = ['customer_name', 'customer_email', 'customer_phone', 'customer_address', 'project_address', 'project_description', 'contractor_company'] as const;

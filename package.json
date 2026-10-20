@@ -11,6 +11,7 @@
     "e2e:meta": "node scripts/e2e/meta-studio/run.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.135.0",
     "@cantoo/pdf-lib": "^2.11.1",
     "@napi-rs/canvas": "^1.0.10",
     "@supabase/ssr": "^0.5.2",

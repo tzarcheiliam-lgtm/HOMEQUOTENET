@@ -573,3 +573,8 @@ summary:focus-visible,
     letter-spacing: -0.02em;
   }
 }
+
+/* In-app assistant: on desktop the open panel takes its own column instead of covering the page. */
+@media (min-width: 1024px) {
+  html.hqn-assistant-open body { padding-right: 26rem; }
+}
