@@ -3,6 +3,9 @@ import { equalSecret } from '@/lib/funnels/server';
 import { runCalendarMaintenance } from '@/lib/calendar/sync.server';
 import { runNotificationMaintenance } from '@/lib/notifications/outbox';
 import { signingMaintenance } from '@/lib/signing/service';
+import { checkBridgeHealth } from '@/lib/sms/health';
+import { notifyAdmins } from '@/lib/sms/health-notify';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { processWorkflowTick, pruneWorkflowHistory } from '@/lib/workflows/runtime.server';
 
 export const dynamic = 'force-dynamic';
@@ -33,7 +36,10 @@ export async function POST(request: Request) {
     }
     // Documents & Signing: expire overdue requests, retry stuck completed-PDF generation. Best effort.
     const signing = await signingMaintenance();
-    return NextResponse.json({ ...result, retention, notifications, calendar, signing }, { status: result.failures ? 207 : 200 });
+    // Texting: alert the team if texts are waiting and the Mac bridge is not sending them. Best effort.
+    let sms: unknown = null;
+    try { sms = await checkBridgeHealth(createAdminClient(), { notify: notifyAdmins }); } catch { sms = { error: 'texting health check failed' }; }
+    return NextResponse.json({ ...result, retention, notifications, calendar, signing, sms }, { status: result.failures ? 207 : 200 });
   } catch {
     return NextResponse.json({ error: 'Workflow processing unavailable' }, { status: 503 });
   }

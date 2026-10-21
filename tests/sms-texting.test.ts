@@ -10,6 +10,7 @@ vi.mock('server-only', () => ({}));
 import { finalizeOutbound, isHelp, isOptOut, openingMessage, projectLabel } from '@/lib/sms/rules';
 import { agentResultSchema, runSmsAgent, SMS_SYSTEM_PROMPT } from '@/lib/sms/agent';
 import { ackOutbound, claimOutbound, handleInbound, startSmsForLead } from '@/lib/sms/service';
+import { checkBridgeHealth, describeStuck } from '@/lib/sms/health';
 import { presetConfig } from '@/lib/funnels/presets';
 
 describe('opt-out and message rules', () => {
@@ -282,5 +283,49 @@ describe('access control', () => {
     expect(policies.every((p: any) => p.cmd === 'SELECT')).toBe(true);
     const fn = await q(`select has_function_privilege('anon', 'public.claim_sms_outbound(integer)', 'execute') as anon, has_function_privilege('authenticated', 'public.claim_sms_outbound(integer)', 'execute') as authed`);
     expect(fn[0]).toEqual({ anon: false, authed: false });
+  });
+});
+
+describe('bridge-down alert', () => {
+  const NOW = new Date();
+  const reset = async () => { await q(`delete from public.sms_messages`); await setSettings(`bridge_alert_sent_at=null, bridge_last_seen_at=null`); };
+  async function waitingText(minutes: number) {
+    const { leadId } = await newLead(); await startSmsForLead(sb, leadId, T);
+    await q(`update public.sms_messages set send_after = now() - ($2 || ' minutes')::interval where lead_id=$1`, [leadId, String(minutes)]);
+  }
+
+  it('describes only texts that are overdue, not ones still inside the normal delay or scheduled for later', () => {
+    const t = new Date('2026-10-21T12:00:00Z');
+    expect(describeStuck([{ status: 'queued', send_after: '2026-10-21T11:58:00Z', claimed_at: null }], t)).toBeNull();
+    expect(describeStuck([{ status: 'queued', send_after: '2026-10-21T13:00:00Z', claimed_at: null }], t)).toBeNull();
+    expect(describeStuck([{ status: 'queued', send_after: '2026-10-21T11:50:00Z', claimed_at: null }], t)).toEqual({ waiting: 1, minutes: 10 });
+    expect(describeStuck([{ status: 'sending', send_after: '2026-10-21T11:00:00Z', claimed_at: '2026-10-21T11:55:00Z' }], t)).toEqual({ waiting: 1, minutes: 5 });
+  });
+
+  it('stays quiet when texting is off or nothing is waiting', async () => {
+    await reset(); const notify = vi.fn();
+    expect((await checkBridgeHealth(sb, { notify, now: () => NOW })).state).toBe('ok');
+    await waitingText(30); await setSettings(`enabled=false`);
+    expect((await checkBridgeHealth(sb, { notify, now: () => NOW })).state).toBe('off');
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it('alerts once when texts are stuck, repeats only hourly, and says when it recovers', async () => {
+    await reset(); await waitingText(20); const notify = vi.fn(async () => undefined);
+    const first = await checkBridgeHealth(sb, { notify, now: () => NOW });
+    expect(first).toEqual({ state: 'alerted', waiting: 1 });
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect((notify.mock.calls[0] as any)[0]).toMatchObject({ title: expect.stringContaining('1 text waiting'), url: '/app/texting' });
+    expect((notify.mock.calls[0] as any)[0].body).toMatch(/never connected/);
+    expect((await checkBridgeHealth(sb, { notify, now: () => new Date(NOW.getTime() + 30 * 60_000) })).state).toBe('down_already_alerted');
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect((await checkBridgeHealth(sb, { notify, now: () => new Date(NOW.getTime() + 61 * 60_000) })).state).toBe('alerted');
+    expect(notify).toHaveBeenCalledTimes(2);
+    // The Mac comes back and sends everything.
+    await q(`update public.sms_messages set status='sent'`);
+    expect((await checkBridgeHealth(sb, { notify, now: () => NOW })).state).toBe('recovered');
+    expect((notify.mock.calls[2] as any)[0].title).toBe('Texting is back');
+    expect((await checkBridgeHealth(sb, { notify, now: () => NOW })).state).toBe('ok');
+    expect(notify).toHaveBeenCalledTimes(3);
   });
 });

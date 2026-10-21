@@ -26,6 +26,7 @@ export default async function TextingPage() {
   const leadIds = rows.map((r) => r.lead_id as string);
   const { data: leads } = leadIds.length ? await db.from('leads').select('id,first_name,last_name').in('id', leadIds) : { data: [] };
   const names = new Map((leads ?? []).map((l) => [l.id as string, [l.first_name, l.last_name].filter(Boolean).join(' ') || 'Lead']));
+  const { count: waiting } = await db.from('sms_messages').select('id', { count: 'exact', head: true }).eq('direction', 'out').eq('status', 'queued').lte('send_after', new Date().toISOString());
   const live = !!s.enabled && !s.stopped_at;
 
   return (
@@ -41,6 +42,7 @@ export default async function TextingPage() {
         <Card><CardHeader><CardTitle className="text-sm">Mac bridge</CardTitle></CardHeader><CardContent className="space-y-1">
           <p className={`text-lg font-semibold ${bridgeUp ? 'text-emerald-600' : 'text-destructive'}`}>{bridgeUp ? 'Connected' : 'Not connected'}</p>
           <p className="text-xs text-muted-foreground">{seen ? `Last check-in ${seen.toLocaleString()}` : 'It has never checked in.'}</p>
+          {!!waiting && <p className="text-xs font-medium text-amber-700 dark:text-amber-300">{waiting} text{waiting === 1 ? '' : 's'} waiting to send</p>}
           {!bridgeUp && <p className="text-xs text-muted-foreground">Texts wait in line until the Mac bridge is running. Setup: scripts/mac-sms-bridge/README.md</p>}
         </CardContent></Card>
         <Card><CardHeader><CardTitle className="text-sm">Setup check</CardTitle></CardHeader><CardContent className="space-y-1 text-xs text-muted-foreground">
