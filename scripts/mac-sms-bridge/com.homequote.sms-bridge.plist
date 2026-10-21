@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.homequote.sms-bridge</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/node</string>
+    <string>CHANGE_ME/path/to/HOMEQUOTENET/scripts/mac-sms-bridge/bridge.mjs</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HQN_URL</key><string>CHANGE_ME (your site URL)</string>
+    <key>SMS_BRIDGE_TOKEN</key><string>CHANGE_ME</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/tmp/homequote-sms-bridge.log</string>
+  <key>StandardErrorPath</key><string>/tmp/homequote-sms-bridge.log</string>
+</dict>
+</plist>

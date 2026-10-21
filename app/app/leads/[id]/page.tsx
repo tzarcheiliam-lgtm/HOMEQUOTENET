@@ -47,6 +47,7 @@ import { telHref } from '@/lib/leads/lead-emails';
 import { getLeadDistribution, listRecipients } from '@/lib/data/lead-distribution';
 import { canManageSigning, isContractorOwner } from '@/lib/permissions';
 import { DocumentsPanel } from '@/components/signing/documents-panel';
+import { SmsPanel } from '@/components/texting/sms-panel';
 import { OutcomeHistory } from '@/components/leads/outcome-history';
 
 export const metadata = { title: 'Lead · HomeQuote Network' };
@@ -206,6 +207,8 @@ export default async function LeadDetailPage({
             description={lead.project_description}
           />
           </div>
+
+          {isAdmin && <SmsPanel leadId={lead.id} className="order-2 lg:order-none" />}
 
           {funnelAnswers.length > 0 && (
             <div className="order-2 lg:order-none">

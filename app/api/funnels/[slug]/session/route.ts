@@ -1,3 +1,5 @@
+import { smsConfigured } from '@/lib/sms/config';
+import { startSmsForLead } from '@/lib/sms/service';
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { z } from 'zod';
@@ -179,6 +181,8 @@ export async function PATCH(request: Request, context: Context) {
     // AI calling: the lead's assignment already enqueued a job (DB trigger). This only nudges the worker
     // after the response is sent; it is a no-op unless calling is enabled, and the scheduled tick is the backstop.
     if (body.contact && !funnel.is_demo) after(async () => { try { await runAiCallQueue({ limit: 3 }); } catch { /* the scheduled tick retries */ } });
+    // Text the lead right away from the owner's Mac (off unless enabled at /app/texting; never blocks or fails the submission).
+    if (body.contact && !funnel.is_demo && smsConfigured() && typeof data?.lead_id === 'string') after(async () => { try { await startSmsForLead(db, data.lead_id as string); } catch { /* never blocks the submission */ } });
     if (body.contact && !funnel.is_demo && funnel.integration_id) after(async () => { try { await deliverPendingFunnels(); } catch { /* Durable queue retains the job for retry. */ } });
     // Meta Lead conversion — only for a real submission that passed the (optional, per-funnel)
     // service-area gate. Never fires for an out-of-area submission (areaValid === false) or a

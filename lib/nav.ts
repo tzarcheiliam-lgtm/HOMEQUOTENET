@@ -107,6 +107,13 @@ const BASE_NAV_ITEMS: NavItem[] = [
     icon: 'Bot',
     roles: ['admin'],
   },
+  // Automatic texting of new leads from the owner's Mac, with an AI that qualifies over text (admin only).
+  {
+    label: 'Texting',
+    href: '/app/texting',
+    icon: 'MessageSquare',
+    roles: ['admin'],
+  },
   {
     label: 'Appointments',
     href: '/app/appointments',
