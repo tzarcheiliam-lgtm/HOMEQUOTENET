@@ -29,12 +29,12 @@ export function finalizeOutbound(text: string, max = 320): string {
 
 export const SENDER_HOUSE = 'HomeQuote';
 
-/** The first text. Deterministic (not AI) so the disclosure and opt-out language are always there. */
+/** The first text. Deterministic (not AI). Consent and STOP language are on the form, so it stays short and casual; STOP replies are still honored. */
 export function openingMessage(input: { firstName?: string | null; senderName: string; project?: string | null }): string {
-  const hi = input.firstName?.trim() ? `Hi ${input.firstName.trim()}` : 'Hi there';
-  const what = input.project ? `your ${input.project} request` : 'your request';
+  const hi = input.firstName?.trim() ? `Hey ${input.firstName.trim()}` : 'Hey there';
+  const what = input.project ? `your ${input.project}` : 'your project';
   return finalizeOutbound(
-    `${hi}, this is ${input.senderName}'s virtual assistant. We just got ${what}. Would you rather hop on a quick call, or sort the details here by text? Reply STOP anytime to opt out.`, 400);
+    `${hi}, it's ${input.senderName}. Just got ${what} request. Easier to hop on a quick call, or want to just knock it out here over text?`, 400);
 }
 
 export const optOutConfirmation = (senderName: string) => `You're unsubscribed from ${senderName} texts and won't get any more. Reply START if that was a mistake.`;

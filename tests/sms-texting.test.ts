@@ -27,12 +27,14 @@ describe('opt-out and message rules', () => {
     expect(out.length).toBeLessThanOrEqual(321);
     expect(out.endsWith('.')).toBe(true);
   });
-  it('opens with a disclosure, the call-or-text question, and STOP language', () => {
+  it('opens casually with the call-or-text question (consent and STOP language live on the form)', () => {
     const m = openingMessage({ firstName: 'Jordan', senderName: 'HomeQuote', project: projectLabel('Bathroom remodeling') });
-    expect(m).toContain('Hi Jordan');
-    expect(m).toContain("HomeQuote's virtual assistant");
+    expect(m).toContain('Hey Jordan');
+    expect(m).toContain("it's HomeQuote");
+    expect(m).not.toMatch(/virtual|assistant|\bAI\b|bot/i);
     expect(m).toContain('bathroom remodel request');
-    expect(m).toMatch(/call/i); expect(m).toMatch(/text/i); expect(m).toContain('STOP');
+    expect(m.length).toBeLessThan(240);
+    expect(m).toMatch(/call/i); expect(m).toMatch(/text/i); expect(m).not.toMatch(/stop/i);
   });
 });
 
@@ -59,7 +61,7 @@ describe('the AI agent', () => {
   it('the prompt forbids prices, links and role changes', () => {
     expect(SMS_SYSTEM_PROMPT).toMatch(/Never quote or estimate prices/);
     expect(SMS_SYSTEM_PROMPT).toMatch(/untrusted/);
-    expect(SMS_SYSTEM_PROMPT).toMatch(/automated virtual assistant/);
+    expect(SMS_SYSTEM_PROMPT).toMatch(/Never claim to be human/);
   });
 });
 
@@ -106,7 +108,7 @@ describe('starting a conversation', () => {
     expect(c).toMatchObject({ sender_name: 'HomeQuote', phone_e164: e164(phone), status: 'active' });
     const [m] = await messages(leadId);
     expect(m).toMatchObject({ direction: 'out', status: 'queued', ai: false });
-    expect(m.body).toContain('Hi Jordan'); expect(m.body).toContain('bathroom remodel'); expect(m.body).toContain('STOP');
+    expect(m.body).toContain('Hey Jordan'); expect(m.body).toContain('bathroom remodel');
     expect((await q(`select send_after from public.sms_messages where lead_id=$1`, [leadId]))[0].send_after.getTime()).toBeLessThanOrEqual(T.getTime());
     expect(await startSmsForLead(sb, leadId, T)).toEqual({ started: false, reason: 'exists' }); // idempotent
     expect(await messages(leadId)).toHaveLength(1);
@@ -137,7 +139,7 @@ describe('starting a conversation', () => {
     const { leadId } = await newLead({ house: false });
     expect((await startSmsForLead(sb, leadId, T)).started).toBe(true);
     expect((await q(`select sender_name from public.sms_conversations where lead_id=$1`, [leadId]))[0].sender_name).toBe('Acme Baths');
-    expect((await messages(leadId))[0].body).toContain("Acme Baths's virtual assistant");
+    expect((await messages(leadId))[0].body).toContain("it's Acme Baths");
   });
 
   it('never texts a number that opted out, and respects the daily cap', async () => {
