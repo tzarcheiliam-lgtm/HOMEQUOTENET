@@ -8,7 +8,7 @@
 // funnel_step_options / funnel_logic_rules table: a step IS a `questions[]`
 // entry, an option IS `question.options[]`, branching logic IS `showWhen`.
 // See docs/funnel-builder-architecture.md.
-import { funnelSchema, isAnswered, isTextQuestion, qualify, sanitizeAnswers, validateAnswer, visibleQuestions, type Answers, type FunnelConfig, type Question } from './schema';
+import { funnelSchema, isAnswered, isTextQuestion, matches, qualify, sanitizeAnswers, validateAnswer, visibleQuestions, type Answers, type FunnelConfig, type Question } from './schema';
 
 /** Question ids and option values share this pattern (lib/funnels/schema.ts `key`/option regex). */
 const ID_PATTERN = /^[a-z][a-z0-9_]{0,49}$/;
@@ -168,6 +168,40 @@ export function previewAdvance(config: FunnelConfig, state: PreviewState,
     else return { error: 'Complete the earlier questions first.' };
   }
   return { answers, step: nextStep, qualified: qualify(config, answers) };
+}
+
+const SAMPLE_ANSWER: Record<string, string> = { zip: '90001', email: 'name@example.com', phone: '3105550123', number: '5', address: '123 Main St, Los Angeles, CA 90001' };
+/**
+ * Answers that let the builder's preview open ANY step, including a conditional question that is
+ * hidden until earlier answers satisfy its `showWhen` rules. Questions the target depends on get a
+ * value that satisfies those rules; every other earlier visible question gets its first option (or a
+ * sample), so the preview looks like a visitor who got there honestly. A non-question step
+ * (qualification, contact, ...) is previewed as if every question was answered.
+ */
+export function previewAnswersForStep(config: FunnelConfig, stepId: string): Answers {
+  const found = config.questions.findIndex(q => q.id === stepId);
+  const upTo = found < 0 ? config.questions.length : found;
+  // Conditions that must hold, gathered through the chain of questions the target depends on.
+  const needed = new Map<string, Question['showWhen']>();
+  const collect = (q: Question) => {
+    for (const c of q.showWhen) {
+      needed.set(c.question, [...(needed.get(c.question) ?? []), c]);
+      const dependency = config.questions.find(x => x.id === c.question);
+      if (dependency && !needed.has(`seen:${dependency.id}`)) { needed.set(`seen:${dependency.id}`, []); collect(dependency); }
+    }
+  };
+  if (found >= 0) collect(config.questions[found]);
+  let answers: Answers = {};
+  for (const q of config.questions.slice(0, upTo)) {
+    if (!q.showWhen.every(c => matches(c, answers))) continue;
+    const conditions = needed.get(q.id) ?? [];
+    const candidates = q.type === 'choice' ? q.options.map(o => o.value)
+      : [...conditions.flatMap(c => c.values), SAMPLE_ANSWER[q.type] ?? 'Sample answer'];
+    const fits = (v: string) => conditions.every(c => matches(c, { [q.id]: v }));
+    const value = candidates.find(fits) ?? candidates[0];
+    if (value !== undefined) answers = { ...answers, [q.id]: value };
+  }
+  return sanitizeAnswers(config, answers);
 }
 
 export type FunnelStatus = 'draft' | 'published' | 'archived';
