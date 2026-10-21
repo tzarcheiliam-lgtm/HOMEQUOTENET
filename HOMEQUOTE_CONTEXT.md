@@ -465,6 +465,12 @@ system and no migration:
 
 Admins see a **Load demo data** button on `/app/contractors/[id]` for any contractor whose name contains "test" or "demo" (`loadDemoData` in `lib/actions/demo.ts`, enforced server-side too). It runs `seedDemoContractor()` (`lib/demo/seed-contractor.ts`) with the service-role client: 24 placeholder leads at every pipeline stage plus appointments, estimates, won sales, lead-fee billing events and activity, so the CRM looks lived-in for contractor walkthroughs. Idempotent: rows are tagged (`leads.consent_source = 'demo-seed'`, billing/sales notes start `demo-seed`) and only those are replaced on re-run. Fake data only (example.com emails, 555-01xx phones); the `workflow_events` the insert triggers enqueue are deleted right after so no workflow email/SMS/push fires. (Replaced an earlier `scripts/seed-demo-contractor.mjs` that needed a local DB URL.) Not yet exercised against a live database.
 
+### 9d. Qualified bathroom & kitchen funnels (2026-10-21, no migration)
+
+Two house funnels (`contractor_id` null, "HomeQuote Network" consent text) defined in `content/funnels/bathroom-remodel.json` and `kitchen-remodel.json`, listed in `lib/funnels/presets.ts` (`FUNNEL_PRESETS`, `presetConfig`, `installPresetFunnels`). Admins see **Add bathroom & kitchen funnels** on `/app/funnels` (`installQualifiedFunnelsAction`); it inserts them as **drafts** (never overwrites an existing slug), then publish from the dashboard/builder. URLs: `/estimate/bathroom-remodel`, `/estimate/kitchen-remodel`. Both use Meta dataset/pixel `29178560738497902` (same ad set), `consentMode: opt_out` (mirrors Pool Masters; `opt_in` would suppress most events), no `calendarUrl` (no calendar step), empty service area (any ZIP; ZIP question kept), `unqualifiedAction: 'review'`.
+
+Qualification (ALL must match; editable in the builder): project type in-scope (excludes repair/other), homeowner = yes (renters skip the rest), sole/joint decision maker, timeline ASAP or 1–3 months, budget (bathroom ≥ $10k, kitchen ≥ $25k), payment cash/financing ready/needs financing. Lead event fires for every valid submission (qualified or not); `QualifiedLead` fires only when staff mark qualified. Tests: `tests/funnel-qualified-presets.test.ts`, `tests/funnel-qualified-events.test.ts` (real PATCH route, browser/server event_id pairing).
+
 ## 10. Workflow Automations
 
 A general trigger → conditions → ordered-steps automation engine, built in

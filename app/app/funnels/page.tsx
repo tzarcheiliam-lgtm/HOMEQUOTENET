@@ -7,6 +7,8 @@ import { KpiCard } from '@/components/ui/kpi-card';
 import { Button } from '@/components/ui/button';
 import { FunnelFiltersBar, type FunnelListFilters } from '@/components/funnels/dashboard/funnel-filters';
 import { FunnelDashboard } from '@/components/funnels/dashboard/funnel-dashboard';
+import { InstallQualifiedFunnels } from '@/components/funnels/dashboard/install-qualified-funnels';
+import { FUNNEL_PRESETS } from '@/lib/funnels/presets';
 import type { FunnelCardData, FunnelGroup } from '@/components/funnels/dashboard/types';
 
 export const metadata = { title: 'Funnels · HomeQuote Network' };
@@ -94,6 +96,7 @@ export default async function FunnelsPage({ searchParams }: { searchParams: Prom
   return <div className="space-y-6">
     <PageHeader title="Lead funnels" description="Find and manage every funnel — search, filter and sort instead of scrolling.">
       <Button asChild variant="outline"><Link href="/app/funnels/contractor-prospects">Contractor prospects</Link></Button>
+      {FUNNEL_PRESETS.some((p) => !cards.some((c) => c.slug === p.slug)) && <InstallQualifiedFunnels />}
       <Button asChild><Link href="/app/funnels/new">Create funnel</Link></Button>
     </PageHeader>
 
