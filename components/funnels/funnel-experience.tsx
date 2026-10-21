@@ -7,8 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { DEFAULT_PLACEHOLDERS, MAX_ANSWER_LENGTH, calendlyEmbedUrl, consentText, contactSchema, isRequired, isTextQuestion, serviceAreaValid, validateAnswer, visibleQuestions, type FunnelConfig, type Session } from '@/lib/funnels/schema';
-import { previewAdvance } from '@/lib/funnels/builder';
+import { DEFAULT_PLACEHOLDERS, MAX_ANSWER_LENGTH, calendlyEmbedUrl, consentText, contactSchema, isRequired, isTextQuestion, resolveStep, serviceAreaValid, validateAnswer, visibleQuestions, type FunnelConfig, type Session } from '@/lib/funnels/schema';
+import { previewAdvance, previewAnswersForStep } from '@/lib/funnels/builder';
 import { trackFunnel } from '@/lib/funnels/tracking';
 import { buildContactVCard, vcardFileName } from '@/lib/funnels/vcard';
 
@@ -72,7 +72,7 @@ export function FunnelExperience({ slug, initialConfig, demo, previewMode, jumpT
     // only ever reaches 'calendar'/'thanks' after contact_submitted_at is set.
     const qualifiedFrom = ['qualification', 'contact', 'calendar', 'thanks'].includes(jumpToStep);
     const submitted = ['calendar', 'thanks'].includes(jumpToStep);
-    setSession(s => s && { ...s, current_step: jumpToStep, qualified: qualifiedFrom ? true : s.qualified, booked_at: null, contact_submitted_at: submitted ? new Date().toISOString() : null });
+    setSession(s => s && { ...s, current_step: jumpToStep, answers: previewAnswersForStep(config, jumpToStep), qualified: qualifiedFrom ? true : s.qualified, booked_at: null, contact_submitted_at: submitted ? new Date().toISOString() : null });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewMode, jumpToStep]);
 
@@ -101,12 +101,19 @@ export function FunnelExperience({ slug, initialConfig, demo, previewMode, jumpT
     finally { setBusy(false); }
   }, [session, busy, endpoint, previewMode, config, tracking]);
 
-  const step = session?.current_step ?? config.questions[0].id;
+  const savedStep = session?.current_step ?? config.questions[0].id;
+  // Never render a step that names a hidden or missing question (that would be a blank screen).
+  const step = resolveStep(config, session?.answers ?? {}, savedStep);
   const questions = visibleQuestions(config, session?.answers ?? {});
   const index = questions.findIndex(q => q.id === step);
   const question = questions[index];
   const total = questions.length + 2 + (config.calendarUrl ? 1 : 0);
   const current = index >= 0 ? index + 1 : step === 'qualification' ? questions.length + 1 : step === 'contact' ? questions.length + 2 : total;
+  // Repair a saved step that no longer matches a visible question, so the next click works too.
+  useEffect(() => {
+    if (session && !busy && savedStep !== step && !jumpToStep) void save({ step });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.current_step, step]);
   useEffect(() => {
     setZip(session?.answers[step] ?? '');
     heading.current?.focus({ preventScroll: true });

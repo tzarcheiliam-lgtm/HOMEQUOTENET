@@ -120,6 +120,19 @@ export function matches(condition: z.infer<typeof conditionSchema>, answers: Ans
 export function visibleQuestions(config: FunnelConfig, answers: Answers) {
   return config.questions.filter(q => q.showWhen.every(c => matches(c, answers)));
 }
+/** Screens that are not questions. */
+export const FUNNEL_SCREENS = ['qualification', 'contact', 'calendar', 'thanks'] as const;
+/**
+ * The step a visitor can actually be shown. A saved or jumped-to step that names a question
+ * hidden by `showWhen` (or one that no longer exists) would render an empty screen, so it falls
+ * back to the first visible question still waiting for an answer, or the qualification screen.
+ */
+export function resolveStep(config: FunnelConfig, answers: Answers, step: string): string {
+  if ((FUNNEL_SCREENS as readonly string[]).includes(step)) return step;
+  const visible = visibleQuestions(config, answers);
+  if (visible.some(q => q.id === step)) return step;
+  return visible.find(q => !isAnswered(answers, q.id))?.id ?? 'qualification';
+}
 export type TextQuestionType = (typeof TEXT_QUESTION_TYPES)[number];
 export const isTextQuestion = (q: Pick<Question, 'type'>): q is Question & { type: TextQuestionType } => (TEXT_QUESTION_TYPES as readonly string[]).includes(q.type);
 /** Existing questions have no `required` flag and were always required. */
