@@ -14,17 +14,10 @@ garage conversion, bedrooms and bathrooms, a finish level per room and nine site
 | `components/marketing/adu-estimator.tsx` | Client component (the whole interactive tool). |
 | `tests/adu-estimator.test.ts` | Pricing, site-visit, payment and formatting tests. |
 
-## The prices are placeholders
+## Prices
 
-The numbers in `pricing-config.ts` were copied from a competitor's public website to show data shape and logic. They
-are not HomeQuote's costs. While `PRICING_IS_PLACEHOLDER = true`:
-
-- the page shows a "Preview only" banner;
-- the page is `noindex`;
-- the route is not in the sitemap or the site navigation.
-
-To go live: replace the numbers, update the expected values in `tests/adu-estimator.test.ts` (they assert the
-placeholders on purpose), set `PRICING_IS_PLACEHOLDER = false`, add the route to `app/sitemap.ts` and link it.
+All prices and return figures are final and live in `lib/adu/pricing-config.ts`. Edit them there; update the
+expected values in `tests/adu-estimator.test.ts` in the same commit.
 
 ## Price status
 

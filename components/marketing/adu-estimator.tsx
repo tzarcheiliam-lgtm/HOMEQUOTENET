@@ -1,7 +1,7 @@
 'use client';
 
 import { useId, useMemo, useState, type FormEvent, type ReactNode } from 'react';
-import { ChevronDown, TriangleAlert } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   BATHROOM_OPTIONS,
@@ -9,7 +9,6 @@ import {
   FINISH_LABELS,
   LOAN_DEFAULTS,
   LOAN_LIMITS,
-  PRICING_IS_PLACEHOLDER,
   ROOMS,
   ROOM_FINISH_OPTIONS,
   ROOM_LABELS,
@@ -130,19 +129,6 @@ export function AduEstimator() {
 
   return (
     <div>
-      {PRICING_IS_PLACEHOLDER ? (
-        <div
-          role="note"
-          className="mb-8 flex gap-3 rounded-xl border border-[var(--hq-warn)]/60 bg-[var(--hq-warn)]/10 p-4 text-sm leading-6 text-[var(--hq-text)]"
-        >
-          <TriangleAlert className="mt-0.5 size-5 shrink-0 text-[var(--hq-warn)]" aria-hidden="true" />
-          <p>
-            <strong>Preview only.</strong> The prices on this page are placeholders, not HomeQuote prices. Do not show
-            this page to customers until the real costs are in <code>lib/adu/pricing-config.ts</code>.
-          </p>
-        </div>
-      ) : null}
-
       <div className="grid gap-8 lg:grid-cols-12 lg:gap-10">
         {/* ---------------------------- Questions ---------------------------- */}
         <div className="space-y-6 lg:col-span-7">

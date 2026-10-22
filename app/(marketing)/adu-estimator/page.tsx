@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import { site } from '@/content/site';
 import { Container } from '@/components/marketing/primitives';
 import { AduEstimator } from '@/components/marketing/adu-estimator';
-import { PRICING_IS_PLACEHOLDER } from '@/lib/adu/pricing-config';
 import { baseOpenGraph } from '@/lib/site-metadata';
 
 export const metadata: Metadata = {
@@ -10,8 +9,7 @@ export const metadata: Metadata = {
   description:
     'Answer a few questions and get an instant starting price for a new detached ADU or a garage conversion, with a monthly payment calculator.',
   alternates: { canonical: '/adu-estimator' },
-  // Stays out of search until the placeholder prices are replaced with real costs.
-  robots: { index: !PRICING_IS_PLACEHOLDER, follow: !PRICING_IS_PLACEHOLDER },
+  robots: { index: true, follow: true },
   openGraph: {
     ...baseOpenGraph,
     title: `ADU Price Estimator · ${site.name}`,

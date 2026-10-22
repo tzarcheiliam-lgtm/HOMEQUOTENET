@@ -12,8 +12,8 @@ import {
 } from '@/lib/adu/pricing';
 import { BASE_PRICE, SITE_QUESTIONS, SIZE_TIERS, UPGRADE_COST } from '@/lib/adu/pricing-config';
 
-// These assert the PLACEHOLDER numbers on purpose. When the real costs replace
-// lib/adu/pricing-config.ts, update the expected values here in the same commit.
+// These assert the numbers in lib/adu/pricing-config.ts. When a price changes
+// there, update the expected values here in the same commit.
 
 const allNo = Object.fromEntries(SITE_QUESTIONS.map((q) => [q.id, 'no'])) as AduSelection['site'];
 

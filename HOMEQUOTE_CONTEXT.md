@@ -102,8 +102,8 @@ middleware.ts           Delegates to lib/supabase/middleware.ts (session refresh
 `/` (home), `/pool-contractors`, `/hvac`, `/roofing`, `/fencing`,
 `/general-contractors`, `/lead-standards`, `/apply` (contractor application
 form), `/privacy`, `/terms`, `/adu-estimator` (homeowner ADU price estimator, see
-`docs/adu-estimator.md`: placeholder pricing in `lib/adu/pricing-config.ts`, `noindex`,
-unlinked, lead capture OFF until a destination is approved). Dark theme scoped to a `.hq` wrapper so it never
+`docs/adu-estimator.md`: pricing in `lib/adu/pricing-config.ts`,
+in the sitemap, lead capture OFF until a destination is approved). Dark theme scoped to a `.hq` wrapper so it never
 touches the CRM's light shadcn tokens. Copy lives in `content/` so a new
 vertical/niche is a content file, not a rewrite (see MARKETING_SITE.md, still
 broadly accurate).

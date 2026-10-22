@@ -1,21 +1,11 @@
 /**
  * ADU price estimator: the ONE place every number and label lives.
  *
- * ┌─────────────────────────────────────────────────────────────────────────┐
- * │ PLACEHOLDER DATA. These figures were taken from a competitor's public   │
- * │ website to show the data shape and logic only. They are NOT HomeQuote's │
- * │ costs. Replace every number below with real costs before the estimator  │
- * │ is linked from anywhere or shown to a real customer.                    │
- * └─────────────────────────────────────────────────────────────────────────┘
- *
  * Nothing in the UI or in lib/adu/pricing.ts hard-codes a price. Change a
- * number here and the summary, payment calculator and tests' structure follow.
- * (tests/adu-estimator.test.ts asserts the placeholder values on purpose, so a
- * change here fails them: update the expected numbers in the same commit.)
+ * number here and the summary, payment calculator and return estimate follow.
+ * tests/adu-estimator.test.ts asserts these values, so update its expected
+ * numbers in the same commit when a price changes.
  */
-
-/** Set to false once the numbers below are real. Drives the on-page notice. */
-export const PRICING_IS_PLACEHOLDER = true;
 
 export const SIZE_TIERS = ['garage', 'studio1', 'b2ba1', 'b2ba2', 'b3ba2', 'b3ba3'] as const;
 export type SizeTier = (typeof SIZE_TIERS)[number];
