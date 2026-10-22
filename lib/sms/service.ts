@@ -3,6 +3,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { normalizeUsPhone } from '@/lib/ai-calling/phone';
 import { nextEligible, resolveZones } from '@/lib/ai-calling/timezone';
 import { runSmsAgent, type AgentInput, type AgentResult, type SmsTurn } from './agent';
+import type { Alert } from './health';
+import { notifyAdmins } from './health-notify';
 import { DEFAULT_ZONES, MAX_AI_TURNS } from './config';
 import { finalizeOutbound, helpReply, isHelp, isOptOut, isStart, openingMessage, optOutConfirmation, projectLabel, SENDER_HOUSE } from './rules';
 
@@ -86,7 +88,7 @@ export async function startSmsForLead(db: Db, leadId: string, now = new Date()):
 
 export interface InboundInput { phone: string; body: string; guid: string; receivedAt?: string }
 export type InboundResult = { handled: boolean; reason?: string; replied?: boolean };
-export interface InboundDeps { agent?: (input: AgentInput) => Promise<AgentResult>; now?: () => Date; aiConfigured?: boolean }
+export interface InboundDeps { agent?: (input: AgentInput) => Promise<AgentResult>; now?: () => Date; aiConfigured?: boolean; notify?: (alert: Alert) => Promise<void> }
 
 /** A text from a lead arrived on the Mac. Stores it, honors STOP, and (while the AI owns the conversation) queues a reply. */
 export async function handleInbound(db: Db, input: InboundInput, deps: InboundDeps = {}): Promise<InboundResult> {
@@ -99,7 +101,7 @@ export async function handleInbound(db: Db, input: InboundInput, deps: InboundDe
   // Texts from numbers we never contacted are not ours to handle (and are never stored or answered).
   if (!convo) return { handled: false, reason: 'unknown_number' };
   const now = (deps.now ?? (() => new Date()))();
-  const c = convo as { id: string; lead_id: string; sender_name: string; status: string; ai_turns: number };
+  const c = convo as { id: string; lead_id: string; sender_name: string; status: string; ai_turns: number; mode?: string | null; call_time_preference?: string | null };
   await db.from('sms_messages').insert({ conversation_id: c.id, lead_id: c.lead_id, direction: 'in', body, status: 'received', external_guid: input.guid, sent_at: input.receivedAt ?? now.toISOString() });
   await db.from('sms_conversations').update({ last_inbound_at: now.toISOString(), updated_at: now.toISOString() }).eq('id', c.id);
 
@@ -127,7 +129,7 @@ export async function handleInbound(db: Db, input: InboundInput, deps: InboundDe
   return replyWithAgent(db, c, deps, now);
 }
 
-async function replyWithAgent(db: Db, c: { id: string; lead_id: string; sender_name: string; ai_turns: number }, deps: InboundDeps, now: Date): Promise<InboundResult> {
+async function replyWithAgent(db: Db, c: { id: string; lead_id: string; sender_name: string; ai_turns: number; mode?: string | null; call_time_preference?: string | null }, deps: InboundDeps, now: Date): Promise<InboundResult> {
   const settings = await loadSettings(db);
   const handoff = async (reason: string) => {
     await db.from('sms_conversations').update({ status: 'handoff', updated_at: now.toISOString() }).eq('id', c.id);
@@ -166,6 +168,21 @@ async function replyWithAgent(db: Db, c: { id: string; lead_id: string; sender_n
     ai_turns: c.ai_turns + 1, mode: result.mode ?? undefined, qualification: result.qualification, call_time_preference: result.call_time ?? undefined,
     summary: result.summary, status: result.close ? 'closed' : result.handoff ? 'handoff' : 'active', updated_at: now.toISOString(),
   }).eq('id', c.id);
+  // The lead wants a call: tell the owner right away (push in the HomeQuote app + email), and again if they then give a
+  // time, so they know who to call and when. The bot's own behaviour is unchanged.
+  if (result.mode === 'call' && !result.close) {
+    const first = c.mode !== 'call';
+    const learnedTime = !!result.call_time && !c.call_time_preference;
+    if (first || learnedTime) {
+      const when = result.call_time ? ` Best time: ${result.call_time.slice(0, 80)}.` : '';
+      await (deps.notify ?? notifyAdmins)({
+        title: first ? 'A lead wants a call' : 'Lead gave a call time',
+        body: `A lead asked for a call.${when} Tap to see their details.`,
+        url: `/app/leads/${c.lead_id}`,
+        linkLabel: 'Open the lead',
+      }).catch(() => undefined);
+    }
+  }
   if (done) {
     const label = result.close ? 'closed' : result.mode === 'call' ? 'wants a call' : 'ready for a person';
     await note(db, c.lead_id, `Text conversation ${label} (${result.qualification}). ${result.summary}${result.call_time ? ` Best time: ${result.call_time}.` : ''}${result.handoff_reason ? ` Reason: ${result.handoff_reason}` : ''}`, { needs_attention: !result.close });
