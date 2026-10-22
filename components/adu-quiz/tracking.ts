@@ -3,8 +3,9 @@
 /**
  * Browser tracking for /adu-quiz. Follows the site's existing funnel rules
  * (components/contractor-funnel/tracking.tsx, lib/funnels/tracking.ts):
- *  - Events carry a name, a stable event id and a step number only. Never an
- *    answer or any contact detail, and nothing contact-related goes in a URL.
+ *  - Events carry a name, a stable event id and a step number (BuildStep also the
+ *    design choice, e.g. "modern"). Never a screening answer or any contact detail,
+ *    and nothing contact-related goes in a URL.
  *  - The Meta Pixel and Google tag load lazily (after the page is idle, or on
  *    the first event) and only when advertising measurement is allowed.
  *  - Every event also goes to window.dataLayer (picked up by Google Tag Manager
@@ -18,7 +19,11 @@ declare global {
   interface Window { fbq?: Pixel; _fbq?: Pixel; hqnPixels?: Set<string>; dataLayer?: unknown[]; gtag?: (...args: unknown[]) => void }
 }
 
-export type QuizEvent = 'QuizStart' | 'QuizStep' | 'Lead' | 'QualifiedLead' | 'Schedule';
+/**
+ * BuildStart / BuildStep / DesignComplete cover the visual-builder half, QuizStart / QuizStep the
+ * screening half. Together they give the funnel drop-off by step.
+ */
+export type QuizEvent = 'BuildStart' | 'BuildStep' | 'DesignComplete' | 'QuizStart' | 'QuizStep' | 'Lead' | 'QualifiedLead' | 'Schedule';
 const META_STANDARD = new Set<QuizEvent>(['Lead', 'Schedule']);
 const GOOGLE_NAME: Partial<Record<QuizEvent, string>> = { Lead: 'generate_lead' };
 
@@ -79,7 +84,7 @@ export function scheduleTagLoad(cfg: TrackingConfig) {
   if (document.readyState === 'complete') after(); else window.addEventListener('load', after, { once: true });
 }
 
-export function track(cfg: TrackingConfig, event: QuizEvent, eventId: string, params: { step?: number } = {}) {
+export function track(cfg: TrackingConfig, event: QuizEvent, eventId: string, params: { step?: number; choice?: string } = {}) {
   if (emitted.has(eventId)) return;
   emitted.add(eventId);
   if (readMeasurement(cfg.measurementMode)) {

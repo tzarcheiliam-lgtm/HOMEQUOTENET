@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { QUESTION_IDS, isComplete, type Answers, type Evaluation } from './quiz.ts';
 import { parseUsPhone } from '../leads/normalize.ts';
+import { SIZES } from './design.ts';
+import type { EstimateRange } from './estimate.ts';
 
 /**
  * Request body of POST /api/adu-quiz/lead and the JSON sent to the lead webhook.
@@ -15,8 +17,17 @@ export const submissionSchema = z
     answers: z
       .object({
         ...Object.fromEntries(QUESTION_IDS.map((id) => [id, z.string().max(40)])),
+        placement: z.string().max(40),
+        size: z.string().max(40),
+        style: z.string().max(40),
+        color: z.string().max(40),
+        material: z.string().max(40).optional(),
+        extras: z.array(z.string().max(40)).max(8).optional(),
+        goal: z.string().max(40),
         decision_confirmed: z.boolean().optional(),
-      } as Record<(typeof QUESTION_IDS)[number], z.ZodString> & { decision_confirmed: z.ZodOptional<z.ZodBoolean> })
+      } as Record<(typeof QUESTION_IDS)[number], z.ZodString> & Record<'placement' | 'size' | 'style' | 'color' | 'goal', z.ZodString> & {
+        material: z.ZodOptional<z.ZodString>; extras: z.ZodOptional<z.ZodArray<z.ZodString>>; decision_confirmed: z.ZodOptional<z.ZodBoolean>;
+      })
       .strict(),
     contact: z.object({
       firstName: text(80),
@@ -57,6 +68,8 @@ export type StoredLead = {
   consent_at: string;
   consent_page_url: string;
   tracking: Record<string, string>;
+  /** Estimated range at submission (null while PRICING is not filled in). */
+  estimate: EstimateRange | null;
 };
 
 /** Everything the buyer's CRM needs. Flat contact fields first so GoHighLevel can map them. */
@@ -71,6 +84,17 @@ export function buildWebhookPayload(lead: StoredLead) {
     email: lead.email,
     phone: lead.phone,
     answers: lead.answers,
+    design: {
+      placement: lead.answers.placement ?? null,
+      size: lead.answers.size ?? null,
+      sqft: SIZES.find((x) => x.value === lead.answers.size)?.sqft ?? null,
+      style: lead.answers.style ?? null,
+      color: lead.answers.color ?? null,
+      material: lead.answers.material ?? null,
+      extras: lead.answers.extras ?? [],
+      goal: lead.answers.goal ?? null,
+      estimated_range: lead.estimate,
+    },
     qualified: e.qualified,
     dq_reason: e.dq_reason,
     dq_reasons: e.dq_reasons,

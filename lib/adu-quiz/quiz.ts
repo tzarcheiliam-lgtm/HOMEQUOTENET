@@ -1,11 +1,15 @@
 /**
- * ADU quiz: questions, answer validation and the qualification rules.
+ * ADU quiz, screening half: questions, answer validation and the qualification rules.
+ * (The build half, placement/size/style/color/extras/goal, is in design.ts and
+ * never affects qualification.)
  * Pure (no React, no I/O). Thresholds come from lib/adu-quiz/config.ts via the
  * `rules` argument, so changing a buyer's criteria never touches this file.
  *
  * The same rules apply to every visitor. Nothing but the answers below is used
  * to qualify: no name, no ZIP demographics, no device or ad data.
  */
+
+import { isDesignComplete, type Design } from './design.ts';
 
 export type Option = { value: string; label: string };
 export type Question = {
@@ -20,7 +24,7 @@ export type Question = {
 };
 
 export const QUESTION_IDS = [
-  'owns_home', 'on_title', 'property_type', 'zip', 'location', 'goal',
+  'owns_home', 'on_title', 'property_type', 'zip',
   'budget', 'payment', 'timeline', 'credit', 'bankruptcy', 'decision_makers',
 ] as const;
 export type QuestionId = (typeof QUESTION_IDS)[number];
@@ -34,13 +38,6 @@ export const QUESTIONS: Question[] = [
     { value: 'single_family', label: 'Single-family house' }, { value: 'townhome_condo', label: 'Townhome or condo' },
     { value: 'multi_family', label: 'Multi-family' }, { value: 'other', label: 'Other' } ] },
   { id: 'zip', type: 'zip', title: 'What’s your ZIP code?' },
-  { id: 'location', type: 'choice', title: 'Where would the ADU go?', options: [
-    { value: 'backyard', label: 'Backyard' }, { value: 'detached_garage', label: 'Detached garage' },
-    { value: 'attached_garage', label: 'Attached garage' }, { value: 'side_yard', label: 'Side yard' },
-    { value: 'not_sure', label: 'Not sure' } ] },
-  { id: 'goal', type: 'choice', title: 'What’s your main goal?', options: [
-    { value: 'family', label: 'Family or multigenerational living' }, { value: 'rental_income', label: 'Rental income' },
-    { value: 'home_office', label: 'Home office or guest space' }, { value: 'home_value', label: 'Increase home value' } ] },
   { id: 'budget', type: 'choice', title: 'What’s your approximate budget?', options: [
     { value: 'under_100k', label: 'Under $100k' }, { value: '100k_150k', label: '$100k-$150k' },
     { value: '150k_250k', label: '$150k-$250k' }, { value: '250k_plus', label: '$250k+' } ] },
@@ -72,7 +69,8 @@ export const BUDGET_MAX: Record<string, number> = {
   under_100k: 100000, '100k_150k': 150000, '150k_250k': 250000, '250k_plus': Number.POSITIVE_INFINITY,
 };
 
-export type Answers = Partial<Record<QuestionId, string>> & { decision_confirmed?: boolean };
+/** Screening answers plus the design the visitor built. Only the screening answers qualify anyone. */
+export type Answers = Partial<Record<QuestionId, string>> & Design & { decision_confirmed?: boolean };
 
 export type Rules = {
   minBudget: number;
@@ -103,9 +101,9 @@ export function isValidAnswer(id: QuestionId, value: unknown): value is string {
   return QUESTIONS.find((q) => q.id === id)?.options?.some((o) => o.value === value) ?? false;
 }
 
-/** True when every question has a valid answer and any required confirmation is present. */
+/** True when the design and every screening question have valid answers. */
 export function isComplete(answers: Answers): boolean {
-  return QUESTION_IDS.every((id) => isValidAnswer(id, answers[id]));
+  return isDesignComplete(answers) && QUESTION_IDS.every((id) => isValidAnswer(id, answers[id]));
 }
 
 export function evaluate(answers: Answers, rules: Rules): Evaluation {

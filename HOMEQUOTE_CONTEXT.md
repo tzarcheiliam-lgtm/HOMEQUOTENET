@@ -110,7 +110,7 @@ broadly accurate).
 
 ### ADU quiz (paid-traffic landing page)
 `/adu-quiz` (+ `/adu-quiz/booked`, `POST /api/adu-quiz/lead`, `POST /api/adu-quiz/booked`): standalone
-quiz that qualifies homeowners and books qualified ones on a GoHighLevel calendar. Config in
+visual ADU builder (live SVG preview, `ADU_LAYERS`) followed by a screening quiz; qualified homeowners book on a GoHighLevel calendar, and the price range is revealed server-side only after the contact step (`PRICING`, all unset). Config in
 `lib/adu-quiz/config.ts`, leads in `adu_quiz_leads` (migration 0054, applied by the owner),
 forwarded to a webhook with retries from `/api/workflows/tick`. See `docs/adu-quiz.md` for the placeholder checklist.
 

@@ -17,8 +17,9 @@ vi.mock('@/lib/meta/capi', () => ({ buildFbc: () => null, sendMetaEvent: vi.fn(a
 
 const WEBHOOK = 'https://hooks.example.test/adu';
 const good: Answers = {
-  owns_home: 'yes', on_title: 'yes', property_type: 'single_family', zip: '91403', location: 'backyard',
-  goal: 'rental_income', budget: '150k_250k', payment: 'financing', timeline: 'within_3',
+  placement: 'garage_conversion', size: '2br', style: 'craftsman', color: 'navy', material: 'wood', extras: ['porch', 'large_windows'], goal: 'family',
+  owns_home: 'yes', on_title: 'yes', property_type: 'single_family', zip: '91403',
+  budget: '150k_250k', payment: 'financing', timeline: 'within_3',
   credit: '700_plus', bankruptcy: 'no', decision_makers: 'just_me',
 };
 let n = 0;
@@ -75,6 +76,7 @@ describe('adu quiz lead pipeline (real migration 0054 in PGlite)', () => {
       source: 'adu-quiz', submission_id: input.submissionId,
       first_name: 'Sam', last_name: 'Rivera', email: 'sam@example.com', phone: '+18184567890',
       answers: good, qualified: true, dq_reason: null, dq_reasons: [],
+      design: { placement: 'garage_conversion', size: '2br', sqft: 800, style: 'craftsman', color: 'navy', material: 'wood', extras: ['porch', 'large_windows'], goal: 'family', estimated_range: null },
       title_unverified: false, credit_unverified: false, bankruptcy_unverified: false,
       consent: { text: consentText('HomeQuote Network'), page_url: 'https://homequotenet.com/adu-quiz' },
       tracking: { utm_source: 'google', utm_campaign: 'adu', gclid: 'G1', fbclid: 'F1', fbp: 'fb.1.1.2', device_type: 'mobile' },
