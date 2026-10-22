@@ -8,7 +8,7 @@ export const STUCK_AFTER_MINUTES = 5;
 /** While it stays down the alert repeats at most this often. */
 export const REALERT_AFTER_MINUTES = 60;
 
-export interface Alert { title: string; body: string; url: string }
+export interface Alert { title: string; body: string; url: string; /** Link text in the email. Defaults to "Open Texting". */ linkLabel?: string }
 export interface HealthDeps {
   now?: () => Date;
   notify?: (alert: Alert) => Promise<void>;

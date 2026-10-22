@@ -208,6 +208,56 @@ describe('replies from the lead', () => {
     expect((await q(`select mode, ai_turns, status from public.sms_conversations where lead_id=$1`, [leadId]))[0]).toMatchObject({ mode: 'call', ai_turns: 1, status: 'active' });
   });
 
+  describe('telling the owner when a lead wants a call (the bot itself is unchanged)', () => {
+    const callPick = (over: Record<string, unknown> = {}) => agentOk({ message: 'Perfect. What day and time is best for a call?', mode: 'call', ...over });
+    const lastOut = async (leadId: string) => (await messages(leadId)).filter((m: any) => m.direction === 'out').at(-1);
+
+    it('pushes an alert the first time they pick a call, with a link to the lead, and leaves the reply as the bot wrote it', async () => {
+      const { leadId, from } = await started();
+      const notify = vi.fn(async () => undefined);
+      await handleInbound(sb, { phone: from, body: 'call me', guid: `g-${randomUUID()}` }, { agent: callPick(), notify, now: () => T });
+      expect(notify).toHaveBeenCalledTimes(1);
+      expect(notify).toHaveBeenCalledWith({ title: 'A lead wants a call', body: 'A lead asked for a call. Tap to see their details.', url: `/app/leads/${leadId}`, linkLabel: 'Open the lead' });
+      // Unchanged bot behaviour: it still asks for a time and stays in the conversation.
+      expect((await lastOut(leadId))?.body).toBe('Perfect. What day and time is best for a call?');
+      expect((await q(`select status from public.sms_conversations where lead_id=$1`, [leadId]))[0].status).toBe('active');
+    });
+
+    it('alerts once more when they give a time, and not again for the same information', async () => {
+      const { from } = await started();
+      const notify = vi.fn(async () => undefined);
+      await handleInbound(sb, { phone: from, body: 'call me', guid: `g-${randomUUID()}` }, { agent: callPick(), notify, now: () => T });
+      await handleInbound(sb, { phone: from, body: 'tomorrow after 3', guid: `g-${randomUUID()}` }, { agent: callPick({ call_time: 'tomorrow after 3pm', handoff: true }), notify, now: () => T });
+      expect(notify).toHaveBeenCalledTimes(2);
+      expect((notify.mock.calls[1] as any)[0]).toMatchObject({ title: 'Lead gave a call time', body: 'A lead asked for a call. Best time: tomorrow after 3pm. Tap to see their details.' });
+    });
+
+    it('alerts straight away with the time if the first message already includes one', async () => {
+      const { from } = await started();
+      const notify = vi.fn(async () => undefined);
+      await handleInbound(sb, { phone: from, body: 'call me at 3', guid: `g-${randomUUID()}` }, { agent: callPick({ call_time: '3pm', handoff: true }), notify, now: () => T });
+      expect(notify).toHaveBeenCalledTimes(1);
+      expect((notify.mock.calls[0] as any)[0]).toMatchObject({ title: 'A lead wants a call', body: expect.stringContaining('Best time: 3pm') });
+    });
+
+    it('stays quiet when they prefer text, or opt out', async () => {
+      const a = await started();
+      const notify = vi.fn(async () => undefined);
+      await handleInbound(sb, { phone: a.from, body: 'text is fine', guid: `g-${randomUUID()}` }, { agent: agentOk({ mode: 'text' }), notify, now: () => T });
+      const b = await started();
+      await handleInbound(sb, { phone: b.from, body: 'STOP', guid: `g-${randomUUID()}` }, { agent: callPick(), notify, now: () => T });
+      expect(notify).not.toHaveBeenCalled();
+    });
+
+    it('a failing alert never breaks the conversation', async () => {
+      const { leadId, from } = await started();
+      const notify = vi.fn(async () => { throw new Error('push service down'); });
+      const r = await handleInbound(sb, { phone: from, body: 'call me', guid: `g-${randomUUID()}` }, { agent: callPick(), notify, now: () => T });
+      expect(r).toMatchObject({ handled: true, replied: true });
+      expect((await lastOut(leadId))?.body).toContain('call');
+    });
+  });
+
   it('stores a repeated message once', async () => {
     const { leadId, from } = await started();
     const agent = agentOk(); const guid = `g-${randomUUID()}`;
