@@ -3,8 +3,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { normalizeUsPhone } from '@/lib/ai-calling/phone';
 import { nextEligible, resolveZones } from '@/lib/ai-calling/timezone';
 import { runSmsAgent, type AgentInput, type AgentResult, type SmsTurn } from './agent';
-import { callTeamAvailable, DEFAULT_ZONES, MAX_AI_TURNS } from './config';
-import { callReply, finalizeOutbound, helpReply, isHelp, isOptOut, isStart, openingMessage, optOutConfirmation, projectLabel, SENDER_HOUSE } from './rules';
+import { DEFAULT_ZONES, MAX_AI_TURNS } from './config';
+import { finalizeOutbound, helpReply, isHelp, isOptOut, isStart, openingMessage, optOutConfirmation, projectLabel, SENDER_HOUSE } from './rules';
 
 type Db = SupabaseClient;
 export interface SmsSettings {
@@ -157,17 +157,6 @@ async function replyWithAgent(db: Db, c: { id: string; lead_id: string; sender_n
     });
   } catch {
     return handoff('the assistant could not reply');
-  }
-  // They chose a call: send the fixed confirmation and hand the lead to a person. No call time to ask for. If the
-  // lead named their own time, keep the assistant's one-line confirmation of it instead.
-  if (result.mode === 'call') {
-    result = {
-      ...result,
-      message: result.call_time ? result.message : callReply(callTeamAvailable()),
-      handoff: true,
-      close: false,
-      handoff_reason: result.handoff_reason ?? 'asked for a call',
-    };
   }
   const message = finalizeOutbound(result.message);
   // Small natural pause so a reply never lands the instant the lead's text does.

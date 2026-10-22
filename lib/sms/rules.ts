@@ -48,11 +48,3 @@ export function projectLabel(industry: string | null | undefined): string | null
   if (!t) return null;
   return t.replace(/remodeling$/, 'remodel').replace(/\s+/g, ' ');
 }
-
-/**
- * The exact text a lead gets when they choose a call. Fixed wording (not written by the AI) so we never promise
- * a time we can't keep. `available` = someone is ready to call right now.
- */
-export const CALL_REPLY_AVAILABLE = 'Got it. Calling you in a few minutes.';
-export const CALL_REPLY_BUSY = "Got it. We'll give you a call a bit later, within 10 minutes or so.";
-export const callReply = (available: boolean) => (available ? CALL_REPLY_AVAILABLE : CALL_REPLY_BUSY);

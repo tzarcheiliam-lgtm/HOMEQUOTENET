@@ -7,9 +7,3 @@ export const smsModel = () => process.env.SMS_MODEL?.trim() || 'claude-haiku-5-5
 /** AI replies per conversation before a human takes over. */
 export const MAX_AI_TURNS = 14;
 export const DEFAULT_ZONES = ['America/New_York', 'America/Los_Angeles'];
-
-/**
- * Is someone free to call a lead back right now? Set SMS_CALL_TEAM_AVAILABLE=true in Vercel (then redeploy) while
- * you are ready to call. Off by default, which changes the text a lead gets when they pick "call".
- */
-export const callTeamAvailable = () => process.env.SMS_CALL_TEAM_AVAILABLE?.trim().toLowerCase() === 'true';
