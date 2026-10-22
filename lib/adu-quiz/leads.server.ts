@@ -6,6 +6,7 @@ import { buildFbc, sendMetaEvent } from '@/lib/meta/capi';
 import { parseUsPhone } from '@/lib/leads/normalize';
 import { qualificationRules, resolvedPixelId, resolvedWebhookUrl, safeUrl, BRAND_NAME } from './config';
 import { consentText, evaluate, type Answers, type Evaluation } from './quiz';
+import { estimateRange, type EstimateRange } from './estimate';
 import { buildWebhookPayload, type StoredLead, type Submission } from './submission';
 
 /**
@@ -28,7 +29,7 @@ const INLINE_ATTEMPTS = 3;
 const MAX_BACKOFF_MS = 6 * 3600 * 1000;
 
 export type SubmitResult =
-  | { ok: true; qualified: boolean; token: string | null; duplicate?: boolean }
+  | { ok: true; qualified: boolean; token: string | null; estimate: EstimateRange | null; duplicate?: boolean }
   | { ok: false; status: 503; error: string };
 
 export function webhookUrlOrNull(raw: string = resolvedWebhookUrl()): string | null {
@@ -95,6 +96,7 @@ function stored(row: Record<string, unknown>): StoredLead {
     consent_at: row.consent_at as string,
     consent_page_url: row.consent_page_url as string,
     tracking: (row.tracking ?? {}) as Record<string, string>,
+    estimate: estimateRange(row.answers as Answers),
   };
 }
 
@@ -103,7 +105,7 @@ export async function submitAduQuizLead(input: Submission): Promise<SubmitResult
   const screen = screenSubmission({ honeypot: input.honeypot, startedAt: input.startedAt });
   if (screen.spam) {
     console.warn(`[adu-quiz] discarded: ${screen.reason}`);
-    return { ok: true, qualified: false, token: null };
+    return { ok: true, qualified: false, token: null, estimate: null };
   }
 
   const answers = input.answers as Answers;
@@ -129,6 +131,7 @@ export async function submitAduQuizLead(input: Submission): Promise<SubmitResult
     consent_at: consentAt,
     consent_page_url: input.pageUrl,
     tracking,
+    estimate: estimateRange(answers),
   };
 
   let db: Db | null = null;
@@ -157,10 +160,10 @@ export async function submitAduQuizLead(input: Submission): Promise<SubmitResult
     });
     if (error?.code === '23505') {
       // A retry of a submission we already stored: answer from the stored row, never insert twice.
-      const { data: existing } = await db.from('adu_quiz_leads').select('qualified, booked_at').eq('submission_id', lead.submission_id).maybeSingle();
+      const { data: existing } = await db.from('adu_quiz_leads').select('qualified, booked_at, answers').eq('submission_id', lead.submission_id).maybeSingle();
       if (existing) {
         if (!existing.booked_at) await db.from('adu_quiz_leads').update({ access_token_hash: sha256(token) }).eq('submission_id', lead.submission_id);
-        return { ok: true, qualified: !!existing.qualified, token: existing.booked_at ? null : token, duplicate: true };
+        return { ok: true, qualified: !!existing.qualified, token: existing.booked_at ? null : token, estimate: estimateRange(existing.answers as Answers), duplicate: true };
       }
     } else if (error) {
       console.error(`[adu-quiz] database insert failed for ${lead.submission_id}: ${error.code ?? 'unknown'}`);
@@ -185,7 +188,7 @@ export async function submitAduQuizLead(input: Submission): Promise<SubmitResult
   if (!stored_ && !delivered) {
     return { ok: false, status: 503, error: 'We could not save your answers just now. Nothing was lost on your side. Please try again in a moment.' };
   }
-  return { ok: true, qualified: evaluation.qualified, token };
+  return { ok: true, qualified: evaluation.qualified, token, estimate: lead.estimate };
 }
 
 /** Meta Conversions API events for this lead. Fire-and-forget; honours the visitor's measurement choice. */

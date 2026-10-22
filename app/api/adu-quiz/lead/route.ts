@@ -43,5 +43,5 @@ export async function POST(request: Request) {
     const ctx = { ip: header?.split(',')[0]?.trim() || undefined, userAgent: request.headers.get('user-agent') ?? undefined };
     after(async () => { await Promise.allSettled(aduQuizServerEvents(input, evaluation, ctx)); });
   }
-  return reply({ qualified: result.qualified, token: result.token });
+  return reply({ qualified: result.qualified, token: result.token, estimate: result.estimate });
 }

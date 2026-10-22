@@ -3,12 +3,14 @@ import {
   BUDGET_MAX, QUESTIONS, QUESTION_IDS, consentText, evaluate, isComplete, isValidAnswer, type Answers, type Rules,
 } from '@/lib/adu-quiz/quiz';
 import { buildWebhookPayload, submissionSchema } from '@/lib/adu-quiz/submission';
+import { BUILD_IDS, GOALS, PLACEMENTS, SIZES, STYLES } from '@/lib/adu-quiz/design';
 
 /** A fully qualified homeowner under the default $150k minimum. */
 const rules: Rules = { minBudget: 150000, dqTimelines: ['12_plus', 'researching'] };
 const good: Answers = {
-  owns_home: 'yes', on_title: 'yes', property_type: 'single_family', zip: '91403', location: 'backyard',
-  goal: 'rental_income', budget: '150k_250k', payment: 'financing', timeline: 'within_3',
+  placement: 'backyard', size: '1br', style: 'modern', color: 'sage', extras: ['solar'], goal: 'rental_income',
+  owns_home: 'yes', on_title: 'yes', property_type: 'single_family', zip: '91403',
+  budget: '150k_250k', payment: 'financing', timeline: 'within_3',
   credit: '700_plus', bankruptcy: 'no', decision_makers: 'just_me',
 };
 
@@ -44,10 +46,10 @@ describe('qualification rules', () => {
   });
 
   it('other answers never disqualify', () => {
-    for (const location of ['backyard', 'detached_garage', 'attached_garage', 'side_yard', 'not_sure']) {
-      expect(evaluate({ ...good, location }, rules).qualified).toBe(true);
-    }
-    for (const goal of ['family', 'rental_income', 'home_office', 'home_value']) expect(evaluate({ ...good, goal }, rules).qualified).toBe(true);
+    for (const o of PLACEMENTS) expect(evaluate({ ...good, placement: o.value }, rules).qualified).toBe(true);
+    for (const o of SIZES) expect(evaluate({ ...good, size: o.value }, rules).qualified).toBe(true);
+    for (const o of STYLES) expect(evaluate({ ...good, style: o.value }, rules).qualified).toBe(true);
+    for (const o of GOALS) expect(evaluate({ ...good, goal: o.value }, rules).qualified).toBe(true);
     for (const payment of ['financing', 'cash', 'home_equity', 'not_sure']) expect(evaluate({ ...good, payment }, rules).qualified).toBe(true);
     for (const timeline of ['within_3', '3_6', '6_12']) expect(evaluate({ ...good, timeline }, rules).qualified).toBe(true);
     for (const budget of ['150k_250k', '250k_plus']) expect(evaluate({ ...good, budget }, rules).qualified).toBe(true);
@@ -83,9 +85,11 @@ describe('qualification rules', () => {
 });
 
 describe('questions', () => {
-  it('has the 12 questions in the specified order', () => {
+  it('asks the screening questions in the specified order, without repeating anything the build already asked', () => {
     expect(QUESTIONS.map((q) => q.id)).toEqual([...QUESTION_IDS]);
-    expect(QUESTION_IDS).toEqual(['owns_home', 'on_title', 'property_type', 'zip', 'location', 'goal', 'budget', 'payment', 'timeline', 'credit', 'bankruptcy', 'decision_makers']);
+    expect(QUESTION_IDS).toEqual(['owns_home', 'on_title', 'property_type', 'zip', 'budget', 'payment', 'timeline', 'credit', 'bankruptcy', 'decision_makers']);
+    expect(BUILD_IDS).toEqual(['placement', 'size', 'style', 'color', 'extras', 'goal']);
+    expect(QUESTION_IDS.filter((id) => (BUILD_IDS as readonly string[]).includes(id))).toEqual([]);
   });
 
   it('never asks for SSN, date of birth, exact credit score or income', () => {
@@ -102,6 +106,9 @@ describe('questions', () => {
     expect(isValidAnswer('budget', 'a million')).toBe(false);
     expect(isComplete(good)).toBe(true);
     expect(isComplete({ ...good, goal: undefined })).toBe(false);
+    expect(isComplete({ ...good, placement: undefined })).toBe(false);
+    expect(isComplete({ ...good, extras: ['solar', 'jacuzzi'] })).toBe(false);
+    expect(isComplete({ ...good, extras: undefined, material: undefined })).toBe(true);
   });
 
   it('uses the exact consent wording with the brand name', () => {
@@ -144,6 +151,7 @@ describe('webhook payload', () => {
       answers: { ...good, on_title: 'not_sure', budget: 'under_100k' }, evaluation,
       consent_text: submission.consentText, consent_at: '2026-10-22T12:00:00.000Z', consent_page_url: submission.pageUrl,
       tracking: { utm_source: 'google', gclid: 'abc', fbp: 'fb.1.1.2', device_type: 'mobile' },
+      estimate: { low: 100000, high: 120000 },
     });
     expect(payload).toMatchObject({
       source: 'adu-quiz', first_name: 'Sam', last_name: 'Rivera', email: 'sam@example.com', phone: '+18184567890',
@@ -152,6 +160,7 @@ describe('webhook payload', () => {
       consent: { text: submission.consentText, timestamp: '2026-10-22T12:00:00.000Z', page_url: submission.pageUrl },
       tracking: { utm_source: 'google', gclid: 'abc', fbp: 'fb.1.1.2' },
     });
+    expect(payload.design).toEqual({ placement: 'backyard', size: '1br', sqft: 600, style: 'modern', color: 'sage', material: null, extras: ['solar'], goal: 'rental_income', estimated_range: { low: 100000, high: 120000 } });
     expect(payload.answers.on_title).toBe('not_sure');
   });
 });

@@ -21,15 +21,27 @@ export const MIN_BUDGET = 150000;
 export const DQ_TIMELINES: readonly string[] = ['12_plus', 'researching'];
 
 /**
- * TODO: price range shown to qualified leads, by "Where would the ADU go?".
- * { low: 0, high: 0 } means "not set yet": the page shows no numbers.
+ * TODO: pricing behind the estimated range shown AFTER the contact step. Server-only:
+ * these numbers never reach the browser before the visitor submits.
+ *
+ *   estimate  = sqft x basePerSqft[placement] x styleMultiplier[style] + sum(extraPrice[extra])
+ *   range     = estimate x rangeFactor.low  ..  estimate x rangeFactor.high
+ *
+ * `null` means "not set yet". If ANY number the visitor's design needs is null,
+ * no range is shown and the page says the builder will confirm it at the
+ * consultation. Fill these in with the buyer's real numbers; nothing here is a
+ * real price.
  */
-export const PRICE_RANGES: Record<'backyard' | 'detached_garage' | 'attached_garage' | 'side_yard' | 'not_sure', { low: number; high: number }> = {
-  backyard: { low: 0, high: 0 },
-  detached_garage: { low: 0, high: 0 },
-  attached_garage: { low: 0, high: 0 },
-  side_yard: { low: 0, high: 0 },
-  not_sure: { low: 0, high: 0 },
+export const PRICING: {
+  basePerSqft: Record<'backyard' | 'garage_conversion' | 'attached' | 'above_garage', number | null>;
+  styleMultiplier: Record<'modern' | 'craftsman' | 'mediterranean' | 'farmhouse', number | null>;
+  extraPrice: Record<'solar' | 'porch' | 'landscaping' | 'large_windows', number | null>;
+  rangeFactor: { low: number | null; high: number | null };
+} = {
+  basePerSqft: { backyard: null, garage_conversion: null, attached: null, above_garage: null },
+  styleMultiplier: { modern: null, craftsman: null, mediterranean: null, farmhouse: null },
+  extraPrice: { solar: null, porch: null, landscaping: null, large_windows: null },
+  rangeFactor: { low: null, high: null },
 };
 
 /**
@@ -92,7 +104,6 @@ export const qualificationRules = () => ({
 export function publicConfig() {
   return {
     brandName: BRAND_NAME,
-    priceRanges: PRICE_RANGES,
     bookingUrl: resolvedBookingUrl(),
     metaPixelId: resolvedPixelId(),
     googleTagId: resolvedGoogleTagId(),
