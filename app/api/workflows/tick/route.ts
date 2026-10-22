@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { equalSecret } from '@/lib/funnels/server';
 import { runNotificationMaintenance } from '@/lib/notifications/outbox';
 import { signingMaintenance } from '@/lib/signing/service';
+import { retryPendingAduQuizLeads } from '@/lib/adu-quiz/leads.server';
 import { processWorkflowTick, pruneWorkflowHistory } from '@/lib/workflows/runtime.server';
 
 export const dynamic = 'force-dynamic';
@@ -25,7 +26,14 @@ export async function POST(request: Request) {
     }
     // Documents & Signing: expire overdue requests, retry stuck completed-PDF generation. Best effort.
     const signing = await signingMaintenance();
-    return NextResponse.json({ ...result, retention, notifications, signing }, { status: result.failures ? 207 : 200 });
+    // ADU quiz leads whose webhook delivery failed. Best effort; a failure never affects the tick.
+    let aduQuiz: unknown = null;
+    try {
+      aduQuiz = await retryPendingAduQuizLeads();
+    } catch {
+      aduQuiz = { error: 'adu quiz retry failed' };
+    }
+    return NextResponse.json({ ...result, retention, notifications, signing, aduQuiz }, { status: result.failures ? 207 : 200 });
   } catch {
     return NextResponse.json({ error: 'Workflow processing unavailable' }, { status: 503 });
   }

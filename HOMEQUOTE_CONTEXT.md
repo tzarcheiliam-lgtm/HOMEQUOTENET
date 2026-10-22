@@ -108,6 +108,12 @@ touches the CRM's light shadcn tokens. Copy lives in `content/` so a new
 vertical/niche is a content file, not a rewrite (see MARKETING_SITE.md, still
 broadly accurate).
 
+### ADU quiz (paid-traffic landing page)
+`/adu-quiz` (+ `/adu-quiz/booked`, `POST /api/adu-quiz/lead`, `POST /api/adu-quiz/booked`): standalone
+quiz that qualifies homeowners and books qualified ones on a GoHighLevel calendar. Config in
+`lib/adu-quiz/config.ts`, leads in `adu_quiz_leads` (migration 0047, NOT applied until the owner does),
+forwarded to a webhook with retries from `/api/workflows/tick`. See `docs/adu-quiz.md` for the placeholder checklist.
+
 ### Public homeowner funnel
 `/estimate/[slug]` — the visual funnel runtime (multi-step qualification form →
 contact capture → calendar booking). Config-driven per funnel; see §9.
