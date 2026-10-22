@@ -196,16 +196,55 @@ describe('replies from the lead', () => {
 
   it('answers with the assistant, queues the reply, and tracks the conversation', async () => {
     const { leadId, from } = await started();
-    const agent = agentOk();
-    const r = await handleInbound(sb, { phone: from, body: 'a call is fine', guid: `g-${randomUUID()}` }, { agent, now: () => T });
+    const agent = agentOk({ message: 'Sounds good, we can do it here. Which bathroom is it?', mode: 'text' });
+    const r = await handleInbound(sb, { phone: from, body: 'text is fine', guid: `g-${randomUUID()}` }, { agent, now: () => T });
     expect(r).toMatchObject({ handled: true, replied: true });
     expect(agent).toHaveBeenCalledTimes(1);
     const input = (agent.mock.calls[0] as any)[0];
     expect(input.known).toMatchObject({ 'What bathroom project are you planning?': 'Full bathroom remodel' });
-    expect(input.history.at(-1)).toEqual({ role: 'lead', text: 'a call is fine' });
+    expect(input.history.at(-1)).toEqual({ role: 'lead', text: 'text is fine' });
     const msgs = await messages(leadId);
     expect(msgs.at(-1)).toMatchObject({ direction: 'out', ai: true, status: 'queued' });
-    expect((await q(`select mode, ai_turns, status from public.sms_conversations where lead_id=$1`, [leadId]))[0]).toMatchObject({ mode: 'call', ai_turns: 1, status: 'active' });
+    expect((await q(`select mode, ai_turns, status from public.sms_conversations where lead_id=$1`, [leadId]))[0]).toMatchObject({ mode: 'text', ai_turns: 1, status: 'active' });
+  });
+
+  describe('when they choose a call', () => {
+    const callPick = (over: Record<string, unknown> = {}) => agentOk({ message: 'Perfect. What day and time is best for a call?', mode: 'call', ...over });
+    const lastOut = async (leadId: string) => (await messages(leadId)).filter((m: any) => m.direction === 'out').at(-1);
+
+    it('sends the fixed "within 10 minutes or so" text while nobody is available (the default), and hands off', async () => {
+      delete process.env.SMS_CALL_TEAM_AVAILABLE;
+      const { leadId, from } = await started();
+      await handleInbound(sb, { phone: from, body: 'call me', guid: `g-${randomUUID()}` }, { agent: callPick(), now: () => T });
+      expect((await lastOut(leadId))?.body).toBe("Got it. We'll give you a call a bit later, within 10 minutes or so.");
+      expect((await q(`select mode, status from public.sms_conversations where lead_id=$1`, [leadId]))[0]).toEqual({ mode: 'call', status: 'handoff' });
+      const [act] = await q(`select body from public.lead_activities where lead_id=$1 and metadata->>'needs_attention'='true'`, [leadId]);
+      expect(act.body).toContain('wants a call');
+    });
+
+    it('sends "Calling you in a few minutes." when someone is available', async () => {
+      process.env.SMS_CALL_TEAM_AVAILABLE = 'true';
+      try {
+        const { leadId, from } = await started();
+        await handleInbound(sb, { phone: from, body: 'call me', guid: `g-${randomUUID()}` }, { agent: callPick(), now: () => T });
+        expect((await lastOut(leadId))?.body).toBe('Got it. Calling you in a few minutes.');
+      } finally { delete process.env.SMS_CALL_TEAM_AVAILABLE; }
+    });
+
+    it('never asks them for a time, and goes quiet afterwards', async () => {
+      const { leadId, from } = await started();
+      await handleInbound(sb, { phone: from, body: 'call', guid: `g-${randomUUID()}` }, { agent: callPick(), now: () => T });
+      expect((await lastOut(leadId))?.body).not.toMatch(/what (day|time)/i);
+      const quiet = vi.fn();
+      expect(await handleInbound(sb, { phone: from, body: 'ok thanks', guid: `g-${randomUUID()}` }, { agent: quiet, now: () => T })).toMatchObject({ reason: 'status_handoff' });
+      expect(quiet).not.toHaveBeenCalled();
+    });
+
+    it('keeps the assistant\'s own confirmation when the lead names their own time', async () => {
+      const { leadId, from } = await started();
+      await handleInbound(sb, { phone: from, body: 'call me at 3', guid: `g-${randomUUID()}` }, { agent: callPick({ message: 'Perfect, we will call you at 3.', call_time: '3pm' }), now: () => T });
+      expect((await lastOut(leadId))?.body).toBe('Perfect, we will call you at 3.');
+    });
   });
 
   it('stores a repeated message once', async () => {
