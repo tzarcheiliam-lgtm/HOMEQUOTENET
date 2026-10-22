@@ -30,6 +30,7 @@ export const questionSchema = z.object({
   options: z.array(z.object({ value: z.string().regex(/^[a-z0-9_]{1,50}$/), label: text, detail: z.string().max(120).optional(), featured: z.boolean().optional() })).max(20).default([]),
   showWhen: z.array(conditionSchema).max(10).default([]),
 });
+const usPhone = (v: string) => /^(1)?[2-9]\d{2}[2-9]\d{6}$/.test(v.replace(/\D/g, ''));
 export const funnelSchema = z.object({
   version: z.literal(1),
   clientName: text,
@@ -56,6 +57,9 @@ export const funnelSchema = z.object({
   calendarProvider: z.enum(['ghl', 'calendly']).default('ghl'),
   calendarHeadline: text.optional(),
   thankYouPage: z.object({ headline: text, message: text }),
+  // Optional. When a phone is set, the thank-you screen offers a "Save to contacts" button (vCard)
+  // so the homeowner recognises the business's call. Unset keeps the screen unchanged.
+  contactCard: z.object({ phone: z.string().trim().refine(v => usPhone(v), 'Enter a valid US phone number'), email: z.string().trim().email().max(254).optional(), website: httpsUrl.optional() }).optional(),
   // Optional link-preview / <title> overrides. Unset keeps the HomeQuote defaults.
   seo: z.object({ title: z.string().trim().min(1).max(70).optional(), description: z.string().trim().min(1).max(200).optional() }).optional(),
   // opt_in (default): the pixel stays off until the visitor ticks the footer box.
@@ -87,7 +91,6 @@ export const funnelSchema = z.object({
 export type FunnelConfig = z.infer<typeof funnelSchema>;
 export type Question = FunnelConfig['questions'][number];
 export type Answers = Record<string, string>;
-const usPhone = (v: string) => /^(1)?[2-9]\d{2}[2-9]\d{6}$/.test(v.replace(/\D/g, ''));
 export const contactSchema = z.object({
   firstName: z.string().trim().min(1, 'Enter your first name').max(80),
   lastName: z.string().trim().min(1, 'Enter your last name').max(80),
@@ -116,6 +119,19 @@ export function matches(condition: z.infer<typeof conditionSchema>, answers: Ans
 }
 export function visibleQuestions(config: FunnelConfig, answers: Answers) {
   return config.questions.filter(q => q.showWhen.every(c => matches(c, answers)));
+}
+/** Screens that are not questions. */
+export const FUNNEL_SCREENS = ['qualification', 'contact', 'calendar', 'thanks'] as const;
+/**
+ * The step a visitor can actually be shown. A saved or jumped-to step that names a question
+ * hidden by `showWhen` (or one that no longer exists) would render an empty screen, so it falls
+ * back to the first visible question still waiting for an answer, or the qualification screen.
+ */
+export function resolveStep(config: FunnelConfig, answers: Answers, step: string): string {
+  if ((FUNNEL_SCREENS as readonly string[]).includes(step)) return step;
+  const visible = visibleQuestions(config, answers);
+  if (visible.some(q => q.id === step)) return step;
+  return visible.find(q => !isAnswered(answers, q.id))?.id ?? 'qualification';
 }
 export type TextQuestionType = (typeof TEXT_QUESTION_TYPES)[number];
 export const isTextQuestion = (q: Pick<Question, 'type'>): q is Question & { type: TextQuestionType } => (TEXT_QUESTION_TYPES as readonly string[]).includes(q.type);
@@ -173,6 +189,8 @@ export function qualify(config: FunnelConfig, answers: Answers): boolean | null 
   return inServiceArea(config, zip) && serviceAreaValid(config, zip) && config.qualificationRules.every(rule => matches(rule, answers));
 }
 export function inServiceArea(config: FunnelConfig, zip: string) {
+  // No ZIP list at all = no restriction (targeting is done in the ad platform), so every ZIP passes.
+  if (!config.serviceArea.zipCodes.length && !config.serviceArea.zipPrefixes.length) return true;
   return config.serviceArea.zipCodes.includes(zip) || config.serviceArea.zipPrefixes.some(prefix => zip.startsWith(prefix));
 }
 /**

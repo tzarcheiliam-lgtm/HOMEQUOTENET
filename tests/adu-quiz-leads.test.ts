@@ -64,7 +64,7 @@ async function submit(input = submission()) {
 }
 const rows = async () => (await db.query<any>('select * from adu_quiz_leads order by created_at')).rows;
 
-describe('adu quiz lead pipeline (real migration 0047 in PGlite)', () => {
+describe('adu quiz lead pipeline (real migration 0054 in PGlite)', () => {
   it('stores a qualified lead, forwards the exact payload once, and marks it sent', async () => {
     const { input, result } = await submit();
     expect(result).toMatchObject({ ok: true, qualified: true });

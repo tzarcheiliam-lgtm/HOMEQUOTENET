@@ -141,6 +141,8 @@ export function librarySection(key: string): ContractSection | null {
 // Starter templates
 // ---------------------------------------------------------------------------
 export interface StarterTemplate {
+  /** Customer-document starters are tagged here; they still need an explicit admin approval before the assistant can use them. */
+  docType?: 'work_order' | 'proposal';
   starterKey: string;
   name: string;
   description: string;
@@ -237,4 +239,54 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
 export const DEFAULT_SIGNER_ROLES = [
   { key: 'client', label: 'Client' },
   { key: 'homequote', label: 'HomeQuote Network' },
+];
+
+/** Customer documents: the issuing contractor and the homeowner. (The 'homequote' role is the issuing company's signature block.) */
+export const CUSTOMER_SIGNER_ROLES = [
+  { key: 'client', label: 'Customer' },
+  { key: 'homequote', label: 'Contractor' },
+];
+
+/**
+ * Customer-document starters (work order, proposal). Seeded alongside the agreement starters, but kept in their own list because
+ * they are tagged for homeowner use and still need an explicit admin approval before the assistant or a contractor can use them.
+ */
+export const CUSTOMER_STARTER_TEMPLATES: StarterTemplate[] = [
+  {
+    starterKey: 'customer_proposal',
+    docType: 'proposal',
+    name: 'Customer Proposal',
+    description: 'A plain proposal for a homeowner project: scope, price and schedule, accepted by signature. Contains no legal terms.',
+    category: 'Customer documents',
+    defaultVariables: {},
+    sections: [
+      sec('proposal_summary', 'Proposal', DOC(
+        P('Prepared on {{contract_date}} by **{{contractor_company}}** for **{{customer_name}}**.'),
+        P('Customer contact: {{customer_email}} · {{customer_phone}}'),
+        P('Project address: {{project_address}}'))),
+      sec('proposal_scope', 'Scope of Work', DOC(P('{{project_description}}'), H('Work included'), P('{{scope_of_work}}'))),
+      sec('proposal_pricing', 'Price and Payment', DOC(
+        P('Total price: **{{total_price}}**'), P('Deposit: {{deposit_amount}}'), H('Payment schedule'), P('{{payment_schedule}}'))),
+      sec('proposal_schedule', 'Schedule', DOC(P('Planned start: {{start_date}}'), P('Planned completion: {{completion_date}}'))),
+      sec('proposal_acceptance', 'Acceptance', DOC(P('By signing below, the customer accepts this proposal as written.')), { kind: 'signatures', numbered: false }),
+    ],
+  },
+  {
+    starterKey: 'customer_work_order',
+    docType: 'work_order',
+    name: 'Customer Work Order',
+    description: 'Authorizes specific work at a homeowner’s property at a stated price. Contains no legal terms.',
+    category: 'Customer documents',
+    defaultVariables: {},
+    sections: [
+      sec('work_order_summary', 'Work Order', DOC(
+        P('Issued on {{contract_date}} by **{{contractor_company}}** to **{{customer_name}}**.'),
+        P('Customer contact: {{customer_email}} · {{customer_phone}}'),
+        P('Work location: {{project_address}}'))),
+      sec('work_order_scope', 'Work to Be Performed', DOC(P('{{scope_of_work}}'))),
+      sec('work_order_price', 'Price', DOC(P('Total price: **{{total_price}}**'), P('Deposit: {{deposit_amount}}'), P('{{payment_schedule}}'))),
+      sec('work_order_schedule', 'Schedule', DOC(P('Planned start: {{start_date}}'), P('Planned completion: {{completion_date}}'))),
+      sec('work_order_authorization', 'Authorization', DOC(P('By signing below, the customer authorizes the work described above.')), { kind: 'signatures', numbered: false }),
+    ],
+  }
 ];

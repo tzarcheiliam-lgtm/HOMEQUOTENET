@@ -5,6 +5,7 @@ import {
   Building2,
   CalendarDays,
   CalendarCheck,
+  CalendarClock,
   ClipboardList,
   Receipt,
   DollarSign,
@@ -23,12 +24,14 @@ import {
   Bot,
   FileSignature,
   FileStack,
+  MessageSquare,
   type LucideIcon,
 } from 'lucide-react';
 
 /** Icon lookup for NavItem.icon names, shared by the sidebar and mobile nav. */
 export const NAV_ICONS: Record<string, LucideIcon> = {
   Bot,
+  MessageSquare,
   FileSignature,
   FileStack,
   LayoutDashboard,
@@ -37,6 +40,7 @@ export const NAV_ICONS: Record<string, LucideIcon> = {
   Building2,
   CalendarDays,
   CalendarCheck,
+  CalendarClock,
   ClipboardList,
   Receipt,
   DollarSign,

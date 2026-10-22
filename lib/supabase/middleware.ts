@@ -51,6 +51,8 @@ export async function updateSession(request: NextRequest) {
   const publicPath = request.nextUrl.pathname;
   if (publicPath.startsWith('/estimate/') || publicPath.startsWith('/api/funnels/') || publicPath.startsWith('/api/stripe/')) return supabaseResponse;
   // Public e-signing: signers have no HQN session; the token (never a cookie) is the credential.
+  // Calendar subscribe feeds are fetched by Apple/Google Calendar with no session; the unguessable token is the credential.
+  if (publicPath.startsWith('/api/calendar/feed/')) return supabaseResponse;
   if (publicPath === '/sign' || publicPath.startsWith('/api/signing/')) return supabaseResponse;
   // The service worker and manifest are fetched by the browser itself (often in the
   // background): they need no session and must not trigger a token refresh.

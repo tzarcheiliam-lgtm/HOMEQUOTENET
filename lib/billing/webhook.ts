@@ -57,6 +57,27 @@ async function applyUpdate(db: Db, requestId: string, update: Update, now: Date)
   }
 }
 
+/** An admin-sent payment link was paid. Matches on our metadata, or on the Payment Link id as a fallback. */
+async function markPaymentRequestPaid(db: Db, session: Stripe.Checkout.Session, now: Date) {
+  let id = session.metadata?.payment_request_id ?? null;
+  if (!id) {
+    const linkId = idOf(session.payment_link as string | { id: string } | null);
+    if (!linkId) return false;
+    const { data } = await db.from('payment_requests').select('id').eq('stripe_payment_link_id', linkId).maybeSingle();
+    id = data?.id ?? null;
+  }
+  if (!id) return false;
+  // Money still clearing (bank debit): wait for async_payment_succeeded.
+  if (session.payment_status === 'unpaid') return true;
+  const { error } = await db
+    .from('payment_requests')
+    .update({ status: 'paid', paid_at: now.toISOString(), stripe_session_id: session.id })
+    .eq('id', id)
+    .neq('status', 'paid');
+  if (error) throw new Error(error.message);
+  return true;
+}
+
 /** Record one verified Stripe event on its service request. Throws to make Stripe retry. */
 export async function handleStripeEvent(event: Stripe.Event, db: Db, now = new Date()): Promise<void> {
   switch (event.type) {
@@ -64,6 +85,8 @@ export async function handleStripeEvent(event: Stripe.Event, db: Db, now = new D
     case 'checkout.session.async_payment_succeeded':
     case 'checkout.session.async_payment_failed': {
       const session = event.data.object;
+      // An ad-hoc payment link sent from Billing (not a Growth Tools request).
+      if (event.type !== 'checkout.session.async_payment_failed' && (await markPaymentRequestPaid(db, session, now))) return;
       const requestId = session.metadata?.service_request_id ?? session.client_reference_id;
       if (!requestId) return; // Not one of ours (e.g. a Payment Link made in the Dashboard).
       const subscriptionId = idOf(session.subscription);

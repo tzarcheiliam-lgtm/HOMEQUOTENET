@@ -4,6 +4,7 @@ import { canManageContracts } from '@/lib/permissions';
 import { ContractError } from '@/lib/contracts/errors';
 import { getTemplate, listCategories } from '@/lib/contracts/templates';
 import { TemplateEditor } from '@/components/contracts/template-editor';
+import { TemplateDocPanel } from '@/components/contracts/template-doc-panel';
 import { PageHeader } from '@/components/ui/page-header';
 
 export const metadata = { title: 'Edit template · HomeQuote Network' };
@@ -20,6 +21,12 @@ export default async function TemplatePage({ params }: { params: Promise<{ id: s
   return (
     <div className="space-y-4">
       <PageHeader title="Template" description="Edit sections, merge fields and defaults. Publish to make a new version available." backHref="/app/contracts/templates" backLabel="Templates" />
+      <TemplateDocPanel
+        id={t.id}
+        status={t.status}
+        latestVersionNo={t.latest_version_no}
+        initial={{ docType: t.doc_type ?? 'agreement', jurisdictions: t.jurisdictions ?? [], approvedVersion: t.assistant_approved_version ?? null }}
+      />
       <TemplateEditor
         key={t.id}
         id={t.id}

@@ -22,7 +22,6 @@ function loadConfig(path) {
   // Templates ship with placeholders and no ZIPs; publishing one as-is would qualify nobody.
   const placeholders = JSON.stringify(config).match(/REPLACE_WITH_[A-Z_]+/g);
   if (placeholders) throw new Error(`Fill in template placeholders first: ${[...new Set(placeholders)].join(', ')}`);
-  if (!config.serviceArea.zipCodes.length && !config.serviceArea.zipPrefixes.length) throw new Error('Service area is empty; add zipCodes or zipPrefixes');
   return config;
 }
 if (mode === 'validate') {

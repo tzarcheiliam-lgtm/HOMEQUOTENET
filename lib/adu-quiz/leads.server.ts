@@ -213,7 +213,7 @@ export async function retryPendingAduQuizLeads(limit = 8): Promise<{ retried: nu
   const { data, error } = await db.from('adu_quiz_leads').select('*').eq('webhook_status', 'pending')
     .lte('webhook_next_attempt_at', new Date().toISOString()).order('created_at').limit(limit);
   if (error) {
-    // Table not created yet (migration 0047 not applied) is expected before launch; anything else is worth a log line.
+    // Table not created yet (migration 0054 not applied) is expected before launch; anything else is worth a log line.
     if (error.code !== '42P01') console.error(`[adu-quiz] retry query failed: ${error.code ?? 'unknown'}`);
     return { retried: 0, sent: 0, pending: 0, configured: !!url };
   }

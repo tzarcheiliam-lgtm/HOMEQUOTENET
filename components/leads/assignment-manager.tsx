@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useRef } from 'react';
+import { useActionState, useEffect, useRef, useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,6 +19,7 @@ import {
   assignLeadToCompanyUser,
   type LeadFormState,
 } from '@/lib/actions/leads';
+import { checkAppointmentSlot } from '@/lib/actions/availability';
 import { OutcomesSection } from '@/components/leads/outcomes-section';
 import type { AssignmentDetail } from '@/lib/data/leads';
 import type { CompanyUserOption } from '@/lib/data/leads';
@@ -88,19 +89,41 @@ function AppointmentStatusSelect({
 function ScheduleAppointmentForm({
   leadId,
   assignmentId,
+  isStaff,
 }: {
   leadId: string;
   assignmentId: string;
+  isStaff: boolean;
 }) {
   const [state, formAction, pending] = useActionState<LeadFormState, FormData>(
     scheduleAppointment,
     undefined
   );
+  const [when, setWhen] = useState('');
+  const [conflict, setConflict] = useState<string | null>(null);
+
+  // Staff see right away if the picked time clashes with the contractor's availability.
+  useEffect(() => {
+    if (!isStaff || !when) {
+      setConflict(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      const result = await checkAppointmentSlot(assignmentId, when);
+      if (!cancelled) setConflict(result.ok ? null : (result.message ?? 'Contractor is unavailable then.'));
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [when, assignmentId, isStaff]);
+
   return (
     <form action={formAction} className="flex flex-wrap items-end gap-2">
       <input type="hidden" name="lead_id" value={leadId} />
       <input type="hidden" name="assignment_id" value={assignmentId} />
-      <Input name="scheduled_at" type="datetime-local" className="w-auto" />
+      <Input name="scheduled_at" type="datetime-local" className="w-auto" value={when} onChange={(e) => setWhen(e.target.value)} />
       <Input name="location" placeholder="Location" className="w-40" />
       <Select name="booked_via" aria-label="How was it booked?" defaultValue="" className="w-44">
         <option value="">How booked? (optional)</option>
@@ -113,6 +136,15 @@ function ScheduleAppointmentForm({
       <Button type="submit" size="sm" variant="outline" disabled={pending}>
         {pending ? 'Saving…' : 'Schedule appointment'}
       </Button>
+      {isStaff && conflict && (
+        <div className="w-full space-y-1 rounded-md border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900" role="alert">
+          <p>{conflict}</p>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" name="override_availability" />
+            Book anyway (recorded in the audit log)
+          </label>
+        </div>
+      )}
       {state?.error && (
         <p className="w-full text-sm text-destructive">{state.error}</p>
       )}
@@ -182,6 +214,7 @@ export function AssignmentManager({
   canManage,
   canUnassign,
   isAdmin,
+  isStaff,
   companyUsers,
   canAssignUsers,
 }: {
@@ -191,6 +224,7 @@ export function AssignmentManager({
   canManage: boolean; // staff: can assign new contractors
   canUnassign: boolean; // admin: can remove assignments
   isAdmin: boolean; // admin: can override commission, see commission amounts
+  isStaff: boolean; // admin/setter: sees contractor availability warnings and may override them
   companyUsers: CompanyUserOption[];
   canAssignUsers: boolean;
 }) {
@@ -247,6 +281,14 @@ export function AssignmentManager({
                           ? new Date(ap.scheduled_at).toLocaleString()
                           : 'No time set'}
                         {ap.location ? ` · ${ap.location}` : ''}
+                        {ap.scheduled_at && (
+                          <>
+                            {' · '}
+                            <a href={`/api/calendar/appointment/${ap.id}`} className="underline" download>
+                              Add to calendar
+                            </a>
+                          </>
+                        )}
                       </span>
                       <AppointmentStatusSelect
                         leadId={leadId}
@@ -259,7 +301,7 @@ export function AssignmentManager({
               )}
 
               <div className="mt-3">
-                <ScheduleAppointmentForm leadId={leadId} assignmentId={a.id} />
+                <ScheduleAppointmentForm leadId={leadId} assignmentId={a.id} isStaff={isStaff} />
               </div>
 
               {canAssignUsers && (

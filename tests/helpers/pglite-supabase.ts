@@ -9,7 +9,7 @@ import type { PGlite } from '@electric-sql/pglite';
 
 type Filter = { col: string; op: 'eq' | 'in' | 'is' | 'ilike' | 'neq' | 'gte' | 'lte' | 'lt' | 'gt' | 'notin' | 'or' | 'contains'; val: unknown };
 /** RPCs that return a table (called with `select * from fn(...)`). */
-const SET_RETURNING = new Set(['signing_claim_auto_reminders', 'claim_workflow_runs', 'claim_workflow_events', 'claim_ai_call_jobs']);
+const SET_RETURNING = new Set(['signing_claim_auto_reminders', 'claim_workflow_runs', 'claim_workflow_events', 'claim_ai_call_jobs', 'claim_sms_outbound']);
 /** Columns that are jsonb arrays (an empty or all-string array would otherwise be sent as text[]). */
 const JSONB_ARRAY_COLUMNS = new Set(['sections', 'signers', 'signer_roles']);
 const ident = (s: string) => `"${s.replace(/"/g, '""')}"`;

@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server';
 import { equalSecret } from '@/lib/funnels/server';
+import { runCalendarMaintenance } from '@/lib/calendar/sync.server';
 import { runNotificationMaintenance } from '@/lib/notifications/outbox';
 import { signingMaintenance } from '@/lib/signing/service';
 import { retryPendingAduQuizLeads } from '@/lib/adu-quiz/leads.server';
+import { checkBridgeHealth } from '@/lib/sms/health';
+import { notifyAdmins } from '@/lib/sms/health-notify';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { processWorkflowTick, pruneWorkflowHistory } from '@/lib/workflows/runtime.server';
 
 export const dynamic = 'force-dynamic';
@@ -24,8 +28,18 @@ export async function POST(request: Request) {
     } catch {
       notifications = { error: 'notification maintenance failed' };
     }
+    // Calendar sync backstop (retries failed Google writes; best effort, never affects the tick result).
+    let calendar: unknown = null;
+    try {
+      calendar = await runCalendarMaintenance();
+    } catch {
+      calendar = { error: 'calendar sync failed' };
+    }
     // Documents & Signing: expire overdue requests, retry stuck completed-PDF generation. Best effort.
     const signing = await signingMaintenance();
+    // Texting: alert the team if texts are waiting and the Mac bridge is not sending them. Best effort.
+    let sms: unknown = null;
+    try { sms = await checkBridgeHealth(createAdminClient(), { notify: notifyAdmins }); } catch { sms = { error: 'texting health check failed' }; }
     // ADU quiz leads whose webhook delivery failed. Best effort; a failure never affects the tick.
     let aduQuiz: unknown = null;
     try {
@@ -33,7 +47,7 @@ export async function POST(request: Request) {
     } catch {
       aduQuiz = { error: 'adu quiz retry failed' };
     }
-    return NextResponse.json({ ...result, retention, notifications, signing, aduQuiz }, { status: result.failures ? 207 : 200 });
+    return NextResponse.json({ ...result, retention, notifications, calendar, signing, sms, aduQuiz }, { status: result.failures ? 207 : 200 });
   } catch {
     return NextResponse.json({ error: 'Workflow processing unavailable' }, { status: 503 });
   }

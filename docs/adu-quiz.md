@@ -17,7 +17,7 @@ only links are Privacy and Terms (footer and consent text).
 | `app/adu-quiz/{layout,page}.tsx` | Lean shell, hero, FAQ, legal footer. |
 | `app/adu-quiz/booked/page.tsx` | Calendar redirect target; tells the quiz page (parent window) the booking finished. |
 | `components/adu-quiz/adu-quiz.tsx`, `tracking.ts` | The quiz (client) and browser tracking. |
-| `supabase/migrations/0047_adu_quiz_leads.sql` | `adu_quiz_leads` table: durable copy + webhook retry queue. Applied by the owner. |
+| `supabase/migrations/0054_adu_quiz_leads.sql` | `adu_quiz_leads` table: durable copy + webhook retry queue. Applied by the owner. |
 | `tests/adu-quiz.test.ts`, `tests/adu-quiz-leads.test.ts` | Rules, payload, and the whole lead pipeline against the real migration. |
 
 ## Placeholders to fill in before ads go live
@@ -40,7 +40,7 @@ Environment overrides (win over the config file): `ADU_QUIZ_LEAD_WEBHOOK_URL`, `
 existing `META_CONVERSIONS_API_TOKEN`.
 
 Also required outside the repo:
-1. Migration `0047_adu_quiz_leads.sql` has been applied by the owner.
+1. Migration `0054_adu_quiz_leads.sql` has been applied by the owner.
 2. In the GoHighLevel calendar, set the booking confirmation to **redirect to `https://<your domain>/adu-quiz/booked`**.
    That is how the Schedule event fires. (Not verified against a live GoHighLevel account: confirm the redirect option
    and that the widget prefills from `first_name`, `last_name`, `email`, `phone` URL parameters.)

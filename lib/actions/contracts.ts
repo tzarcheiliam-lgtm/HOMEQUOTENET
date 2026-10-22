@@ -48,6 +48,9 @@ export async function deleteTemplateAction(id: string) {
 export async function setDefaultTemplateAction(id: string) {
   return run(async (a) => { await tp.setDefaultTemplate(a, id); touch('/app/contracts/templates'); return {}; });
 }
+export async function setCustomerDocSettingsAction(id: string, input: { docType: (typeof tp.CUSTOMER_DOC_TYPES)[number]; jurisdictions: string[]; approve: boolean }) {
+  return run(async (a) => { const r = await tp.setCustomerDocSettings(a, id, input); touch('/app/contracts/templates'); return r; });
+}
 export async function previewTemplateAction(id: string) {
   return run(async (a) => tp.previewTemplatePdf(a, id));
 }
