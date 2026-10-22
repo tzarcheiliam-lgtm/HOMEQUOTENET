@@ -160,6 +160,9 @@ async function replyWithAgent(db: Db, c: { id: string; lead_id: string; sender_n
   } catch {
     return handoff('the assistant could not reply');
   }
+  // They picked a day for the visit: that is the goal, so the conversation goes to a person to confirm the time.
+  const visitRequest = result.appointment_time && !result.close ? result.appointment_time : null;
+  if (visitRequest) result = { ...result, handoff: true };
   const message = finalizeOutbound(result.message);
   // Small natural pause so a reply never lands the instant the lead's text does.
   await queue(db, c, message, { ai: true, sendAfter: new Date(now.getTime() + 4000 + Math.floor(Math.random() * 8000)) });
@@ -168,9 +171,18 @@ async function replyWithAgent(db: Db, c: { id: string; lead_id: string; sender_n
     ai_turns: c.ai_turns + 1, mode: result.mode ?? undefined, qualification: result.qualification, call_time_preference: result.call_time ?? undefined,
     summary: result.summary, status: result.close ? 'closed' : result.handoff ? 'handoff' : 'active', updated_at: now.toISOString(),
   }).eq('id', c.id);
+  // The lead asked for a visit time: tell the owner so they can confirm it (this replaces the generic call alert).
+  if (visitRequest) {
+    await (deps.notify ?? notifyAdmins)({
+      title: 'A lead wants a visit',
+      body: `A lead asked for a free estimate visit: ${visitRequest.slice(0, 80)}. Tap to confirm the time.`,
+      url: `/app/leads/${c.lead_id}`,
+      linkLabel: 'Confirm the visit',
+    }).catch(() => undefined);
+  }
   // The lead wants a call: tell the owner right away (push in the HomeQuote app + email), and again if they then give a
   // time, so they know who to call and when. The bot's own behaviour is unchanged.
-  if (result.mode === 'call' && !result.close) {
+  if (result.mode === 'call' && !result.close && !visitRequest) {
     const first = c.mode !== 'call';
     const learnedTime = !!result.call_time && !c.call_time_preference;
     if (first || learnedTime) {
@@ -184,8 +196,8 @@ async function replyWithAgent(db: Db, c: { id: string; lead_id: string; sender_n
     }
   }
   if (done) {
-    const label = result.close ? 'closed' : result.mode === 'call' ? 'wants a call' : 'ready for a person';
-    await note(db, c.lead_id, `Text conversation ${label} (${result.qualification}). ${result.summary}${result.call_time ? ` Best time: ${result.call_time}.` : ''}${result.handoff_reason ? ` Reason: ${result.handoff_reason}` : ''}`, { needs_attention: !result.close });
+    const label = result.close ? 'closed' : visitRequest ? 'wants a visit' : result.mode === 'call' ? 'wants a call' : 'ready for a person';
+    await note(db, c.lead_id, `Text conversation ${label} (${result.qualification}). ${result.summary}${visitRequest ? ` Requested visit time: ${visitRequest} (not confirmed yet).` : ''}${result.call_time ? ` Best time: ${result.call_time}.` : ''}${result.handoff_reason ? ` Reason: ${result.handoff_reason}` : ''}`, { needs_attention: !result.close });
   }
   return { handled: true, replied: true };
 }
