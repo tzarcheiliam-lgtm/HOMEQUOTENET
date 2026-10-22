@@ -101,10 +101,18 @@ middleware.ts           Delegates to lib/supabase/middleware.ts (session refresh
 ### Marketing (public, `app/(marketing)/`)
 `/` (home), `/pool-contractors`, `/hvac`, `/roofing`, `/fencing`,
 `/general-contractors`, `/lead-standards`, `/apply` (contractor application
-form), `/privacy`, `/terms`. Dark theme scoped to a `.hq` wrapper so it never
+form), `/privacy`, `/terms`, `/adu-estimator` (homeowner ADU price estimator, see
+`docs/adu-estimator.md`: pricing in `lib/adu/pricing-config.ts`,
+in the sitemap, lead capture OFF until a destination is approved). Dark theme scoped to a `.hq` wrapper so it never
 touches the CRM's light shadcn tokens. Copy lives in `content/` so a new
 vertical/niche is a content file, not a rewrite (see MARKETING_SITE.md, still
 broadly accurate).
+
+### ADU quiz (paid-traffic landing page)
+`/adu-quiz` (+ `/adu-quiz/booked`, `POST /api/adu-quiz/lead`, `POST /api/adu-quiz/booked`): standalone
+quiz that qualifies homeowners and books qualified ones on a GoHighLevel calendar. Config in
+`lib/adu-quiz/config.ts`, leads in `adu_quiz_leads` (migration 0054, applied by the owner),
+forwarded to a webhook with retries from `/api/workflows/tick`. See `docs/adu-quiz.md` for the placeholder checklist.
 
 ### Public homeowner funnel
 `/estimate/[slug]` — the visual funnel runtime (multi-step qualification form →
