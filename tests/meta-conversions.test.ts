@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
 
-import { buildPayload, decide, identifierSummary, interpretResponse, backoffMinutes, actionSourceFor, type EligibilityInput, type LeadForMeta, type Plan, type SessionForMeta } from '@/lib/meta/conversions';
+import { buildPayload, decide, identifierSummary, interpretResponse, backoffMinutes, actionSourceFor, usesWebsiteCrm, type EligibilityInput, type LeadForMeta, type Plan, type SessionForMeta } from '@/lib/meta/conversions';
 import { dispatchBatch, feedFromLedger, type ClaimedEvent, type FinishPatch, type LedgerRow, type LoadedLead, type NewEvent, type QueueStore, type Settings } from '@/lib/meta/queue';
 
 const NOW = Date.parse('2026-10-07T12:00:00Z');
@@ -120,6 +120,72 @@ describe('Instant Form leads (Conversions API for CRM)', () => {
   it('does not need browser-measurement consent (no browser data is used) but still enforces the 7-day window', () => {
     expect(decide(base({ lead: igLead, session: null })).ok).toBe(true);
     expect(decide(base({ lead: igLead, session: null, occurredAt: '2026-09-20T00:00:00Z' }))).toMatchObject({ ok: false, reason: 'too_old' });
+  });
+});
+
+describe('website leads on the CRM dataset (bathroom + kitchen funnels)', () => {
+  const CRM = '29178560738497902';
+  const crmSession: SessionForMeta = { ...session, pixelId: CRM };
+  const crm = (o: Partial<EligibilityInput> = {}) => base({ session: crmSession, datasetId: CRM, crmDatasetId: CRM, ...o });
+
+  it('sends CRM stage events: system_generated, one event per lead per stage, to the CRM dataset', () => {
+    const q = decide(crm()); if (!q.ok) throw new Error(JSON.stringify(q));
+    expect(q.plan).toMatchObject({ sourceKind: 'website_crm', eventName: 'qualified', actionSource: 'system_generated', eventId: 'crm:L1:qualified', datasetId: CRM, value: null });
+    expect(decide(crm({ stage: 'appointment', ref: { appointmentId: 'a1' } }))).toMatchObject({ ok: true, plan: { eventName: 'appointment_booked', eventId: 'crm:L1:appointment' } });
+    expect(decide(crm({ stage: 'won', ref: { saleId: 's1' }, value: 9000, currency: 'USD' }))).toMatchObject({ ok: true, plan: { eventName: 'won', eventId: 'crm:L1:won', value: null } });
+  });
+  it('sends the initial lead stage (lead_received) too, which the web path never queues', () => {
+    expect(decide(crm({ stage: 'lead', occurredAt: '2026-10-05T10:00:00Z' }))).toMatchObject({ ok: true, plan: { sourceKind: 'website_crm', eventName: 'lead_received', eventId: 'crm:L1:lead' } });
+  });
+  it('only applies when the funnel Pixel is the CRM dataset; other funnels keep the web events', () => {
+    expect(decide(crm({ crmDatasetId: '111222333' }))).toMatchObject({ ok: true, plan: { sourceKind: 'website_pixel', eventName: 'QualifiedLead' } });
+    expect(decide(crm({ crmDatasetId: null }))).toMatchObject({ ok: true, plan: { sourceKind: 'website_pixel' } });
+    expect(usesWebsiteCrm(webLead, crmSession, CRM)).toBe(true);
+    expect(usesWebsiteCrm(igLead, crmSession, CRM)).toBe(false);
+    expect(usesWebsiteCrm(webLead, { pixelId: undefined }, CRM)).toBe(false);
+  });
+  it('keeps consent, demo, ad-signal and 7-day rules', () => {
+    expect(decide(crm({ session: { ...crmSession, measurementAllowed: false } }))).toMatchObject({ ok: false, reason: 'measurement_not_allowed' });
+    expect(decide(crm({ session: { ...crmSession, isDemo: true } }))).toMatchObject({ ok: false, reason: 'demo' });
+    expect(decide(crm({ lead: { ...webLead, fbc: null, fbp: null, fbclid: null, ad_id: null } }))).toMatchObject({ ok: false, reason: 'not_meta_lead' });
+    expect(decide(crm({ occurredAt: '2026-09-29T00:00:00Z' }))).toMatchObject({ ok: false, reason: 'too_old' });
+    expect(decide(crm({ occurredAt: '2026-10-05T09:00:00Z' }))).toMatchObject({ ok: false, reason: 'before_lead_created' });
+  });
+  it('builds Meta\'s CRM payload: hashed email/phone arrays, click id, crm custom_data, no raw PII', () => {
+    const p = buildPayload({ event_name: 'lead_received', event_id: 'crm:L1:lead', event_time: '2026-10-06T10:00:00Z', action_source: 'system_generated', value: null, currency: null, source_kind: 'website_crm' }, webLead, { eventSourceUrl: webLead.landing_page_url });
+    const ev = p.data[0] as Record<string, any>;
+    expect(ev).toMatchObject({ event_name: 'lead_received', action_source: 'system_generated', custom_data: { event_source: 'crm', lead_event_source: 'HomeQuote Network' } });
+    expect(ev.event_time).toBe(Date.parse('2026-10-06T10:00:00Z') / 1000);
+    expect(ev.user_data.em).toEqual([expect.stringMatching(/^[a-f0-9]{64}$/)]);
+    expect(ev.user_data.ph).toEqual([expect.stringMatching(/^[a-f0-9]{64}$/)]);
+    expect(ev.user_data.fbc).toBe('fb.1.2.abc');
+    expect(ev.user_data.lead_id).toBeUndefined(); // website lead: its external id is the funnel session, not a leadgen id
+    expect(ev.event_source_url).toBeUndefined();
+    expect(JSON.stringify(p)).not.toMatch(/Jordan|Lee|jordan@|8185550142|90210/);
+    // a lead that also carries a real 15-17 digit Meta lead id sends it, as a number
+    const withId = buildPayload({ event_name: 'qualified', event_id: 'x', event_time: '2026-10-06T10:00:00Z', action_source: 'system_generated', value: null, currency: null, source_kind: 'website_crm' }, { ...webLead, external_lead_id: '123456789012345' }, {});
+    expect((withId.data[0] as Record<string, any>).user_data.lead_id).toBe(123456789012345);
+  });
+  it('feeds lead_received before the first later stage and dispatches both, without touching web events', async () => {
+    const sent: any[] = [];
+    const inserted: NewEvent[] = [];
+    const store: QueueStore = {
+      settings: async (): Promise<Settings> => ({ deliveryMode: 'live', testEventCode: null, testDatasetId: null, datasetId: CRM, cursorAt: '2026-10-01T00:00:00Z', cursorId: null }),
+      ledgerAfter: async (): Promise<LedgerRow[]> => [{ id: 'o1', lead_id: 'L1', outcome: 'qualified', occurred_at: '2026-10-06T10:00:00Z', recorded_at: '2026-10-06T10:00:01Z', actor_kind: 'user', amount: null, currency: null, appointment_id: null, sale_id: null, reason_code: null }],
+      advanceCursor: async () => {},
+      loadLead: async (): Promise<LoadedLead> => ({ lead: webLead, session: crmSession, contractorId: null }),
+      bookingProvenance: async () => ({}),
+      insertEvent: async (e) => { inserted.push(e); return 'inserted'; },
+      claim: async (): Promise<ClaimedEvent[]> => inserted.map((e, i) => ({ id: `e${i}`, lead_id: e.lead_id, dataset_id: e.dataset_id, event_id: e.event_id, event_time: e.event_time, event_name: e.event_name, action_source: e.action_source, source_kind: e.source_kind, value: null, currency: null, appointment_id: null, sale_id: null, test_mode: false, attempt_count: 1, max_attempts: 5, retry_of: null })),
+      finish: async () => {},
+    };
+    const fed = await feedFromLedger(store, { now: NOW });
+    expect(fed).toMatchObject({ enqueued: 2, skipped: 0 });
+    expect(inserted.map((e) => [e.event_name, e.source_kind, e.dataset_id])).toEqual([['lead_received', 'website_crm', CRM], ['qualified', 'website_crm', CRM]]);
+    const res = await dispatchBatch(store, async ({ datasetId, payload }) => { sent.push({ datasetId, payload }); return { ok: true, body: { events_received: 1, fbtrace_id: 'T' } }; }, { now: NOW });
+    expect(res).toMatchObject({ accepted: 2, failed: 0 });
+    expect(sent.map((x) => x.datasetId)).toEqual([CRM, CRM]);
+    expect(sent[0].payload.data[0]).toMatchObject({ event_name: 'lead_received', action_source: 'system_generated', custom_data: { event_source: 'crm' } });
   });
 });
 

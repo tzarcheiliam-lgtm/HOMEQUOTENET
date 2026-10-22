@@ -55,7 +55,7 @@ export default async function MetaEventsPage({ searchParams }: { searchParams: P
                     {r.test_mode && <Badge variant="info">test</Badge>}
                     {r.origin === 'legacy_direct' && <Badge variant="muted">sent directly</Badge>}
                     <span className="font-medium">{r.event_name}</span>
-                    <span className="text-xs text-muted-foreground">{r.source_kind === 'instant_form_crm' ? 'Instant Form · CRM' : 'Website · Pixel'} · {r.action_source}</span>
+                    <span className="text-xs text-muted-foreground">{r.source_kind === 'instant_form_crm' ? 'Instant Form · CRM' : r.source_kind === 'website_crm' ? 'Website · CRM' : 'Website · Pixel'} · {r.action_source}</span>
                   </div>
                   <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground sm:grid-cols-4">
                     <div><dt>Happened</dt><dd className="text-foreground">{when(r.event_time)}</dd></div>
