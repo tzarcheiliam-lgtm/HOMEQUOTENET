@@ -21,13 +21,19 @@
  *    STAGES; Meta wants every stage from the initial lead onward. Only the lead id is sent: no email, phone or name.
  *    Optimization ("Maximize conversion leads") is supported by Meta for native Instant Form leads only.
  *
+ * 3. WEBSITE leads whose funnel Pixel IS the configured CRM dataset (`meta_settings.dataset_id`, e.g. the bathroom and
+ *    kitchen funnels): the same Conversions API for CRM stage events as (2), but matched with what a website lead has
+ *    instead of a leadgen id - the click id (`fbc`), hashed email/phone and the other hashed contact fields (Meta's
+ *    documented priority: lead id, click id, hashed email, hashed phone). The lead id is added when one exists. Event ids
+ *    are `crm:<HQN lead id>:<stage>` (one per lead per stage). Same consent, demo, ad-signal and 7-day rules as (1).
+ *
  * Meta constraints encoded here: event_time must be within 7 days of sending (older -> the whole request is
  * rejected), must be after the lead was created, and is the REAL occurrence time (never rewritten).
  */
 import { buildUserData, type MetaUserData } from './capi';
 
 export type Stage = 'lead' | 'qualified' | 'appointment' | 'won';
-export type SourceKind = 'website_pixel' | 'instant_form_crm';
+export type SourceKind = 'website_pixel' | 'instant_form_crm' | 'website_crm';
 
 export const META_MAX_EVENT_AGE_MS = 7 * 24 * 3600 * 1000;
 export const LIVE_CONFIRMATION = 'ENABLE LIVE';
@@ -79,6 +85,8 @@ export type EligibilityInput = {
   stage: Stage; occurredAt: string; now?: number;
   lead: LeadForMeta; session: SessionForMeta | null;
   datasetId: string | null;           // admin-configured dataset for CRM events
+  /** The production CRM dataset from settings. A website lead whose funnel Pixel equals it takes the CRM path (3). */
+  crmDatasetId?: string | null;
   value?: number | null; currency?: string | null;
   ref?: OutcomeRef;
 };
@@ -92,6 +100,11 @@ export type Decision =
   | { ok: true; plan: Plan }
   /** `not_meta_lead`: not a Meta lead at all - nothing is recorded. Any other reason is stored as a visible "skipped" row. */
   | { ok: false; reason: 'not_meta_lead' | string; plan?: Partial<Plan> };
+
+/** True when a website lead's funnel sends to the CRM dataset, so its stages go out as CRM events (path 3). */
+export function usesWebsiteCrm(lead: Pick<LeadForMeta, 'source'>, session: Pick<SessionForMeta, 'pixelId'> | null, crmDatasetId: string | null | undefined): boolean {
+  return lead.source === 'website' && !!crmDatasetId && !!session?.pixelId && session.pixelId === crmDatasetId;
+}
 
 export const isLeadgenId = (v: string | null | undefined): v is string => !!v && /^\d{15,17}$/.test(v);
 
@@ -150,6 +163,18 @@ export function decide(i: EligibilityInput): Decision {
     const hasSignal = !!(i.lead.fbc || i.lead.fbp || i.lead.fbclid || i.lead.ad_id);
     if (!i.session || !hasSignal) return { ok: false, reason: 'not_meta_lead' };
     if (i.session.isDemo) return { ok: false, reason: 'demo' };
+    if (usesWebsiteCrm(i.lead, i.session, i.crmDatasetId)) {
+      const crmPlan: Partial<Plan> = {
+        sourceKind: 'website_crm', eventName: CRM_EVENT_NAME[i.stage], actionSource: 'system_generated',
+        eventId: `crm:${i.lead.id}:${i.stage}`, datasetId: i.crmDatasetId!, value: null, currency: null,
+      };
+      const allowedCrm = i.session.measurementAllowed ?? i.session.consentMode === 'opt_out';
+      if (!allowedCrm) return { ok: false, reason: 'measurement_not_allowed', plan: crmPlan };
+      const badCrm = tooOldOrEarly();
+      if (badCrm) return { ok: false, reason: badCrm, plan: crmPlan };
+      if (at < new Date(i.session.createdAt).getTime()) return { ok: false, reason: 'before_lead_created', plan: crmPlan };
+      return { ok: true, plan: crmPlan as Plan };
+    }
     const eventName = WEBSITE_EVENT_NAME[i.stage];
     // Separate appointments / sales on one lead are separate conversions; qualification happens once per lead.
     const visitorBooking = i.stage === 'appointment' && !!i.ref?.funnelBooking;
@@ -192,7 +217,22 @@ export type EventRow = {
 export function buildPayload(row: EventRow, lead: LeadForMeta, opts: { eventSourceUrl?: string | null; testEventCode?: string | null }) {
   const eventTime = Math.floor(new Date(row.event_time).getTime() / 1000);
   let event: Record<string, unknown>;
-  if (row.source_kind === 'instant_form_crm') {
+  if (row.source_kind === 'website_crm') {
+    const user: MetaUserData = {
+      email: lead.email, phone: lead.phone, firstName: lead.first_name, lastName: lead.last_name, zip: lead.zip, fbp: lead.fbp, fbc: lead.fbc,
+    };
+    // Meta's CRM payload takes hashed values in arrays (em/ph) and the numeric lead_id; buildUserData returns single hashes.
+    const ud = buildUserData(user);
+    const userData: Record<string, unknown> = { ...ud };
+    if (ud.em) userData.em = [ud.em];
+    if (ud.ph) userData.ph = [ud.ph];
+    if (isLeadgenId(lead.external_lead_id)) userData.lead_id = Number(lead.external_lead_id);
+    event = {
+      event_name: row.event_name, event_time: eventTime, event_id: row.event_id, action_source: 'system_generated',
+      user_data: userData,
+      custom_data: { event_source: 'crm', lead_event_source: CRM_SOURCE_NAME },
+    };
+  } else if (row.source_kind === 'instant_form_crm') {
     event = {
       event_name: row.event_name, event_time: eventTime, event_id: row.event_id, action_source: 'system_generated',
       // lead_id only: Meta's own identifier for the lead, so no customer PII leaves HQN for CRM events.
