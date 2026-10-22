@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import type { Metadata, Viewport } from 'next';
 import { getFunnel } from '@/lib/funnels/server';
 import { FunnelExperience } from '@/components/funnels/funnel-experience';
-import { baseOpenGraph, defaultOgImage } from '@/lib/site-metadata';
+import { baseOpenGraph } from '@/lib/site-metadata';
 import { site } from '@/content/site';
 import './funnel.css';
 
@@ -18,9 +18,10 @@ const DEFAULT_DESCRIPTION =
   'Answer a few quick questions about your home project and book a free estimate with a qualified local contractor.';
 
 /**
- * Link previews stay HomeQuote-branded (root opengraph-image, favicon) for
- * every funnel. A funnel may set config.seo.title / .description to change the
- * wording only.
+ * Link previews stay HomeQuote-branded for every funnel. The card image comes
+ * from ./opengraph-image.tsx (homeowner card for bathroom and kitchen funnels,
+ * the site-wide card for the rest). A funnel may set config.seo.title /
+ * .description to change the wording only.
  */
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
@@ -31,8 +32,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     title,
     description,
     robots: { index: false, follow: false },
-    openGraph: { ...baseOpenGraph, title, description, url: `${site.url}/estimate/${slug}`, images: [defaultOgImage] },
-    twitter: { card: 'summary_large_image', title, description, images: [defaultOgImage] },
+    openGraph: { ...baseOpenGraph, title, description, url: `${site.url}/estimate/${slug}` },
+    twitter: { card: 'summary_large_image', title, description },
   };
 }
 

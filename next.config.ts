@@ -16,6 +16,13 @@ const nextConfig: NextConfig = {
     ppr: true,
     clientSegmentCache: true
   },
+  async redirects() {
+    // Short, readable links for ads' "display link" field. Query strings (UTMs, fbclid) pass through to the funnel.
+    return [
+      { source: '/bathroom-remodel', destination: '/estimate/bathroom-remodel', permanent: false },
+      { source: '/kitchen-remodel', destination: '/estimate/kitchen-remodel', permanent: false },
+    ];
+  },
   async headers() {
     return [
       {
