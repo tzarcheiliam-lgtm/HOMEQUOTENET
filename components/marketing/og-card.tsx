@@ -34,9 +34,12 @@ const NAVY = '#0a1b3d';
 export function renderOgCard({
   headline,
   subline,
+  chips = ['Southern California', 'No monthly retainer to start'],
 }: {
   headline: string;
   subline: string;
+  /** The two pills in the footer strip. Defaults to the contractor-facing pair. */
+  chips?: string[];
 }) {
   return new ImageResponse(
     (
@@ -111,7 +114,7 @@ export function renderOgCard({
           }}
         >
           <div style={{ display: 'flex', gap: 12 }}>
-            {['Southern California', 'No monthly retainer to start'].map((chip) => (
+            {chips.map((chip) => (
               <div
                 key={chip}
                 style={{
