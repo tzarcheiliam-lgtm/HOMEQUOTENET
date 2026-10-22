@@ -75,13 +75,12 @@ export const BUDGET_MAX: Record<string, number> = {
 export type Answers = Partial<Record<QuestionId, string>> & { decision_confirmed?: boolean };
 
 export type Rules = {
-  serviceZips: readonly string[];
   minBudget: number;
   dqTimelines: readonly string[];
 };
 
 export type DqReason =
-  | 'not_owner' | 'not_on_title' | 'property_type' | 'out_of_area'
+  | 'not_owner' | 'not_on_title' | 'property_type'
   | 'budget' | 'timeline' | 'credit' | 'bankruptcy' | 'decision_makers';
 
 export type Evaluation = {
@@ -93,8 +92,6 @@ export type Evaluation = {
   title_unverified: boolean;
   credit_unverified: boolean;
   bankruptcy_unverified: boolean;
-  /** True when SERVICE_ZIPS is empty, so the ZIP rule was not applied. */
-  zip_check_skipped: boolean;
 };
 
 export const isValidZip = (value: string) => /^\d{5}$/.test(value);
@@ -116,8 +113,6 @@ export function evaluate(answers: Answers, rules: Rules): Evaluation {
   if (answers.owns_home === 'no_rent' || answers.owns_home === 'other') reasons.push('not_owner');
   if (answers.on_title === 'no') reasons.push('not_on_title');
   if (answers.property_type && answers.property_type !== 'single_family') reasons.push('property_type');
-  const zipCheckSkipped = rules.serviceZips.length === 0;
-  if (!zipCheckSkipped && !(answers.zip && rules.serviceZips.includes(answers.zip))) reasons.push('out_of_area');
   if (answers.budget && (BUDGET_MAX[answers.budget] ?? Number.POSITIVE_INFINITY) <= rules.minBudget) reasons.push('budget');
   if (answers.timeline && rules.dqTimelines.includes(answers.timeline)) reasons.push('timeline');
   if (answers.credit === 'below_620') reasons.push('credit');
@@ -130,7 +125,6 @@ export function evaluate(answers: Answers, rules: Rules): Evaluation {
     title_unverified: answers.on_title === 'not_sure',
     credit_unverified: answers.credit === 'not_sure',
     bankruptcy_unverified: answers.bankruptcy === 'discuss',
-    zip_check_skipped: zipCheckSkipped,
   };
 }
 

@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { Plus } from 'lucide-react';
 import { AduQuiz } from '@/components/adu-quiz/adu-quiz';
 import { FOOTER_DISCLAIMER } from '@/lib/adu-quiz/quiz';
-import { LICENSE_LINE, publicConfig } from '@/lib/adu-quiz/config';
+import { publicConfig } from '@/lib/adu-quiz/config';
 
 export const metadata: Metadata = {
   title: 'What Would an ADU Cost on Your Lot?',
@@ -56,7 +56,6 @@ export default function AduQuizPage() {
         <div className="mx-auto w-full max-w-3xl space-y-4 px-5 py-8 text-xs leading-6 text-[var(--hq-text-dim)] sm:px-8">
           <p>We connect homeowners with licensed local ADU builders.</p>
           <p>{FOOTER_DISCLAIMER}</p>
-          {LICENSE_LINE ? <p>{LICENSE_LINE}</p> : null}
           <nav aria-label="Legal" className="flex flex-wrap gap-x-6">
             <a href="/privacy" className="inline-block py-3 font-semibold text-[var(--hq-text-muted)] underline hover:text-[var(--hq-text)]">Privacy Policy</a>
             <a href="/terms" className="inline-block py-3 font-semibold text-[var(--hq-text-muted)] underline hover:text-[var(--hq-text)]">Terms</a>

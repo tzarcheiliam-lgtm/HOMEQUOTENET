@@ -14,16 +14,6 @@ import { site } from '@/content/site';
 /** Shown in the consent text and footer. Defaults to the site name. */
 export const BRAND_NAME: string = site.name;
 
-/** TODO: e.g. "CSLB #123456". Renders in the footer only when non-empty. */
-export const LICENSE_LINE = '';
-
-/**
- * TODO: 5-digit ZIPs the buyer serves. While this list is EMPTY the ZIP check
- * is skipped (every ZIP qualifies on this rule) and a warning is logged on each
- * submission.
- */
-export const SERVICE_ZIPS: readonly string[] = [];
-
 /** Budget answers whose top of range is at or below this are not qualified. */
 export const MIN_BUDGET = 150000;
 
@@ -94,7 +84,6 @@ export const resolvedGoogleTagId = () => {
 
 /** Rules the quiz logic reads. */
 export const qualificationRules = () => ({
-  serviceZips: SERVICE_ZIPS,
   minBudget: MIN_BUDGET,
   dqTimelines: DQ_TIMELINES,
 });
@@ -103,7 +92,6 @@ export const qualificationRules = () => ({
 export function publicConfig() {
   return {
     brandName: BRAND_NAME,
-    licenseLine: LICENSE_LINE,
     priceRanges: PRICE_RANGES,
     bookingUrl: resolvedBookingUrl(),
     metaPixelId: resolvedPixelId(),

@@ -4,8 +4,8 @@ import {
 } from '@/lib/adu-quiz/quiz';
 import { buildWebhookPayload, submissionSchema } from '@/lib/adu-quiz/submission';
 
-/** A fully qualified homeowner under rules with a ZIP list and the default $150k minimum. */
-const rules: Rules = { serviceZips: ['90210', '91403'], minBudget: 150000, dqTimelines: ['12_plus', 'researching'] };
+/** A fully qualified homeowner under the default $150k minimum. */
+const rules: Rules = { minBudget: 150000, dqTimelines: ['12_plus', 'researching'] };
 const good: Answers = {
   owns_home: 'yes', on_title: 'yes', property_type: 'single_family', zip: '91403', location: 'backyard',
   goal: 'rental_income', budget: '150k_250k', payment: 'financing', timeline: 'within_3',
@@ -16,7 +16,7 @@ describe('qualification rules', () => {
   it('qualifies a clean lead with no flags', () => {
     expect(evaluate(good, rules)).toEqual({
       qualified: true, dq_reason: null, dq_reasons: [],
-      title_unverified: false, credit_unverified: false, bankruptcy_unverified: false, zip_check_skipped: false,
+      title_unverified: false, credit_unverified: false, bankruptcy_unverified: false,
     });
   });
 
@@ -27,7 +27,6 @@ describe('qualification rules', () => {
     ['condo', { property_type: 'townhome_condo' }, 'property_type'],
     ['multi-family', { property_type: 'multi_family' }, 'property_type'],
     ['other property', { property_type: 'other' }, 'property_type'],
-    ['outside service ZIPs', { zip: '10001' }, 'out_of_area'],
     ['budget under $100k', { budget: 'under_100k' }, 'budget'],
     ['budget $100k-$150k', { budget: '100k_150k' }, 'budget'],
     ['timeline 12+ months', { timeline: '12_plus' }, 'timeline'],
@@ -71,10 +70,8 @@ describe('qualification rules', () => {
     expect(e.dq_reason).toBe('not_owner');
   });
 
-  it('skips the ZIP rule while SERVICE_ZIPS is empty and says so', () => {
-    const e = evaluate({ ...good, zip: '10001' }, { ...rules, serviceZips: [] });
-    expect(e.qualified).toBe(true);
-    expect(e.zip_check_skipped).toBe(true);
+  it('the ZIP code is captured but never qualifies or disqualifies', () => {
+    for (const zip of ['10001', '90210', '91403', '00000']) expect(evaluate({ ...good, zip }, rules).qualified).toBe(true);
   });
 
   it('thresholds come from the rules, not the logic', () => {

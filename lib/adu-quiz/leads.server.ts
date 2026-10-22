@@ -108,7 +108,6 @@ export async function submitAduQuizLead(input: Submission): Promise<SubmitResult
 
   const answers = input.answers as Answers;
   const evaluation: Evaluation = evaluate(answers, qualificationRules());
-  if (evaluation.zip_check_skipped) console.warn('[adu-quiz] SERVICE_ZIPS is empty: the ZIP check was skipped for this submission.');
   if (input.consentText !== consentText(BRAND_NAME)) console.warn('[adu-quiz] consent text differs from the current config text (stale page?). Storing what the visitor saw.');
 
   const phone = parseUsPhone(input.contact.phone);

@@ -17,7 +17,7 @@ only links are Privacy and Terms (footer and consent text).
 | `app/adu-quiz/{layout,page}.tsx` | Lean shell, hero, FAQ, legal footer. |
 | `app/adu-quiz/booked/page.tsx` | Calendar redirect target; tells the quiz page (parent window) the booking finished. |
 | `components/adu-quiz/adu-quiz.tsx`, `tracking.ts` | The quiz (client) and browser tracking. |
-| `supabase/migrations/0047_adu_quiz_leads.sql` | `adu_quiz_leads` table: durable copy + webhook retry queue. **Apply before launch.** |
+| `supabase/migrations/0047_adu_quiz_leads.sql` | `adu_quiz_leads` table: durable copy + webhook retry queue. Applied by the owner. |
 | `tests/adu-quiz.test.ts`, `tests/adu-quiz-leads.test.ts` | Rules, payload, and the whole lead pipeline against the real migration. |
 
 ## Placeholders to fill in before ads go live
@@ -26,8 +26,6 @@ All in `lib/adu-quiz/config.ts` unless noted.
 
 | Setting | What | Until set |
 | --- | --- | --- |
-| `LICENSE_LINE` | e.g. `CSLB #123456` | Footer line hidden |
-| `SERVICE_ZIPS` | 5-digit ZIPs the buyer serves | ZIP rule **skipped**, warning logged per submission |
 | `MIN_BUDGET` | Default `150000` | Already set; change per buyer |
 | `DQ_TIMELINES` | Default `12_plus`, `researching` | Already set; change per buyer |
 | `PRICE_RANGES` | `{ low, high }` per "where would it go" answer | `0/0` = no numbers shown; page says the builder confirms the range |
@@ -42,7 +40,7 @@ Environment overrides (win over the config file): `ADU_QUIZ_LEAD_WEBHOOK_URL`, `
 existing `META_CONVERSIONS_API_TOKEN`.
 
 Also required outside the repo:
-1. Apply migration `0047_adu_quiz_leads.sql` to the database.
+1. Migration `0047_adu_quiz_leads.sql` has been applied by the owner.
 2. In the GoHighLevel calendar, set the booking confirmation to **redirect to `https://<your domain>/adu-quiz/booked`**.
    That is how the Schedule event fires. (Not verified against a live GoHighLevel account: confirm the redirect option
    and that the widget prefills from `first_name`, `last_name`, `email`, `phone` URL parameters.)
@@ -53,7 +51,9 @@ Also required outside the repo:
 Rules are applied identically to everyone, using only the quiz answers. The quiz never stops early: every visitor
 finishes the quiz and the contact step so the lead is captured. Only the last screen differs.
 
-Not qualified: `not_owner`, `not_on_title`, `property_type`, `out_of_area`, `budget`, `timeline`, `credit`,
+The ZIP is captured and sent to the CRM but is not a qualification rule, because leads go to several buyers.
+
+Not qualified: `not_owner`, `not_on_title`, `property_type`, `budget`, `timeline`, `credit`,
 `bankruptcy`, `decision_makers`. "Not sure" (title, credit) and "I'd rather discuss" (bankruptcy) continue and set
 `title_unverified`, `credit_unverified`, `bankruptcy_unverified`. The browser never decides: `/api/adu-quiz/lead`
 recomputes qualification from the answers.
