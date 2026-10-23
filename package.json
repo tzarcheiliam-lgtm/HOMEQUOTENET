@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "npm run build:studio && next build",
-    "build:studio": "npm ci --prefix studio --no-audit --no-fund && VITE_KIE_KEY= npm run build --prefix studio",
+    "build:studio": "cd studio && npm ci --no-audit --no-fund && VITE_KIE_KEY= npm run build",
     "start": "next start",
     "lint": "eslint .",
     "test": "vitest run",
