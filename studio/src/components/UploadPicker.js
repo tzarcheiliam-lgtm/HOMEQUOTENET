@@ -92,12 +92,12 @@ export function createUploadPicker({ anchorContainer, onSelect, onClear, maxImag
         if (count > 1) {
             // Multiple selected — show count
             countBadge.className = 'absolute bottom-0.5 right-0.5 min-w-[16px] h-4 bg-primary rounded-full flex items-center justify-center px-0.5';
-            countBadge.innerHTML = `<span class="text-[9px] font-black text-black leading-none">${count}</span>`;
+            countBadge.innerHTML = `<span class="text-[9px] font-black text-white leading-none">${count}</span>`;
             trigger.title = `${count} of ${maxImages} images selected — click to manage`;
         } else if (canAddMore) {
             // 1 selected, multi-mode active — show "+" to invite adding more
             countBadge.className = 'absolute bottom-0.5 right-0.5 min-w-[16px] h-4 bg-white/80 rounded-full flex items-center justify-center px-0.5 border border-primary/60';
-            countBadge.innerHTML = `<span class="text-[9px] font-black text-black leading-none">+</span>`;
+            countBadge.innerHTML = `<span class="text-[9px] font-black text-white leading-none">+</span>`;
             trigger.title = `1 image selected — click to add more (up to ${maxImages})`;
         } else {
             // Single mode or at max — show checkmark
@@ -165,7 +165,7 @@ export function createUploadPicker({ anchorContainer, onSelect, onClear, maxImag
         if (isMulti && selectedEntries.length > 0) {
             const doneBtn = document.createElement('button');
             doneBtn.type = 'button';
-            doneBtn.className = 'flex items-center gap-1 px-3 py-1.5 bg-primary text-black rounded-xl text-xs font-black transition-all hover:scale-105';
+            doneBtn.className = 'flex items-center gap-1 px-3 py-1.5 bg-primary text-white rounded-xl text-xs font-black transition-all hover:scale-105';
             doneBtn.innerHTML = `✓ Done (${selectedEntries.length})`;
             doneBtn.onclick = (e) => {
                 e.stopPropagation();
@@ -239,7 +239,7 @@ export function createUploadPicker({ anchorContainer, onSelect, onClear, maxImag
                 const badge = document.createElement('div');
                 badge.className = 'absolute top-1 left-1 min-w-[20px] h-5 bg-primary rounded-full flex items-center justify-center px-1';
                 if (isMulti) {
-                    badge.innerHTML = `<span class="text-[10px] font-black text-black">${selIdx + 1}</span>`;
+                    badge.innerHTML = `<span class="text-[10px] font-black text-white">${selIdx + 1}</span>`;
                 } else {
                     badge.innerHTML = `<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="4"><polyline points="20 6 9 17 4 12"/></svg>`;
                 }
@@ -291,7 +291,7 @@ export function createUploadPicker({ anchorContainer, onSelect, onClear, maxImag
             bottomBar.innerHTML = `<span class="text-xs text-secondary">${selectedEntries.length} of ${maxImages} selected</span>`;
             const doneBtn2 = document.createElement('button');
             doneBtn2.type = 'button';
-            doneBtn2.className = 'px-4 py-1.5 bg-primary text-black rounded-xl text-xs font-black transition-all hover:scale-105';
+            doneBtn2.className = 'px-4 py-1.5 bg-primary text-white rounded-xl text-xs font-black transition-all hover:scale-105';
             doneBtn2.textContent = 'Use Selected';
             doneBtn2.onclick = (e) => {
                 e.stopPropagation();

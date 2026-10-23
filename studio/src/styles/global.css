@@ -1,28 +1,37 @@
 @import "tailwindcss";
 
 @theme {
-    --color-primary: #ff2d2d;
-    --color-primary-hover: #e11d1d;
-    --color-app-bg: #050505;
-    --color-panel-bg: #0a0a0a;
-    --color-card-bg: #141414;
-    --color-secondary: #a1a1aa;
-    --color-muted: #52525b;
+    /* HomeQuote Network brand, dark: Navy surfaces, HomeQuote Blue (lifted for contrast on navy), Gold accent only. */
+    --color-primary: #2f6bff;
+    --color-primary-hover: #0038b8;
+    --color-gold: #f5b700;
+    --color-app-bg: #06132e;
+    --color-panel-bg: #0a1b3d;
+    --color-card-bg: #102552;
+    --color-secondary: #b6c2db;
+    --color-muted: #7d8baa;
+    /* Overlays and the header use "black": make it deep navy so nothing reads as pure black. */
+    --color-black: #030b1f;
 
-    --font-sans: "Inter", "system-ui", "-apple-system", "sans-serif";
+    --font-sans: "DM Sans", system-ui, -apple-system, sans-serif;
+    --font-display: "Sora", "DM Sans", system-ui, sans-serif;
 
     --radius-xl: 1rem;
     --radius-2xl: 1.5rem;
     --radius-3xl: 2rem;
 
-    --shadow-glow: 0 0 20px rgba(255, 45, 45, 0.4);
-    --shadow-glow-accent: 0 0 20px rgba(168, 85, 247, 0.4);
-    --shadow-3xl: 0 35px 60px -15px rgba(0, 0, 0, 0.8);
+    --shadow-glow: 0 0 20px rgba(47, 107, 255, 0.35);
+    --shadow-glow-accent: 0 0 20px rgba(245, 183, 0, 0.35);
+    --shadow-3xl: 0 35px 60px -15px rgba(3, 11, 31, 0.8);
 }
 
 @layer base {
     body {
         @apply bg-app-bg text-white font-sans antialiased h-screen overflow-hidden;
+    }
+
+    h1, h2, h3 {
+        font-family: var(--font-display);
     }
 
     /* Custom Scrollbar Refinement */
@@ -95,7 +104,7 @@
     left: 0;
     right: 0;
     height: 60%;
-    background: linear-gradient(to top, rgba(0, 0, 0, 0.75), transparent);
+    background: linear-gradient(to top, rgba(3, 11, 31, 0.75), transparent);
     pointer-events: none;
 }
 
@@ -187,7 +196,7 @@
     pointer-events: none;
     transition: all 0.2s ease;
     z-index: 9999;
-    box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5);
+    box-shadow: 0 10px 30px -10px rgba(3,11,31,0.5);
 }
 
 /* Show tooltip on hover */
