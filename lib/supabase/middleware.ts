@@ -57,6 +57,8 @@ export async function updateSession(request: NextRequest) {
   // The service worker and manifest are fetched by the browser itself (often in the
   // background): they need no session and must not trigger a token refresh.
   if (publicPath === '/sw.js' || publicPath === '/manifest.webmanifest' || publicPath === '/offline.html') return supabaseResponse;
+  // MOTC studio is static files that need no session (each user brings their own kie.ai key).
+  if (publicPath === '/studio' || publicPath.startsWith('/studio/')) return supabaseResponse;
 
   // Guard: if the Supabase env vars aren't present in this build, don't throw
   // (which would 500 the entire site via MIDDLEWARE_INVOCATION_FAILED). Skip the

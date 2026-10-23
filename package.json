@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "next build",
+    "build": "npm run build:studio && next build",
+    "build:studio": "npm ci --prefix studio --no-audit --no-fund && VITE_KIE_KEY= npm run build --prefix studio",
     "start": "next start",
     "lint": "eslint .",
     "test": "vitest run",

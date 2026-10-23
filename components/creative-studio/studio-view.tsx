@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Clapperboard, Film, Image as ImageIcon, Sparkles, Trash2 } from 'lucide-react';
+import { Clapperboard, ExternalLink, Film, Image as ImageIcon, Sparkles, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ConfirmAction } from '@/components/ui/confirm-action';
 import { removeCreativeEmbed } from '@/lib/actions/creative-studio';
@@ -15,6 +15,8 @@ export interface StudioItem {
   src: string;
   /** Set only for embeds added on the page, which can be removed there. */
   removableId?: string;
+  /** Shows an "Open full screen" link (used for MOTC, which is a full app). */
+  openHref?: string;
 }
 
 const KIND_ICON: Record<string, typeof Film> = { 'Image to Video': ImageIcon, 'Video to Video': Clapperboard };
@@ -51,6 +53,11 @@ export function StudioView({ tools, agents }: { tools: StudioItem[]; agents: Stu
               <h2 id={`agent-${agent.key}`} className="flex items-center gap-2 text-lg font-semibold"><Sparkles aria-hidden className="size-4 text-primary" />{agent.title}</h2>
               {agent.description && <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{agent.description}</p>}
             </div>
+            {agent.openHref && (
+              <a href={agent.openHref} target="_blank" rel="noopener" className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline">
+                <ExternalLink aria-hidden className="size-3.5" /> Open full screen
+              </a>
+            )}
             {agent.removableId && <RemoveButton id={agent.removableId} title={agent.title} />}
           </div>
           <div className="h-[70vh] min-h-[480px] w-full overflow-hidden rounded-xl border bg-muted">
