@@ -1,13 +1,13 @@
 import 'server-only';
 import { createClient } from '@/lib/supabase/server';
-import { CREATIVE_AGENT, CREATIVE_TOOLS, MOTC_STUDIO, agentSrc, embedSrc } from '@/content/creative-studio';
+import { CREATIVE_AGENT, CREATIVE_TOOLS, SERET_STUDIO, agentSrc, embedSrc } from '@/content/creative-studio';
 import type { StudioItem } from '@/components/creative-studio/studio-view';
 
-/** Built-in entries first (in file order), then the ones an admin added on the page (oldest first). MOTC leads the full-width panels. */
+/** Built-in entries first (in file order), then the ones an admin added on the page (oldest first). Seret leads the full-width panels. */
 export async function getStudioItems(): Promise<{ tools: StudioItem[]; agents: StudioItem[] }> {
   const tools: StudioItem[] = CREATIVE_TOOLS.map((t) => ({ key: t.slug, title: t.title, kind: t.kind, description: t.description, src: embedSrc(t.embedId) }));
   const agents: StudioItem[] = [
-    { key: 'motc', title: MOTC_STUDIO.title, kind: 'Studio', description: MOTC_STUDIO.description, src: MOTC_STUDIO.src, openHref: MOTC_STUDIO.src },
+    { key: 'seret', title: SERET_STUDIO.title, kind: 'Studio', description: SERET_STUDIO.description, src: SERET_STUDIO.src, openHref: SERET_STUDIO.src },
   ];
   if (CREATIVE_AGENT) {
     agents.push({ key: 'builtin-agent', title: CREATIVE_AGENT.title, kind: 'Assistant', description: CREATIVE_AGENT.description, src: agentSrc(CREATIVE_AGENT.agentId) });

@@ -16,7 +16,7 @@ const config = [
       'node_modules/**',
       '.qa-screenshots/**',
       'next-env.d.ts',
-      // MOTC studio is a separate Vite app with its own build (see studio/README.md).
+      // Seret studio is a separate Vite app with its own build (see studio/README.md).
       'studio/**',
       'public/studio/**',
     ],

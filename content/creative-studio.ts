@@ -34,12 +34,12 @@ export const AGENT_ID = /^[A-Za-z0-9_-]{16,64}$/;
 export const agentSrc = (agentId: string) => `${AGENT_HOST}${agentId}`;
 
 /**
- * MOTC, HomeQuote's own image / video / cinema / lip-sync studio, shown first on the page. It is NOT a muapi
+ * Seret, HomeQuote's own image / video / cinema / lip-sync studio, shown first on the page. It is NOT a muapi
  * embed: the source lives in `studio/` and is built into `public/studio/` on every deploy, served at /studio.
  * Each user enters their own kie.ai key in it (kept in their browser), so it runs on no shared account.
  */
-export const MOTC_STUDIO = {
-  title: 'MOTC Studio',
+export const SERET_STUDIO = {
+  title: 'Seret',
   description: 'HomeQuote’s own studio for AI images, video, cinema shots and lip sync. Uses your kie.ai API key.',
   src: '/studio',
 };

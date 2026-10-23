@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-// MOTC studio (/studio, static files in public/studio/) is admins only, enforced in the middleware.
+// Seret studio (/studio, static files in public/studio/) is admins only, enforced in the middleware.
 let user: { id: string } | null;
 let authError: { name: string; status: number } | null;
 let profile: { role: string; is_active: boolean } | null;
@@ -26,7 +26,7 @@ beforeEach(() => {
   profile = { role: 'admin', is_active: true };
 });
 
-describe('MOTC studio access', () => {
+describe('Seret studio access', () => {
   it('lets an active admin load the page and its assets', async () => {
     for (const path of ['/studio', '/studio/index.html', '/studio/assets/index-abc.js']) {
       const res = await updateSession(req(path));

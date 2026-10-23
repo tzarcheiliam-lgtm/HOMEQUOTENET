@@ -42,7 +42,7 @@ export function CinemaStudio() {
 
     const overlayContent = document.createElement('div');
     // Reduced padding for mobile (p-4) and added max-height/overflow handling
-    overlayContent.className = 'w-full max-w-4xl bg-[#141414] border border-white/10 rounded-3xl p-4 md:p-8 shadow-2xl transform scale-95 transition-transform duration-300 flex flex-col max-h-[90vh]';
+    overlayContent.className = 'w-full max-w-4xl bg-[#0f2350] border border-white/10 rounded-3xl p-4 md:p-8 shadow-2xl transform scale-95 transition-transform duration-300 flex flex-col max-h-[90vh]';
     overlayBackdrop.appendChild(overlayContent);
 
     // Header for Overlay
@@ -50,7 +50,7 @@ export function CinemaStudio() {
     overlayHeader.className = 'flex items-center justify-between mb-8';
     overlayHeader.innerHTML = `
         <div class="flex gap-4">
-            <button class="px-4 py-2 bg-white text-black text-xs font-bold rounded-full">All</button>
+            <button class="px-4 py-2 bg-white text-panel-bg text-xs font-bold rounded-full">All</button>
         </div>
         <button id="close-overlay-btn" class="text-white/50 hover:text-white transition-colors">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -92,7 +92,7 @@ export function CinemaStudio() {
     promptBarWrapper.className = 'absolute bottom-8 left-4 right-4 md:left-1/2 md:-translate-x-1/2 md:w-full md:max-w-4xl z-30';
 
     const promptBar = document.createElement('div');
-    promptBar.className = 'bg-[#1a1a1a] border border-white/10 rounded-[2rem] p-4 flex justify-between shadow-3xl items-end relative';
+    promptBar.className = 'bg-[#132b5e] border border-white/10 rounded-[2rem] p-4 flex justify-between shadow-3xl items-end relative';
 
     // --- LEFT COLUMN (Input + Settings) ---
     const leftColumn = document.createElement('div');
@@ -130,7 +130,7 @@ export function CinemaStudio() {
 
         const rect = trigger.getBoundingClientRect();
         const menu = document.createElement('div');
-        menu.className = 'custom-dropdown fixed bg-[#1a1a1a] border border-white/10 rounded-xl py-1 shadow-2xl z-50 flex flex-col min-w-[100px] animate-fade-in';
+        menu.className = 'custom-dropdown fixed bg-[#132b5e] border border-white/10 rounded-xl py-1 shadow-2xl z-50 flex flex-col min-w-[100px] animate-fade-in';
         menu.style.bottom = (window.innerHeight - rect.top + 8) + 'px';
         menu.style.left = rect.left + 'px';
 
@@ -202,7 +202,7 @@ export function CinemaStudio() {
     // Summary Card (Triggers Overlay)
     const summaryCard = document.createElement('button');
     // Removed 'hidden' class, added 'flex' and refined width constraints for mobile
-    summaryCard.className = 'flex flex-col items-start justify-center px-4 py-2 bg-[#2a2a2a] rounded-xl border border-white/5 hover:border-white/20 transition-colors text-left flex-1 min-w-[100px] md:min-w-[140px] max-w-[240px] h-[56px] relative group overflow-hidden';
+    summaryCard.className = 'flex flex-col items-start justify-center px-4 py-2 bg-[#1e3a75] rounded-xl border border-white/5 hover:border-white/20 transition-colors text-left flex-1 min-w-[100px] md:min-w-[140px] max-w-[240px] h-[56px] relative group overflow-hidden';
     summaryCard.setAttribute('data-tooltip', 'Open camera settings');
 
     // Dot indicator
@@ -234,7 +234,7 @@ export function CinemaStudio() {
 
     // Generate Button
     const generateBtn = document.createElement('button');
-    generateBtn.className = 'h-[56px] px-8 bg-[#ff2d2d] text-black rounded-xl font-black text-xs uppercase hover:bg-white transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed';
+    generateBtn.className = 'h-[56px] px-8 bg-primary text-white rounded-xl font-black text-xs uppercase hover:bg-primary-hover transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed';
     generateBtn.setAttribute('data-tooltip', 'Generate cinema shot');
     generateBtn.innerHTML = `GENERATE ✨`;
 
@@ -253,7 +253,7 @@ export function CinemaStudio() {
     cameraBuilderPanel.style.display = 'none'; // Hidden by default
     
     const builderCard = document.createElement('div');
-    builderCard.className = 'bg-[#1a1a1a] border border-white/10 rounded-2xl p-4 shadow-3xl';
+    builderCard.className = 'bg-[#132b5e] border border-white/10 rounded-2xl p-4 shadow-3xl';
     
     builderCard.innerHTML = `
         <div class="flex items-center justify-between mb-4">
@@ -293,7 +293,7 @@ export function CinemaStudio() {
         <div class="flex flex-col gap-2">
             <label class="text-[10px] font-bold text-muted uppercase">Preview</label>
             <div id="builder-preview" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-white text-xs min-h-[40px]"></div>
-            <button id="apply-builder-btn" class="px-4 py-2 bg-primary text-black rounded-lg text-xs font-bold hover:shadow-glow transition-all">
+            <button id="apply-builder-btn" class="px-4 py-2 bg-primary text-white rounded-lg text-xs font-bold hover:shadow-glow transition-all">
                 Use This Setup
             </button>
         </div>
@@ -395,7 +395,7 @@ export function CinemaStudio() {
     const createActionBtn = (label, primary = false) => {
         const btn = document.createElement('button');
         btn.className = primary
-            ? 'bg-[#ff2d2d] text-black px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-wide hover:bg-white transition-colors shadow-glow-sm hover:scale-105 active:scale-95'
+            ? 'bg-primary text-white px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-wide hover:bg-primary-hover transition-colors shadow-glow-sm hover:scale-105 active:scale-95'
             : 'bg-white/10 hover:bg-white/20 px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide transition-all border border-white/5 backdrop-blur-lg text-white hover:border-white/20';
         btn.textContent = label;
         return btn;
@@ -417,7 +417,7 @@ export function CinemaStudio() {
         historyList.innerHTML = '';
         generationHistory.forEach((entry, idx) => {
             const thumb = document.createElement('div');
-            thumb.className = `relative group/thumb cursor-pointer rounded-lg overflow-hidden border-2 transition-all duration-300 aspect-square ${idx === 0 ? 'border-[#ff2d2d] shadow-glow-sm' : 'border-white/10 hover:border-white/30'}`;
+            thumb.className = `relative group/thumb cursor-pointer rounded-lg overflow-hidden border-2 transition-all duration-300 aspect-square ${idx === 0 ? 'border-[#2f6bff] shadow-glow-sm' : 'border-white/10 hover:border-white/30'}`;
 
             thumb.innerHTML = `
                 <img src="${entry.url}" class="w-full h-full object-cover opacity-80 group-hover/thumb:opacity-100 transition-opacity">
@@ -458,11 +458,11 @@ export function CinemaStudio() {
         // Highlight active history item
         if (thumbElement) {
             historyList.querySelectorAll('div').forEach(t => {
-                t.classList.remove('border-[#ff2d2d]', 'shadow-glow-sm');
+                t.classList.remove('border-[#2f6bff]', 'shadow-glow-sm');
                 t.classList.add('border-white/10');
             });
             thumbElement.classList.remove('border-white/10');
-            thumbElement.classList.add('border-[#ff2d2d]', 'shadow-glow-sm');
+            thumbElement.classList.add('border-[#2f6bff]', 'shadow-glow-sm');
         }
     };
 

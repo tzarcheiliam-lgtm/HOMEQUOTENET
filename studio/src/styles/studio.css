@@ -40,7 +40,7 @@
     left: 0;
     right: 0;
     padding: 0.5rem;
-    background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+    background: linear-gradient(transparent, rgba(3, 11, 31, 0.8));
     color: white;
     font-size: 0.75rem;
     font-weight: 600;
@@ -102,7 +102,7 @@
 }
 
 .toolbar-btn {
-    background: rgba(0, 0, 0, 0.6);
+    background: rgba(3, 11, 31, 0.6);
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.1);
     color: white;

@@ -19,14 +19,8 @@ export function Header(navigate) {
     const logoContainer = document.createElement('div');
     logoContainer.className = 'flex items-center gap-3 cursor-pointer hover:scale-105 transition-transform';
     logoContainer.innerHTML = `
-        <div class="w-8 h-8 bg-[#ff2d2d] rounded-lg flex items-center justify-center p-1.5 shadow-lg">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 2L2 7L12 12L22 7L12 2Z" fill="white"/>
-                <path d="M2 17L12 22L22 17" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                <path d="M2 12L12 17L22 12" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-        </div>
-        <span class="text-lg font-black tracking-tight text-white">MOTC</span><span class="hidden sm:inline text-[10px] font-bold uppercase tracking-widest text-secondary">by Homequote Network</span>
+        <img src="/brand/seret-icon.svg" alt="Seret" width="34" height="34" class="w-[34px] h-[34px]">
+        <span class="font-display text-lg font-bold tracking-tight text-white">Seret</span><span class="hidden sm:inline text-[10px] font-bold uppercase tracking-widest text-secondary">by HomeQuote Network</span>
     `;
     logoContainer.onclick = () => { navigate('image'); activate('Image'); };
 
@@ -46,7 +40,7 @@ export function Header(navigate) {
         const link = links[name];
         link.classList.add('text-white');
         const dot = document.createElement('div');
-        dot.className = 'absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-primary rounded-full';
+        dot.className = 'absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-gold rounded-full';
         dot.setAttribute('data-nav-dot', '1');
         link.appendChild(dot);
     };
@@ -63,7 +57,7 @@ export function Header(navigate) {
 
         if (name === 'Image') {
             const dot = document.createElement('div');
-            dot.className = 'absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-primary rounded-full';
+            dot.className = 'absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-gold rounded-full';
             dot.setAttribute('data-nav-dot', '1');
             link.appendChild(dot);
         }

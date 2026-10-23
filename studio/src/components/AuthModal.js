@@ -8,7 +8,7 @@ export function AuthModal(onSuccess) {
     modal.innerHTML = `
         <div class="flex flex-col items-center text-center mb-8">
             <div class="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center border border-primary/20 shadow-glow mb-6">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ff2d2d" stroke-width="2">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2f6bff" stroke-width="2">
                     <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3m-3-3l-2.25-2.25"/>
                 </svg>
             </div>
@@ -28,7 +28,7 @@ export function AuthModal(onSuccess) {
             </div>
 
             <div class="flex flex-col gap-3">
-                <button id="save-key-btn" class="w-full bg-primary text-black font-black py-4 rounded-2xl hover:shadow-glow hover:scale-[1.02] active:scale-[0.98] transition-all">
+                <button id="save-key-btn" class="w-full bg-primary text-white font-black py-4 rounded-2xl hover:shadow-glow hover:scale-[1.02] active:scale-[0.98] transition-all">
                     Initialize Studio
                 </button>
                 <a href="https://kie.ai/api-key" target="_blank" class="text-center text-[11px] font-bold text-muted hover:text-white transition-colors py-2 uppercase tracking-tighter">

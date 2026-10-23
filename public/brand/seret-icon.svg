@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+<title>Seret by HomeQuote Network - icon</title>
+<path fill="#2f6bff" d="M60 6 112 48C113.3 49.3 114 51 114 53V100C114 105.3 111.3 108 106 108H44L28 122V108H14C8.7 108 6 105.3 6 100V53C6 51 6.7 49.3 8 48L60 6Z"/>
+<g fill="#0a1b3d">
+<rect x="14" y="58" width="8" height="8" rx="2"/><rect x="14" y="72" width="8" height="8" rx="2"/><rect x="14" y="86" width="8" height="8" rx="2"/>
+<rect x="98" y="58" width="8" height="8" rx="2"/><rect x="98" y="72" width="8" height="8" rx="2"/><rect x="98" y="86" width="8" height="8" rx="2"/>
+</g>
+<rect x="30" y="54" width="60" height="44" rx="7" fill="#ffffff"/>
+<path d="M53 65 L53 87 L72 76 Z" fill="#2f6bff" stroke="#2f6bff" stroke-width="4" stroke-linejoin="round"/>
+<circle cx="60" cy="34" r="6.5" fill="#f5b700"/>
+</svg>

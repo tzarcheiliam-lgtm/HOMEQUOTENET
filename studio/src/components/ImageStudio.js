@@ -66,7 +66,7 @@ export function ImageStudio() {
     hero.innerHTML = `
         <div class="mb-10 relative group">
              <div class="absolute inset-0 bg-primary/20 blur-[100px] rounded-full opacity-40 group-hover:opacity-70 transition-opacity duration-1000"></div>
-             <div class="relative w-24 h-24 md:w-32 md:h-32 bg-teal-900/40 rounded-3xl flex items-center justify-center border border-white/5 overflow-hidden">
+             <div class="relative w-24 h-24 md:w-32 md:h-32 bg-primary/15 rounded-3xl flex items-center justify-center border border-white/5 overflow-hidden">
                 <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" class="text-primary opacity-20 absolute -right-4 -bottom-4">
                     <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
                 </svg>
@@ -81,7 +81,7 @@ export function ImageStudio() {
                 <div class="absolute top-4 right-4 text-primary animate-pulse">✨</div>
              </div>
         </div>
-        <h1 class="text-2xl sm:text-4xl md:text-7xl font-black text-white tracking-widest uppercase mb-4 selection:bg-primary selection:text-black text-center px-4">Image Studio</h1>
+        <h1 class="text-2xl sm:text-4xl md:text-7xl font-black text-white tracking-widest uppercase mb-4 selection:bg-primary selection:text-white text-center px-4">Image Studio</h1>
         <p class="text-secondary text-sm font-medium tracking-wide opacity-60">Transform images with AI — upscale, stylize, animate and more</p>
     `;
     container.appendChild(hero);
@@ -94,7 +94,7 @@ export function ImageStudio() {
     promptWrapper.style.animationDelay = '0.2s';
 
     const bar = document.createElement('div');
-    bar.className = 'w-full bg-[#111]/90 backdrop-blur-xl border border-white/10 rounded-[1.5rem] md:rounded-[2.5rem] p-3 md:p-5 flex flex-col gap-3 md:gap-5 shadow-3xl';
+    bar.className = 'w-full bg-panel-bg/90 backdrop-blur-xl border border-white/10 rounded-[1.5rem] md:rounded-[2.5rem] p-3 md:p-5 flex flex-col gap-3 md:gap-5 shadow-3xl';
 
     // Top Row: Input
     const topRow = document.createElement('div');
@@ -174,7 +174,7 @@ export function ImageStudio() {
 
     const modelBtn = createControlBtn(`
         <div class="w-5 h-5 bg-primary rounded-md flex items-center justify-center shadow-lg shadow-primary/20">
-            <span class="text-[10px] font-black text-black">G</span>
+            <span class="text-[10px] font-black text-white">G</span>
         </div>
     `, selectedModelName, 'model-btn', 'Select AI generation model');
 
@@ -210,7 +210,7 @@ export function ImageStudio() {
     }
 
     const generateBtn = document.createElement('button');
-    generateBtn.className = 'bg-primary text-black px-6 md:px-8 py-3 md:py-3.5 rounded-xl md:rounded-[1.5rem] font-black text-sm md:text-base hover:shadow-glow hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2.5 w-full sm:w-auto shadow-lg';
+    generateBtn.className = 'bg-primary text-white px-6 md:px-8 py-3 md:py-3.5 rounded-xl md:rounded-[1.5rem] font-black text-sm md:text-base hover:shadow-glow hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2.5 w-full sm:w-auto shadow-lg';
     generateBtn.setAttribute('data-tooltip', 'Generate AI image from prompt');
     generateBtn.innerHTML = `Generate ✨`;
 
@@ -233,7 +233,7 @@ export function ImageStudio() {
     
     // Build tools panel HTML
     toolsPanel.innerHTML = `
-        <div class="bg-[#111]/90 backdrop-blur-xl border border-white/10 rounded-2xl p-5 flex flex-col gap-4">
+        <div class="bg-panel-bg/90 backdrop-blur-xl border border-white/10 rounded-2xl p-5 flex flex-col gap-4">
             <div class="flex items-center justify-between pb-3 border-b border-white/5">
                 <h3 class="text-sm font-bold text-white">Quick Tools</h3>
                 <button id="close-tools-btn" class="text-white/40 hover:text-white transition-colors">
@@ -278,7 +278,7 @@ export function ImageStudio() {
                                 <button id="copy-enhanced-btn" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-white/5 text-secondary hover:bg-white/10 transition-all">
                                     Copy
                                 </button>
-                                <button id="use-enhanced-btn" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-primary text-black hover:shadow-glow transition-all">
+                                <button id="use-enhanced-btn" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-primary text-white hover:shadow-glow transition-all">
                                     Use in Generator
                                 </button>
                             </div>
@@ -300,7 +300,7 @@ export function ImageStudio() {
     advancedPanel.className = 'w-full max-w-4xl mt-6 animate-fade-in-up hidden';
     advancedPanel.id = 'advanced-panel';
     advancedPanel.innerHTML = `
-        <div class="bg-[#111]/90 backdrop-blur-xl border border-white/10 rounded-2xl p-5 flex flex-col gap-4">
+        <div class="bg-panel-bg/90 backdrop-blur-xl border border-white/10 rounded-2xl p-5 flex flex-col gap-4">
             <div class="flex items-center justify-between pb-3 border-b border-white/5">
                 <h3 class="text-sm font-bold text-white">Advanced Options</h3>
                 <button id="close-adv-btn" class="text-white/40 hover:text-white transition-colors">
@@ -491,12 +491,12 @@ export function ImageStudio() {
             const tag = btn.dataset.tag;
             if (enhanceSelectedTags.has(tag)) {
                 enhanceSelectedTags.delete(tag);
-                btn.classList.remove('bg-primary', 'text-black');
+                btn.classList.remove('bg-primary', 'text-white');
                 btn.classList.add('bg-white/5', 'text-secondary');
             } else {
                 enhanceSelectedTags.add(tag);
                 btn.classList.remove('bg-white/5', 'text-secondary');
-                btn.classList.add('bg-primary', 'text-black');
+                btn.classList.add('bg-primary', 'text-white');
             }
             updateEnhancedPrompt();
         };
@@ -675,7 +675,7 @@ export function ImageStudio() {
                                 <span class="text-xs font-bold text-white tracking-tight">${m.name}</span>
                              </div>
                         </div>
-                        ${selectedModel === m.id ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff2d2d" stroke-width="4"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
+                        ${selectedModel === m.id ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2f6bff" stroke-width="4"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
                     `;
                     item.onclick = (e) => {
                         e.stopPropagation();
@@ -726,7 +726,7 @@ export function ImageStudio() {
                         </div>
                         <span class="text-xs font-bold text-white opacity-80 group-hover:opacity-100 transition-opacity">${r}</span>
                     </div>
-                     ${selectedAr === r ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff2d2d" stroke-width="4"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
+                     ${selectedAr === r ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2f6bff" stroke-width="4"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
                 `;
                 item.onclick = (e) => {
                     e.stopPropagation();
@@ -750,7 +750,7 @@ export function ImageStudio() {
                 item.className = 'flex items-center justify-between p-3.5 hover:bg-white/5 rounded-2xl cursor-pointer transition-all group';
                 item.innerHTML = `
                     <span class="text-xs font-bold text-white opacity-80 group-hover:opacity-100">${opt}</span>
-                     ${document.getElementById('quality-btn-label').textContent === opt ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff2d2d" stroke-width="4"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
+                     ${document.getElementById('quality-btn-label').textContent === opt ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2f6bff" stroke-width="4"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
                 `;
                 item.onclick = (e) => {
                     e.stopPropagation();
@@ -858,7 +858,7 @@ export function ImageStudio() {
     regenerateBtn.textContent = '↻ Regenerate';
 
     const downloadBtn = document.createElement('button');
-    downloadBtn.className = 'bg-primary text-black px-6 py-2.5 rounded-2xl text-xs font-bold transition-all shadow-glow active:scale-95';
+    downloadBtn.className = 'bg-primary text-white px-6 py-2.5 rounded-2xl text-xs font-bold transition-all shadow-glow active:scale-95';
     downloadBtn.textContent = '↓ Download';
 
     const newPromptBtn = document.createElement('button');
@@ -911,7 +911,7 @@ export function ImageStudio() {
             thumb.innerHTML = `
                 <img src="${entry.url}" alt="${entry.prompt?.substring(0, 30) || 'Generated'}" class="w-full aspect-square object-cover">
                 <div class="absolute inset-0 bg-black/60 opacity-0 group-hover/thumb:opacity-100 transition-opacity flex items-center justify-center gap-1">
-                    <button class="hist-download p-1.5 bg-primary rounded-lg text-black hover:scale-110 transition-transform" title="Download">
+                    <button class="hist-download p-1.5 bg-primary rounded-lg text-white hover:scale-110 transition-transform" title="Download">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
                     </button>
                 </div>
@@ -975,7 +975,7 @@ export function ImageStudio() {
         if (!apiKey) return; // can't poll without key; jobs remain for next time
 
         const banner = document.createElement('div');
-        banner.className = 'fixed top-4 left-1/2 -translate-x-1/2 z-[200] bg-[#111] border border-white/10 text-white text-sm px-5 py-3 rounded-2xl shadow-xl flex items-center gap-3';
+        banner.className = 'fixed top-4 left-1/2 -translate-x-1/2 z-[200] bg-panel-bg border border-white/10 text-white text-sm px-5 py-3 rounded-2xl shadow-xl flex items-center gap-3';
         banner.innerHTML = `<span class="animate-spin text-primary">◌</span> <span class="banner-text">Resuming ${pending.length} pending generation${pending.length > 1 ? 's' : ''}…</span>`;
         document.body.appendChild(banner);
 
@@ -1065,7 +1065,7 @@ export function ImageStudio() {
 
         hero.classList.add('opacity-0', 'scale-95', '-translate-y-10', 'pointer-events-none');
         generateBtn.disabled = true;
-        generateBtn.innerHTML = `<span class="animate-spin inline-block mr-2 text-black">◌</span> Generating...`;
+        generateBtn.innerHTML = `<span class="animate-spin inline-block mr-2 text-white">◌</span> Generating...`;
 
         let hadError = false;
         let capturedRequestId = null;

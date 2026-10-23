@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { AGENT_ID, CREATIVE_AGENT, CREATIVE_TOOLS, EMBED_ID, MOTC_STUDIO, agentSrc, embedSrc } from '@/content/creative-studio';
+import { AGENT_ID, CREATIVE_AGENT, CREATIVE_TOOLS, EMBED_ID, SERET_STUDIO, agentSrc, embedSrc } from '@/content/creative-studio';
 import { navItemsForRole } from '@/lib/nav';
 
 describe('Creative Studio', () => {
@@ -22,8 +22,8 @@ describe('Creative Studio', () => {
     expect(CREATIVE_AGENT?.agentId).toMatch(AGENT_ID);
     expect(agentSrc(CREATIVE_AGENT!.agentId)).toBe('https://muapi.ai/embed/agent/MYDb5661RPR5SZoUXdL2p3NznT9YnZcQ');
   });
-  it('features MOTC, served from the studio build at /studio', () => {
-    expect(MOTC_STUDIO.src).toBe('/studio');
+  it('features Seret, served from the studio build at /studio', () => {
+    expect(SERET_STUDIO.src).toBe('/studio');
     const vite = readFileSync('studio/vite.config.mjs', 'utf8');
     expect(vite).toContain("base: '/studio/'");
     expect(vite).toContain("outDir: '../public/studio'");

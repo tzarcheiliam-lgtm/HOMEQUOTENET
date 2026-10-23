@@ -77,7 +77,7 @@ export function ModelsPage() {
     function paintFilters() {
         filters.querySelectorAll('button').forEach(b => {
             b.className = b.dataset.key === filter
-                ? 'px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest bg-primary text-black shadow-glow transition-all'
+                ? 'px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest bg-primary text-white shadow-glow transition-all'
                 : 'px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest bg-white/5 text-secondary hover:text-white hover:bg-white/10 transition-all';
         });
     }
