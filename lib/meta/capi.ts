@@ -51,6 +51,8 @@ export type MetaLeadEvent = {
   eventSourceUrl: string;
   eventTime?: number; // unix seconds; defaults to now
   user: MetaUserData;
+  /** Extra event parameters, e.g. the niche tags from lib/meta/niche.ts. Sent as custom_data. */
+  customData?: Record<string, string | number>;
 };
 
 /** Builds the Conversions API user_data object: hashed PII, raw IP/UA/fbp/fbc. */
@@ -108,6 +110,7 @@ export function buildEventsPayload(event: MetaLeadEvent, testCode?: string) {
       event_source_url: event.eventSourceUrl,
       action_source: 'website',
       user_data: buildUserData(event.user),
+      ...(event.customData && Object.keys(event.customData).length ? { custom_data: event.customData } : {}),
     }],
     ...(testCode ? { test_event_code: testCode } : {}),
   };

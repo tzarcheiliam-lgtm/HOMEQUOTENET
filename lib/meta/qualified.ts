@@ -2,6 +2,7 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { sendMetaEvent } from '@/lib/meta/capi';
+import { nicheDataFor } from '@/lib/meta/niche';
 import { directSendAudit } from '@/lib/meta/audit.server';
 
 /**
@@ -58,7 +59,7 @@ export async function sendQualifiedLeadEvent(db: SupabaseClient, leadId: string)
       .select('id, funnel_id, created_at, measurement_allowed, config_snapshot')
       .eq('lead_id', leadId).order('created_at', { ascending: true }).limit(1).maybeSingle();
     const { data: funnel } = s ? await db.from('funnels').select('is_demo, slug').eq('id', s.funnel_id).maybeSingle() : { data: null };
-    const config = s?.config_snapshot as { trackingPixels?: { metaPixelId?: string; consentMode?: 'opt_in' | 'opt_out' } } | undefined;
+    const config = s?.config_snapshot as { industry?: string; trackingPixels?: { metaPixelId?: string; consentMode?: 'opt_in' | 'opt_out' } } | undefined;
     const reason = qualifiedEventSkipReason({
       qualificationStatus: lead.qualification_status, qualifiedAt: lead.qualified_at, qualifiedBy: lead.qualified_by, leadSource: lead.source,
       hasMetaSignal: !!(lead.fbc || lead.fbp || lead.fbclid || lead.ad_id),
@@ -73,6 +74,7 @@ export async function sendQualifiedLeadEvent(db: SupabaseClient, leadId: string)
       pixelId: config!.trackingPixels!.metaPixelId!, eventName: 'QualifiedLead', eventId: `${s!.id}:QualifiedLead`,
       eventTime: Math.floor(new Date(lead.qualified_at).getTime() / 1000),
       eventSourceUrl: sourceUrl,
+      customData: nicheDataFor(config?.industry, funnel?.slug),
       // No client IP / user agent here: the original request's raw values are deliberately never stored.
       user: { email: lead.email, phone: lead.phone, firstName: lead.first_name, lastName: lead.last_name, zip: lead.zip, fbp: lead.fbp, fbc: lead.fbc },
     }, directSendAudit(db, { leadId, stage: 'qualified' }));

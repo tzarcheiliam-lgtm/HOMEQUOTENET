@@ -21,7 +21,7 @@ export type LedgerRow = {
   actor_kind: 'user' | 'ai' | 'system'; amount: number | null; currency: string | null;
   appointment_id: string | null; sale_id: string | null; reason_code: string | null;
 };
-export type LoadedLead = { lead: LeadForMeta; session: SessionForMeta | null; contractorId: string | null };
+export type LoadedLead = { lead: LeadForMeta; session: SessionForMeta | null; contractorId: string | null; /** Niche tags (lib/meta/niche.ts) added to website-pixel events. */ niche?: Record<string, string> | null };
 
 export type NewEvent = {
   lead_id: string; contractor_id: string | null; outcome_event_id: string | null;
@@ -126,7 +126,7 @@ export async function dispatchBatch(store: QueueStore, send: SendFn, opts: { now
     const d = decide({ stage: stageOf(ev), occurredAt: ev.event_time, now, lead: loaded.lead, session: loaded.session, datasetId: ev.dataset_id, crmDatasetId: s.datasetId, value: ev.value, currency: ev.currency,
       ref: { appointmentId: ev.appointment_id, saleId: ev.sale_id, retryOfDirect: !!ev.retry_of, ...(ev.appointment_id ? await store.bookingProvenance(ev.appointment_id) : {}) } });
     if (!d.ok) { await store.finish(ev.id, { status: 'skipped', skip_reason: d.reason }); continue; }
-    const payload = buildPayload(ev, loaded.lead, { eventSourceUrl: loaded.lead.landing_page_url, testEventCode: ev.test_mode ? s.testEventCode : null });
+    const payload = buildPayload(ev, loaded.lead, { eventSourceUrl: loaded.lead.landing_page_url, testEventCode: ev.test_mode ? s.testEventCode : null, niche: loaded.niche ?? null });
     let out: SendOutcome;
     try { out = interpretResponse(ev.attempt_count, ev.max_attempts, await send({ datasetId: ev.dataset_id, payload, testMode: ev.test_mode })); }
     catch (e) { out = interpretResponse(ev.attempt_count, ev.max_attempts, { ok: false, failure: { kind: 'transient', retryable: true, code: null, message: e instanceof Error ? e.name : 'send error', httpStatus: null, fbtraceId: null } }); }

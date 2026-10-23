@@ -214,7 +214,7 @@ export type EventRow = {
 };
 
 /** The exact JSON body for POST /{dataset}/events (token excluded). */
-export function buildPayload(row: EventRow, lead: LeadForMeta, opts: { eventSourceUrl?: string | null; testEventCode?: string | null }) {
+export function buildPayload(row: EventRow, lead: LeadForMeta, opts: { eventSourceUrl?: string | null; testEventCode?: string | null; niche?: Record<string, string> | null }) {
   const eventTime = Math.floor(new Date(row.event_time).getTime() / 1000);
   let event: Record<string, unknown>;
   if (row.source_kind === 'website_crm') {
@@ -249,7 +249,8 @@ export function buildPayload(row: EventRow, lead: LeadForMeta, opts: { eventSour
       // event_source_url is required only for action_source=website; other sources omit it.
       ...(row.action_source === 'website' && opts.eventSourceUrl ? { event_source_url: opts.eventSourceUrl } : {}),
       user_data: buildUserData(user),
-      ...(row.value != null && row.currency ? { custom_data: { value: row.value, currency: row.currency } } : {}),
+      // Niche tags (same parameters as the browser Pixel) so website events can be split by niche inside one Pixel.
+      ...((row.value != null && row.currency) || opts.niche ? { custom_data: { ...(opts.niche ?? {}), ...(row.value != null && row.currency ? { value: row.value, currency: row.currency } : {}) } } : {}),
     };
   }
   return { data: [event], ...(opts.testEventCode ? { test_event_code: opts.testEventCode } : {}) };
