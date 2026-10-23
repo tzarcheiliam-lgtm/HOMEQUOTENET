@@ -19,8 +19,8 @@ export function Header(navigate) {
     const logoContainer = document.createElement('div');
     logoContainer.className = 'flex items-center gap-3 cursor-pointer hover:scale-105 transition-transform';
     logoContainer.innerHTML = `
-        <img src="/brand/homequote-app-icon-rounded.svg" alt="HomeQuote" width="32" height="32" class="w-8 h-8 rounded-lg shadow-lg">
-        <span class="font-display text-lg font-bold tracking-tight text-white">MOTC</span><span class="hidden sm:inline text-[10px] font-bold uppercase tracking-widest text-secondary">by HomeQuote Network</span>
+        <img src="/brand/seret-icon.svg" alt="Seret" width="34" height="34" class="w-[34px] h-[34px]">
+        <span class="font-display text-lg font-bold tracking-tight text-white">Seret</span><span class="hidden sm:inline text-[10px] font-bold uppercase tracking-widest text-secondary">by HomeQuote Network</span>
     `;
     logoContainer.onclick = () => { navigate('image'); activate('Image'); };
 

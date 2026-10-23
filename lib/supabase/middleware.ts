@@ -67,7 +67,7 @@ export async function updateSession(request: NextRequest) {
     console.error(
       '[middleware] Missing NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY — skipping session refresh.'
     );
-    // The MOTC studio has no page to check the role itself, so without Supabase it stays closed.
+    // The Seret studio has no page to check the role itself, so without Supabase it stays closed.
     if (publicPath === '/studio' || publicPath.startsWith('/studio/')) return new NextResponse('Not available', { status: 503 });
     return supabaseResponse;
   }
@@ -104,7 +104,7 @@ export async function updateSession(request: NextRequest) {
   // Match the /app segment exactly — a bare `startsWith('/app')` also catches
   // public marketing routes like /apply.
   const isProtected = pathname === '/app' || pathname.startsWith('/app/');
-  // MOTC studio (static files in public/studio/) has no page of its own to run requireRole, so it is gated here: admins only.
+  // Seret studio (static files in public/studio/) has no page of its own to run requireRole, so it is gated here: admins only.
   const isStudio = pathname === '/studio' || pathname.startsWith('/studio/');
   const isAuthPage = pathname === '/sign-in' || pathname === '/sign-up';
 

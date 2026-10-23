@@ -24,7 +24,7 @@ const nextConfig: NextConfig = {
     ];
   },
   async rewrites() {
-    // MOTC studio (static Vite build in public/studio/, source in studio/): serve its page at /studio.
+    // Seret studio (static Vite build in public/studio/, source in studio/): serve its page at /studio.
     return [{ source: '/studio', destination: '/studio/index.html' }];
   },
   async headers() {

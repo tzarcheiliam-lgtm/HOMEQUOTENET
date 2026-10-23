@@ -16,7 +16,7 @@
 # production
 /build
 
-# MOTC studio: source in /studio, built into /public/studio by `npm run build:studio`
+# Seret studio: source in /studio, built into /public/studio by `npm run build:studio`
 /studio/node_modules
 /public/studio/
 

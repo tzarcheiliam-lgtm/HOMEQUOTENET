@@ -15,7 +15,7 @@ export interface StudioItem {
   src: string;
   /** Set only for embeds added on the page, which can be removed there. */
   removableId?: string;
-  /** Shows an "Open full screen" link (used for MOTC, which is a full app). */
+  /** Shows an "Open full screen" link (used for Seret, which is a full app). */
   openHref?: string;
 }
 

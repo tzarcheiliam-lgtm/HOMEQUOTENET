@@ -1,4 +1,6 @@
-# MOTC by Homequote Network
+# Seret by HomeQuote Network
+
+"Seret" is Hebrew for film (סרט). Formerly MOTC.
 
 AI image, video, cinema and lip sync studio. A static single-page app (Vite + vanilla JS + Tailwind) that calls kie.ai directly from the browser.
 
