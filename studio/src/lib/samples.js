@@ -6,7 +6,7 @@ export const SAMPLES = {
   "byModel": {
     "Grok Imagine": [
       {
-        "url": "/studio/samples/grok-imagine-1.jpg",
+        "url": "/studio/samples/grok-imagine-1.webp",
         "type": "image",
         "prompt": "Bright modern kitchen remodel, white oak cabinets, quartz island, brass fixtures, morning light, real estate photo, ultra realistic",
         "settings": {
@@ -14,7 +14,7 @@ export const SAMPLES = {
         }
       },
       {
-        "url": "/studio/samples/grok-imagine-2.jpg",
+        "url": "/studio/samples/grok-imagine-2.webp",
         "type": "image",
         "prompt": "Luxury backyard with a new pool and travertine deck at golden hour, outdoor lounge, professional architectural photo",
         "settings": {
@@ -24,7 +24,7 @@ export const SAMPLES = {
     ],
     "Nano Banana Pro": [
       {
-        "url": "/studio/samples/nano-banana-pro-1.jpg",
+        "url": "/studio/samples/nano-banana-pro-1.webp",
         "type": "image",
         "prompt": "Bright modern kitchen remodel, white oak cabinets, quartz island, brass fixtures, morning light, real estate photo, ultra realistic",
         "settings": {
@@ -33,7 +33,7 @@ export const SAMPLES = {
         }
       },
       {
-        "url": "/studio/samples/nano-banana-pro-2.jpg",
+        "url": "/studio/samples/nano-banana-pro-2.webp",
         "type": "image",
         "prompt": "Luxury backyard with a new pool and travertine deck at golden hour, outdoor lounge, professional architectural photo",
         "settings": {
@@ -44,7 +44,7 @@ export const SAMPLES = {
     ],
     "Nano Banana 2": [
       {
-        "url": "/studio/samples/nano-banana-2-1.jpg",
+        "url": "/studio/samples/nano-banana-2-1.webp",
         "type": "image",
         "prompt": "Bright modern kitchen remodel, white oak cabinets, quartz island, brass fixtures, morning light, real estate photo, ultra realistic",
         "settings": {
@@ -53,7 +53,7 @@ export const SAMPLES = {
         }
       },
       {
-        "url": "/studio/samples/nano-banana-2-2.jpg",
+        "url": "/studio/samples/nano-banana-2-2.webp",
         "type": "image",
         "prompt": "Luxury backyard with a new pool and travertine deck at golden hour, outdoor lounge, professional architectural photo",
         "settings": {
@@ -71,7 +71,8 @@ export const SAMPLES = {
           "aspect_ratio": "16:9",
           "resolution": "480p",
           "duration": 5
-        }
+        },
+        "poster": "/studio/samples/seedance-2-fast-1-poster.webp"
       }
     ],
     "Seedance 2": [
@@ -82,10 +83,135 @@ export const SAMPLES = {
         "settings": {
           "aspect_ratio": "16:9",
           "duration": 5
+        },
+        "poster": "/studio/samples/seedance-2-1-poster.webp"
+      }
+    ],
+    "Nano Banana": [
+      {
+        "url": "/studio/samples/nano-banana-1.webp",
+        "type": "image",
+        "prompt": "Bright modern kitchen remodel, white oak cabinets, quartz island, brass fixtures, morning light, real estate photo, ultra realistic",
+        "settings": {
+          "aspect_ratio": "4:5"
+        }
+      },
+      {
+        "url": "/studio/samples/nano-banana-2.webp",
+        "type": "image",
+        "prompt": "Luxury backyard with a new pool and travertine deck at golden hour, outdoor lounge, professional architectural photo",
+        "settings": {
+          "aspect_ratio": "16:9"
+        }
+      }
+    ],
+    "Veo 3": [
+      {
+        "url": "/studio/samples/veo-3-1.mp4",
+        "type": "video",
+        "prompt": "Slow cinematic drone shot rising over a newly remodeled suburban home with a backyard pool at golden hour, realistic",
+        "settings": {
+          "aspect_ratio": "16:9",
+          "resolution": "1080p",
+          "duration": 8
+        },
+        "poster": "/studio/samples/veo-3-1-poster.webp"
+      }
+    ],
+    "Veo 3 Fast": [
+      {
+        "url": "/studio/samples/veo-3-fast-1.mp4",
+        "type": "video",
+        "prompt": "Slow cinematic drone shot rising over a newly remodeled suburban home with a backyard pool at golden hour, realistic",
+        "settings": {
+          "aspect_ratio": "16:9",
+          "resolution": "1080p",
+          "duration": 8
+        },
+        "poster": "/studio/samples/veo-3-fast-1-poster.webp"
+      }
+    ],
+    "Wan 3.0": [
+      {
+        "url": "/studio/samples/wan-3-0-1.mp4",
+        "type": "video",
+        "prompt": "Slow cinematic drone shot rising over a newly remodeled suburban home with a backyard pool at golden hour, realistic",
+        "settings": {
+          "aspect_ratio": "16:9",
+          "resolution": "720p",
+          "duration": 5
+        },
+        "poster": "/studio/samples/wan-3-0-1-poster.webp"
+      }
+    ]
+  },
+  "byPreset": {
+    "kitchen-reveal": [
+      {
+        "url": "/studio/samples/preset-kitchen-reveal.webp",
+        "type": "image",
+        "prompt": "Bright modern kitchen remodel, white oak cabinets, quartz waterfall island, brass fixtures, soft morning light through large windows, wide-angle real estate photo, ultra realistic",
+        "settings": {
+          "aspect_ratio": "4:5",
+          "resolution": "1k"
+        }
+      }
+    ],
+    "bath-before-after": [
+      {
+        "url": "/studio/samples/preset-bath-before-after.webp",
+        "type": "image",
+        "prompt": "Split image before and after bathroom remodel: left side dated 1990s bathroom with beige tile, right side spa-style bathroom with walk-in glass shower, matte black fixtures, warm lighting, realistic photo",
+        "settings": {
+          "aspect_ratio": "4:5",
+          "resolution": "1k"
+        }
+      }
+    ],
+    "pool-flyover": [
+      {
+        "url": "/studio/samples/preset-pool-flyover.webp",
+        "type": "image",
+        "prompt": "Slow cinematic drone flyover of a new luxury backyard pool at golden hour, crystal clear water, travertine deck, outdoor lounge, warm sunlight, realistic",
+        "settings": {
+          "aspect_ratio": "4:5",
+          "resolution": "1k"
+        }
+      }
+    ],
+    "roof-replacement": [
+      {
+        "url": "/studio/samples/preset-roof-replacement.webp",
+        "type": "image",
+        "prompt": "Suburban two-story home with a brand new charcoal architectural shingle roof, clean gutters, blue sky, freshly cut lawn, professional real estate exterior photo",
+        "settings": {
+          "aspect_ratio": "4:5",
+          "resolution": "1k"
+        }
+      }
+    ],
+    "adu-walkthrough": [
+      {
+        "url": "/studio/samples/preset-adu-walkthrough.webp",
+        "type": "image",
+        "prompt": "Smooth walkthrough of a modern backyard ADU at dusk, glass sliding doors opening to a bright open-plan living space, warm interior lights, realistic camera movement",
+        "settings": {
+          "aspect_ratio": "4:5",
+          "resolution": "1k"
+        }
+      }
+    ],
+    "contractor-intro": [
+      {
+        "url": "/studio/samples/preset-contractor-intro.webp",
+        "type": "image",
+        "prompt": "Friendly, confident contractor introducing their company to camera, natural head movement",
+        "settings": {
+          "aspect_ratio": "4:5",
+          "resolution": "1k"
         }
       }
     ]
   },
-  "byPreset": {},
   "feed": []
 };

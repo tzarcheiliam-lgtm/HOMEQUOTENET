@@ -24,7 +24,8 @@ export function ModelDetailPage(id) {
     const spec = specsFor(m);
     const samples = (m.runsAs && SAMPLES.byModel[m.runsAs]) || [];
     const siblings = catalog.filter((x) => x.runsAs && x.runsAs === m.runsAs && x.id !== m.id);
-    const examples = spec.examples.length ? spec.examples.slice(0, 4) : PRESETS.filter((p) => p.page === m.kind).map((p) => p.prompt).slice(0, 3);
+    // Home-service prompts first (what Seret is for), then the model's own examples from kie.ai.
+    const examples = [...PRESETS.filter((p) => p.page === m.kind).map((p) => p.prompt), ...spec.examples].slice(0, 3);
     const isDefault = getPreferredId(m.kind) === m.id;
     const studio = m.kind === 'image' ? 'Image Studio' : 'Video Studio';
     const row = (label, values, unit = '') => values.length

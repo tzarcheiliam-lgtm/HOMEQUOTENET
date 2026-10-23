@@ -5,10 +5,14 @@
 //   KIE_API_KEY=xxxx node studio/scripts/generate-samples.mjs              # shows the plan + cost, asks first
 //   KIE_API_KEY=xxxx node studio/scripts/generate-samples.mjs --images-only
 //   KIE_API_KEY=xxxx node studio/scripts/generate-samples.mjs --yes        # skip the question
+//   node studio/scripts/generate-samples.mjs --optimize-existing           # shrink files already downloaded (no key needed)
 //
+// With ffmpeg installed, downloads are shrunk for the web: videos to at most 1280px wide H.264 with a poster
+// frame, images to at most 1600px WebP. Without ffmpeg the originals are kept.
 // It is safe to re-run: files that already exist are kept, and only missing samples are generated (and paid for).
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +21,20 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_DIR = join(ROOT, 'public', 'samples');
 const MANIFEST = join(ROOT, 'src', 'lib', 'samples.js');
 const args = new Set(process.argv.slice(2));
+
+if (args.has('--optimize-existing')) {
+    const manifest = loadManifest();
+    for (const list of [...Object.values(manifest.byModel), ...Object.values(manifest.byPreset), manifest.feed]) {
+        for (const entry of list) {
+            const file = entry.url.split('/').pop();
+            if (!existsSync(join(OUT_DIR, file))) continue;
+            Object.assign(entry, toEntryFiles(optimize(file, entry.type)));
+            console.log(`optimized ${file} -> ${entry.url.split('/').pop()}`);
+        }
+    }
+    writeManifest(manifest);
+    process.exit(0);
+}
 
 const KEY = process.env.KIE_API_KEY;
 if (!KEY) {
@@ -101,7 +119,7 @@ for (const j of todo) {
         if (!res?.url) throw new Error('kie.ai returned no file URL');
         // kie.ai only keeps results for a limited time, so download a copy.
         const file = await download(res.url, j.file, j.kind);
-        (manifest[j.group][j.key] ??= []).push({ url: `/studio/samples/${file}`, type: j.kind, prompt: j.params.prompt, settings: clean(j.params) });
+        (manifest[j.group][j.key] ??= []).push({ ...toEntryFiles(optimize(file, j.kind)), type: j.kind, prompt: j.params.prompt, settings: clean(j.params) });
         writeManifest(manifest); // after every success, so a crash never loses paid-for work
         console.log(`saved ${file}`);
     } catch (e) {
@@ -121,6 +139,38 @@ async function download(url, name, kind) {
     const file = `${name}.${ext}`;
     writeFileSync(join(OUT_DIR, file), Buffer.from(await r.arrayBuffer()));
     return file;
+}
+
+function hasFfmpeg() {
+    try { execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' }); return true; } catch { return false; }
+}
+function ff(...a) {
+    execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...a], { stdio: 'inherit' });
+}
+
+/** Shrink a downloaded file for the web. Returns { file, poster? } (names inside OUT_DIR). */
+function optimize(file, kind) {
+    if (!hasFfmpeg()) return { file };
+    const src = join(OUT_DIR, file);
+    const base = file.replace(/\.[^.]+$/, '');
+    if (kind === 'video') {
+        const tmp = join(OUT_DIR, `${base}.tmp.mp4`);
+        ff('-i', src, '-vf', "scale='min(1280,iw)':-2", '-c:v', 'libx264', '-crf', '27', '-preset', 'slow', '-pix_fmt', 'yuv420p',
+            '-movflags', '+faststart', '-c:a', 'aac', '-b:a', '96k', tmp);
+        if (src !== join(OUT_DIR, `${base}.mp4`)) rmSync(src);
+        renameSync(tmp, join(OUT_DIR, `${base}.mp4`));
+        const poster = `${base}-poster.webp`;
+        ff('-ss', '1', '-i', join(OUT_DIR, `${base}.mp4`), '-frames:v', '1', '-vf', "scale='min(1280,iw)':-2", '-c:v', 'libwebp', '-quality', '78', join(OUT_DIR, poster));
+        return { file: `${base}.mp4`, poster };
+    }
+    if (file.endsWith('.webp')) return { file };
+    ff('-i', src, '-vf', "scale='min(1600,iw)':-2", '-c:v', 'libwebp', '-quality', '80', join(OUT_DIR, `${base}.webp`));
+    rmSync(src);
+    return { file: `${base}.webp` };
+}
+
+function toEntryFiles({ file, poster }) {
+    return { url: `/studio/samples/${file}`, ...(poster ? { poster: `/studio/samples/${poster}` } : {}) };
 }
 
 function clean(params) {
