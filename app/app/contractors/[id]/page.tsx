@@ -7,6 +7,7 @@ import { ContractsPanel } from '@/components/contracts/contracts-panel';
 import { ContractorLogoCard } from '@/components/contracts/contractor-logo-card';
 import { assetUrl } from '@/lib/contracts/storage';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { setContractorTexting } from '@/lib/actions/sms';
 import { getContractor } from '@/lib/data/contractors';
 import { listVerticals } from '@/lib/data/verticals';
 import {
@@ -168,7 +169,7 @@ export default async function ContractorDetailPage({
     );
   }
 
-  const { data: logoRow } = await createAdminClient().from('contractors').select('logo_path').eq('id', contractor.id).maybeSingle();
+  const { data: logoRow } = await createAdminClient().from('contractors').select('logo_path, texting_enabled').eq('id', contractor.id).maybeSingle();
   const logoUrl = await assetUrl(logoRow?.logo_path ?? null);
 
   return (
@@ -235,6 +236,24 @@ export default async function ContractorDetailPage({
             allVerticals={verticals}
             selectedIds={verticalIds}
           />
+        </CardContent>
+      </Card>
+
+      {/* Texting */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Automatic texting</CardTitle>
+          <CardDescription>
+            Text this contractor’s funnel leads from your Mac, as {contractor.name}. Also needs “contractor-branded funnels” switched on under Texting.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap items-center gap-3">
+          <Badge variant="muted">{logoRow?.texting_enabled ? 'On' : 'Off'}</Badge>
+          <form action={setContractorTexting}>
+            <input type="hidden" name="contractorId" value={contractor.id} />
+            <input type="hidden" name="enabled" value={logoRow?.texting_enabled ? 'false' : 'true'} />
+            <Button type="submit" variant="outline" size="sm">{logoRow?.texting_enabled ? 'Turn off' : 'Turn on'}</Button>
+          </form>
         </CardContent>
       </Card>
 

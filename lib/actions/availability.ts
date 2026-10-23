@@ -117,6 +117,36 @@ export async function saveWeeklySchedule(_prev: AvailabilityState, formData: For
   }
 }
 
+/** Admin: the hours given to any contractor who has not set their own. */
+export async function saveDefaultHours(_prev: AvailabilityState, formData: FormData): Promise<AvailabilityState> {
+  try {
+    const profile = await requireProfile();
+    if (profile.role !== 'admin') return { error: 'Only a HomeQuote admin can change the default hours' };
+    let raw: unknown;
+    try {
+      raw = JSON.parse(field(formData, 'rules') || '[]');
+    } catch {
+      return { error: 'Could not read the schedule' };
+    }
+    const parsed = z.array(ruleSchema).max(70).safeParse(raw);
+    if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Check the schedule' };
+    const byDay = new Map<number, { startMinute: number; endMinute: number }[]>();
+    for (const r of parsed.data) byDay.set(r.weekday, [...(byDay.get(r.weekday) ?? []), r]);
+    for (const list of byDay.values()) {
+      list.sort((a, b) => a.startMinute - b.startMinute);
+      for (let i = 1; i < list.length; i++) if (list[i].startMinute < list[i - 1].endMinute) return { error: 'Time windows on the same day cannot overlap' };
+    }
+    const { error } = await createAdminClient()
+      .from('availability_defaults')
+      .upsert({ id: true, rules: parsed.data, updated_by: profile.id, updated_at: new Date().toISOString() }, { onConflict: 'id' });
+    if (error) return { error: 'Could not save. Has the latest database update been applied?' };
+    refresh();
+    return { success: 'Default hours saved' };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
 const dateRe = /^\d{4}-\d{2}-\d{2}$/;
 const exceptionSchema = z
   .object({

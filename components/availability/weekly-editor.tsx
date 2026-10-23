@@ -27,12 +27,16 @@ export function WeeklyEditor({
   contractorId,
   rules,
   readOnly,
+  saveAction = saveWeeklySchedule,
+  submitLabel = 'Save weekly hours',
 }: {
-  contractorId: string;
+  contractorId?: string;
+  saveAction?: (prev: AvailabilityState, formData: FormData) => Promise<AvailabilityState>;
+  submitLabel?: string;
   rules: { weekday: number; startMinute: number; endMinute: number }[];
   readOnly: boolean;
 }) {
-  const [state, action, pending] = useActionState<AvailabilityState, FormData>(saveWeeklySchedule, undefined);
+  const [state, action, pending] = useActionState<AvailabilityState, FormData>(saveAction, undefined);
   const [days, setDays] = useState<Record<number, Win[]>>(() => {
     const init: Record<number, Win[]> = {};
     for (const d of ORDER) init[d] = [];
@@ -50,7 +54,7 @@ export function WeeklyEditor({
 
   return (
     <form action={action} className="space-y-3">
-      <input type="hidden" name="contractor_id" value={contractorId} />
+      {contractorId && <input type="hidden" name="contractor_id" value={contractorId} />}
       <input type="hidden" name="rules" value={serialized} />
       <ul className="divide-y rounded-lg border">
         {ORDER.map((day) => (
@@ -81,7 +85,7 @@ export function WeeklyEditor({
       </ul>
       {!readOnly && (
         <div className="flex flex-wrap items-center gap-3">
-          <Button type="submit" disabled={pending}>{pending ? 'Saving…' : 'Save weekly hours'}</Button>
+          <Button type="submit" disabled={pending}>{pending ? 'Saving…' : submitLabel}</Button>
           <Feedback state={state} />
         </div>
       )}

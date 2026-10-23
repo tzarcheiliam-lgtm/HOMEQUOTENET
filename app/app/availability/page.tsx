@@ -1,12 +1,13 @@
 import Link from 'next/link';
 import { requireProfile } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
-import { loadStoredAvailability } from '@/lib/availability/data.server';
+import { loadStoredAvailability, loadDefaultHours } from '@/lib/availability/data.server';
 import { localParts } from '@/lib/availability/time';
 import { googleCalendarReady } from '@/lib/calendar/config';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/ui/page-header';
 import { SettingsForm } from '@/components/availability/settings-form';
+import { saveDefaultHours } from '@/lib/actions/availability';
 import { WeeklyEditor } from '@/components/availability/weekly-editor';
 import { ExceptionsPanel } from '@/components/availability/exceptions-panel';
 import { CalendarConnections, CalendarNotice, type ConnectionView } from '@/components/availability/calendar-connections';
@@ -32,9 +33,27 @@ export default async function AvailabilityPage({
   const contractorId = isContractor ? profile.contractor_id! : (one('contractor') ?? '');
   if (isInternal && !contractorId) {
     const { data: contractors } = await supabase.from('contractors').select('id, name').order('name');
+    const defaults = await loadDefaultHours(supabase);
     return (
       <div className="space-y-4">
         <PageHeader title="Contractor availability" description="Choose a contractor to see when they can take appointments." />
+        {profile.role === 'admin' && (
+          <Card>
+            <CardHeader><CardTitle>Default hours</CardTitle></CardHeader>
+            <CardContent>
+              <p className="mb-3 text-sm text-muted-foreground">
+                Used for any contractor who hasn’t set their own hours. Contractors can change theirs any time. Days with no hours are days off.
+              </p>
+              <WeeklyEditor
+                key={defaults.rules.map((r) => `${r.weekday}${r.startMinute}${r.endMinute}`).join(',')}
+                rules={defaults.rules}
+                readOnly={false}
+                saveAction={saveDefaultHours}
+                submitLabel="Save default hours"
+              />
+            </CardContent>
+          </Card>
+        )}
         <Card>
           <CardContent className="divide-y p-0">
             {(contractors ?? []).map((c: { id: string; name: string }) => (
