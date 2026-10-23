@@ -19,7 +19,7 @@ export function SmsSettingsForm({ settings }: { settings: { window_start_hour: n
         {f('daily_cap', 'Texts per 24 hours (all)', settings.daily_cap, 'A safety ceiling')}
       </div>
       <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="contractor_funnels_enabled" defaultChecked={settings.contractor_funnels_enabled} className="mt-1" />
-        <span>Also text leads from contractor-branded funnels, as that contractor<span className="block text-xs text-muted-foreground">Leave off unless your agreement with the contractor allows it. House (HomeQuote) funnels always text as HomeQuote.</span></span></label>
+        <span>Also text leads from contractor-branded funnels, as that contractor<span className="block text-xs text-muted-foreground">Master switch. Then turn texting on for each contractor on their contractor page. Leave off unless your agreement with the contractor allows it. House (HomeQuote) funnels always text as HomeQuote.</span></span></label>
       <div className="flex items-center gap-3"><Button type="submit" size="sm" disabled={pending}>{pending ? 'Saving…' : 'Save settings'}</Button>
         <span role="status" className={`text-xs ${state?.ok ? 'text-emerald-700 dark:text-emerald-300' : 'text-destructive'}`}>{state?.ok ? state.message : state?.error}</span></div>
     </form>

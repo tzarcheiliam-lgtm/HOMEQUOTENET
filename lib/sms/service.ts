@@ -11,11 +11,16 @@ import { finalizeOutbound, helpReply, isHelp, isOptOut, isStart, openingMessage,
 type Db = SupabaseClient;
 export interface SmsSettings {
   enabled: boolean; contractor_funnels_enabled: boolean; window_start_hour: number; window_end_hour: number; daily_cap: number; stopped_at: string | null;
+  bot_extra_instructions?: string | null; house_sender_name?: string | null;
 }
 export const DEFAULT_SETTINGS: SmsSettings = { enabled: false, contractor_funnels_enabled: false, window_start_hour: 8, window_end_hour: 21, daily_cap: 200, stopped_at: null };
 
 export async function loadSettings(db: Db): Promise<SmsSettings> {
-  const { data } = await db.from('sms_settings').select('enabled,contractor_funnels_enabled,window_start_hour,window_end_hour,daily_cap,stopped_at').eq('id', true).maybeSingle();
+  const core = 'enabled,contractor_funnels_enabled,window_start_hour,window_end_hour,daily_cap,stopped_at';
+  const first = await db.from('sms_settings').select(`${core},bot_extra_instructions,house_sender_name`).eq('id', true).maybeSingle();
+  let data = first.data;
+  // Until migration 0057 is applied the two new columns don't exist: keep texting working on the old ones.
+  if (first.error) ({ data } = await db.from('sms_settings').select(core).eq('id', true).maybeSingle());
   return { ...DEFAULT_SETTINGS, ...(data as Partial<SmsSettings> | null) };
 }
 const isLive = (s: SmsSettings) => s.enabled && !s.stopped_at;
@@ -69,9 +74,14 @@ export async function startSmsForLead(db: Db, leadId: string, now = new Date()):
     const snap = (session.config_snapshot ?? {}) as Snapshot;
     const house = !funnel.contractor_id || snap.clientName === 'HomeQuote Network';
     if (!house && !settings.contractor_funnels_enabled) return { started: false, reason: 'contractor_funnel_off' };
+    if (!house) {
+      const { data: co } = await db.from('contractors').select('texting_enabled').eq('id', funnel.contractor_id as string).maybeSingle();
+      if (!co?.texting_enabled) return { started: false, reason: 'contractor_funnel_off' };
+    }
     if ((await sentToday(db)) >= settings.daily_cap) return { started: false, reason: 'daily_cap' };
 
-    const sender = house ? SENDER_HOUSE : (snap.clientName ?? SENDER_HOUSE).slice(0, 80);
+    const houseName = settings.house_sender_name?.trim().slice(0, 40) || SENDER_HOUSE;
+    const sender = house ? houseName : (snap.clientName ?? houseName).slice(0, 80);
     const { data: convo, error } = await db.from('sms_conversations').insert({
       lead_id: leadId, contractor_id: funnel.contractor_id ?? null, sender_name: sender, phone_e164: phone,
     }).select('id,lead_id').single();
@@ -155,6 +165,7 @@ async function replyWithAgent(db: Db, c: { id: string; lead_id: string; sender_n
   try {
     result = await (deps.agent ?? runSmsAgent)({
       senderName: c.sender_name, firstName: (lead?.first_name as string | null) ?? null, project: projectLabel(snap.industry),
+      extraInstructions: settings.bot_extra_instructions ?? null,
       known: readAnswers((session?.answers ?? {}) as Record<string, unknown>, snap), formQualified: (session?.qualified as boolean | null) ?? null, history,
     });
   } catch {

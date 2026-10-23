@@ -8,6 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/ui/page-header';
 import { SmsSettingsForm } from '@/components/texting/settings-form';
+import { SmsBotForm } from '@/components/texting/bot-form';
+import { MAX_EXTRA_INSTRUCTIONS } from '@/lib/sms/agent';
+import { openingMessage, SENDER_HOUSE } from '@/lib/sms/rules';
 
 export const metadata = { title: 'Texting · HomeQuote Network' };
 export const dynamic = 'force-dynamic';
@@ -19,7 +22,7 @@ export default async function TextingPage() {
     db.from('sms_settings').select('*').eq('id', true).maybeSingle(),
     db.from('sms_conversations').select('id,lead_id,sender_name,phone_e164,status,mode,qualification,summary,last_inbound_at,created_at').order('updated_at', { ascending: false }).limit(60),
   ]);
-  const s = settings ?? { enabled: false, stopped_at: null, bridge_last_seen_at: null, window_start_hour: 8, window_end_hour: 21, daily_cap: 200, contractor_funnels_enabled: false };
+  const s = settings ?? { enabled: false, stopped_at: null, bridge_last_seen_at: null, window_start_hour: 8, window_end_hour: 21, daily_cap: 200, contractor_funnels_enabled: false, bot_extra_instructions: null, house_sender_name: null };
   const seen = s.bridge_last_seen_at ? new Date(s.bridge_last_seen_at) : null;
   const bridgeUp = !!seen && Date.now() - +seen < 60_000;
   const rows = convos ?? [];
@@ -52,6 +55,11 @@ export default async function TextingPage() {
       </div>
 
       <Card><CardHeader><CardTitle className="text-base">Settings</CardTitle></CardHeader><CardContent><SmsSettingsForm settings={s} /></CardContent></Card>
+
+      <Card><CardHeader><CardTitle className="text-base">What the assistant says</CardTitle></CardHeader><CardContent>
+        <SmsBotForm instructions={s.bot_extra_instructions ?? ''} senderName={s.house_sender_name ?? ''} defaultName={SENDER_HOUSE} max={MAX_EXTRA_INSTRUCTIONS}
+          preview={openingMessage({ firstName: 'Sam', senderName: s.house_sender_name?.trim() || SENDER_HOUSE, project: 'bathroom remodel' })} />
+      </CardContent></Card>
 
       <section className="space-y-2">
         <h2 className="text-lg font-semibold">Conversations</h2>

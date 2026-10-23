@@ -51,6 +51,21 @@ export function mapException(r: Record<string, any>): AvailabilityException & { 
   };
 }
 
+/** The admin-editable default hours; falls back to the built-in schedule if the table is missing or empty. */
+export async function loadDefaultHours(db: Db | any): Promise<{ timezone: string; rules: WeeklyRule[] }> {
+  const fallback = { timezone: DEFAULT_SETTINGS.timezone, rules: DEFAULT_WEEKLY_RULES };
+  try {
+    const { data } = await db.from('availability_defaults').select('timezone, rules').eq('id', true).maybeSingle();
+    if (!data || !Array.isArray(data.rules)) return fallback;
+    const rules = (data.rules as any[])
+      .filter((r) => Number.isInteger(r?.weekday) && Number.isInteger(r?.startMinute) && Number.isInteger(r?.endMinute) && r.endMinute > r.startMinute)
+      .map((r) => ({ weekday: r.weekday, startMinute: r.startMinute, endMinute: r.endMinute }));
+    return { timezone: data.timezone || fallback.timezone, rules };
+  } catch {
+    return fallback;
+  }
+}
+
 /** Raw stored availability using a given client (RLS applies to a user client). */
 export async function loadStoredAvailability(db: Db | any, contractorId: string): Promise<StoredAvailability> {
   const [s, r, e] = await Promise.all([
@@ -62,9 +77,10 @@ export async function loadStoredAvailability(db: Db | any, contractorId: string)
   const exceptions = ((e.data ?? []) as any[]).map(mapException);
   const configured = !!s.data || rules.length > 0 || exceptions.length > 0;
   if (!configured) {
+    const d = await loadDefaultHours(db);
     return {
-      settings: { ...DEFAULT_SETTINGS, weeklyScheduleEnabled: true },
-      rules: DEFAULT_WEEKLY_RULES.map((x, i) => ({ ...x, id: `default-${i}` })),
+      settings: { ...DEFAULT_SETTINGS, timezone: d.timezone, weeklyScheduleEnabled: true },
+      rules: d.rules.map((x, i) => ({ ...x, id: `default-${i}` })),
       exceptions,
       configured,
     };

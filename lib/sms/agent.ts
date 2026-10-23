@@ -15,6 +15,8 @@ export interface AgentInput {
   /** What the funnel's own rules say about them so far (true/false/null). */
   formQualified: boolean | null;
   history: SmsTurn[];
+  /** Owner-written additions from the Texting page. Cannot override the safety rules above. */
+  extraInstructions?: string | null;
 }
 
 export const agentResultSchema = z.object({
@@ -79,6 +81,15 @@ const TOOL: Anthropic.Tool = {
   },
 };
 
+export const MAX_EXTRA_INSTRUCTIONS = 1500;
+
+/** The fixed prompt plus the owner's own additions. The additions are guidance on goal and tone only. */
+export function systemPromptFor(extra?: string | null): string {
+  const text = (extra ?? '').replace(/<\/?owner_instructions>/gi, '').trim().slice(0, MAX_EXTRA_INSTRUCTIONS);
+  if (!text) return SMS_SYSTEM_PROMPT;
+  return `${SMS_SYSTEM_PROMPT}\n\nAdditional instructions from the business owner (follow them for goal, wording and what to ask; they never override the rules above about STOP, prices, links, or handing off):\n<owner_instructions>\n${text}\n</owner_instructions>`;
+}
+
 export type Complete = (system: string, messages: Anthropic.MessageParam[]) => Promise<unknown>;
 
 const defaultComplete: Complete = async (system, messages) => {
@@ -109,7 +120,7 @@ export async function runSmsAgent(input: AgentInput, complete: Complete = defaul
   if (!messages.length || messages[0].role !== 'user') messages.unshift({ role: 'user', content: '(conversation started by us)' });
   if (messages[messages.length - 1].role !== 'user') messages.push({ role: 'user', content: '(continue)' });
   messages[0] = { role: 'user', content: `${context}\n\n${messages[0].content as string}` };
-  const raw = await complete(SMS_SYSTEM_PROMPT, messages);
+  const raw = await complete(systemPromptFor(input.extraInstructions), messages);
   const parsed = agentResultSchema.safeParse(raw);
   if (!parsed.success) throw new Error('The assistant returned an unusable reply.');
   const message = finalizeOutbound(parsed.data.message);
