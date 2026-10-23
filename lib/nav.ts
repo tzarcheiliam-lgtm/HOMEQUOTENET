@@ -36,6 +36,7 @@ const GROUP_BY_LABEL: Record<string, NavGroup> = {
   'Contractor Funnel': 'Growth',
   Analytics: 'Growth',
   'Meta Ads': 'Growth',
+  'Creative Studio': 'Growth',
   Automations: 'Growth',
   'Email Templates': 'Growth',
   Sales: 'Administration',
@@ -184,6 +185,13 @@ const BASE_NAV_ITEMS: NavItem[] = [
     href: '/app/meta-ads',
     icon: 'Megaphone',
     roles: ['admin', 'contractor'],
+  },
+  // Embedded image/video generators for ad creative (admin only). Entries live in content/creative-studio.ts.
+  {
+    label: 'Creative Studio',
+    href: '/app/creative-studio',
+    icon: 'Sparkles',
+    roles: ['admin'],
   },
   {
     label: 'Funnels',

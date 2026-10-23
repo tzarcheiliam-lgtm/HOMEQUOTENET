@@ -25,12 +25,14 @@ import {
   FileSignature,
   FileStack,
   MessageSquare,
+  Sparkles,
   type LucideIcon,
 } from 'lucide-react';
 
 /** Icon lookup for NavItem.icon names, shared by the sidebar and mobile nav. */
 export const NAV_ICONS: Record<string, LucideIcon> = {
   Bot,
+  Sparkles,
   MessageSquare,
   FileSignature,
   FileStack,
