@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { getExternalBusy } from '@/lib/calendar/busy.server';
 import {
   DEFAULT_SETTINGS,
+  DEFAULT_WEEKLY_RULES,
   type AvailabilityContext,
   type AvailabilityException,
   type AvailabilitySettings,
@@ -59,12 +60,16 @@ export async function loadStoredAvailability(db: Db | any, contractorId: string)
   ]);
   const rules = ((r.data ?? []) as any[]).map((x) => ({ id: x.id, weekday: x.weekday, startMinute: x.start_minute, endMinute: x.end_minute }));
   const exceptions = ((e.data ?? []) as any[]).map(mapException);
-  return {
-    settings: mapSettings(s.data),
-    rules,
-    exceptions,
-    configured: !!s.data || rules.length > 0 || exceptions.length > 0,
-  };
+  const configured = !!s.data || rules.length > 0 || exceptions.length > 0;
+  if (!configured) {
+    return {
+      settings: { ...DEFAULT_SETTINGS, weeklyScheduleEnabled: true },
+      rules: DEFAULT_WEEKLY_RULES.map((x, i) => ({ ...x, id: `default-${i}` })),
+      exceptions,
+      configured,
+    };
+  }
+  return { settings: mapSettings(s.data), rules, exceptions, configured };
 }
 
 /** The contractor's existing appointments (in or near the window), as busy intervals. */

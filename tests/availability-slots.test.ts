@@ -204,3 +204,12 @@ describe('bookableSlots / unavailableIntervals', () => {
     ]);
   });
 });
+
+describe('default weekly hours', () => {
+  it('opens Sun 9-7, Mon-Thu 9-6:30, Fri 9-3 and leaves Saturday off', async () => {
+    const { DEFAULT_WEEKLY_RULES } = await import('@/lib/availability/slots');
+    const byDay = Object.fromEntries(DEFAULT_WEEKLY_RULES.map((r) => [r.weekday, [r.startMinute / 60, r.endMinute / 60]]));
+    expect(byDay).toEqual({ 0: [9, 19], 1: [9, 18.5], 2: [9, 18.5], 3: [9, 18.5], 4: [9, 18.5], 5: [9, 15] });
+    expect(byDay[6]).toBeUndefined();
+  });
+});
