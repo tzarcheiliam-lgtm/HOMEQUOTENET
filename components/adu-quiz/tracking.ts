@@ -14,6 +14,8 @@
  *    deduplicates the browser and server copies.
  */
 
+import { NICHES, nicheCustomData } from '../../lib/meta/niche.ts';
+
 type Pixel = ((...args: unknown[]) => void) & { queue?: unknown[][]; callMethod?: (...args: unknown[]) => void; push?: Pixel; loaded?: boolean; version?: string };
 declare global {
   interface Window { fbq?: Pixel; _fbq?: Pixel; hqnPixels?: Set<string>; dataLayer?: unknown[]; gtag?: (...args: unknown[]) => void }
@@ -90,7 +92,7 @@ export function track(cfg: TrackingConfig, event: QuizEvent, eventId: string, pa
   if (readMeasurement(cfg.measurementMode)) {
     if (cfg.metaPixelId) {
       loadMetaPixel(cfg.metaPixelId);
-      window.fbq!(META_STANDARD.has(event) ? 'trackSingle' : 'trackSingleCustom', cfg.metaPixelId, event, { content_name: 'adu_quiz', ...params }, { eventID: eventId });
+      window.fbq!(META_STANDARD.has(event) ? 'trackSingle' : 'trackSingleCustom', cfg.metaPixelId, event, { ...nicheCustomData(NICHES.adu, 'adu_quiz'), ...params }, { eventID: eventId });
     }
     if (cfg.googleTagId) {
       loadGoogleTag(cfg.googleTagId);

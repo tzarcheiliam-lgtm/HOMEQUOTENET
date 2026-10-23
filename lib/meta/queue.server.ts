@@ -1,6 +1,7 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { nicheDataFor } from './niche';
 import { sweepStaleDirectSends } from './audit.server';
 import { aiCallBookedEvidence, type AiJobForBooking } from './provenance';
 import { classifyGraphError, GRAPH_VERSION, redactSecrets } from './marketing-api';
@@ -37,10 +38,11 @@ export function supabaseStore(db: SupabaseClient): QueueStore {
         .select('id, created_at, measurement_allowed, booked_at, config_snapshot, funnels(is_demo, slug)')
         .eq('lead_id', leadId).order('created_at', { ascending: true }).limit(1).maybeSingle();
       const { data: a } = await db.from('lead_assignments').select('contractor_id').eq('lead_id', leadId).order('assigned_at').limit(1).maybeSingle();
-      const config = s?.config_snapshot as { trackingPixels?: { metaPixelId?: string; consentMode?: 'opt_in' | 'opt_out' } } | undefined;
+      const config = s?.config_snapshot as { industry?: string; trackingPixels?: { metaPixelId?: string; consentMode?: 'opt_in' | 'opt_out' } } | undefined;
       const funnel = (Array.isArray(s?.funnels) ? s?.funnels[0] : s?.funnels) as { is_demo?: boolean; slug?: string } | null | undefined;
       return {
         lead, contractorId: a?.contractor_id ?? null,
+        niche: s ? nicheDataFor(config?.industry, funnel?.slug) : null,
         session: s ? { id: s.id, createdAt: s.created_at, measurementAllowed: s.measurement_allowed, bookedAt: s.booked_at, consentMode: config?.trackingPixels?.consentMode ?? 'opt_in',
           pixelId: config?.trackingPixels?.metaPixelId, isDemo: !!funnel?.is_demo, slug: funnel?.slug } : null,
       };

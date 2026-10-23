@@ -3,6 +3,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { screenSubmission } from '@/lib/applications/spam';
 import { buildFbc, sendMetaEvent } from '@/lib/meta/capi';
+import { NICHES, nicheCustomData } from '@/lib/meta/niche';
 import { parseUsPhone } from '@/lib/leads/normalize';
 import { qualificationRules, resolvedPixelId, resolvedWebhookUrl, safeUrl, BRAND_NAME } from './config';
 import { consentText, evaluate, type Answers, type Evaluation } from './quiz';
@@ -203,7 +204,7 @@ export function aduQuizServerEvents(input: Submission, evaluation: Evaluation, r
     clientIpAddress: request.ip, clientUserAgent: request.userAgent,
     fbp: t.fbp, fbc: t.fbc ?? buildFbc(t.fbclid, Date.now()),
   };
-  const base = { pixelId, eventSourceUrl: input.pageUrl, user };
+  const base = { pixelId, eventSourceUrl: input.pageUrl, user, customData: nicheCustomData(NICHES.adu, 'adu_quiz') };
   const events = [sendMetaEvent({ ...base, eventName: 'Lead', eventId: `${input.submissionId}:Lead` })];
   if (evaluation.qualified) events.push(sendMetaEvent({ ...base, eventName: 'QualifiedLead', eventId: `${input.submissionId}:QualifiedLead` }));
   return events;

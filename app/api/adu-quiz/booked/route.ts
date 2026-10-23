@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { readBody, sameOrigin } from '@/lib/funnels/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { buildFbc, sendMetaEvent } from '@/lib/meta/capi';
+import { NICHES, nicheCustomData } from '@/lib/meta/niche';
 import { resolvedPixelId } from '@/lib/adu-quiz/config';
 
 export const dynamic = 'force-dynamic';
@@ -36,7 +37,7 @@ export async function POST(request: Request) {
         const header = request.headers.get('x-vercel-forwarded-for') ?? request.headers.get('x-forwarded-for');
         after(async () => {
           await sendMetaEvent({
-            pixelId, eventName: 'Schedule', eventId: `${submissionId}:Schedule`, eventSourceUrl: data.consent_page_url,
+            pixelId, eventName: 'Schedule', eventId: `${submissionId}:Schedule`, eventSourceUrl: data.consent_page_url, customData: nicheCustomData(NICHES.adu, 'adu_quiz'),
             user: {
               email: data.email, phone: data.phone, firstName: data.first_name, lastName: data.last_name,
               zip: (data.answers as { zip?: string })?.zip,

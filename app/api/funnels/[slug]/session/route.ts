@@ -13,6 +13,7 @@ import { sendLeadEmailsSoon } from '@/lib/leads/notify';
 import { flushNotificationsSoon } from '@/lib/notifications/outbox';
 import { runAiCallQueue } from '@/lib/ai-calling/run.server';
 import { buildFbc, sendMetaEvent } from '@/lib/meta/capi';
+import { nicheDataFor } from '@/lib/meta/niche';
 import { loadLeadMetaIds, rememberLeadMetaIds } from '@/lib/meta/lead-ids';
 import { directSendAudit } from '@/lib/meta/audit.server';
 
@@ -128,6 +129,7 @@ export async function PATCH(request: Request, context: Context) {
           await sendMetaEvent({
             pixelId: config.trackingPixels.metaPixelId!, eventName: 'Schedule', eventId: `${s.id}:Schedule`,
             eventSourceUrl: s.attribution.landing_page_url ?? `https://${request.headers.get('host')}/estimate/${funnel.slug}`,
+            customData: nicheDataFor(config.industry, funnel.slug),
             user: {
               email: s.contact!.email as string, phone: s.contact!.phone as string,
               firstName: s.contact!.firstName as string, lastName: s.contact!.lastName as string,
@@ -193,6 +195,7 @@ export async function PATCH(request: Request, context: Context) {
       after(() => sendMetaEvent({
         pixelId: config.trackingPixels.metaPixelId!, eventName: 'Lead', eventId: `${s.id}:Lead`,
         eventSourceUrl: s.attribution.landing_page_url ?? `https://${request.headers.get('host')}/estimate/${funnel.slug}`,
+        customData: nicheDataFor(config.industry, funnel.slug),
         user: {
           email: body.contact!.email, phone: body.contact!.phone, firstName: body.contact!.firstName, lastName: body.contact!.lastName,
           state: areaValid === true ? 'CA' : undefined, zip,
