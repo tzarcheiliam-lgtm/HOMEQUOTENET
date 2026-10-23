@@ -5,11 +5,11 @@ const KIE_BASE = 'https://api.kie.ai';
 export class KieClient {
     constructor() {
         // Dev requests go through the vite proxy ('/api' → https://api.kie.ai)
-        this.baseUrl = import.meta.env.DEV ? '' : KIE_BASE;
+        this.baseUrl = import.meta.env?.DEV ? '' : KIE_BASE; // ?. so the sample generator can use this in Node
     }
 
     getKey() {
-        const key = window.__KIE_KEY__ || import.meta.env.VITE_KIE_KEY || localStorage.getItem('kie_key');
+        const key = globalThis.__KIE_KEY__ || import.meta.env?.VITE_KIE_KEY || globalThis.localStorage?.getItem('kie_key');
         if (!key) throw new Error('API Key missing. Please set your kie.ai key in Settings.');
         return key;
     }
@@ -75,10 +75,11 @@ export class KieClient {
 
                 if (state === 'success') return data;
                 if (state === 'fail' || state === 'error') {
-                    throw new Error(`Generation failed: ${data.failMsg || 'Unknown error'}`);
+                    throw Object.assign(new Error(`Generation failed: ${data.failMsg || 'Unknown error'}`), { final: true });
                 }
             } catch (error) {
-                if (attempt === maxAttempts) throw error;
+                // A failed generation won't recover; only network/server hiccups are worth retrying.
+                if (error.final || attempt === maxAttempts) throw error;
                 console.warn('[Kie] Poll attempt failed, retrying...', error.message);
             }
         }
@@ -112,10 +113,11 @@ export class KieClient {
                     return { ...data, resultUrls: urls };
                 }
                 if (flag === 2 || flag === 3) {
-                    throw new Error(`Generation failed: ${data.errorMessage || 'Unknown error'}`);
+                    throw Object.assign(new Error(`Generation failed: ${data.errorMessage || 'Unknown error'}`), { final: true });
                 }
             } catch (error) {
-                if (attempt === maxAttempts) throw error;
+                // A failed generation won't recover; only network/server hiccups are worth retrying.
+                if (error.final || attempt === maxAttempts) throw error;
                 console.warn('[Kie] Poll attempt failed, retrying...', error.message);
             }
         }
@@ -180,7 +182,8 @@ export class KieClient {
         const modelInfo = getModelById(id) || { id, endpoint: id };
         if (id.includes('nano-banana-pro')) return { ...modelInfo, slug: 'nano-banana-pro' };
         if (id.includes('nano-banana-2')) return { ...modelInfo, slug: 'nano-banana-2' };
-        if (id.includes('nano-banana')) return { ...modelInfo, slug: 'nano-banana' };
+        // kie.ai names the original Nano Banana with its vendor prefix (docs.kie.ai/market/google/nano-banana).
+        if (id.includes('nano-banana')) return { ...modelInfo, slug: 'google/nano-banana' };
         if (id.includes('grok')) return { ...modelInfo, slug: 'grok-imagine/text-to-image' };
         return { ...modelInfo, slug: 'nano-banana-2' };
     }
@@ -191,8 +194,9 @@ export class KieClient {
         if (id.includes('gpt')) return { ...modelInfo, slug: 'gpt-image-2-image-to-image', mode: 'input_urls' };
         if (id.includes('nano-banana-pro')) return { ...modelInfo, slug: 'nano-banana-pro', mode: 'image_input' };
         if (id.includes('nano-banana-2')) return { ...modelInfo, slug: 'nano-banana-2', mode: 'image_input' };
-        if (id.includes('nano-banana')) return { ...modelInfo, slug: 'nano-banana-edit', mode: 'image_input' };
-        return { ...modelInfo, slug: 'nano-banana-edit', mode: 'image_input' };
+        // docs.kie.ai/market/google/nano-banana-edit: vendor-prefixed name, source images in `image_urls`.
+        if (id.includes('nano-banana')) return { ...modelInfo, slug: 'google/nano-banana-edit', mode: 'image_urls' };
+        return { ...modelInfo, slug: 'google/nano-banana-edit', mode: 'image_urls' };
     }
 
     _imageInput(params, settings) {
@@ -206,6 +210,7 @@ export class KieClient {
         if (images) {
             if (settings.mode === 'single') input.image_url = images[0];
             else if (settings.mode === 'input_urls') input.input_urls = images;
+            else if (settings.mode === 'image_urls') input.image_urls = images;
             else input.image_input = images;
         }
         return input;
@@ -223,16 +228,20 @@ export class KieClient {
             return { ...info, family: 'veo', model, generationType: hasImage ? 'FIRST_AND_LAST_FRAMES_2_VIDEO' : 'TEXT_2_VIDEO' };
         }
         if (id.includes('kling')) {
-            if (id.includes('2.1-standard')) return { ...info, family: 'jobs', model: 'kling/v2-1-standard' };
-            return { ...info, family: 'jobs', model: 'kling/v2-1-pro' };
+            // docs.kie.ai/market/kling/v2-1-pro: image-to-video only; one `image_url`, duration "5" | "10" as a string.
+            const klingInput = { imageField: 'image_url', durationString: true };
+            if (id.includes('2.1-standard')) return { ...info, family: 'jobs', model: 'kling/v2-1-standard', ...klingInput };
+            return { ...info, family: 'jobs', model: 'kling/v2-1-pro', ...klingInput };
         }
         if (id.includes('seedance')) {
             if (id.includes('v1.5')) return { ...info, family: 'jobs', model: 'bytedance/seedance-1.5-pro' };
-            if (id.includes('lite')) return { ...info, family: 'jobs', model: 'bytedance/seedance-2-fast' };
-            return { ...info, family: 'jobs', model: 'bytedance/seedance-2' };
+            // Seedance 2 takes the starting image as `first_frame_url` (no `image_urls` field).
+            if (id.includes('lite')) return { ...info, family: 'jobs', model: 'bytedance/seedance-2-fast', imageField: 'first_frame_url' };
+            return { ...info, family: 'jobs', model: 'bytedance/seedance-2', imageField: 'first_frame_url' };
         }
         if (id.includes('wan')) {
-            return { ...info, family: 'jobs', model: 'wan/3-0-video', videoInput: 'first_frame' };
+            // Wan 3.0: `first_frame_url`, resolution "480P" | "720P" | "1080P" (upper case) for text and image input.
+            return { ...info, family: 'jobs', model: 'wan/3-0-video', imageField: 'first_frame_url', upperResolution: true };
         }
         if (id.includes('sora') || id.includes('ovi')) {
             if (hasImage) {
@@ -248,17 +257,14 @@ export class KieClient {
         const input = {};
         if (params.prompt) input.prompt = params.prompt;
         if (params.aspect_ratio) input.aspect_ratio = params.aspect_ratio;
-        if (params.resolution) input.resolution = params.resolution;
-        if (params.duration) input.duration = params.duration;
+        if (params.resolution) input.resolution = settings.upperResolution ? String(params.resolution).toUpperCase() : params.resolution;
+        if (params.duration) input.duration = settings.durationString ? String(params.duration) : params.duration;
 
         const imageUrl = params.image_url;
         if (imageUrl) {
-            if (settings.videoInput === 'first_frame') {
-                input.first_frame_url = imageUrl;
-                if (input.resolution) input.resolution = String(input.resolution).toUpperCase();
-            } else {
-                input.image_urls = [imageUrl];
-            }
+            if (settings.imageField === 'first_frame_url') input.first_frame_url = imageUrl;
+            else if (settings.imageField === 'image_url') input.image_url = imageUrl;
+            else input.image_urls = [imageUrl];
         }
         return input;
     }
@@ -270,6 +276,7 @@ export class KieClient {
         const modelInfo = this._imageModel(params.model);
         const settings = { mode: params.image_url ? 'image_input' : null };
         const input = this._imageInput(params, settings);
+        if (/^(google|qwen)\//.test(modelInfo.slug)) input.output_format = 'jpeg'; // these accept png | jpeg only
 
         const result = await this._submitTask(modelInfo.slug, input, { onRequestId: params.onRequestId });
         const imageUrl = this._extractUrl(result) || result.url || result.output?.url;
@@ -283,6 +290,7 @@ export class KieClient {
     async generateI2I(params) {
         const settings = this._editModel(params.model);
         const input = this._imageInput(params, settings);
+        if (/^(google|qwen)\//.test(settings.slug)) input.output_format = 'jpeg'; // these accept png | jpeg only
 
         const result = await this._submitTask(settings.slug, input, { onRequestId: params.onRequestId });
         const imageUrl = this._extractUrl(result) || result.url || result.output?.url;
@@ -314,8 +322,7 @@ export class KieClient {
                 model: settings.model,
                 generationType: settings.generationType,
                 aspect_ratio: params.aspect_ratio || '16:9',
-                resolution: params.resolution || '720p',
-                enableFallback: false
+                resolution: params.resolution || '720p'
             };
             if (params.image_url) body.imageUrls = [params.image_url];
 
@@ -460,6 +467,6 @@ for (const name of ['generateImage', 'generateI2I', 'generateVideo', 'generateI2
     if (!original) continue;
     kie[name] = async (...args) => {
         try { return await original(...args); }
-        finally { window.dispatchEvent(new Event('credits-refresh')); }
+        finally { globalThis.window?.dispatchEvent(new Event('credits-refresh')); }
     };
 }

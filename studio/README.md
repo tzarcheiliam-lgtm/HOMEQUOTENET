@@ -24,6 +24,17 @@ This folder lives inside the HomeQuote Network repo. The site's `npm run build` 
 
 `vite.config.mjs` uses `base: '/studio/'`, so asset paths are absolute under `/studio/`. Files in `public/` here (e.g. `assets/cinema/*.webp`) must be referenced with `import.meta.env.BASE_URL` in front.
 
+## Sample images and videos
+
+Explore, the Models gallery and model pages show samples from `src/lib/samples.js`. Generate them once with your own kie.ai key:
+
+```bash
+KIE_API_KEY=xxxx node studio/scripts/generate-samples.mjs            # shows the plan and estimated cost, asks before spending
+KIE_API_KEY=xxxx node studio/scripts/generate-samples.mjs --images-only
+```
+
+Files are saved in `public/samples/`. Re-running only generates what's missing. Commit `public/samples/` and `src/lib/samples.js` afterwards.
+
 ## API key — important
 
 - In production the app asks each user for their own kie.ai key (stored in that browser's localStorage, sent only to kie.ai). This is the safe default for a public site.
@@ -33,9 +44,15 @@ This folder lives inside the HomeQuote Network repo. The site's `npm run build` 
 
 ## Layout
 
-- `src/main.js` — router and entry
-- `src/components/` — Header, Image/Video/LipSync/Cinema studios, Models page
-- `src/lib/kie.js` — kie.ai client; `src/lib/catalog.js` — Models page data and id → kie.ai mapping
-- `src/lib/models.js` — generated model definitions
+- `src/main.js`: entry; renders the page for the current hash route (`src/lib/router.js`).
+- `src/components/Shell.js`: left rail, phone bottom bar, credits pill.
+- `src/components/`:
+  - Explore, Models, ModelDetail and Projects pages
+  - the Image, Video, LipSync and Cinema studios
+  - `media.js`: placeholders, viewer and masonry.
+- `src/lib/kie.js`: the kie.ai client. `src/lib/catalog.js`: model id → kie.ai mapping.
+- `src/lib/models.js`: generated model definitions. Specs come from here via `src/lib/specs.js`.
+- `src/lib/modelInfo.js`: hand-written maker, tagline and "best for", plus prices only where kie.ai shows them.
+- `src/lib/presets.js` and `src/lib/samples.js`: Explore presets and the generated samples manifest.
 
 Note: many model ids in `models.js` have no kie.ai equivalent; the Models page marks those unavailable.

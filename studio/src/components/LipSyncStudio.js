@@ -248,6 +248,7 @@ export function LipSyncStudio() {
 
     // ── Prompt Textarea ──
     const textarea = document.createElement('textarea');
+    textarea.dataset.promptBox = '1'; // deep links (?prompt=) fill this box
     textarea.placeholder = 'Optional: describe the talking style or motion...';
     textarea.className = 'flex-1 bg-transparent text-white placeholder-muted/50 text-sm resize-none outline-none min-h-[56px] leading-relaxed pt-1';
     textarea.rows = 2;
@@ -464,7 +465,7 @@ export function LipSyncStudio() {
     const generationHistory = [];
 
     const historySidebar = document.createElement('div');
-    historySidebar.className = 'fixed right-0 top-0 h-full w-20 md:w-24 bg-black/60 backdrop-blur-xl border-l border-white/5 z-50 flex flex-col items-center py-4 gap-3 overflow-y-auto transition-all duration-500 translate-x-full opacity-0';
+    historySidebar.className = 'max-md:hidden fixed right-0 top-14 bottom-16 lg:bottom-0 w-20 md:w-24 bg-black/60 backdrop-blur-xl border-l border-white/5 z-50 flex flex-col items-center py-4 gap-3 overflow-y-auto transition-all duration-500 translate-x-full opacity-0';
     historySidebar.id = 'lipsync-history-sidebar';
 
     const historyLabel = document.createElement('div');
