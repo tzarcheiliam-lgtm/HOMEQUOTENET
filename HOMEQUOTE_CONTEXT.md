@@ -1084,6 +1084,12 @@ Seret (Hebrew סרט, "film"; renamed from MOTC 2026-10-23; "by HomeQuote Networ
 - **Shared code:** `components/media.js` (placeholders, hover-play, viewer with Recreate, masonry) and `lib/creations.js` (reads the four histories).
 - **Samples:** `studio/scripts/generate-samples.mjs` is run by hand with `KIE_API_KEY`. It prints the plan and estimated cost (about $6.73 / 1,350 credits for 23 samples; `--images-only` about $0.56) and asks before spending. It downloads results to `studio/public/samples/` (served at `/studio/samples/`) and writes `lib/samples.js` (empty until run; pages show branded placeholders meanwhile). Re-runs only generate missing files.
 - **kie.js:** uses `import.meta.env?.` and `globalThis` so the script can reuse it in Node; browser behaviour is unchanged.
+- **kie.ai model fixes (2026-10-24, checked against docs.kie.ai):**
+  - Model names: Nano Banana is `google/nano-banana` and its edit model `google/nano-banana-edit` (images in `image_urls`). Google and Qwen models only accept `output_format` `jpeg`.
+  - Field names: Kling i2v takes one `image_url` and a string duration. Seedance 2 i2v takes `first_frame_url`. Wan always uses `480P`-style resolutions. Veo no longer sends the deprecated `enableFallback`.
+  - Polling: a failed generation now stops polling at once. It used to retry until the attempt limit (up to 30 min).
+  - Unavailable text-to-video models, each with its reason (`catalog.js` `videoUnavailable`): Kling (kie.ai's Kling 2.1 is image-to-video only), Seedance 1.5 Pro, and Sora 2 / OVI (not in kie.ai's docs).
+  - Result: 9 kie.ai models are runnable. Newer kie.ai models (Kling 2.6/3.0, Seedance 2.5, Grok Imagine video, Veo's new jobs API) are not mapped yet.
 - **Phones:** the studios' fixed History strip is hidden below `md` (Projects covers it).
 - **Tests:** `tests/seret-studio.test.ts` (presets use runnable models and valid aspect ratios; `modelInfo` matches `runsAs`; router round-trip). Studio internals (generation flows) were not restyled beyond the shell, and nothing was verified against live kie.ai.
 

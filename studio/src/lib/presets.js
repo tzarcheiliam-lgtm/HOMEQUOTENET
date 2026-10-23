@@ -38,7 +38,7 @@ export const PRESETS = [
         id: 'adu-walkthrough',
         title: 'ADU walkthrough',
         page: 'video',
-        model: 'kling-v2.1-master-t2v',
+        model: 'seedance-v2.0-t2v',
         aspect_ratio: '16:9',
         prompt: 'Smooth walkthrough of a modern backyard ADU at dusk, glass sliding doors opening to a bright open-plan living space, warm interior lights, realistic camera movement',
     },

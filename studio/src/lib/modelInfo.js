@@ -45,18 +45,6 @@ export const MODEL_INFO = {
         description: 'A faster Seedance 2 option for quick drafts and lots of variations.',
         bestFor: ['Testing ideas before a final render', 'Short social clips'],
     },
-    'Seedance 1.5 Pro': {
-        maker: 'ByteDance',
-        tagline: 'The earlier Seedance Pro generation.',
-        description: 'ByteDance\'s Seedance 1.5 Pro video model.',
-        bestFor: ['Short product and project clips'],
-    },
-    'Kling 2.1 Pro': {
-        maker: 'Kuaishou',
-        tagline: 'Realistic motion and lighting.',
-        description: 'Kuaishou\'s Kling 2.1 Pro video model, strong on realistic movement.',
-        bestFor: ['Realistic home tours', 'Exterior shots', 'Lifestyle clips'],
-    },
     'Veo 3': {
         maker: 'Google',
         tagline: 'Google\'s flagship video model.',
@@ -75,18 +63,6 @@ export const MODEL_INFO = {
         description: 'Alibaba\'s Wan video model, a cost-effective choice for lots of clips.',
         bestFor: ['High-volume social content', 'B-roll'],
         price: { text: 'from $0.04 per second', source: KIE_HOME, checked },
-    },
-    'Sora 2': {
-        maker: 'OpenAI',
-        tagline: 'OpenAI\'s video model.',
-        description: 'OpenAI\'s Sora 2 video model.',
-        bestFor: ['Storytelling clips', 'Creative concepts'],
-    },
-    'Sora 2 Pro': {
-        maker: 'OpenAI',
-        tagline: 'The higher-quality Sora 2 tier.',
-        description: 'OpenAI\'s Sora 2 Pro, the premium Sora option.',
-        bestFor: ['Hero videos', 'Premium campaigns'],
     },
 };
 

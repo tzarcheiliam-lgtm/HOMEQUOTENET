@@ -10,6 +10,14 @@ const imageRules = [
     ['grok', 'Grok Imagine'],
 ];
 
+// Text-to-video models kie.ai can't run the way Seret calls them (checked against docs.kie.ai, 2026-10-24).
+const videoUnavailable = [
+    ['kling', 'On kie.ai, Kling 2.1 needs a starting image, so it can\'t do text-to-video'],
+    ['seedance-v1.5', 'Seedance 1.5 Pro isn\'t in kie.ai\'s model docs'],
+    ['sora', 'Sora 2 isn\'t in kie.ai\'s model docs'],
+    ['ovi', 'Sora 2 isn\'t in kie.ai\'s model docs'],
+];
+
 const videoRules = [
     ['veo', (id) => (id.includes('fast') ? 'Veo 3 Fast' : id.includes('lite') ? 'Veo 3 Lite' : 'Veo 3')],
     ['kling', (id) => (id.includes('2.1-standard') ? 'Kling 2.1 Standard' : 'Kling 2.1 Pro')],
@@ -25,6 +33,8 @@ function resolve(model, kind) {
         const hit = imageRules.find(([key]) => id.includes(key));
         return hit ? { runsAs: hit[1] } : { runsAs: null, reason: 'Not offered on kie.ai' };
     }
+    const blocked = videoUnavailable.find(([key]) => id.includes(key));
+    if (blocked) return { runsAs: null, reason: blocked[1] };
     const hit = videoRules.find(([key]) => id.includes(key));
     return hit ? { runsAs: hit[1](id) } : { runsAs: null, reason: 'Not offered on kie.ai' };
 }
