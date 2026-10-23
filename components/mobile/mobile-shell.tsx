@@ -9,6 +9,7 @@ import { groupNavItems, type NavItem } from '@/lib/nav';
 import { BrandLogo } from '@/components/brand-logo';
 import type { UserRole } from '@/lib/types';
 import { NAV_ICONS } from '@/components/nav-icons';
+import { NavLink } from '@/components/nav-link';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { useNotifications } from '@/components/notifications/use-notifications';
 import { SignOutForm } from '@/components/notifications/sign-out-form';
@@ -209,8 +210,8 @@ export function MobileChrome({
               const isActive = active?.href === item.href && active?.label === item.label;
               return (
                 <li key={item.href} className="flex-1">
-                  <Link
-                    href={item.href}
+                  <NavLink
+                    item={item}
                     aria-current={isActive ? 'page' : undefined}
                     className={cn(
                       'flex h-full flex-col items-center justify-center gap-0.5 text-[11px] font-medium active:bg-accent/60',
@@ -219,7 +220,7 @@ export function MobileChrome({
                   >
                     <Icon className={cn('size-6', isActive && 'stroke-[2.4]')} aria-hidden="true" />
                     {item.label}
-                  </Link>
+                  </NavLink>
                 </li>
               );
             })}
@@ -301,9 +302,9 @@ export function MobileChrome({
                     const Icon = NAV_ICONS[item.icon] ?? LayoutDashboard;
                     const isActive = active?.href === item.href && active?.label === item.label;
                     return (
-                      <Link
+                      <NavLink
                         key={`${item.href}-${item.label}`}
-                        href={item.href}
+                        item={item}
                         onClick={() => setMoreOpen(false)}
                         aria-current={isActive ? 'page' : undefined}
                         className={cn(
@@ -313,7 +314,7 @@ export function MobileChrome({
                       >
                         <Icon className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
                         <span className="min-w-0 leading-tight">{item.label}</span>
-                      </Link>
+                      </NavLink>
                     );
                   })}
                 </div>

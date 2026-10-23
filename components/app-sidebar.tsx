@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import { NavLink } from '@/components/nav-link';
 import { usePathname } from 'next/navigation';
 import { LayoutDashboard } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -30,8 +30,8 @@ export function AppSidebar({ items }: { items: NavItem[] }) {
               const active = isActive(pathname, item.href);
               return (
                 <li key={`${item.label}-${item.href}`}>
-                  <Link
-                    href={item.href}
+                  <NavLink
+                    item={item}
                     aria-current={active ? 'page' : undefined}
                     className={cn(
                       'relative flex min-h-9 items-center gap-3 rounded-md px-3 py-1.5 text-sm transition-colors',
@@ -42,7 +42,7 @@ export function AppSidebar({ items }: { items: NavItem[] }) {
                   >
                     <Icon className="size-4 shrink-0" aria-hidden="true" />
                     <span className="min-w-0">{item.label}</span>
-                  </Link>
+                  </NavLink>
                 </li>
               );
             })}

@@ -20,7 +20,7 @@ npm run build      # outputs ../public/studio/
 
 ## How it is part of the HomeQuote site
 
-This folder lives inside the HomeQuote Network repo. The site's `npm run build` runs `npm run build:studio` first, which installs this folder's dependencies and builds it into `public/studio/` (gitignored, rebuilt on every deploy). The site serves it at `/studio` to signed-in admins only (enforced in the site's middleware), and it is also at the top of the admin-only `/app/creative-studio`.
+This folder lives inside the HomeQuote Network repo. The site's `npm run build` runs `npm run build:studio` first, which installs this folder's dependencies and builds it into `public/studio/` (gitignored, rebuilt on every deploy). The site serves it at `/studio` to signed-in admins only (enforced in the site's middleware). Admins open it from the portal menu (Growth > Seret), which opens it in a new tab.
 
 `vite.config.mjs` uses `base: '/studio/'`, so asset paths are absolute under `/studio/`. Files in `public/` here (e.g. `assets/cinema/*.webp`) must be referenced with `import.meta.env.BASE_URL` in front.
 

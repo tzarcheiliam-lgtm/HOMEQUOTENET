@@ -11,6 +11,8 @@ export interface NavItem {
   title?: string;
   /** Sidebar / menu section. Dashboard has none and sits above the headings. */
   group?: NavGroup;
+  /** Opens in a new tab as a plain link (for pages outside the Next app, like the Seret studio). */
+  newTab?: boolean;
 }
 
 export type NavGroup = 'Operations' | 'Growth' | 'Administration';
@@ -36,7 +38,7 @@ const GROUP_BY_LABEL: Record<string, NavGroup> = {
   'Contractor Funnel': 'Growth',
   Analytics: 'Growth',
   'Meta Ads': 'Growth',
-  'Creative Studio': 'Growth',
+  Seret: 'Growth',
   Automations: 'Growth',
   'Email Templates': 'Growth',
   Sales: 'Administration',
@@ -186,12 +188,14 @@ const BASE_NAV_ITEMS: NavItem[] = [
     icon: 'Megaphone',
     roles: ['admin', 'contractor'],
   },
-  // Embedded image/video generators for ad creative (admin only). Entries live in content/creative-studio.ts.
+  // Seret, the AI image/video studio (static app in public/studio/, admin-only via the middleware). Opens in a new tab.
   {
-    label: 'Creative Studio',
-    href: '/app/creative-studio',
-    icon: 'Sparkles',
+    label: 'Seret',
+    title: 'Seret studio',
+    href: '/studio',
+    icon: 'Clapperboard',
     roles: ['admin'],
+    newTab: true,
   },
   {
     label: 'Funnels',

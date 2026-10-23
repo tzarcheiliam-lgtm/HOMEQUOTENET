@@ -21,6 +21,8 @@ const nextConfig: NextConfig = {
     return [
       { source: '/bathroom-remodel', destination: '/estimate/bathroom-remodel', permanent: false },
       { source: '/kitchen-remodel', destination: '/estimate/kitchen-remodel', permanent: false },
+      // The old Creative Studio page was replaced by the Seret studio.
+      { source: '/app/creative-studio', destination: '/studio', permanent: false },
     ];
   },
   async rewrites() {
