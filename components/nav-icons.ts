@@ -26,6 +26,7 @@ import {
   FileStack,
   MessageSquare,
   Sparkles,
+  Clapperboard,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -33,6 +34,7 @@ import {
 export const NAV_ICONS: Record<string, LucideIcon> = {
   Bot,
   Sparkles,
+  Clapperboard,
   MessageSquare,
   FileSignature,
   FileStack,

@@ -145,7 +145,35 @@ export class KieClient {
     _extractUrl(data) {
         if (Array.isArray(data.resultUrls) && data.resultUrls.length) return data.resultUrls[0];
         if (data.response?.resultUrls?.length) return data.response.resultUrls[0];
+        // The jobs API returns its result as a JSON string: resultJson = '{"resultUrls":[...]}'.
+        if (typeof data.resultJson === 'string') {
+            try {
+                const parsed = JSON.parse(data.resultJson);
+                if (parsed?.resultUrls?.length) return parsed.resultUrls[0];
+            } catch { /* not JSON */ }
+        }
         return null;
+    }
+
+    /** One status check with no waiting: { state: 'running' | 'success' | 'failed', url?, error? }. */
+    async checkTask(requestId, key) {
+        key = key || this.getKey();
+        const veo = requestId.startsWith('veo:');
+        const path = veo
+            ? `/api/v1/veo/record-info?taskId=${encodeURIComponent(requestId.slice('veo:'.length))}`
+            : `/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(requestId)}`;
+        const response = await fetch(`${this.baseUrl}${path}`, { headers: { 'Authorization': `Bearer ${key}` } });
+        if (!response.ok) throw new Error(`Status check failed (${response.status})`);
+        const data = (await response.json()).data || {};
+        if (veo) {
+            if (data.successFlag === 1) return { state: 'success', url: this._extractUrl(data) };
+            if (data.successFlag === 2 || data.successFlag === 3) return { state: 'failed', error: data.errorMessage || 'Generation failed' };
+            return { state: 'running' };
+        }
+        const state = (data.state || '').toLowerCase();
+        if (state === 'success') return { state: 'success', url: this._extractUrl(data) };
+        if (state === 'fail' || state === 'error') return { state: 'failed', error: data.failMsg || 'Generation failed' };
+        return { state: 'running' };
     }
 
     _imageModel(id) {

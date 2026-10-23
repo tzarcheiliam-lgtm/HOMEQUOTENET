@@ -21,6 +21,10 @@ function navigate(page) {
     import('./components/VideoStudio.js').then(({ VideoStudio }) => {
       contentArea.appendChild(VideoStudio());
     });
+  } else if (page === 'projects') {
+    import('./components/ProjectsPage.js').then(({ ProjectsPage }) => {
+      contentArea.appendChild(ProjectsPage());
+    });
   } else if (page === 'models') {
     import('./components/ModelsPage.js').then(({ ModelsPage }) => {
       contentArea.appendChild(ModelsPage());
