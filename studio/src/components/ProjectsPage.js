@@ -1,54 +1,19 @@
+import { finishedProjects, isVideoUrl, STUDIOS } from '../lib/creations.js';
 import { getPendingJobs } from '../lib/pendingJobs.js';
+import { go } from '../lib/router.js';
+import { MASONRY, ago, esc, mediaHtml, openViewer, wireHoverPlay } from './media.js';
 
-// Where each studio keeps its finished work in this browser, and the page that opens it.
-const STUDIOS = {
-    image: { label: 'Image', historyKey: 'kie_history', page: 'image' },
-    video: { label: 'Video', historyKey: 'video_history', page: 'video' },
-    lipsync: { label: 'Lip Sync', historyKey: 'lipsync_history', page: 'lipsync' },
-    cinema: { label: 'Cinema', historyKey: 'cinema_history', page: 'cinema' },
-};
 const CHECK_EVERY_MS = 10000;
-
-const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const isVideo = (kind, url) => kind === 'video' || kind === 'lipsync' || /\.(mp4|webm|mov)(\?|$)/i.test(url || '');
-
-function readJson(key) {
-    try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; }
-}
-
-/** Every finished generation across the studios, newest first. Cinema entries keep their prompt under `settings`. */
-function finishedProjects() {
-    return Object.entries(STUDIOS)
-        .flatMap(([kind, s]) => readJson(s.historyKey).map(e => ({
-            id: e.id || e.url,
-            kind,
-            url: e.url,
-            prompt: e.prompt ?? e.settings?.prompt ?? '',
-            model: e.model || '',
-            at: new Date(e.timestamp).getTime() || 0,
-        })))
-        .filter(p => p.url)
-        .sort((a, b) => b.at - a.at);
-}
-
-function ago(ms) {
-    const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
-    if (s < 60) return 'just now';
-    const m = Math.round(s / 60);
-    if (m < 60) return `${m} min ago`;
-    const h = Math.round(m / 60);
-    if (h < 24) return `${h} hr ago`;
-    return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
+const isVideo = (kind, url) => kind === 'video' || kind === 'lipsync' || isVideoUrl(url);
 
 export function ProjectsPage() {
     const page = document.createElement('div');
     page.className = 'w-full h-full overflow-y-auto custom-scrollbar bg-app-bg px-4 md:px-8 py-8';
     page.innerHTML = `
-        <div class="max-w-6xl mx-auto space-y-10">
+        <div class="max-w-7xl mx-auto space-y-10">
             <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
                 <div>
-                    <h1 class="text-2xl font-black text-white tracking-tight">Projects</h1>
+                    <h1 class="text-3xl md:text-4xl font-bold text-white tracking-tight">Projects</h1>
                     <p class="text-sm text-secondary mt-1">What's still generating, and everything that's finished. Saved in this browser.</p>
                 </div>
                 <div id="projects-filters" class="flex flex-wrap gap-2"></div>
@@ -59,7 +24,7 @@ export function ProjectsPage() {
             </section>
             <section aria-labelledby="done-title">
                 <h2 id="done-title" class="text-sm font-black uppercase tracking-widest text-secondary mb-3">Done <span id="done-count" class="text-muted"></span></h2>
-                <div id="done-grid" class="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"></div>
+                <div id="done-grid" class="${MASONRY}"></div>
             </section>
         </div>
     `;
@@ -68,10 +33,11 @@ export function ProjectsPage() {
     const ongoingList = page.querySelector('#ongoing-list');
     const doneGrid = page.querySelector('#done-grid');
     let filter = 'all';
+    let doneSig = '';
     // Latest kie.ai answer per running job: { state: 'running' | 'success' | 'failed', url, error }.
     const status = new Map();
 
-    const open = (kind) => window.dispatchEvent(new CustomEvent('navigate', { detail: { page: STUDIOS[kind].page } }));
+    const open = (kind) => go(STUDIOS[kind].page);
     const badge = (kind) => `<span class="text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-primary/15 text-white">${esc(STUDIOS[kind].label)}</span>`;
     const preview = (kind, url, cls) => isVideo(kind, url)
         ? `<video src="${esc(url)}" class="${cls}" muted playsinline preload="metadata"></video>`
@@ -120,14 +86,19 @@ export function ProjectsPage() {
             ongoingList.appendChild(card);
         });
 
+        // Only rebuild the gallery when it changed, so a playing preview isn't reset every refresh.
+        const sig = filter + '|' + doneShown.map((p) => p.id).join(',');
+        if (sig === doneSig) return;
+        doneSig = sig;
         doneGrid.innerHTML = doneShown.length ? '' : empty('Finished images and videos appear here.');
         doneShown.forEach(p => {
             const card = document.createElement('div');
-            card.className = 'group rounded-2xl border border-white/10 bg-panel-bg overflow-hidden flex flex-col hover:border-white/30 transition-colors';
+            card.dataset.card = '1';
+            card.className = 'group relative rounded-2xl border border-white/10 bg-panel-bg overflow-hidden hover:border-white/30 transition-colors';
             card.innerHTML = `
-                <a href="${esc(p.url)}" target="_blank" rel="noopener" class="block aspect-video bg-black/40 overflow-hidden" title="Open full size">
-                    ${preview(p.kind, p.url, 'w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300')}
-                </a>
+                <button type="button" data-view class="block w-full bg-black/40 overflow-hidden" title="View">
+                    ${mediaHtml(p, 'w-full h-auto block group-hover:scale-[1.02] transition-transform duration-300')}
+                </button>
                 <div class="p-3.5 flex flex-col gap-1.5">
                     <div class="flex items-center justify-between gap-2">${badge(p.kind)}<span class="text-[10px] font-black uppercase tracking-widest text-green-400">Done</span></div>
                     <p class="text-sm text-white line-clamp-2">${esc(p.prompt) || '<span class="text-muted">No prompt</span>'}</p>
@@ -136,8 +107,10 @@ export function ProjectsPage() {
                         <a href="${esc(p.url)}" target="_blank" rel="noopener" download class="font-bold text-primary hover:text-white shrink-0">Download</a>
                     </div>
                 </div>`;
+            card.querySelector('[data-view]').onclick = () => openViewer({ ...p, label: STUDIOS[p.kind].label, title: p.model || STUDIOS[p.kind].label });
             doneGrid.appendChild(card);
         });
+        wireHoverPlay(doneGrid);
     }
 
     // Ask kie.ai about each running job (one request each, no waiting). Read-only: the studio that started

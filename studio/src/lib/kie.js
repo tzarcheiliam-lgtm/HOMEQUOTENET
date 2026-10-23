@@ -5,11 +5,11 @@ const KIE_BASE = 'https://api.kie.ai';
 export class KieClient {
     constructor() {
         // Dev requests go through the vite proxy ('/api' → https://api.kie.ai)
-        this.baseUrl = import.meta.env.DEV ? '' : KIE_BASE;
+        this.baseUrl = import.meta.env?.DEV ? '' : KIE_BASE; // ?. so the sample generator can use this in Node
     }
 
     getKey() {
-        const key = window.__KIE_KEY__ || import.meta.env.VITE_KIE_KEY || localStorage.getItem('kie_key');
+        const key = globalThis.__KIE_KEY__ || import.meta.env?.VITE_KIE_KEY || globalThis.localStorage?.getItem('kie_key');
         if (!key) throw new Error('API Key missing. Please set your kie.ai key in Settings.');
         return key;
     }
@@ -460,6 +460,6 @@ for (const name of ['generateImage', 'generateI2I', 'generateVideo', 'generateI2
     if (!original) continue;
     kie[name] = async (...args) => {
         try { return await original(...args); }
-        finally { window.dispatchEvent(new Event('credits-refresh')); }
+        finally { globalThis.window?.dispatchEvent(new Event('credits-refresh')); }
     };
 }
