@@ -180,7 +180,8 @@ export class KieClient {
         const modelInfo = getModelById(id) || { id, endpoint: id };
         if (id.includes('nano-banana-pro')) return { ...modelInfo, slug: 'nano-banana-pro' };
         if (id.includes('nano-banana-2')) return { ...modelInfo, slug: 'nano-banana-2' };
-        if (id.includes('nano-banana')) return { ...modelInfo, slug: 'nano-banana' };
+        // kie.ai names the original Nano Banana with its vendor prefix (docs.kie.ai/market/google/nano-banana).
+        if (id.includes('nano-banana')) return { ...modelInfo, slug: 'google/nano-banana' };
         if (id.includes('grok')) return { ...modelInfo, slug: 'grok-imagine/text-to-image' };
         return { ...modelInfo, slug: 'nano-banana-2' };
     }
@@ -191,8 +192,9 @@ export class KieClient {
         if (id.includes('gpt')) return { ...modelInfo, slug: 'gpt-image-2-image-to-image', mode: 'input_urls' };
         if (id.includes('nano-banana-pro')) return { ...modelInfo, slug: 'nano-banana-pro', mode: 'image_input' };
         if (id.includes('nano-banana-2')) return { ...modelInfo, slug: 'nano-banana-2', mode: 'image_input' };
-        if (id.includes('nano-banana')) return { ...modelInfo, slug: 'nano-banana-edit', mode: 'image_input' };
-        return { ...modelInfo, slug: 'nano-banana-edit', mode: 'image_input' };
+        // docs.kie.ai/market/google/nano-banana-edit: vendor-prefixed name, source images in `image_urls`.
+        if (id.includes('nano-banana')) return { ...modelInfo, slug: 'google/nano-banana-edit', mode: 'image_urls' };
+        return { ...modelInfo, slug: 'google/nano-banana-edit', mode: 'image_urls' };
     }
 
     _imageInput(params, settings) {
@@ -206,6 +208,7 @@ export class KieClient {
         if (images) {
             if (settings.mode === 'single') input.image_url = images[0];
             else if (settings.mode === 'input_urls') input.input_urls = images;
+            else if (settings.mode === 'image_urls') input.image_urls = images;
             else input.image_input = images;
         }
         return input;
