@@ -48,6 +48,20 @@ export const DEFAULT_SETTINGS: AvailabilitySettings = {
   defaultDurationMinutes: 60,
 };
 
+/**
+ * Hours used for a contractor who has never configured availability:
+ * Sun 9–7, Mon–Thu 9–6:30, Fri 9–3, Saturday off. Saving anything on the
+ * Availability page replaces these with the contractor's own choices.
+ */
+export const DEFAULT_WEEKLY_RULES: WeeklyRule[] = [
+  { weekday: 0, startMinute: 9 * 60, endMinute: 19 * 60 },
+  { weekday: 1, startMinute: 9 * 60, endMinute: 18 * 60 + 30 },
+  { weekday: 2, startMinute: 9 * 60, endMinute: 18 * 60 + 30 },
+  { weekday: 3, startMinute: 9 * 60, endMinute: 18 * 60 + 30 },
+  { weekday: 4, startMinute: 9 * 60, endMinute: 18 * 60 + 30 },
+  { weekday: 5, startMinute: 9 * 60, endMinute: 15 * 60 },
+];
+
 export type UnavailableReason =
   | 'too_soon'
   | 'blocked_time'
