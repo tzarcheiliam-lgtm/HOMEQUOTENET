@@ -24,6 +24,21 @@ export const EMBED_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-
 
 export const embedSrc = (embedId: string) => `${EMBED_HOST}${embedId}`;
 
+/**
+ * The featured assistant shown at the TOP of the page (muapi's agent embed, a different URL shape from the
+ * generators below: `https://muapi.ai/embed/agent/<agentId>`). Set to null to hide the panel.
+ */
+export interface CreativeAgent { title: string; description: string; agentId: string }
+export const AGENT_HOST = 'https://muapi.ai/embed/agent/';
+export const AGENT_ID = /^[A-Za-z0-9_-]{16,64}$/;
+export const agentSrc = (agentId: string) => `${AGENT_HOST}${agentId}`;
+
+export const CREATIVE_AGENT: CreativeAgent | null = {
+  title: 'Creative Assistant',
+  description: 'Describe what you want and the assistant generates the image or video for you.',
+  agentId: 'MYDb5661RPR5SZoUXdL2p3NznT9YnZcQ',
+};
+
 export const CREATIVE_TOOLS: CreativeTool[] = [
   {
     slug: 'seedance-2',

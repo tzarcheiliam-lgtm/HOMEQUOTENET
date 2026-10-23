@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CREATIVE_TOOLS, EMBED_ID, embedSrc } from '@/content/creative-studio';
+import { AGENT_ID, CREATIVE_AGENT, CREATIVE_TOOLS, EMBED_ID, agentSrc, embedSrc } from '@/content/creative-studio';
 import { navItemsForRole } from '@/lib/nav';
 
 describe('Creative Studio', () => {
@@ -16,6 +16,10 @@ describe('Creative Studio', () => {
     expect(CREATIVE_TOOLS.map((t) => t.embedId)).toEqual([
       '404b73cb-7d75-40b9-96e9-3965c768fa70', '69fbd591-9410-47ae-862d-3171e5baacac', '01e6d66b-b009-4f72-8498-d2441010d7ca',
     ]);
+  });
+  it('has the featured assistant on the muapi agent embed url', () => {
+    expect(CREATIVE_AGENT?.agentId).toMatch(AGENT_ID);
+    expect(agentSrc(CREATIVE_AGENT!.agentId)).toBe('https://muapi.ai/embed/agent/MYDb5661RPR5SZoUXdL2p3NznT9YnZcQ');
   });
   it('is an admin-only nav item', () => {
     expect(navItemsForRole('admin').some((i) => i.href === '/app/creative-studio')).toBe(true);
