@@ -599,7 +599,7 @@ export function LipSyncStudio() {
             const attemptsLeft = Math.max(1, job.maxAttempts - elapsedAttempts);
             try {
                 const result = await kie.pollForResult(job.requestId, apiKey, attemptsLeft, job.interval);
-                const url = result.outputs?.[0] || result.url || result.output?.url;
+                const url = kie._extractUrl(result) || result.url || result.output?.url;
                 if (url) addToHistory({ id: job.requestId, url, ...job.historyMeta, timestamp: new Date().toISOString() });
             } catch (e) { console.warn('[LipSyncStudio] Pending job failed:', job.requestId, e.message); }
             finally {

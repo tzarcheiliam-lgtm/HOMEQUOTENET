@@ -26,9 +26,9 @@ export function Header(navigate) {
 
     const menu = document.createElement('nav');
     menu.className = 'hidden lg:flex items-center gap-6 text-[13px] font-bold text-secondary';
-    const items = ['Image', 'Models', 'Video', 'Lip Sync', 'Cinema Studio'];
+    const items = ['Image', 'Models', 'Video', 'Lip Sync', 'Cinema Studio', 'Projects'];
 
-    const pageForItem = { 'Image': 'image', 'Models': 'models', 'Video': 'video', 'Lip Sync': 'lipsync', 'Cinema Studio': 'cinema' };
+    const pageForItem = { 'Image': 'image', 'Models': 'models', 'Video': 'video', 'Lip Sync': 'lipsync', 'Cinema Studio': 'cinema', 'Projects': 'projects' };
     const links = {};
 
     const activate = (name) => {
@@ -64,6 +64,12 @@ export function Header(navigate) {
 
         links[name] = link;
         menu.appendChild(link);
+    });
+
+    // Pages can switch studios themselves (e.g. Projects → "Open Image"); keep the menu highlight in step.
+    window.addEventListener('navigate', (e) => {
+        const name = Object.keys(pageForItem).find((k) => pageForItem[k] === e.detail?.page);
+        if (name) activate(name);
     });
 
     leftPart.appendChild(logoContainer);
