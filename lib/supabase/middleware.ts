@@ -67,6 +67,8 @@ export async function updateSession(request: NextRequest) {
     console.error(
       '[middleware] Missing NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY — skipping session refresh.'
     );
+    // The MOTC studio has no page to check the role itself, so without Supabase it stays closed.
+    if (publicPath === '/studio' || publicPath.startsWith('/studio/')) return new NextResponse('Not available', { status: 503 });
     return supabaseResponse;
   }
 
@@ -102,25 +104,38 @@ export async function updateSession(request: NextRequest) {
   // Match the /app segment exactly — a bare `startsWith('/app')` also catches
   // public marketing routes like /apply.
   const isProtected = pathname === '/app' || pathname.startsWith('/app/');
+  // MOTC studio (static files in public/studio/) has no page of its own to run requireRole, so it is gated here: admins only.
+  const isStudio = pathname === '/studio' || pathname.startsWith('/studio/');
   const isAuthPage = pathname === '/sign-in' || pathname === '/sign-up';
 
   // Supabase unreachable (offline, wake from sleep, brief outage): that is NOT
   // "signed out". The cookie is left untouched; show a self-retrying page rather
   // than bouncing the user to sign-in.
   if (!user && isTransientAuthError(authError)) {
-    return isProtected ? retryPage() : supabaseResponse;
+    return isProtected || isStudio ? retryPage() : supabaseResponse;
   }
 
   // Not signed in and trying to reach the app → send to sign-in, remembering
   // where they were going (returnTo) so signing in lands them back there — e.g.
   // a tapped push notification. Only the path is carried, never a host, and the
   // sign-in action re-validates it (safeNextPath).
-  if (!user && isProtected) {
+  if (!user && (isProtected || isStudio)) {
     const url = request.nextUrl.clone();
     url.pathname = '/sign-in';
     url.search = '';
     url.searchParams.set('returnTo', `${pathname}${search}`);
     return redirectWithCookies(url, supabaseResponse);
+  }
+
+  // Signed in but not an active admin → back to their own home. Fails closed: no profile row means no studio.
+  if (user && isStudio) {
+    const { data: profile } = await supabase.from('profiles').select('role, is_active').eq('id', user.id).maybeSingle();
+    if (profile?.role !== 'admin' || !profile.is_active) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/app';
+      url.search = '';
+      return redirectWithCookies(url, supabaseResponse);
+    }
   }
 
   // Already signed in and visiting an auth page → into the app. /app itself

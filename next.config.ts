@@ -23,6 +23,10 @@ const nextConfig: NextConfig = {
       { source: '/kitchen-remodel', destination: '/estimate/kitchen-remodel', permanent: false },
     ];
   },
+  async rewrites() {
+    // MOTC studio (static Vite build in public/studio/, source in studio/): serve its page at /studio.
+    return [{ source: '/studio', destination: '/studio/index.html' }];
+  },
   async headers() {
     return [
       {
