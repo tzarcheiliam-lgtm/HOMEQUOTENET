@@ -3,12 +3,12 @@
 import { useState } from 'react';
 import { Clapperboard, Film, Image as ImageIcon, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { embedSrc, type CreativeTool } from '@/content/creative-studio';
+import { agentSrc, embedSrc, type CreativeAgent, type CreativeTool } from '@/content/creative-studio';
 
 const KIND_ICON: Record<string, typeof Film> = { 'Image to Video': ImageIcon, 'Video to Video': Clapperboard };
 
 /** One generator is embedded at a time (the others load only when picked), so the page stays light. */
-export function StudioView({ tools }: { tools: CreativeTool[] }) {
+export function StudioView({ tools, agent }: { tools: CreativeTool[]; agent?: CreativeAgent | null }) {
   const kinds = Array.from(new Set(tools.map((t) => t.kind)));
   const [kind, setKind] = useState<string>('All');
   const visible = kind === 'All' ? tools : tools.filter((t) => t.kind === kind);
@@ -18,7 +18,20 @@ export function StudioView({ tools }: { tools: CreativeTool[] }) {
   if (!tools.length) return <p className="text-sm text-muted-foreground">No generators added yet.</p>;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-8">
+      {agent && (
+        <section className="space-y-3" aria-labelledby="creative-agent-title">
+          <div>
+            <h2 id="creative-agent-title" className="flex items-center gap-2 text-lg font-semibold"><Sparkles className="size-4 text-primary" />{agent.title}</h2>
+            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{agent.description}</p>
+          </div>
+          <div className="h-[70vh] min-h-[480px] w-full overflow-hidden rounded-xl border bg-muted">
+            <iframe src={agentSrc(agent.agentId)} title={agent.title} loading="lazy" allow="clipboard-write" allowFullScreen className="h-full w-full border-0" />
+          </div>
+        </section>
+      )}
+
+      <section className="space-y-5" aria-label="Generators">
       {kinds.length > 1 && (
         <div className="flex flex-wrap gap-2" role="tablist" aria-label="Filter by type">
           {['All', ...kinds].map((k) => (
@@ -85,6 +98,7 @@ export function StudioView({ tools }: { tools: CreativeTool[] }) {
           </section>
         )}
       </div>
+      </section>
     </div>
   );
 }
