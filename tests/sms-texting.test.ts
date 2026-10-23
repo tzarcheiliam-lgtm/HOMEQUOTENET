@@ -59,6 +59,16 @@ describe('the AI agent', () => {
     expect(r.message).not.toContain('http');
     expect(agentResultSchema.safeParse({ ...ok, qualification: 'maybe' }).success).toBe(false);
   });
+  it('the prompt is built around booking the free estimate visit, as a request the team confirms', () => {
+    expect(SMS_SYSTEM_PROMPT).toMatch(/Your one goal: get them to agree on a day and rough time for a free in-home estimate visit/);
+    expect(SMS_SYSTEM_PROMPT).toMatch(/appointment_time/);
+    expect(SMS_SYSTEM_PROMPT).toMatch(/Never confirm an exact time yourself/);
+    expect(SMS_SYSTEM_PROMPT).toMatch(/confirm an exact appointment time/);
+    expect(SMS_SYSTEM_PROMPT).toMatch(/people who decide should be there/);
+    expect(SMS_SYSTEM_PROMPT).not.toMatch(/get them to a quick call/);
+    expect(agentResultSchema.safeParse({ ...ok, appointment_time: 'Saturday morning' }).success).toBe(true);
+    expect(agentResultSchema.safeParse({ ...ok, appointment_time: 'x'.repeat(201) }).success).toBe(false);
+  });
   it('the prompt forbids prices, links and role changes', () => {
     expect(SMS_SYSTEM_PROMPT).toMatch(/Never quote or estimate prices/);
     expect(SMS_SYSTEM_PROMPT).toMatch(/untrusted/);
@@ -255,6 +265,50 @@ describe('replies from the lead', () => {
       const r = await handleInbound(sb, { phone: from, body: 'call me', guid: `g-${randomUUID()}` }, { agent: callPick(), notify, now: () => T });
       expect(r).toMatchObject({ handled: true, replied: true });
       expect((await lastOut(leadId))?.body).toContain('call');
+    });
+  });
+
+  describe('booking the visit', () => {
+    const visit = (over: Record<string, unknown> = {}) => agentOk({ message: 'Perfect, I have you down for Saturday morning. The team will text to confirm the exact time.', mode: 'text', appointment_time: 'Saturday morning', qualification: 'qualified', ...over });
+    const lastOut = async (leadId: string) => (await messages(leadId)).filter((m: any) => m.direction === 'out').at(-1);
+
+    it('hands off as soon as they pick a day, and tells the owner to confirm the time', async () => {
+      const { leadId, from } = await started();
+      const notify = vi.fn(async () => undefined);
+      await handleInbound(sb, { phone: from, body: 'saturday morning works', guid: `g-${randomUUID()}` }, { agent: visit(), notify, now: () => T });
+      expect(notify).toHaveBeenCalledTimes(1);
+      expect(notify).toHaveBeenCalledWith({ title: 'A lead wants a visit', body: 'A lead asked for a free estimate visit: Saturday morning. Tap to confirm the time.', url: `/app/leads/${leadId}`, linkLabel: 'Confirm the visit' });
+      expect((await lastOut(leadId))?.body).toContain('The team will text to confirm');
+      expect((await q(`select status, qualification from public.sms_conversations where lead_id=$1`, [leadId]))[0]).toEqual({ status: 'handoff', qualification: 'qualified' });
+      const [act] = await q(`select body, metadata from public.lead_activities where lead_id=$1 and metadata->>'needs_attention'='true'`, [leadId]);
+      expect(act.body).toContain('wants a visit'); expect(act.body).toContain('Requested visit time: Saturday morning (not confirmed yet).');
+    });
+
+    it('hands off even if the assistant forgot to set handoff, and goes quiet afterwards', async () => {
+      const { from } = await started();
+      const notify = vi.fn(async () => undefined);
+      await handleInbound(sb, { phone: from, body: 'sat am', guid: `g-${randomUUID()}` }, { agent: visit({ handoff: false }), notify, now: () => T });
+      const quiet = vi.fn();
+      expect(await handleInbound(sb, { phone: from, body: 'great thanks', guid: `g-${randomUUID()}` }, { agent: quiet, notify, now: () => T })).toMatchObject({ reason: 'status_handoff' });
+      expect(quiet).not.toHaveBeenCalled();
+    });
+
+    it('sends one alert, not a visit alert plus a call alert', async () => {
+      const { from } = await started();
+      const notify = vi.fn(async () => undefined);
+      await handleInbound(sb, { phone: from, body: 'saturday morning, call first', guid: `g-${randomUUID()}` }, { agent: visit({ mode: 'call' }), notify, now: () => T });
+      expect(notify).toHaveBeenCalledTimes(1);
+      expect((notify.mock.calls[0] as any)[0].title).toBe('A lead wants a visit');
+    });
+
+    it('does not alert for a visit when the lead is not interested, and a failed alert never breaks the reply', async () => {
+      const a = await started();
+      const n1 = vi.fn(async () => undefined);
+      await handleInbound(sb, { phone: a.from, body: 'not interested', guid: `g-${randomUUID()}` }, { agent: visit({ close: true }), notify: n1, now: () => T });
+      expect(n1).not.toHaveBeenCalled();
+      const b = await started();
+      const boom = vi.fn(async () => { throw new Error('push down'); });
+      expect(await handleInbound(sb, { phone: b.from, body: 'saturday morning', guid: `g-${randomUUID()}` }, { agent: visit(), notify: boom, now: () => T })).toMatchObject({ handled: true, replied: true });
     });
   });
 
