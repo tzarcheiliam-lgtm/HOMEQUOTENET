@@ -4,13 +4,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { fullSchema } from './helpers/full-migrations';
 import { fakeSupabase } from './helpers/pglite-supabase';
 import { FUNNEL_PRESETS, installPresetFunnels, presetConfig } from '@/lib/funnels/presets';
-import { funnelSchema, inServiceArea, qualify, serviceAreaValid, visibleQuestions, type Answers } from '@/lib/funnels/schema';
+import { funnelSchema, inServiceArea, qualify, serviceAreaValid, validateAnswer, visibleQuestions, type Answers } from '@/lib/funnels/schema';
 
 const DATASET = '29178560738497902';
 
 const qualified: Record<string, Answers> = {
-  'bathroom-remodel': { service: 'full_remodel', zip: '90210', homeowner: 'yes' },
-  'kitchen-remodel': { service: 'full_remodel', zip: '90210', homeowner: 'yes' },
+  'bathroom-remodel': { service: 'full_remodel', zip: '90210', homeowner: 'yes', address: '12 Main St, Beverly Hills, CA' },
+  'kitchen-remodel': { service: 'full_remodel', zip: '90210', homeowner: 'yes', address: '12 Main St, Beverly Hills, CA' },
 };
 
 describe.each(FUNNEL_PRESETS.map((p) => [p.slug, p] as const))('%s funnel', (slug) => {
@@ -44,9 +44,10 @@ describe.each(FUNNEL_PRESETS.map((p) => [p.slug, p] as const))('%s funnel', (slu
     expect(qualify(config, { ...qualified[slug], ...change })).toBe(false);
   });
 
-  it('is just three questions: project, ZIP, and whether they own the home', () => {
-    expect(config.questions.map((q) => q.id)).toEqual(['service', 'zip', 'homeowner']);
-    expect(visibleQuestions(config, qualified[slug]).map((q) => q.id)).toEqual(['service', 'zip', 'homeowner']);
+  it('is just four questions: project, ZIP, whether they own the home, and the address', () => {
+    expect(config.questions.map((q) => q.id)).toEqual(['service', 'zip', 'homeowner', 'address']);
+    expect(visibleQuestions(config, qualified[slug]).map((q) => q.id)).toEqual(['service', 'zip', 'homeowner', 'address']);
+    expect(visibleQuestions(config, { ...qualified[slug], homeowner: 'no' }).map((q) => q.id)).toEqual(['service', 'zip', 'homeowner']); // a renter is not asked for an address
     expect(config.qualificationRules.map((r) => r.question).sort()).toEqual(['homeowner', 'service']);
   });
 
@@ -56,10 +57,17 @@ describe.each(FUNNEL_PRESETS.map((p) => [p.slug, p] as const))('%s funnel', (slu
 
   it('is not decided until every shown question is answered', () => {
     expect(qualify(config, { service: 'full_remodel', zip: '90210' })).toBeNull();
+    expect(qualify(config, { service: 'full_remodel', zip: '90210', homeowner: 'yes' })).toBeNull(); // still needs the address
+  });
+
+  it('requires the address', () => {
+    const address = config.questions.find((q) => q.id === 'address')!;
+    expect(validateAnswer(address, '').ok).toBe(false);
+    expect(validateAnswer(address, '12 Main St, Beverly Hills, CA').ok).toBe(true);
   });
 
   it('shows no more questions than needed on the qualified path', () => {
-    expect(visibleQuestions(config, qualified[slug]).length).toBeLessThanOrEqual(3);
+    expect(visibleQuestions(config, qualified[slug]).length).toBeLessThanOrEqual(4);
   });
 });
 

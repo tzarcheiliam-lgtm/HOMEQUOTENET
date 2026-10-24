@@ -65,6 +65,23 @@
         }
       ],
       "showWhen": []
+    },
+    {
+      "id": "address",
+      "type": "address",
+      "options": [],
+      "headline": "What is the property address?",
+      "showWhen": [
+        {
+          "values": [
+            "yes"
+          ],
+          "operator": "equals",
+          "question": "homeowner"
+        }
+      ],
+      "description": "So we can confirm the project location.",
+      "placeholder": "123 Main St, City, State"
     }
   ],
   "qualificationRules": [
