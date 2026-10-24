@@ -43,6 +43,8 @@ export class KieClient {
         if (!taskId) return json;
 
         if (params.onRequestId) params.onRequestId(taskId);
+        // noWait: start the job and return its id (the Seret API checks on it later with checkTask).
+        if (params.noWait) return { taskId };
         return this.pollJobs(taskId, key, params.maxAttempts || 300, params.interval || 2000);
     }
 
@@ -278,7 +280,7 @@ export class KieClient {
         const input = this._imageInput(params, settings);
         if (/^(google|qwen)\//.test(modelInfo.slug)) input.output_format = 'jpeg'; // these accept png | jpeg only
 
-        const result = await this._submitTask(modelInfo.slug, input, { onRequestId: params.onRequestId });
+        const result = await this._submitTask(modelInfo.slug, input, { onRequestId: params.onRequestId, noWait: params.noWait });
         const imageUrl = this._extractUrl(result) || result.url || result.output?.url;
         console.log('[Kie] Image URL:', imageUrl);
         return { ...result, url: imageUrl };
@@ -348,6 +350,7 @@ export class KieClient {
             if (!taskId) return json;
 
             if (params.onRequestId) params.onRequestId(`veo:${taskId}`);
+            if (params.noWait) return { taskId: `veo:${taskId}` };
 
             const result = await this.pollVeo(taskId, key, 900, 2000);
             const videoUrl = this._extractUrl(result) || result.url || result.output?.url;
@@ -356,7 +359,7 @@ export class KieClient {
         }
 
         const input = this._videoInput(params, settings);
-        const result = await this._submitTask(settings.model, input, { onRequestId: params.onRequestId, maxAttempts: 900 });
+        const result = await this._submitTask(settings.model, input, { onRequestId: params.onRequestId, maxAttempts: 900, noWait: params.noWait });
         const videoUrl = this._extractUrl(result) || result.url || result.output?.url;
         console.log('[Kie] Video URL:', videoUrl);
         return { ...result, url: videoUrl };

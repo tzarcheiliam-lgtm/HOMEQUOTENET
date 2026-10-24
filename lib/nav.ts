@@ -39,6 +39,7 @@ const GROUP_BY_LABEL: Record<string, NavGroup> = {
   Analytics: 'Growth',
   'Meta Ads': 'Growth',
   Seret: 'Growth',
+  'Seret API': 'Growth',
   Automations: 'Growth',
   'Email Templates': 'Growth',
   Sales: 'Administration',
@@ -196,6 +197,13 @@ const BASE_NAV_ITEMS: NavItem[] = [
     icon: 'Clapperboard',
     roles: ['admin'],
     newTab: true,
+  },
+  // API keys that let Claude (MCP) use Seret; admin only.
+  {
+    label: 'Seret API',
+    href: '/app/seret-api',
+    icon: 'KeyRound',
+    roles: ['admin'],
   },
   {
     label: 'Funnels',

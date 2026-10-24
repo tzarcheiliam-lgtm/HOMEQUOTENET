@@ -54,6 +54,8 @@ export async function updateSession(request: NextRequest) {
   // Calendar subscribe feeds are fetched by Apple/Google Calendar with no session; the unguessable token is the credential.
   if (publicPath.startsWith('/api/calendar/feed/')) return supabaseResponse;
   if (publicPath === '/sign' || publicPath.startsWith('/api/signing/')) return supabaseResponse;
+  // Seret API (MCP): authenticated by its own API key, never a session.
+  if (publicPath === '/api/seret/mcp') return supabaseResponse;
   // The service worker and manifest are fetched by the browser itself (often in the
   // background): they need no session and must not trigger a token refresh.
   if (publicPath === '/sw.js' || publicPath === '/manifest.webmanifest' || publicPath === '/offline.html') return supabaseResponse;
