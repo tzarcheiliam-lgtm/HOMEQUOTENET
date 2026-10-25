@@ -9,8 +9,8 @@ import { funnelSchema, inServiceArea, qualify, serviceAreaValid, validateAnswer,
 const DATASET = '29178560738497902';
 
 const qualified: Record<string, Answers> = {
-  'bathroom-remodel': { service: 'full_remodel', zip: '90210', homeowner: 'yes', address: '12 Main St, Beverly Hills, CA' },
-  'kitchen-remodel': { service: 'full_remodel', zip: '90210', homeowner: 'yes', address: '12 Main St, Beverly Hills, CA' },
+  'bathroom-remodel': { service: 'full_remodel', zip: '90210', homeowner: 'yes', timeline: '3_6_months', address: '12 Main St, Beverly Hills, CA' },
+  'kitchen-remodel': { service: 'full_remodel', zip: '90210', homeowner: 'yes', timeline: '3_6_months', address: '12 Main St, Beverly Hills, CA' },
 };
 
 describe.each(FUNNEL_PRESETS.map((p) => [p.slug, p] as const))('%s funnel', (slug) => {
@@ -44,9 +44,9 @@ describe.each(FUNNEL_PRESETS.map((p) => [p.slug, p] as const))('%s funnel', (slu
     expect(qualify(config, { ...qualified[slug], ...change })).toBe(false);
   });
 
-  it('is just four questions: project, ZIP, whether they own the home, and the address', () => {
-    expect(config.questions.map((q) => q.id)).toEqual(['service', 'zip', 'homeowner', 'address']);
-    expect(visibleQuestions(config, qualified[slug]).map((q) => q.id)).toEqual(['service', 'zip', 'homeowner', 'address']);
+  it('is just five questions: project, ZIP, whether they own the home, when they want to start, and the address', () => {
+    expect(config.questions.map((q) => q.id)).toEqual(['service', 'zip', 'homeowner', 'timeline', 'address']);
+    expect(visibleQuestions(config, qualified[slug]).map((q) => q.id)).toEqual(['service', 'zip', 'homeowner', 'timeline', 'address']);
     expect(visibleQuestions(config, { ...qualified[slug], homeowner: 'no' }).map((q) => q.id)).toEqual(['service', 'zip', 'homeowner']); // a renter is not asked for an address
     expect(config.qualificationRules.map((r) => r.question).sort()).toEqual(['homeowner', 'service']);
   });
@@ -60,6 +60,10 @@ describe.each(FUNNEL_PRESETS.map((p) => [p.slug, p] as const))('%s funnel', (slu
     expect(qualify(config, { service: 'full_remodel', zip: '90210', homeowner: 'yes' })).toBeNull(); // still needs the address
   });
 
+  it('asks how soon they want to start but does not turn anyone away for it', () => {
+    for (const timeline of ['asap', '1_3_months', '3_6_months', 'researching']) expect(qualify(config, { ...qualified[slug], timeline })).toBe(true);
+  });
+
   it('requires the address', () => {
     const address = config.questions.find((q) => q.id === 'address')!;
     expect(validateAnswer(address, '').ok).toBe(false);
@@ -67,7 +71,7 @@ describe.each(FUNNEL_PRESETS.map((p) => [p.slug, p] as const))('%s funnel', (slu
   });
 
   it('shows no more questions than needed on the qualified path', () => {
-    expect(visibleQuestions(config, qualified[slug]).length).toBeLessThanOrEqual(4);
+    expect(visibleQuestions(config, qualified[slug]).length).toBeLessThanOrEqual(5);
   });
 });
 
