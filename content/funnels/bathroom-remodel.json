@@ -43,41 +43,15 @@
           "value": "other",
           "label": "Something else"
         }
-      ]
-    },
-    {
-      "id": "bathroom_count",
-      "type": "choice",
-      "headline": "How many bathrooms are included?",
-      "showWhen": [
-        {
-          "question": "service",
-          "operator": "equals",
-          "values": [
-            "full_remodel"
-          ]
-        }
       ],
-      "options": [
-        {
-          "value": "one",
-          "label": "One bathroom"
-        },
-        {
-          "value": "two",
-          "label": "Two bathrooms"
-        },
-        {
-          "value": "three_plus",
-          "label": "Three or more"
-        }
-      ]
+      "showWhen": []
     },
     {
       "id": "zip",
       "type": "zip",
       "headline": "Where is your project located?",
-      "description": "Enter the ZIP code of the property."
+      "description": "Enter the ZIP code of the property.",
+      "showWhen": []
     },
     {
       "id": "homeowner",
@@ -93,202 +67,57 @@
           "value": "no",
           "label": "No, I rent or don’t own it"
         }
-      ]
-    },
-    {
-      "id": "decision_maker",
-      "type": "choice",
-      "headline": "Are you the decision-maker for this project?",
-      "description": "This helps us speak to the right person.",
-      "showWhen": [
-        {
-          "question": "homeowner",
-          "operator": "equals",
-          "values": [
-            "yes"
-          ]
-        }
       ],
-      "options": [
-        {
-          "value": "sole",
-          "label": "Yes, I make the decision"
-        },
-        {
-          "value": "joint",
-          "label": "Yes, together with a spouse or partner"
-        },
-        {
-          "value": "other",
-          "label": "No, someone else decides"
-        }
-      ]
+      "showWhen": []
     },
     {
       "id": "timeline",
       "type": "choice",
+      "options": [
+        {
+          "label": "As soon as possible",
+          "value": "asap"
+        },
+        {
+          "label": "Within 1–3 months",
+          "value": "1_3_months"
+        },
+        {
+          "label": "In 3–6 months",
+          "value": "3_6_months"
+        },
+        {
+          "label": "Just researching for now",
+          "value": "researching"
+        }
+      ],
       "headline": "When do you want the work to start?",
       "showWhen": [
         {
-          "question": "homeowner",
-          "operator": "equals",
           "values": [
             "yes"
-          ]
-        }
-      ],
-      "options": [
-        {
-          "value": "asap",
-          "label": "As soon as possible"
-        },
-        {
-          "value": "1_3_months",
-          "label": "Within 1–3 months"
-        },
-        {
-          "value": "3_6_months",
-          "label": "In 3–6 months"
-        },
-        {
-          "value": "researching",
-          "label": "Just researching for now"
-        }
-      ]
-    },
-    {
-      "id": "budget",
-      "type": "choice",
-      "headline": "What budget have you set for this project?",
-      "description": "An honest range helps us match you with the right contractor. No obligation.",
-      "showWhen": [
-        {
-          "question": "homeowner",
+          ],
           "operator": "equals",
-          "values": [
-            "yes"
-          ]
-        }
-      ],
-      "options": [
-        {
-          "value": "budget_under_5k",
-          "label": "Under $5,000"
-        },
-        {
-          "value": "budget_5_10k",
-          "label": "$5,000 – $10,000"
-        },
-        {
-          "value": "budget_10_20k",
-          "label": "$10,000 – $20,000"
-        },
-        {
-          "value": "budget_20_35k",
-          "label": "$20,000 – $35,000"
-        },
-        {
-          "value": "budget_over_35k",
-          "label": "Over $35,000"
-        }
-      ]
-    },
-    {
-      "id": "payment",
-      "type": "choice",
-      "headline": "How do you plan to pay for the project?",
-      "showWhen": [
-        {
-          "question": "homeowner",
-          "operator": "equals",
-          "values": [
-            "yes"
-          ]
-        }
-      ],
-      "options": [
-        {
-          "value": "cash",
-          "label": "Cash or savings"
-        },
-        {
-          "value": "financing_ready",
-          "label": "Financing already arranged"
-        },
-        {
-          "value": "need_financing",
-          "label": "I would need financing"
-        },
-        {
-          "value": "unsure",
-          "label": "Not sure yet"
-        }
-      ]
-    },
-    {
-      "id": "home_type",
-      "type": "choice",
-      "headline": "What type of home is it?",
-      "showWhen": [
-        {
-          "question": "homeowner",
-          "operator": "equals",
-          "values": [
-            "yes"
-          ]
-        }
-      ],
-      "options": [
-        {
-          "value": "single_family",
-          "label": "Single-family home"
-        },
-        {
-          "value": "townhome_condo",
-          "label": "Townhome or condo"
-        },
-        {
-          "value": "mobile_manufactured",
-          "label": "Mobile or manufactured home"
-        },
-        {
-          "value": "other",
-          "label": "Other"
+          "question": "homeowner"
         }
       ]
     },
     {
       "id": "address",
       "type": "address",
+      "options": [],
       "headline": "What is the property address?",
+      "showWhen": [
+        {
+          "values": [
+            "yes"
+          ],
+          "operator": "equals",
+          "question": "homeowner"
+        }
+      ],
       "description": "So we can confirm the project location.",
-      "showWhen": [
-        {
-          "question": "homeowner",
-          "operator": "equals",
-          "values": [
-            "yes"
-          ]
-        }
-      ],
       "placeholder": "123 Main St, City, State"
-    },
-    {
-      "id": "notes",
-      "type": "long_text",
-      "headline": "Anything else we should know about the project?",
-      "description": "Optional. Style, must-haves, or timing details.",
-      "showWhen": [
-        {
-          "question": "homeowner",
-          "operator": "equals",
-          "values": [
-            "yes"
-          ]
-        }
-      ],
-      "required": false,
-      "placeholder": "Tell us what you have in mind…"
     }
   ],
   "qualificationRules": [
@@ -308,40 +137,6 @@
       "operator": "equals",
       "values": [
         "yes"
-      ]
-    },
-    {
-      "question": "decision_maker",
-      "operator": "in",
-      "values": [
-        "sole",
-        "joint"
-      ]
-    },
-    {
-      "question": "timeline",
-      "operator": "in",
-      "values": [
-        "asap",
-        "1_3_months"
-      ]
-    },
-    {
-      "question": "budget",
-      "operator": "in",
-      "values": [
-        "budget_10_20k",
-        "budget_20_35k",
-        "budget_over_35k"
-      ]
-    },
-    {
-      "question": "payment",
-      "operator": "in",
-      "values": [
-        "cash",
-        "financing_ready",
-        "need_financing"
       ]
     }
   ],

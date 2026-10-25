@@ -9,8 +9,8 @@ import { funnelSchema, inServiceArea, qualify, serviceAreaValid, validateAnswer,
 const DATASET = '29178560738497902';
 
 const qualified: Record<string, Answers> = {
-  'bathroom-remodel': { service: 'full_remodel', bathroom_count: 'one', zip: '90210', homeowner: 'yes', decision_maker: 'sole', timeline: '1_3_months', budget: 'budget_10_20k', payment: 'cash', home_type: 'single_family', address: '12 Main St, Beverly Hills, CA', notes: '' },
-  'kitchen-remodel': { service: 'full_remodel', kitchen_size: 'medium', zip: '90210', homeowner: 'yes', decision_maker: 'joint', timeline: 'asap', budget: 'budget_25_40k', payment: 'need_financing', home_type: 'single_family', address: '12 Main St, Beverly Hills, CA', notes: '' },
+  'bathroom-remodel': { service: 'full_remodel', zip: '90210', homeowner: 'yes', timeline: '3_6_months', address: '12 Main St, Beverly Hills, CA' },
+  'kitchen-remodel': { service: 'full_remodel', zip: '90210', homeowner: 'yes', timeline: '3_6_months', address: '12 Main St, Beverly Hills, CA' },
 };
 
 describe.each(FUNNEL_PRESETS.map((p) => [p.slug, p] as const))('%s funnel', (slug) => {
@@ -38,37 +38,40 @@ describe.each(FUNNEL_PRESETS.map((p) => [p.slug, p] as const))('%s funnel', (slu
 
   it.each([
     ['a renter', { homeowner: 'no' }],
-    ['someone who is not the decision-maker', { decision_maker: 'other' }],
-    ['someone just researching', { timeline: 'researching' }],
-    ['a start date 3–6 months away', { timeline: '3_6_months' }],
-    ['someone who is not sure how they will pay', { payment: 'unsure' }],
     ['a small repair / fixture swap', { service: slug === 'bathroom-remodel' ? 'repair' : 'appliances_flooring' }],
     ['a project outside the scope', { service: 'other' }],
-    ['a budget below the threshold', { budget: slug === 'bathroom-remodel' ? 'budget_5_10k' : 'budget_15_25k' }],
-    ['the smallest budget', { budget: slug === 'bathroom-remodel' ? 'budget_under_5k' : 'budget_under_15k' }],
   ])('does not qualify %s', (_label, change) => {
     expect(qualify(config, { ...qualified[slug], ...change })).toBe(false);
   });
 
-  it('asks a renter only the first few questions, then reaches a decision instead of 8 pointless ones', () => {
-    const visible = visibleQuestions(config, { service: 'full_remodel', zip: '90210', homeowner: 'no' }).map((q) => q.id);
-    expect(visible).not.toContain('budget'); expect(visible).not.toContain('timeline');
-    expect(qualify(config, { service: 'full_remodel', zip: '90210', homeowner: 'no', ...(slug === 'bathroom-remodel' ? { bathroom_count: 'one' } : { kitchen_size: 'medium' }) })).toBe(false); // decided, not "still answering"
+  it('is just five questions: project, ZIP, whether they own the home, when they want to start, and the address', () => {
+    expect(config.questions.map((q) => q.id)).toEqual(['service', 'zip', 'homeowner', 'timeline', 'address']);
+    expect(visibleQuestions(config, qualified[slug]).map((q) => q.id)).toEqual(['service', 'zip', 'homeowner', 'timeline', 'address']);
+    expect(visibleQuestions(config, { ...qualified[slug], homeowner: 'no' }).map((q) => q.id)).toEqual(['service', 'zip', 'homeowner']); // a renter is not asked for an address
+    expect(config.qualificationRules.map((r) => r.question).sort()).toEqual(['homeowner', 'service']);
+  });
+
+  it('a renter is decided right away (not "still answering")', () => {
+    expect(qualify(config, { service: 'full_remodel', zip: '90210', homeowner: 'no' })).toBe(false);
   });
 
   it('is not decided until every shown question is answered', () => {
     expect(qualify(config, { service: 'full_remodel', zip: '90210' })).toBeNull();
+    expect(qualify(config, { service: 'full_remodel', zip: '90210', homeowner: 'yes' })).toBeNull(); // still needs the address
   });
 
-  it('keeps the optional notes question optional and the address required', () => {
-    const notes = config.questions.find((q) => q.id === 'notes')!; const address = config.questions.find((q) => q.id === 'address')!;
-    expect(validateAnswer(notes, '').ok).toBe(true);
+  it('asks how soon they want to start but does not turn anyone away for it', () => {
+    for (const timeline of ['asap', '1_3_months', '3_6_months', 'researching']) expect(qualify(config, { ...qualified[slug], timeline })).toBe(true);
+  });
+
+  it('requires the address', () => {
+    const address = config.questions.find((q) => q.id === 'address')!;
     expect(validateAnswer(address, '').ok).toBe(false);
     expect(validateAnswer(address, '12 Main St, Beverly Hills, CA').ok).toBe(true);
   });
 
   it('shows no more questions than needed on the qualified path', () => {
-    expect(visibleQuestions(config, qualified[slug]).length).toBeLessThanOrEqual(12);
+    expect(visibleQuestions(config, qualified[slug]).length).toBeLessThanOrEqual(5);
   });
 });
 
