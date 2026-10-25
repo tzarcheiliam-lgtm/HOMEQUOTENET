@@ -22,6 +22,11 @@ export function ProjectsPage() {
                 <h2 id="ongoing-title" class="text-sm font-black uppercase tracking-widest text-secondary mb-3">In progress <span id="ongoing-count" class="text-muted"></span></h2>
                 <div id="ongoing-list" class="grid gap-3 grid-cols-1 md:grid-cols-2"></div>
             </section>
+            <section aria-labelledby="claude-title" id="claude-section" class="hidden">
+                <h2 id="claude-title" class="text-sm font-black uppercase tracking-widest text-secondary mb-3">Made by Claude <span id="claude-count" class="text-muted"></span></h2>
+                <p class="text-xs text-muted -mt-2 mb-3">Images and videos Claude made through the Seret API. Saved on the server, so they show in every browser.</p>
+                <div id="claude-grid" class="${MASONRY}"></div>
+            </section>
             <section aria-labelledby="done-title">
                 <h2 id="done-title" class="text-sm font-black uppercase tracking-widest text-secondary mb-3">Done <span id="done-count" class="text-muted"></span></h2>
                 <div id="done-grid" class="${MASONRY}"></div>
@@ -151,7 +156,44 @@ export function ProjectsPage() {
         });
     }
 
+    // Work Claude made through the Seret API (server-side, admins only). Quietly absent if the API isn't set up.
+    async function loadClaudeWork() {
+        let items = [];
+        try {
+            const r = await fetch('/api/seret/generations', { credentials: 'same-origin' });
+            if (r.ok) items = (await r.json()).items || [];
+        } catch { /* offline or not deployed: just skip the section */ }
+        const shown = items.filter((g) => g.status !== 'failed');
+        if (!shown.length || !page.isConnected) return;
+        page.querySelector('#claude-section').classList.remove('hidden');
+        page.querySelector('#claude-count').textContent = `(${shown.length})`;
+        const grid = page.querySelector('#claude-grid');
+        grid.innerHTML = '';
+        shown.forEach((g) => {
+            const item = { url: g.url, type: g.kind, prompt: g.prompt, settings: g.settings, model: g.model, modelId: g.model, page: g.kind };
+            const card = document.createElement('div');
+            card.dataset.card = '1';
+            card.className = 'group relative rounded-2xl border border-white/10 bg-panel-bg overflow-hidden hover:border-white/30 transition-colors';
+            card.innerHTML = `
+                <button type="button" data-view class="block w-full bg-black/40 overflow-hidden" title="View" ${g.url ? '' : 'disabled'}>
+                    ${g.url ? mediaHtml(item, 'w-full h-auto block group-hover:scale-[1.02] transition-transform duration-300') : '<div class="aspect-video flex items-center justify-center"><span class="w-7 h-7 rounded-full border-[3px] border-primary/25 border-t-primary animate-spin"></span></div>'}
+                </button>
+                <div class="p-3.5 flex flex-col gap-1.5">
+                    <div class="flex items-center justify-between gap-2">
+                        <span class="text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-gold/15 text-white">Claude · ${esc(g.kind)}</span>
+                        <span class="text-[10px] font-black uppercase tracking-widest ${g.status === 'success' ? 'text-green-400' : 'text-primary'}">${g.status === 'success' ? 'Done' : 'Generating'}</span>
+                    </div>
+                    <p class="text-sm text-white line-clamp-2">${esc(g.prompt)}</p>
+                    <p class="text-[11px] text-muted truncate">${esc(g.model)} · ${ago(new Date(g.created_at).getTime())}</p>
+                </div>`;
+            if (g.url) card.querySelector('[data-view]').onclick = () => openViewer({ ...item, label: 'Made by Claude', title: g.model });
+            grid.appendChild(card);
+        });
+        wireHoverPlay(grid);
+    }
+
     paintFilters();
+    loadClaudeWork();
     render();
     // The page is attached right after this returns; check once it is on screen.
     setTimeout(checkRunning, 0);

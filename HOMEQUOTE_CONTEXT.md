@@ -1103,3 +1103,46 @@ Seret (Hebrew סרט, "film"; renamed from MOTC 2026-10-23; "by HomeQuote Networ
 
 ## 31. Short house funnels (2026-10-24)
 - `bathroom-remodel` and `kitchen-remodel` (preset JSON in `content/funnels/`, and the live published rows) are now five questions: project type, ZIP, "Do you own the home?", "When do you want the work to start?" (asked, not used to qualify) and the property address (timeline and address asked only of homeowners; address required). Qualified = a full-remodel-type project AND homeowner = yes. Renters and small repairs are marked not qualified (`unqualifiedAction` still `review`). The live rows were updated directly in `funnels.config` (same as the builder's save); sessions already in progress keep their own `config_snapshot`.
+
+## 32. Seret API: Claude uses Seret through MCP (migration 0058, 2026-10-24, NOT yet applied/deployed)
+
+### Endpoint: `POST /api/seret/mcp`
+- A stateless MCP server over Streamable HTTP (`app/api/seret/mcp/route.ts`). It speaks JSON-RPC and replies with plain JSON.
+- GET and DELETE return 405. Notifications return 202.
+- **Auth:** the `Authorization: Bearer seret_…` header. Keys are never accepted in the URL.
+- The middleware skips this path, so no Supabase session is involved.
+
+### Tools
+- `list_models` and `list_presets`
+- `generate_image`: waits up to 45s and returns a link.
+- `generate_video`: returns a job id right away.
+- `get_job`
+- `list_recent`
+
+Tool problems (unknown model, bad aspect ratio, kie.ai errors) come back as `isError` tool results, so Claude can read them and fix its request.
+
+### Keys
+- `lib/seret/keys.ts` makes keys of the form `seret_` + 256 bits.
+- Only the SHA-256 hash is stored, in `seret_api_keys`. The key itself is shown once.
+- Revoking a key blocks it immediately.
+- Admins create and revoke keys at `/app/seret-api` (nav: Growth > Seret API). The page also shows the setup:
+  - Claude Code: `claude mcp add --transport http seret <url> --header "Authorization: Bearer <key>"`.
+  - claude.ai / Desktop: Settings → Connectors → Add custom connector → Request headers. This option is in beta per Anthropic's docs.
+
+### Engine (`lib/seret/engine.ts`)
+- **Shared code:** it reuses the studio's own `studio/src/lib/{kie,catalog,specs,modelInfo,presets}.js`, so model mapping is identical to the studio.
+- **Which kie.ai key it uses:** the server's `KIE_API_KEY` env var, not a browser key. Without it, generating fails with a clear error.
+- **Starting a job:** `kie.js` gained `noWait` (start the job and return its task id).
+- **Saving results:** rows go in `seret_generations`. On success the file is copied into the private `seret-media` bucket and served through 7-day signed links, because kie.ai's links are temporary `tempfile` URLs.
+- **Seret's Projects tab:** a "Made by Claude" section reads `GET /api/seret/generations` (signed-in, active admins only).
+
+### Deploy order
+1. Apply 0058.
+2. Set `KIE_API_KEY` in Vercel (Production).
+3. Deploy.
+
+### Tests
+- `tests/seret-mcp.test.ts`: auth, initialize, tools list, list_models, errors.
+- `tests/seret-keys.test.ts`.
+- Verified live: kie.ai start-then-check with `noWait` (1K image in 19s).
+- Not verified end to end against a real database. That needs 0058 applied.
