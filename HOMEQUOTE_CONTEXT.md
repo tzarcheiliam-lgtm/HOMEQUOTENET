@@ -1101,6 +1101,9 @@ Seret (Hebrew סרט, "film"; renamed from MOTC 2026-10-23; "by HomeQuote Networ
 - **Per-contractor texting:** `contractors.texting_enabled` (default false; backfilled true for existing contractors only if contractor-funnel texting was already on). A contractor funnel texts only when BOTH `sms_settings.contractor_funnels_enabled` (master) AND the contractor's switch are on. Toggle on `/app/contractors/[id]` ("Automatic texting", `setContractorTexting`).
 - **Default hours editable:** table `availability_defaults` (singleton; `timezone`, `rules` jsonb of `{weekday,startMinute,endMinute}`), editable by admins at the top of `/app/availability` (`saveDefaultHours`). `loadDefaultHours` (lib/availability/data.server.ts) falls back to `DEFAULT_WEEKLY_RULES` if the table is missing. Seeded: Sun 9–7, Mon–Thu 9–6:30, Fri 9–3, Sat off.
 
+## 31. Short house funnels (2026-10-24)
+- `bathroom-remodel` and `kitchen-remodel` (preset JSON in `content/funnels/`, and the live published rows) are now five questions: project type, ZIP, "Do you own the home?", "When do you want the work to start?" (asked, not used to qualify) and the property address (timeline and address asked only of homeowners; address required). Qualified = a full-remodel-type project AND homeowner = yes. Renters and small repairs are marked not qualified (`unqualifiedAction` still `review`). The live rows were updated directly in `funnels.config` (same as the builder's save); sessions already in progress keep their own `config_snapshot`.
+
 ## 32. Seret API: Claude uses Seret through MCP (migration 0058, 2026-10-24, NOT yet applied/deployed)
 
 ### Endpoint: `POST /api/seret/mcp`
