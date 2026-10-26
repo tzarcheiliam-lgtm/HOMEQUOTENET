@@ -1146,3 +1146,6 @@ Tool problems (unknown model, bad aspect ratio, kie.ai errors) come back as `isE
 - `tests/seret-keys.test.ts`.
 - Verified live: kie.ai start-then-check with `noWait` (1K image in 19s).
 - Not verified end to end against a real database. That needs 0058 applied.
+
+## 32. Call list "Next" stays in the list you're working (2026-10-26)
+- The Calls list carries its view + filters (niche, city, county, service, caller, …) in the URL (`lib/calls/context.ts`). Opening a prospect from the table/cards keeps them as query params; `/app/calls/[id]` and the log form (`list_context` hidden field) use them so **Next** and **Save & next** go to the next prospect in that same list (`nextProspectInContext` in `lib/data/prospects.ts`, same view/filter/sort as the list), not the caller's whole queue. With no narrowed list (plain "mine"), the old behaviour (`nextProspectIdFor`: due callbacks first) is kept. Test: `tests/calls-next-in-list.test.ts`.
