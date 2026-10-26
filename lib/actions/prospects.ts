@@ -6,7 +6,8 @@ import { z } from 'zod';
 import { isCallAssigneeRole } from '@/lib/calls/callers';
 import { createClient } from '@/lib/supabase/server';
 import { requireCallWorkspace, requireRole } from '@/lib/auth';
-import { nextProspectIdFor } from '@/lib/data/prospects';
+import { listCallers, nextProspectIdFor, nextProspectInContext, type ProspectFilters } from '@/lib/data/prospects';
+import { contextFrom, contextQuery, hasListContext, withContext } from '@/lib/calls/context';
 import { flushNotificationsSoon } from '@/lib/notifications/outbox';
 import {
   prospectPatchFor,
@@ -205,9 +206,17 @@ export async function logCallOutcome(
   revalidatePath('/app/calls/appointments');
 
   const wantsNext = fd.get('intent') === 'save_and_next';
-  const nextId = wantsNext ? await nextProspectIdFor(me, prospectId) : null;
+  // Stay inside the list the caller is working (niche, city, view …), if they opened it from one.
+  const rawCtx = new URLSearchParams(String(fd.get('list_context') ?? ''));
+  const ctx = contextFrom((k) => (k === 'caller' && me.role !== 'admin' ? undefined : (rawCtx.get(k) ?? undefined)));
+  const ctxQs = contextQuery(ctx);
+  const nextId = wantsNext
+    ? hasListContext(ctx)
+      ? await nextProspectInContext(me, prospectId, ctx as unknown as ProspectFilters, await listCallers())
+      : await nextProspectIdFor(me, prospectId)
+    : null;
   if (wantsNext) {
-    redirect(nextId ? `/app/calls/${nextId}` : '/app/calls?view=mine&done=1');
+    redirect(nextId ? withContext(`/app/calls/${nextId}`, ctxQs) : withContext('/app/calls', `${ctxQs || 'view=mine'}&done=1`));
   }
   return { ok: true, message: 'Outcome saved', nextId };
 }

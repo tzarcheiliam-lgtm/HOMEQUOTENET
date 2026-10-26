@@ -56,10 +56,10 @@ describe('conditional steps never render blank', () => {
 
   it('resolveStep repairs a step that names a hidden or missing question', () => {
     const config = load('kitchen-remodel');
-    // 'budget' only shows once homeowner = yes; with no answers it is hidden.
-    expect(resolveStep(config, {}, 'budget')).toBe('service');
-    expect(resolveStep(config, { service: 'full_remodel' }, 'does_not_exist')).toBe('kitchen_size');
-    expect(resolveStep(config, { service: 'full_remodel', kitchen_size: config.questions[1].options[0].value, zip: '90001', homeowner: 'no' }, 'budget')).toBe('qualification');
+    // 'address' only shows once homeowner = yes; with no answers it is hidden.
+    expect(resolveStep(config, {}, 'address')).toBe('service');
+    expect(resolveStep(config, { service: 'full_remodel' }, 'does_not_exist')).toBe('zip');
+    expect(resolveStep(config, { service: 'full_remodel', zip: '90001', homeowner: 'no' }, 'address')).toBe('qualification');
     // real screens and visible questions are left alone
     expect(resolveStep(config, {}, 'contact')).toBe('contact');
     expect(resolveStep(config, {}, 'service')).toBe('service');
