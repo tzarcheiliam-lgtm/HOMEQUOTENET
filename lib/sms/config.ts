@@ -7,3 +7,5 @@ export const smsModel = () => process.env.SMS_MODEL?.trim() || 'claude-haiku-5-5
 /** AI replies per conversation before a human takes over. */
 export const MAX_AI_TURNS = 14;
 export const DEFAULT_ZONES = ['America/New_York', 'America/Los_Angeles'];
+/** Instant Form leads are only texted when this is explicitly on (SMS_META_LEADS=1), on top of the admin switch. */
+export const smsMetaLeadsEnabled = () => process.env.SMS_META_LEADS?.trim() === '1';
