@@ -9,7 +9,7 @@ vi.mock('server-only', () => ({}));
 
 import { finalizeOutbound, isHelp, isOptOut, openingMessage, projectLabel } from '@/lib/sms/rules';
 import { agentResultSchema, runSmsAgent, SMS_SYSTEM_PROMPT } from '@/lib/sms/agent';
-import { ackOutbound, claimOutbound, handleInbound, startSmsForLead } from '@/lib/sms/service';
+import { ackOutbound, claimOutbound, handleInbound, metaProject, startSmsForLead, startSmsForMetaLead } from '@/lib/sms/service';
 import { checkBridgeHealth, describeStuck } from '@/lib/sms/health';
 import { presetConfig } from '@/lib/funnels/presets';
 
@@ -454,5 +454,57 @@ describe('systemPromptFor (owner instructions)', () => {
     expect(p).toContain('Offer evenings first');
     expect(p.match(/<\/owner_instructions>/g)).toHaveLength(1);
     expect(systemPromptFor('x'.repeat(MAX_EXTRA_INSTRUCTIONS + 500)).length).toBeLessThan(SMS_SYSTEM_PROMPT.length + MAX_EXTRA_INSTRUCTIONS + 600);
+  });
+});
+
+describe('Meta Instant Form leads', () => {
+  const realAnswers = { 'do_you_own_this_home?': 'yes', 'what_kitchen_project_do_you_have_in_mind?': 'full_remodel' };
+  async function metaLead(answers: Record<string, string> | null = realAnswers, phone: string | null = '(818) 555-0177') {
+    const leadId = randomUUID();
+    await q(`insert into public.leads(id, first_name, last_name, phone, state, status, source, answers) values ($1,'Sam','Lee',$2,'CA','new','meta',$3)`, [leadId, phone, answers ? JSON.stringify(answers) : null]);
+    return leadId;
+  }
+
+  it('works out the project from the form answers', () => {
+    expect(metaProject(realAnswers)).toBe('kitchen remodel');
+    expect(metaProject({ 'how_old_is_your_bathroom?': '10+ years' })).toBe('bathroom remodel');
+    expect(metaProject({ other: 'x' })).toBeNull();
+  });
+
+  it('queues one opening text as HomeQuote, once', async () => {
+    const leadId = await metaLead();
+    expect((await startSmsForMetaLead(sb, leadId, T)).started).toBe(true);
+    const [c] = await q(`select sender_name, status from public.sms_conversations where lead_id=$1`, [leadId]);
+    expect(c).toMatchObject({ sender_name: 'HomeQuote', status: 'active' });
+    const [m] = await messages(leadId);
+    expect(m.body).toContain('Hey Sam'); expect(m.body).toContain('kitchen remodel');
+    expect(await startSmsForMetaLead(sb, leadId, T)).toEqual({ started: false, reason: 'exists' });
+    expect(await messages(leadId)).toHaveLength(1);
+  });
+
+  it('stays off when texting is off, and skips Meta test leads, bad phones and opt-outs', async () => {
+    await setSettings(`enabled=false`);
+    expect(await startSmsForMetaLead(sb, await metaLead(), T)).toEqual({ started: false, reason: 'off' });
+    await setSettings(`enabled=true`);
+    expect(await startSmsForMetaLead(sb, await metaLead({ a: '<test lead: dummy data for a>' }), T)).toEqual({ started: false, reason: 'test_lead' });
+    expect(await startSmsForMetaLead(sb, await metaLead(realAnswers, null), T)).toEqual({ started: false, reason: 'bad_phone' });
+    await q(`insert into public.sms_opt_outs(phone_e164, source) values ('+18185550188','test')`);
+    expect(await startSmsForMetaLead(sb, await metaLead(realAnswers, '(818) 555-0188'), T)).toEqual({ started: false, reason: 'opted_out' });
+  });
+
+  it('does not text non-Meta leads', async () => {
+    const leadId = randomUUID();
+    await q(`insert into public.leads(id, first_name, phone, state, status, source) values ($1,'Al','(818) 555-0166','CA','new','website')`, [leadId]);
+    expect(await startSmsForMetaLead(sb, leadId, T)).toEqual({ started: false, reason: 'no_lead' });
+  });
+
+  it('gives the AI agent the Instant Form answers when a lead replies', async () => {
+    const leadId = await metaLead();
+    await startSmsForMetaLead(sb, leadId, T);
+    let seen: any = null;
+    const agent = async (input: any) => { seen = input; return { message: 'Great, want a call or text?', mode: 'text', qualification: 'unknown', call_time: null, appointment_time: null, handoff: false, close: false, summary: 's' } as any; };
+    await handleInbound(sb, { phone: '(818) 555-0177', body: 'hi', guid: `g-${randomUUID()}` }, { agent, now: () => T, aiConfigured: true, notify: async () => {} });
+    expect(seen.project).toBe('kitchen remodel');
+    expect(seen.known).toEqual(realAnswers);
   });
 });

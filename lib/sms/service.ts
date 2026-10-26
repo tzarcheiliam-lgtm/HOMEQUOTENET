@@ -96,6 +96,48 @@ export async function startSmsForLead(db: Db, leadId: string, now = new Date()):
   }
 }
 
+/** "kitchen remodel" / "bathroom remodel" when an Instant Form answer mentions one; null otherwise. */
+export function metaProject(answers: Record<string, string>): string | null {
+  const text = Object.entries(answers).map(([k, v]) => `${k} ${v}`).join(' ').toLowerCase();
+  return /kitchen/.test(text) ? 'kitchen remodel' : /bath/.test(text) ? 'bathroom remodel' : null;
+}
+
+/**
+ * Called right after a Meta Instant Form lead is created. Same queue, texting hours, opt-out, daily cap and AI agent as
+ * funnel leads; always sent as the house sender. Idempotent (one conversation per lead) and never throws.
+ */
+export async function startSmsForMetaLead(db: Db, leadId: string, now = new Date()): Promise<StartResult> {
+  try {
+    const settings = await loadSettings(db);
+    if (!isLive(settings)) return { started: false, reason: 'off' };
+    const { data: existing } = await db.from('sms_conversations').select('id').eq('lead_id', leadId).maybeSingle();
+    if (existing) return { started: false, reason: 'exists' };
+    const { data: lead } = await db.from('leads').select('id,first_name,phone,state,zip,source,answers').eq('id', leadId).maybeSingle();
+    if (!lead || lead.source !== 'meta') return { started: false, reason: 'no_lead' };
+    const answers = (lead.answers ?? {}) as Record<string, string>;
+    // Meta's Lead Ads Testing Tool fills every answer with "<test lead: dummy data ...>": never text those.
+    if (Object.values(answers).some((v) => String(v).startsWith('<test lead'))) return { started: false, reason: 'test_lead' };
+    const phone = normalizeUsPhone(lead.phone as string | null);
+    if (!phone) return { started: false, reason: 'bad_phone' };
+    const { data: optOut } = await db.from('sms_opt_outs').select('phone_e164').eq('phone_e164', phone).maybeSingle();
+    if (optOut) return { started: false, reason: 'opted_out' };
+    if ((await sentToday(db)) >= settings.daily_cap) return { started: false, reason: 'daily_cap' };
+
+    const sender = settings.house_sender_name?.trim().slice(0, 40) || SENDER_HOUSE;
+    const { data: convo, error } = await db.from('sms_conversations').insert({
+      lead_id: leadId, contractor_id: null, sender_name: sender, phone_e164: phone,
+    }).select('id,lead_id').single();
+    if (error || !convo) return { started: false, reason: 'exists' };
+    const zones = resolveZones({ state: lead.state as string | null, zip: lead.zip as string | null }) ?? DEFAULT_ZONES;
+    const when = nextEligible(now, zones, { startHour: settings.window_start_hour, endHour: settings.window_end_hour }) ?? now;
+    await queue(db, convo as { id: string; lead_id: string }, openingMessage({ firstName: lead.first_name as string | null, senderName: sender, project: metaProject(answers) }), { ai: false, sendAfter: when });
+    await note(db, leadId, `Automatic text queued${when > now ? ` for ${when.toISOString()} (outside texting hours)` : ''}.`);
+    return { started: true, conversationId: convo.id as string };
+  } catch {
+    return { started: false, reason: 'error' };
+  }
+}
+
 export interface InboundInput { phone: string; body: string; guid: string; receivedAt?: string }
 export type InboundResult = { handled: boolean; reason?: string; replied?: boolean };
 export interface InboundDeps { agent?: (input: AgentInput) => Promise<AgentResult>; now?: () => Date; aiConfigured?: boolean; notify?: (alert: Alert) => Promise<void> }
@@ -154,19 +196,20 @@ async function replyWithAgent(db: Db, c: { id: string; lead_id: string; sender_n
 
   const [{ data: msgs }, { data: lead }, { data: session }] = await Promise.all([
     db.from('sms_messages').select('direction,body,status,created_at').eq('conversation_id', c.id).order('created_at', { ascending: true }).limit(60),
-    db.from('leads').select('first_name').eq('id', c.lead_id).maybeSingle(),
+    db.from('leads').select('first_name,source,answers').eq('id', c.lead_id).maybeSingle(),
     db.from('funnel_sessions').select('answers,config_snapshot,qualified').eq('lead_id', c.lead_id).order('created_at', { ascending: false }).limit(1).maybeSingle(),
   ]);
   const snap = (session?.config_snapshot ?? {}) as Snapshot;
+  const metaAnswers = !session && lead?.source === 'meta' ? ((lead.answers ?? {}) as Record<string, string>) : null;
   const history: SmsTurn[] = ((msgs ?? []) as { direction: string; body: string; status: string }[])
     .filter((m) => m.direction === 'in' || m.status === 'sent' || m.status === 'queued' || m.status === 'sending')
     .map((m) => ({ role: m.direction === 'in' ? 'lead' : 'us', text: m.body }));
   let result: AgentResult;
   try {
     result = await (deps.agent ?? runSmsAgent)({
-      senderName: c.sender_name, firstName: (lead?.first_name as string | null) ?? null, project: projectLabel(snap.industry),
+      senderName: c.sender_name, firstName: (lead?.first_name as string | null) ?? null, project: metaAnswers ? metaProject(metaAnswers) : projectLabel(snap.industry),
       extraInstructions: settings.bot_extra_instructions ?? null,
-      known: readAnswers((session?.answers ?? {}) as Record<string, unknown>, snap), formQualified: (session?.qualified as boolean | null) ?? null, history,
+      known: metaAnswers ?? readAnswers((session?.answers ?? {}) as Record<string, unknown>, snap), formQualified: (session?.qualified as boolean | null) ?? null, history,
     });
   } catch {
     return handoff('the assistant could not reply');

@@ -4,6 +4,9 @@ import { normalizeEmail, normalizePhone } from '@/lib/leads/normalize';
 import { getConnector } from './connectors';
 import { sendLeadEmailsSoon } from '@/lib/leads/notify';
 import { flushNotificationsSoon } from '@/lib/notifications/outbox';
+import { after } from 'next/server';
+import { smsConfigured, smsMetaLeadsEnabled } from '@/lib/sms/config';
+import { startSmsForMetaLead } from '@/lib/sms/service';
 import type { IntakeContext, IntakeResult, NormalizedLead } from './types';
 
 function splitName(full: string | null | undefined): {
@@ -240,6 +243,10 @@ export async function ingestLead(
   await touchIntegration(ctx.integrationId, { sync: true });
   sendLeadEmailsSoon();
   flushNotificationsSoon();
+  // Meta Instant Form leads get the same automatic opening text as funnel leads (needs SMS_META_LEADS=1 and /app/texting on).
+  if (ctx.provider === 'meta' && smsConfigured() && smsMetaLeadsEnabled()) {
+    after(async () => { try { await startSmsForMetaLead(admin, lead.id); } catch { /* never blocks lead intake */ } });
+  }
   return {
     status: 'created',
     leadId: lead.id,
