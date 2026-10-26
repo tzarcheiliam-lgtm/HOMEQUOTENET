@@ -22,7 +22,7 @@ Status: code written and unit-tested; **not deployed, migration 0035 not applied
    permission screen in the app dashboard ("Standard" vs "Advanced access"). Standard access normally only covers people with a role
    on the app, so real leads from the live Page may need advanced access.
 3. Webhooks → **Page** → Callback URL `https://<site>/api/integrations/meta/webhook`, verify token = your `META_WEBHOOK_VERIFY_TOKEN`,
-   subscribe to the **leadgen** field. Subscribe the app to the Page (`POST /{page-id}/subscribed_apps?subscribed_fields=leadgen`).
+   subscribe to the **leadgen** field. Subscribe the app to the Page: `META_PAGE_ACCESS_TOKEN=... node scripts/meta-subscribe-page.mjs <page-id>` (wraps `POST /{page-id}/subscribed_apps?subscribed_fields=leadgen` and prints the result). Without this no leads arrive.
 4. Token upkeep: a System User token does not expire like a user-derived token, but stops working if the system user, its Page
    assignment, the app permission or the app secret is removed or reset. When retrieval fails, `/app/integrations/meta` shows an error
    ("reconnect it") and the webhook answers 500 so Meta redelivers.
