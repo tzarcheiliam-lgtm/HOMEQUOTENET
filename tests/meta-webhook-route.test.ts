@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 type TestIntegration = { id: string; secret: string; is_enabled: boolean; config: Record<string, unknown> };
 const mocks = vi.hoisted(() => ({ integration: null as unknown as TestIntegration, ingest: vi.fn(), touch: vi.fn() }));
 vi.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: () => ({ from: () => ({ select: () => ({ eq: () => ({ order: () => ({ limit: () => ({ maybeSingle: async () => ({ data: mocks.integration }) }) }) }) }) }) }),
+  createAdminClient: () => ({ from: () => ({ insert: async () => ({}), select: () => ({ eq: () => ({ order: () => ({ limit: () => ({ maybeSingle: async () => ({ data: mocks.integration }) }) }) }) }) }) }),
 }));
 vi.mock('@/lib/integrations/intake', () => ({ ingestLead: mocks.ingest, touchIntegration: mocks.touch }));
 
@@ -48,10 +48,10 @@ describe('Meta webhook security', () => {
     const body = envelope();
     expect((await post(body, sign(body))).status).toBe(401);
   });
-  it('acknowledges without importing when the integration is disabled', async () => {
+  it('answers 503 (so Meta retries) without importing when the integration is disabled', async () => {
     mocks.integration.is_enabled = false;
     const body = envelope();
-    expect((await post(body, sign(body))).status).toBe(200); expect(mocks.ingest).not.toHaveBeenCalled();
+    expect((await post(body, sign(body))).status).toBe(503); expect(mocks.ingest).not.toHaveBeenCalled();
   });
   it('ignores leads from a Page other than the configured one', async () => {
     const send = vi.fn(); vi.stubGlobal('fetch', send);

@@ -55,8 +55,9 @@ export async function POST(req: NextRequest) {
 
   const integration = await getMetaIntegration();
   if (!integration || !integration.is_enabled) {
-    // Acknowledge so Meta doesn't retry; nothing to do.
-    return NextResponse.json({ received: 0, skipped: 'disabled' });
+    // Not 2xx: Meta would treat it as delivered and the lead would be lost for good.
+    console.error('[meta-leadgen] delivery received but the Meta integration is missing or disabled');
+    return NextResponse.json({ error: 'Meta integration not enabled' }, { status: 503 });
   }
 
   // C1: verify Meta's X-Hub-Signature-256 against the app secret. Reject 401.
@@ -108,6 +109,20 @@ export async function POST(req: NextRequest) {
         reason: fetched.reason,
         status: fetched.status,
       });
+      // Dead-letter record so the failure is visible in the CRM, not only in server logs.
+      await createAdminClient()
+        .from('lead_intake_events')
+        .insert({
+          integration_id: integration.id,
+          provider: 'meta',
+          platform: 'facebook',
+          status: 'error',
+          external_lead_id: String(v.leadgen_id),
+          form_id: v.form_id ? String(v.form_id) : null,
+          page_id: v.page_id ? String(v.page_id) : null,
+          error: `Graph lead retrieval failed: ${fetched.reason}`,
+          raw_payload: v,
+        });
       continue;
     }
 
@@ -116,7 +131,7 @@ export async function POST(req: NextRequest) {
       integrationId: integration.id,
       provider: 'meta',
       platform: 'facebook',
-      rawPayload: v,
+      rawPayload: value, // includes field_data, so a lead can be replayed from it
     });
     if (result.status === 'created') created++;
     else if (result.status === 'duplicate') duplicate++;

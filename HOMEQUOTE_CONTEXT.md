@@ -571,6 +571,7 @@ or secrets by design).
   (unique index `uq_leads_meta_external`); contact matching is conservative (both email+phone,
   or one + compatible name; otherwise a new lead flagged "possible duplicate"); custom answers
   land in `leads.answers` and map to `timeline`/`budget_range`/`project_description`.
+  Webhook hardening (2026-10-26): a disabled/missing Meta integration answers 503 (not 200) so Meta redelivers; a failed Graph retrieval also writes a `lead_intake_events` error row; the raw payload stored is the webhook value merged with the Graph lead (includes `field_data`). `scripts/meta-subscribe-page.mjs` subscribes the app to the Page's `leadgen` field. Still missing: auto-SMS to the lead, backfill via `GET /{form-id}/leads`, no-leads alert.
   Tests: `meta-leadgen`, `meta-webhook-route`, `meta-intake-matching`.
   Website leads: `leads.fbp`/`fbc` are stored write-once at contact submit (`lib/meta/lead-ids.ts`,
   migration 0035) and reused by the server Schedule event; `META_TEST_EVENT_CODE` (temporary!) ALSO shows
