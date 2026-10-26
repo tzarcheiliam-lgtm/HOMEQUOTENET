@@ -18,10 +18,13 @@ import { fmtDateTime, fmtPhone, fmtRelative, isDue, telHref } from './format';
 export function ProspectCards({
   rows,
   isAdmin,
+  contextQuery,
 }: {
   rows: ProspectListRow[];
   isAdmin: boolean;
+  contextQuery?: string;
 }) {
+  const qs = contextQuery ? `?${contextQuery}` : '';
   return (
     <ul className="space-y-3 lg:hidden">
       {rows.map((p) => {
@@ -34,7 +37,7 @@ export function ProspectCards({
           <li key={p.id}>
             <MobileCard className={cn('p-0', dnc && 'bg-muted/40')}>
               <Link
-                href={`/app/calls/${p.id}`}
+                href={`/app/calls/${p.id}${qs}`}
                 className="block rounded-t-xl p-4 pb-3 active:bg-accent/50"
               >
                 <div className="flex items-start justify-between gap-3">
@@ -125,14 +128,14 @@ export function ProspectCards({
                 )}
                 {dnc ? null : (
                   <Link
-                    href={`/app/calls/${p.id}#log`}
+                    href={`/app/calls/${p.id}${qs}#log`}
                     className={cn(buttonVariants({ variant: 'outline' }), 'flex-1')}
                   >
                     Log
                   </Link>
                 )}
                 <Link
-                  href={`/app/calls/${p.id}`}
+                  href={`/app/calls/${p.id}${qs}`}
                   className={cn(buttonVariants({ variant: 'outline' }), 'flex-1')}
                 >
                   Open

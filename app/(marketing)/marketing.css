@@ -7,52 +7,49 @@
 */
 
 .hq {
-  /* Foundation: near-black charcoal, not pure black. */
-  --hq-bg: #08090b;
-  --hq-bg-raised: #0d0f13;
-  --hq-surface: #111419;
-  --hq-surface-2: #161a21;
-
-  /* Borders: soft, low-contrast hairlines. */
-  --hq-line: #1e232c;
-  --hq-line-strong: #2a313c;
-
   /*
-    Type. Contrast ratios are against --hq-bg (#08090b) and all meet WCAG AA
-    (4.5:1) for normal text. Re-measure if you change any of them.
-      --hq-text        19.4:1
-      --hq-text-muted   7.7:1
-      --hq-text-dim     4.9:1
-    --hq-text-dim is the logo's slate (#656a74) lifted until it passes AA on
-    this background; the logo value itself is too dark for body text here.
+    HomeQuote brand (guidelines v1.0): Blue #0038B8, Navy #0A1B3D, Gold #F5B700,
+    Mist #F4F7FC, Slate #5B6B8C. Marketing and contractor-ad pages are Navy
+    surfaces, so type and lines are tints of Mist/Navy chosen to clear WCAG AA
+    on --hq-bg. Brand Slate (#5B6B8C) is only ~2.9:1 on Navy, so it is used for
+    lines and large decoration here, never for text.
+      --hq-text        Mist on Navy   ~16:1
+      --hq-text-muted               ~9.6:1
+      --hq-text-dim                 ~6.0:1
   */
-  --hq-text: #f4f6f8;
-  --hq-text-muted: #9aa3b0;
-  --hq-text-dim: #767e8c;
+  --hq-bg: #0a1b3d;
+  --hq-bg-raised: #0c2048;
+  --hq-surface: #0f2754;
+  --hq-surface-2: #14305f;
 
-  /*
-    Brand colours, sampled from the logo.
-      navy  #042247   the roofline mark and "HOME" / "NETWORK" wordmark
-      slate #656a74   the secondary "QUOTE" wordmark and tagline
+  --hq-line: #1e3768;
+  --hq-line-strong: #2f4c85;
 
-    The navy is far too dark to carry a call to action on a near-black page —
-    a button filled with it reads as an empty box. So the interactive accent is
-    the same hue (212°) lifted until white text clears AA on it, and the navy
-    itself is kept for branded surfaces and the scrims over photography.
-  */
-  --hq-navy: #042247;
-  --hq-navy-deep: #021428;
-  --hq-slate: #656a74;
+  --hq-text: #f4f7fc;
+  --hq-text-muted: #b6c3de;
+  --hq-text-dim: #8fa2c8;
 
-  --hq-accent: #196dcc;        /* fill, white text on it: 5.13:1 */
-  --hq-accent-bright: #55a0f6; /* text on --hq-bg: 7.35:1 */
-  --hq-accent-dim: #143a6b;
-  --hq-accent-glow: rgba(25, 109, 204, 0.18);
+  --hq-navy: #0a1b3d;
+  --hq-navy-deep: #06122b;
+  --hq-slate: #5b6b8c;
+  --hq-blue: #0038b8;
+  --hq-gold: #f5b700;
+  --hq-mist: #f4f7fc;
 
-  /* Positive / negative, used sparingly in the system preview. */
-  --hq-good: #35c07f;
-  --hq-bad: #e0576b;
-  --hq-warn: #e5a53f;
+  /* Interactive blue: fills carry white text (Blue is 9:1 against white). */
+  --hq-accent: #0038b8;
+  --hq-accent-bright: #8aabf7; /* link / eyebrow text on Navy: ~7:1 */
+  --hq-accent-dim: #14346f;
+  --hq-accent-glow: rgba(0, 56, 184, 0.28);
+
+  /* Gold is the single restrained accent: the primary call to action only. */
+  --hq-cta: #f5b700;
+  --hq-cta-hover: #ffc933;
+  --hq-cta-ink: #0a1b3d; /* Navy on Gold: ~9:1 */
+
+  --hq-good: #4cc38f;
+  --hq-bad: #ff8a9a;
+  --hq-warn: #f5b700;
 
   background-color: var(--hq-bg);
   color: var(--hq-text);
@@ -74,7 +71,7 @@
   page is mounted, repaint the body so overscroll/rubber-band areas stay dark.
 */
 body:has(.hq) {
-  background-color: #08090b;
+  background-color: #0a1b3d;
 }
 
 /*
@@ -114,7 +111,7 @@ html:has(.hq) {
   background: radial-gradient(
     ellipse at center,
     var(--hq-accent-glow) 0%,
-    rgba(25, 109, 204, 0.07) 38%,
+    rgba(0, 56, 184, 0.12) 38%,
     transparent 70%
   );
 }
@@ -172,7 +169,7 @@ html:has(.hq) {
 
 /* Minimal glass, used only on the sticky header. */
 .hq-glass {
-  background: rgba(8, 9, 11, 0.72);
+  background: rgba(10, 27, 61, 0.82);
   backdrop-filter: saturate(150%) blur(12px);
   -webkit-backdrop-filter: saturate(150%) blur(12px);
 }

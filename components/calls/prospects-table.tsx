@@ -37,13 +37,17 @@ export function ProspectsTable({
   isAdmin,
   emptyTitle = 'No prospects match this view.',
   emptyHint,
+  contextQuery,
 }: {
   rows: ProspectListRow[];
   callers: CallerOption[];
   isAdmin: boolean;
   emptyTitle?: string;
   emptyHint?: string;
+  /** The list's view/filters, carried onto each prospect link so Next stays inside this list. */
+  contextQuery?: string;
 }) {
+  const qs = contextQuery ? `?${contextQuery}` : '';
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const toggle = (id: string) =>
     setSelected((prev) => {
@@ -119,7 +123,7 @@ export function ProspectsTable({
                   ) : null}
                   <TableCell>
                     <Link
-                      href={`/app/calls/${p.id}`}
+                      href={`/app/calls/${p.id}${qs}`}
                       className="font-medium text-foreground hover:underline"
                     >
                       {p.company_name}
@@ -224,13 +228,13 @@ export function ProspectsTable({
                         </Button>
                       )}
                       <Link
-                        href={`/app/calls/${p.id}`}
+                        href={`/app/calls/${p.id}${qs}`}
                         className={buttonVariants({ variant: 'outline', size: 'sm' })}
                       >
                         Open
                       </Link>
                       <Link
-                        href={`/app/calls/${p.id}#log`}
+                        href={`/app/calls/${p.id}${qs}#log`}
                         className={buttonVariants({ variant: 'ghost', size: 'sm' })}
                       >
                         Log call
@@ -246,7 +250,7 @@ export function ProspectsTable({
     </Card>
   );
 
-  const cards = <ProspectCards rows={rows} isAdmin={isAdmin} />;
+  const cards = <ProspectCards rows={rows} isAdmin={isAdmin} contextQuery={contextQuery} />;
 
   if (!isAdmin) {
     return (

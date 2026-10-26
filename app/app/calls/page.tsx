@@ -20,6 +20,7 @@ import { ProspectsTable } from '@/components/calls/prospects-table';
 import { Pagination } from '@/components/calls/pagination';
 import { RefreshProspectsDialog } from '@/components/calls/refresh-prospects-dialog';
 import type { ProspectDisposition } from '@/lib/types';
+import { contextFrom, contextQuery } from '@/lib/calls/context';
 
 export const metadata = { title: 'Calls · HomeQuote Network' };
 
@@ -76,6 +77,10 @@ export default async function CallsPage({
   ]);
 
   const done = first(sp.done) === '1';
+  // What this list is showing, so opening a prospect and pressing Next stays inside it.
+  const listContext = contextQuery(
+    contextFrom((k) => (k === 'caller' && !isAdmin ? undefined : k === 'view' ? view : first(sp[k])))
+  );
 
   return (
     <div className="space-y-6">
@@ -125,6 +130,7 @@ export default async function CallsPage({
         callers={callers}
         isAdmin={isAdmin}
         emptyHint={EMPTY_HINTS[view]}
+        contextQuery={listContext}
       />
 
       <Pagination

@@ -198,7 +198,7 @@ export function EmailComposer({
           ) : null}
 
           {!gmailConnected ? (
-            <p className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">HomeQuote Gmail is not connected. An administrator must finish Google OAuth before sending.</p>
+            <p className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">No Gmail account is connected. Connect yours (or ask an administrator to connect the automation sender) before sending.</p>
           ) : null}
 
           <div className="flex justify-end border-t pt-4">

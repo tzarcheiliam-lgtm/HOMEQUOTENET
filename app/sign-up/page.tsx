@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 
 export default function SignUpPage() {
   return (
-    <main className="flex min-h-[100dvh] items-center justify-center p-4">
+    <main className="flex min-h-[100dvh] bg-secondary items-center justify-center p-4">
       <AuthForm mode="sign-up" action={signUpAction} />
     </main>
   );

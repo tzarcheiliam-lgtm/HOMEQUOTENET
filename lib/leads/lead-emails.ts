@@ -41,11 +41,11 @@ export interface BuiltEmail {
 }
 
 const TZ = 'America/Los_Angeles';
-const NAVY = '#082f63';
-const BLUE = '#1267a8';
-const INK = '#243447';
-const MUTED = '#65758b';
-const RULE = '#d9e5f2';
+const NAVY = '#0A1B3D';
+const BLUE = '#0038B8';
+const INK = '#0A1B3D';
+const MUTED = '#5B6B8C';
+const RULE = '#DCE4F2';
 
 export function escapeHtml(value: string): string {
   return value

@@ -6,7 +6,7 @@ import { requireCallWorkspace } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { buildProspectEmailHtml, emailLogoUrl } from '@/lib/emails/template';
-import { gmailOAuthConfig, sendGmailMessage } from '@/lib/emails/gmail';
+import { resolveGmailSender, sendGmailMessage } from '@/lib/emails/gmail';
 
 export type SendEmailState =
   | { ok: true; message: string }
@@ -64,7 +64,7 @@ export async function sendProspectEmail(
         .filter(Boolean)
     )
   ).slice(0, 5);
-  if (!input.prospect_id) return sendWithoutProspect(input);
+  if (!input.prospect_id) return sendWithoutProspect(input, me.id);
   const supabase = await createClient();
   const { data: prospect } = await supabase
     .from('contractor_prospects')
@@ -91,9 +91,12 @@ export async function sendProspectEmail(
     return { ok: false, error: `Contact could not be saved: ${contactError.message}`, contactSaved: false };
   }
 
+  // The member's own connected Gmail, else the shared automation sender.
   let senderEmail: string;
   try {
-    senderEmail = gmailOAuthConfig().fromEmail;
+    const sender = await resolveGmailSender(me.id);
+    if (!sender) throw new Error('No Gmail account is connected. Connect yours on the Emails page.');
+    senderEmail = sender.email;
   } catch (error) {
     return {
       ok: false,
@@ -137,6 +140,7 @@ export async function sendProspectEmail(
       subject: input.subject,
       message: input.message,
       html,
+      senderUserId: me.id,
     });
     const sentAt = new Date().toISOString();
     const { error: finalizeError } = await admin
@@ -177,8 +181,8 @@ export async function sendProspectEmail(
 
 // Homeowner / non-prospect send. prospect_email_logs.prospect_id is NOT NULL, so
 // there is no per-company activity row to write; the message still goes out from
-// the shared Gmail account (which keeps its own Sent copy).
-async function sendWithoutProspect(input: z.infer<typeof schema>): Promise<SendEmailState> {
+// the sender's own Gmail (or the shared sender), which keeps its own Sent copy.
+async function sendWithoutProspect(input: z.infer<typeof schema>, senderUserId: string): Promise<SendEmailState> {
   try {
     const html = buildProspectEmailHtml(input.message, emailLogoUrl(process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'));
     await sendGmailMessage({
@@ -186,6 +190,7 @@ async function sendWithoutProspect(input: z.infer<typeof schema>): Promise<SendE
       subject: input.subject,
       message: input.message,
       html,
+      senderUserId,
     });
     revalidatePath('/app/calls/emails');
     return { ok: true, message: `Email sent to ${input.recipient_email}` };

@@ -2,7 +2,8 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { Phone, ExternalLink, PhoneOff, AlarmClock, CalendarCheck } from 'lucide-react';
 import { requireCallWorkspace } from '@/lib/auth';
-import { getProspect, listCallers, nextProspectIdFor } from '@/lib/data/prospects';
+import { getProspect, listCallers, nextProspectIdFor, nextProspectInContext, type ProspectFilters } from '@/lib/data/prospects';
+import { contextFrom, contextQuery, hasListContext, withContext } from '@/lib/calls/context';
 import { clearDoNotCall } from '@/lib/actions/prospects';
 import { isDialable } from '@/lib/calls/rules';
 import { buttonVariants } from '@/components/ui/button';
@@ -37,12 +38,22 @@ export const metadata = { title: 'Prospect · HomeQuote Network' };
  */
 export default async function ProspectPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const me = await requireCallWorkspace();
   const isAdmin = me.role === 'admin';
   const { id } = await params;
+  const sp = await searchParams;
+  // The list the caller came from (niche, city, view …): Next stays inside it.
+  const ctx = contextFrom((k) => {
+    const v = sp[k];
+    const one = Array.isArray(v) ? v[0] : v;
+    return k === 'caller' && !isAdmin ? undefined : one;
+  });
+  const ctxQs = contextQuery(ctx);
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
 
   const callers = await listCallers();
@@ -56,7 +67,11 @@ export default async function ProspectPage({
   const tel = isDialable(p) ? telHref(p.phone) : null;
   const site = siteHref(p.website);
   // Skip-ahead target for the phone action bar. One small indexed query.
-  const nextId = dnc ? null : await nextProspectIdFor(me, p.id);
+  const nextId = dnc
+    ? null
+    : hasListContext(ctx)
+      ? await nextProspectInContext(me, p.id, ctx as unknown as ProspectFilters, callers)
+      : await nextProspectIdFor(me, p.id);
   const nextAppt = appointments.find((a) =>
     ['scheduled', 'confirmed', 'rescheduled'].includes(a.status)
   );
@@ -68,7 +83,7 @@ export default async function ProspectPage({
         description={[p.city, p.county ? `${p.county} County` : null, p.category]
           .filter(Boolean)
           .join(' · ')}
-        backHref="/app/calls"
+        backHref={withContext('/app/calls', ctxQs)}
         backLabel="Back to call list"
       >
         {tel ? (
@@ -141,7 +156,7 @@ export default async function ProspectPage({
       <CallWorkspace
         tel={tel}
         dnc={dnc}
-        nextHref={nextId ? `/app/calls/${nextId}` : '/app/calls?view=mine'}
+        nextHref={nextId ? withContext(`/app/calls/${nextId}`, ctxQs) : withContext('/app/calls', ctxQs || 'view=mine')}
         historyCount={attempts.length + emails.length}
         info={
           <Card>
@@ -271,6 +286,7 @@ export default async function ProspectPage({
             decisionMakerName={p.decision_maker_name}
             bestContactMethod={p.best_contact_method}
             isDnc={dnc}
+            contextQuery={ctxQs}
           />
         }
         script={<CallScript />}

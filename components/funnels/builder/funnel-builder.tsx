@@ -171,6 +171,13 @@ export function FunnelBuilder({
               <h3 className="text-sm font-semibold">Thank-you screen</h3>
               <Field label="Headline"><Input value={config.thankYouPage.headline} onChange={e => patch({ ...config, thankYouPage: { ...config.thankYouPage, headline: e.target.value } })} /></Field>
               <Field label="Message"><Textarea value={config.thankYouPage.message} onChange={e => patch({ ...config, thankYouPage: { ...config.thankYouPage, message: e.target.value } })} /></Field>
+              <h4 className="pt-1 text-xs font-semibold uppercase text-muted-foreground">Save-to-contacts button</h4>
+              <p className="text-xs text-muted-foreground">Add the number you call from. The thank-you screen then shows a button that saves {config.clientName || 'the business'} to the visitor’s phone contacts, so they know to pick up. Leave the phone blank to hide the button.</p>
+              <Field label="Phone number"><Input type="tel" value={config.contactCard?.phone ?? ''} placeholder="(555) 123-4567" onChange={e => patch({ ...config, contactCard: e.target.value ? { ...config.contactCard, phone: e.target.value } : undefined })} /></Field>
+              {config.contactCard && <>
+                <Field label="Email (optional)"><Input type="email" value={config.contactCard.email ?? ''} onChange={e => patch({ ...config, contactCard: { ...config.contactCard!, email: e.target.value || undefined } })} /></Field>
+                <Field label="Website (optional)"><Input value={config.contactCard.website ?? ''} placeholder="https://…" onChange={e => patch({ ...config, contactCard: { ...config.contactCard!, website: e.target.value || undefined } })} /></Field>
+              </>}
             </CardContent></Card>
           )}
 
@@ -186,8 +193,9 @@ export function FunnelBuilder({
           </CardContent></Card>
 
           <Card><CardContent className="space-y-3 p-4">
-            <h3 className="text-sm font-semibold">Service area &amp; qualification</h3>
-            <Field label="Area label"><Input value={config.serviceArea.label} onChange={e => patch({ ...config, serviceArea: { ...config.serviceArea, label: e.target.value } })} /></Field>
+            <h3 className="text-sm font-semibold">Service area (optional)</h3>
+            <p className="text-xs text-muted-foreground">Leave the ZIP fields empty to accept every ZIP — handy when your ad already targets the right areas. Only fill them in if you want the funnel itself to reject ZIPs outside a list.</p>
+            <Field label="Area label (shown while checking)"><Input value={config.serviceArea.label} onChange={e => patch({ ...config, serviceArea: { ...config.serviceArea, label: e.target.value } })} /></Field>
             <Field label="ZIP codes (comma-separated)">
               <Textarea value={config.serviceArea.zipCodes.join(', ')} onChange={e => patch({ ...config, serviceArea: { ...config.serviceArea, zipCodes: splitList(e.target.value) } })} />
             </Field>

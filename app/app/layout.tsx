@@ -12,6 +12,10 @@ import { SignOutForm } from '@/components/notifications/sign-out-form';
 import { Toaster } from '@/components/ui/toaster';
 import { BrandLogo } from '@/components/brand-logo';
 import { InstallHelper } from '@/components/notifications/install-helper';
+import { AssistantRoot } from '@/components/assistant/assistant-root';
+import { canUseAssistant } from '@/lib/assistant/access';
+import { canIssueDocuments } from '@/lib/documents/service';
+import { canSetUpMeta } from '@/lib/meta/setup/connections';
 
 // The CRM draws edge to edge on notched phones (PWA / wrapper); the mobile
 // chrome pads itself with env(safe-area-inset-*).
@@ -20,7 +24,7 @@ export const viewport: Viewport = {
   viewportFit: 'cover',
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#ffffff' },
-    { media: '(prefers-color-scheme: dark)', color: '#0a0a0f' },
+    { media: '(prefers-color-scheme: dark)', color: '#0A1B3D' },
   ],
 };
 
@@ -43,11 +47,12 @@ export default async function AppLayout({
     <div className="flex min-h-[100dvh] bg-[var(--app-bg)]">
       <PortalPushBoot userId={profile.id} />
       <Toaster />
+      {canUseAssistant(profile) && <AssistantRoot userId={profile.id} capabilities={{ documents: canIssueDocuments(profile), meta: canSetUpMeta(profile) }} />}
       {/* Sidebar */}
       <aside className="sticky top-0 hidden h-[100dvh] w-[248px] shrink-0 flex-col border-r bg-card lg:flex">
         <div className="flex h-14 shrink-0 items-center border-b px-5">
           <Link href="/app" aria-label="HomeQuote Network home" className="block">
-            <BrandLogo priority className="w-[204px]" />
+            <BrandLogo priority className="w-[184px]" />
           </Link>
         </div>
         <AppSidebar items={items} />

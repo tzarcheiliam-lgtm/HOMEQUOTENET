@@ -57,6 +57,7 @@ type ListQuery = {
   contains: (c: string, v: readonly unknown[]) => ListQuery;
   order: (c: string, o?: { ascending?: boolean; nullsFirst?: boolean }) => ListQuery;
   range: (from: number, to: number) => ListQuery;
+  limit: (n: number) => ListQuery;
 } & PromiseLike<{ data: ContractorProspect[] | null; count: number | null }>;
 
 /** Active admins, callers and setters who can own a call list. */
@@ -165,24 +166,7 @@ function applySort(query: ListQuery, sort: CallSort): ListQuery {
   }
 }
 
-export async function listProspects(
-  filters: ProspectFilters,
-  me: Profile,
-  callers: CallerOption[]
-): Promise<ProspectListResult> {
-  const supabase = await createClient();
-  const now = new Date();
-  const page = Math.max(1, filters.page ?? 1);
-  const from = (page - 1) * CALL_PAGE_SIZE;
-  const to = from + CALL_PAGE_SIZE - 1;
-
-  let query = supabase
-    .from('contractor_prospects')
-    .select('*', { count: 'exact' })
-    .is('archived_at', null) as unknown as ListQuery;
-
-  query = applyView(query, filters.view ?? 'mine', me, callers, now);
-
+function applyFilters(query: ListQuery, filters: ProspectFilters, now: Date): ListQuery {
   if (filters.q) {
     const q = escapeForOr(filters.q);
     if (q) {
@@ -205,6 +189,29 @@ export async function listProspects(
   } else if (filters.callback === 'any') {
     query = query.not('next_callback_at', 'is', null);
   }
+
+  return query;
+}
+
+export async function listProspects(
+  filters: ProspectFilters,
+  me: Profile,
+  callers: CallerOption[]
+): Promise<ProspectListResult> {
+  const supabase = await createClient();
+  const now = new Date();
+  const page = Math.max(1, filters.page ?? 1);
+  const from = (page - 1) * CALL_PAGE_SIZE;
+  const to = from + CALL_PAGE_SIZE - 1;
+
+  let query = supabase
+    .from('contractor_prospects')
+    .select('*', { count: 'exact' })
+    .is('archived_at', null) as unknown as ListQuery;
+
+  query = applyView(query, filters.view ?? 'mine', me, callers, now);
+
+  query = applyFilters(query, filters, now);
 
   // Callbacks view reads best soonest-first regardless of the chosen sort.
   const sort: CallSort =
@@ -339,6 +346,30 @@ export async function nextProspectIdFor(
     .order('created_at', { ascending: true })
     .limit(1);
   return next && next.length > 0 ? next[0].id : null;
+}
+
+/**
+ * The prospect after `currentId` in the list the caller is working from (same view
+ * and filters, same order as the list). A prospect that just left the list because
+ * of the outcome logged is simply replaced by the first one that is left.
+ */
+export async function nextProspectInContext(
+  me: Profile,
+  currentId: string,
+  filters: ProspectFilters,
+  callers: CallerOption[]
+): Promise<string | null> {
+  const supabase = await createClient();
+  const now = new Date();
+  let query = supabase.from('contractor_prospects').select('id').is('archived_at', null) as unknown as ListQuery;
+  query = applyView(query, filters.view ?? 'mine', me, callers, now);
+  query = applyFilters(query, filters, now);
+  const sort: CallSort = filters.sort ?? (filters.view === 'callbacks' ? 'next_callback' : 'oldest');
+  const { data } = await applySort(query, sort).order('id', { ascending: true }).limit(1000);
+  const ids = ((data ?? []) as { id: string }[]).map((r) => r.id);
+  const i = ids.indexOf(currentId);
+  if (i === -1) return ids.find((id) => id !== currentId) ?? null;
+  return ids[i + 1] ?? null;
 }
 
 /* ---- Metrics ------------------------------------------------------------- */

@@ -2,16 +2,28 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import Image from 'next/image';
-import { ArrowLeft, ArrowRight, Check, CheckCircle2, ClipboardList, LockKeyhole, MapPin, ShieldCheck, Sparkles } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, CheckCircle2, ClipboardList, UserPlus, LockKeyhole, MapPin, ShieldCheck, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { DEFAULT_PLACEHOLDERS, MAX_ANSWER_LENGTH, calendlyEmbedUrl, consentText, contactSchema, isRequired, isTextQuestion, serviceAreaValid, validateAnswer, visibleQuestions, type FunnelConfig, type Session } from '@/lib/funnels/schema';
-import { previewAdvance } from '@/lib/funnels/builder';
+import { DEFAULT_PLACEHOLDERS, MAX_ANSWER_LENGTH, calendlyEmbedUrl, consentText, contactSchema, isRequired, isTextQuestion, resolveStep, serviceAreaValid, validateAnswer, visibleQuestions, type FunnelConfig, type Session } from '@/lib/funnels/schema';
+import { previewAdvance, previewAnswersForStep } from '@/lib/funnels/builder';
 import { trackFunnel } from '@/lib/funnels/tracking';
+import { buildContactVCard, vcardFileName } from '@/lib/funnels/vcard';
 
 const STATE_NAMES: Record<string, string> = { CA: 'California' };
+
+/** Downloads (iOS/Android open it straight into Contacts) the business's vCard. */
+function saveToContacts(config: FunnelConfig) {
+  const vcard = buildContactVCard(config);
+  if (!vcard) return;
+  const url = URL.createObjectURL(new Blob([vcard], { type: 'text/vcard;charset=utf-8' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = vcardFileName(config.clientName);
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 /**
  * `previewMode` (used only by the funnel builder's live preview, never the
@@ -60,7 +72,7 @@ export function FunnelExperience({ slug, initialConfig, demo, previewMode, jumpT
     // only ever reaches 'calendar'/'thanks' after contact_submitted_at is set.
     const qualifiedFrom = ['qualification', 'contact', 'calendar', 'thanks'].includes(jumpToStep);
     const submitted = ['calendar', 'thanks'].includes(jumpToStep);
-    setSession(s => s && { ...s, current_step: jumpToStep, qualified: qualifiedFrom ? true : s.qualified, booked_at: null, contact_submitted_at: submitted ? new Date().toISOString() : null });
+    setSession(s => s && { ...s, current_step: jumpToStep, answers: previewAnswersForStep(config, jumpToStep), qualified: qualifiedFrom ? true : s.qualified, booked_at: null, contact_submitted_at: submitted ? new Date().toISOString() : null });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewMode, jumpToStep]);
 
@@ -89,12 +101,19 @@ export function FunnelExperience({ slug, initialConfig, demo, previewMode, jumpT
     finally { setBusy(false); }
   }, [session, busy, endpoint, previewMode, config, tracking]);
 
-  const step = session?.current_step ?? config.questions[0].id;
+  const savedStep = session?.current_step ?? config.questions[0].id;
+  // Never render a step that names a hidden or missing question (that would be a blank screen).
+  const step = resolveStep(config, session?.answers ?? {}, savedStep);
   const questions = visibleQuestions(config, session?.answers ?? {});
   const index = questions.findIndex(q => q.id === step);
   const question = questions[index];
   const total = questions.length + 2 + (config.calendarUrl ? 1 : 0);
   const current = index >= 0 ? index + 1 : step === 'qualification' ? questions.length + 1 : step === 'contact' ? questions.length + 2 : total;
+  // Repair a saved step that no longer matches a visible question, so the next click works too.
+  useEffect(() => {
+    if (session && !busy && savedStep !== step && !jumpToStep) void save({ step });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.current_step, step]);
   useEffect(() => {
     setZip(session?.answers[step] ?? '');
     heading.current?.focus({ preventScroll: true });
@@ -113,12 +132,12 @@ export function FunnelExperience({ slug, initialConfig, demo, previewMode, jumpT
   }, [session?.id]);
   useEffect(() => {
     if (!session || !tracking || demo || previewMode) return;
-    trackFunnel(session.id, slug, 'PageView', config.trackingPixels.metaPixelId);
-    trackFunnel(session.id, slug, 'ViewContent', config.trackingPixels.metaPixelId);
+    trackFunnel(session.id, slug, 'PageView', config.trackingPixels.metaPixelId, config.industry);
+    trackFunnel(session.id, slug, 'ViewContent', config.trackingPixels.metaPixelId, config.industry);
     // Never a Meta "Lead" for a submission that failed this funnel's (optional) hard
     // service-area gate — null/undefined means the gate doesn't apply to this funnel.
-    if (session.contact_submitted_at && session.service_area_valid !== false) trackFunnel(session.id, slug, 'Lead', config.trackingPixels.metaPixelId);
-    if (session.booked_at) trackFunnel(session.id, slug, 'Schedule', config.trackingPixels.metaPixelId);
+    if (session.contact_submitted_at && session.service_area_valid !== false) trackFunnel(session.id, slug, 'Lead', config.trackingPixels.metaPixelId, config.industry);
+    if (session.booked_at) trackFunnel(session.id, slug, 'Schedule', config.trackingPixels.metaPixelId, config.industry);
   }, [session, tracking, config, slug, demo, previewMode]);
   useEffect(() => {
     if (previewMode || !session?.contact_submitted_at || !config.calendarUrl || step !== 'calendar') return;
@@ -181,7 +200,11 @@ export function FunnelExperience({ slug, initialConfig, demo, previewMode, jumpT
   const calendarUrl = config.calendarUrl ? new URL(config.calendarUrl) : null;
   if (calendarUrl && session && !calendly) calendarUrl.searchParams.set('hqn_session_id', session.id);
 
-  return <main className="hqn-funnel" style={{ '--funnel-primary': config.primaryColor, '--funnel-secondary': config.secondaryColor } as CSSProperties}>
+  // Funnels still carrying the pre-rebrand default colours render in the HomeQuote brand blue/navy; custom colours are respected.
+  const primaryColor = config.primaryColor.toLowerCase() === '#196dcc' ? '#0038B8' : config.primaryColor;
+  const secondaryColor = config.secondaryColor.toLowerCase() === '#042247' ? '#0A1B3D' : config.secondaryColor;
+
+  return <main className="hqn-funnel" style={{ '--funnel-primary': primaryColor, '--funnel-secondary': secondaryColor } as CSSProperties}>
     <div className="funnel-shell">
       <header className="funnel-header">
         <div className="funnel-brand">{config.clientLogo && <Image src={config.clientLogo} alt="" width={44} height={44} unoptimized className={wideLogo ? 'funnel-logo-wide' : undefined} onLoad={e => setWideLogo(e.currentTarget.naturalWidth > e.currentTarget.naturalHeight * 1.3)} />}<span>{config.clientName}<small>YOUR NEXT HOME PROJECT</small></span></div>
@@ -257,7 +280,8 @@ export function FunnelExperience({ slug, initialConfig, demo, previewMode, jumpT
           <iframe title={`Book an estimate with ${config.clientName}`} src={calendlySrc ?? calendarUrl.toString()} referrerPolicy="strict-origin-when-cross-origin" allow="payment" />
           <p>Booking confirmation will appear here after the calendar confirms your appointment. If no times work, the team has your request and can follow up.</p>
         </div>}
-        {done && <div className="funnel-result"><div className="funnel-success"><CheckCircle2 size={36} /></div><p>{demo ? 'You’ve completed the demo. In a published client funnel, these details reach HomeQuote and the connected CRM.' : session?.booked_at ? 'Your appointment has been confirmed. Please check your calendar confirmation for the details.' : config.thankYouPage.message}</p></div>}
+        {done && <div className="funnel-result"><div className="funnel-success"><CheckCircle2 size={36} /></div><p>{demo ? 'You’ve completed the demo. In a published client funnel, these details reach HomeQuote and the connected CRM.' : session?.booked_at ? 'Your appointment has been confirmed. Please check your calendar confirmation for the details.' : config.thankYouPage.message}</p>
+          {buildContactVCard(config) && <><p>Save our number so you recognise us when we call about your estimate.</p><Button className="funnel-primary" type="button" onClick={() => saveToContacts(config)}><UserPlus size={18} /> Save {config.clientName} to my contacts</Button></>}</div>}
         {error && <div className="funnel-error" role="alert">{error}{!session && <button onClick={() => void start()} disabled={busy}>Try again</button>}</div>}
         {busy && session && <span className="sr-only" role="status">Saving your progress</span>}
       </section>

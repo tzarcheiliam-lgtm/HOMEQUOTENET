@@ -16,6 +16,10 @@
 # production
 /build
 
+# Seret studio: source in /studio, built into /public/studio by `npm run build:studio`
+/studio/node_modules
+/public/studio/
+
 # misc
 .DS_Store
 *.pem
@@ -45,3 +49,6 @@ postgres_data/
 
 # supabase CLI scratch
 supabase/.temp/
+
+# local end-to-end harness output
+.e2e-out/

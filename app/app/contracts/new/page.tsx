@@ -23,7 +23,7 @@ export default async function NewContractPage({ searchParams }: { searchParams: 
   if (!canManageContracts(profile)) redirect('/app/contracts');
   const sp = await searchParams;
   await ensureStarterTemplates(profile).catch(() => 0);
-  const all = (await listTemplates(profile, { status: 'published', category: sp.category })).filter((t) => t.status === 'published');
+  const all = (await listTemplates(profile, { status: 'published', category: sp.category, docType: 'agreement' })).filter((t) => t.status === 'published');
   const contractorId = sp.contractor && UUID.test(sp.contractor) ? sp.contractor : null;
   const preset = contractorId ? (await createAdminClient().from('contractors').select('name').eq('id', contractorId).maybeSingle()).data : null;
   const cats = Array.from(new Set(all.map((t) => t.category))).sort();

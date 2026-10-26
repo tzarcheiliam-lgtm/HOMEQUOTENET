@@ -88,7 +88,7 @@ components/            UI grouped by domain (billing, calls, contractors,
                        leads, marketing, team, workflows) + components/ui
                        (shared primitives: PageHeader, KpiCard, EmptyState,
                        StatusBadge, ConfirmAction, Table, Card, etc.)
-supabase/migrations/    sequential SQL files (latest 0041, see §6, §19 and §21)
+supabase/migrations/    sequential SQL files (latest 0051; see §6, §19, §21 and §27)
 content/                Marketing copy/data (per-niche site content)
 scripts/                Seeders, migration helpers, prospecting import, QA (§ below)
 tests/                  Vitest suites: pure logic + live-DB suites (see §13)
@@ -101,10 +101,18 @@ middleware.ts           Delegates to lib/supabase/middleware.ts (session refresh
 ### Marketing (public, `app/(marketing)/`)
 `/` (home), `/pool-contractors`, `/hvac`, `/roofing`, `/fencing`,
 `/general-contractors`, `/lead-standards`, `/apply` (contractor application
-form), `/privacy`, `/terms`. Dark theme scoped to a `.hq` wrapper so it never
+form), `/privacy`, `/terms`, `/adu-estimator` (homeowner ADU price estimator, see
+`docs/adu-estimator.md`: pricing in `lib/adu/pricing-config.ts`,
+in the sitemap, lead capture OFF until a destination is approved). Dark theme scoped to a `.hq` wrapper so it never
 touches the CRM's light shadcn tokens. Copy lives in `content/` so a new
 vertical/niche is a content file, not a rewrite (see MARKETING_SITE.md, still
 broadly accurate).
+
+### ADU quiz (paid-traffic landing page)
+`/adu-quiz` (+ `/adu-quiz/booked`, `POST /api/adu-quiz/lead`, `POST /api/adu-quiz/booked`): standalone
+visual ADU builder (live SVG preview, `ADU_LAYERS`) followed by a screening quiz; qualified homeowners book on a GoHighLevel calendar, and the price range is revealed server-side only after the contact step (`PRICING`, all unset). Config in
+`lib/adu-quiz/config.ts`, leads in `adu_quiz_leads` (migration 0054, applied by the owner),
+forwarded to a webhook with retries from `/api/workflows/tick`. See `docs/adu-quiz.md` for the placeholder checklist.
 
 ### Public homeowner funnel
 `/estimate/[slug]` — the visual funnel runtime (multi-step qualification form →
@@ -124,6 +132,7 @@ auth callback route handler).
   `/app/calls/appointments`, `/app/calls/emails` — the partner cold-calling
   workspace (admin/caller/setter only)
 - `/app/appointments`, `/app/service-requests`
+- `/app/availability` (contractor owner/staff, admin; setters via `?contractor=` from a contractor page) — availability + calendar connections (§24)
 - `/app/growth`, `/app/growth/[service]` — Growth Tools catalog (contractor)
 - `/app/sales`, `/app/billing`, `/app/analytics` (admin)
 - `/app/pay/[id]` — the pay page a priced Growth Tools request links to (§12)
@@ -155,6 +164,7 @@ auth callback route handler).
 - `POST /api/stripe/webhook` — Stripe webhook (Checkout + subscription events)
 - `POST /api/ai-calling/webhook` — Fish Audio post-call webhooks, signature-verified (§18)
 - `POST /api/ai-calling/tick` — AI-calling scheduler gate (Bearer `AI_CALLING_CRON_SECRET`); does not dial yet (§18)
+- `GET /api/integrations/google-calendar/oauth/{start,callback}` — contractor Google Calendar connect (§24); `GET /api/calendar/feed/[token]` (public, token = credential) and `GET /api/calendar/appointment/[id]` (.ics) (§24)
 - `POST /api/workflows/tick` — the workflow scheduler tick (Bearer
   `WORKFLOW_CRON_SECRET`), called every 5 min by the GitHub Actions workflow
   `.github/workflows/workflow-tick.yml`
@@ -293,6 +303,23 @@ Lives at `/app/calls` (admin/caller/setter).
   `lib/emails/template-library.ts` (as of `7e83887`), not a bespoke template;
   Gmail OAuth (`lib/emails/gmail.ts`, `gmail-message.ts`, `token-crypto.ts`
   for AES-256-GCM refresh-token encryption) is the only send transport.
+  **Senders (migration 0046):** `gmail_connections` holds one shared
+  `automation` sender (workflows, signing, lead/billing emails, and the
+  fallback) plus at most one `user` sender per team member. Gmail sends as
+  whichever Google account approved access regardless of the From header, so
+  the OAuth start route forces the account chooser (`prompt=select_account
+  consent`) and adds `openid email` scopes; the callback reads the granting
+  account from the userinfo endpoint and stores *that* address. Any
+  admin/caller/setter connects their own sender (`/api/integrations/gmail/oauth/start?kind=user`);
+  only admins connect the automation sender (`?kind=automation`, hint
+  `GMAIL_AUTOMATION_EMAIL`, default `info@homequotenet.com`). Changing a sender
+  is just "Change account" on `/app/calls/emails`; no env edit. Manual sends
+  pass `senderUserId` to `sendGmailMessage` (own connection, else automation);
+  every other caller omits it and uses the automation sender.
+  `GMAIL_FROM_EMAIL` is no longer required (only feeds the `supportEmail`
+  template variable). **Deploy order: apply 0046 before deploying.** The
+  pre-existing singleton row becomes the automation sender with its old token;
+  reconnect it as info@ after deploy.
 
 ## 8. Lead & Appointment Flow
 
@@ -346,6 +373,8 @@ business, testimonial, photo — governed by the "no invented proof" compliance
 stance, see §13/PROJECT_STATUS.md).
 
 - **Question types** (`questionSchema.type` in `lib/funnels/schema.ts`): `choice` (multiple choice, the original), `zip` (exactly one per funnel), and typed-answer kinds `short_text`, `long_text`, `address`, `number`, `email`, `phone`. Typed questions take optional `placeholder` and `required` (unset = required, so old configs are unchanged). All answer validation goes through `validateAnswer()`, shared by the public form, the session PATCH route and the builder preview. Skipped optional questions are stored as `''` (use `isAnswered`, not truthiness). Answers stay in `funnel_sessions.answers` like every other answer; an `address` answer is also copied to `leads.address` on new-lead creation (migration `0029_funnel_address_question.sql`, `save_funnel_session`).
+- **Save-to-contacts button** (2026-10-18): optional `FunnelConfig.contactCard` (`phone`, optional `email`/`website`). When a valid US phone is set, the thank-you screen shows a "Save <client> to my contacts" button that downloads a vCard 3.0 built client-side by `lib/funnels/vcard.ts` (so the homeowner recognises the call). Edited in the builder's Thank-you panel; unset = no button, so existing funnels are unchanged. No migration (config is JSON). Tests: `tests/funnel-vcard.test.ts`.
+- **Service area is optional** (2026-10-19): if `serviceArea.zipCodes` and `zipPrefixes` are both empty, `inServiceArea()` returns true (no ZIP gate; ad targeting does the filtering) — previously empty meant nobody qualified. Funnels that list ZIPs/prefixes behave exactly as before; `strictStates` is unchanged. The ZIP *question* is still required (exactly one) so the ZIP is still captured. The builder card is titled "Service area (optional)"; `scripts/funnels.mjs` no longer rejects an empty list. Test: `tests/funnel-open-service-area.test.ts`.
 - **No-code builder** at `/app/funnels/[id]/builder` (admin) — `lib/funnels/
   builder.ts`, `components/funnels/builder/*`.
 - **Runtime** at `/estimate/[slug]` — session state persisted server-side
@@ -437,6 +466,18 @@ system and no migration:
   **run by a person with `SUPABASE_DB_URL`, not automation. Not yet run
   against production as of this writing**; until it is, Part 1 above ships
   in code but the workflow row does not exist live.
+
+**Re-adding a deleted user (2026-10-19):** team "delete" is a soft delete (`profiles.deleted_at`; the `auth.users` login stays), so re-creating the same email used to fail with "already registered". `createUser`/`inviteUser` in `lib/actions/team.ts` now detect a soft-deleted profile by email and restore it (new password for Create; a set-password email for Invite) with the newly chosen role/contractor, clearing `deleted_at`. A live account with that email returns a clear "already exists" error instead.
+
+### 9c. Demo contractor data (2026-10-18)
+
+Admins see a **Load demo data** button on `/app/contractors/[id]` for any contractor whose name contains "test" or "demo" (`loadDemoData` in `lib/actions/demo.ts`, enforced server-side too). It runs `seedDemoContractor()` (`lib/demo/seed-contractor.ts`) with the service-role client: 24 placeholder leads at every pipeline stage plus appointments, estimates, won sales, lead-fee billing events and activity, so the CRM looks lived-in for contractor walkthroughs. Idempotent: rows are tagged (`leads.consent_source = 'demo-seed'`, billing/sales notes start `demo-seed`) and only those are replaced on re-run. Fake data only (example.com emails, 555-01xx phones); the `workflow_events` the insert triggers enqueue are deleted right after so no workflow email/SMS/push fires. (Replaced an earlier `scripts/seed-demo-contractor.mjs` that needed a local DB URL.) Not yet exercised against a live database.
+
+### 9d. Qualified bathroom & kitchen funnels (2026-10-21, no migration)
+
+Two house funnels (`contractor_id` null, "HomeQuote Network" consent text) defined in `content/funnels/bathroom-remodel.json` and `kitchen-remodel.json`, listed in `lib/funnels/presets.ts` (`FUNNEL_PRESETS`, `presetConfig`, `installPresetFunnels`). Admins see **Add bathroom & kitchen funnels** on `/app/funnels` (`installQualifiedFunnelsAction`); it inserts them as **drafts** (never overwrites an existing slug), then publish from the dashboard/builder. URLs: `/estimate/bathroom-remodel`, `/estimate/kitchen-remodel`. Both use Meta dataset/pixel `29178560738497902` (same ad set), `consentMode: opt_out` (mirrors Pool Masters; `opt_in` would suppress most events), no `calendarUrl` (no calendar step), empty service area (any ZIP; ZIP question kept), `unqualifiedAction: 'review'`.
+
+Qualification (ALL must match; editable in the builder): project type in-scope (excludes repair/other), homeowner = yes (renters skip the rest), sole/joint decision maker, timeline ASAP or 1–3 months, budget (bathroom ≥ $10k, kitchen ≥ $25k), payment cash/financing ready/needs financing. Lead event fires for every valid submission (qualified or not); `QualifiedLead` fires only when staff mark qualified. Tests: `tests/funnel-qualified-presets.test.ts`, `tests/funnel-qualified-events.test.ts` (real PATCH route, browser/server event_id pairing).
 
 ## 10. Workflow Automations
 
@@ -958,3 +999,154 @@ Full guide (database procedure, mappings, delivery-vs-optimization checks, crede
 
 ## 20. Contracts & Templates (migration 0042, added 2026-10-08, NOT yet applied/deployed)
 Full write-up: `docs/contracts.md`. Admin-only template library + 6-step wizard; contracts render to PDF and go through the existing signing engine (section 19). Routes: `/app/contracts`, `/new`, `/[id]`, `/[id]/edit`, `/templates`, `/templates/[id]`; contractor users get a read-only `/app/contracts` of SENT agreements for their own company (RLS + `loadContract`). Tables: `contract_templates`, `contract_template_versions` (immutable), `contracts` (frozen once the signing request leaves draft), `contract_events`, `contract_attachments`, `contract_seed_log`; `contractors.logo_path`; private bucket `contract-assets`. Code: `lib/contracts/*` (types, variables, render-model, pdf, logo, library/starters, templates, contracts), `lib/actions/contracts.ts`, `components/contracts/*` (TipTap editor). Workflow vocabulary gained 7 `contract.*` events + entity type `contract` (SQL constraints in 0042, TS in `lib/workflows/events.ts`; drift test reads 0042). Permissions: `canManageContracts` (admin), `canViewOwnContracts`. Tests: `tests/contracts-{service,pdf,workflows}.test.ts`. **Deploy order: apply 0042 before deploying code.**
+
+## 23. Meta Ads Studio — creatives, paused ad creation, audits, proposals, rules (2026-10-07, migration 0043 — NOT applied/deployed; everything ships DORMANT)
+
+Full guide: `docs/meta-ads-studio-setup.md` (requirements, env vars, merge order, activation and rollback). Same "Meta Ads" area/nav as §22; layout + tabs in `app/app/meta-ads/layout.tsx`.
+
+- **Migration order**: 0041 workflow builder → **two files share 0042** (`0042_contracts_templates`, `0042_meta_ads_analytics_outcomes`; both apply, in filename order, no shared objects) → **0043 `meta_ads_studio`**. The `meta-ads` branch contains both Meta pieces; merge it instead of the analytics branch.
+- **Tables (0043)**: `meta_studio_settings` (live_writes_enabled=false, automation_enabled=false, audit_thresholds, rules lease), `meta_account_controls` (per-account writes/automation, default off), `meta_object_state` (live budgets/learning + Ads Manager drift), `meta_assets` (Pages/Instagram/datasets/forms, explicit `contractor_id`), `meta_creatives` (+ private bucket `meta-creatives`), `meta_ad_drafts`, `meta_change_proposals`, `meta_rules`, `meta_rule_evaluations`, `meta_audits`, `meta_audit_findings`, `meta_activity_log` (append-only). RLS: admin-only except contractors read only assets/creatives mapped to them; all writes service-role.
+- **Code**: `lib/meta/studio/` — `gate.ts` (write/automation gates), `write-api.ts` (the only state-changing Graph client; POSTs never auto-retried), `draft.ts` (config schema, validation, exact payloads), `create-ad.ts` (resumable paused creation, find-before-create), `proposals.ts` (re-read live state, stale on drift), `rules-engine.ts` + `rules.server.ts` (pure engine + tick), `audit.ts` + `audits.server.ts` (versioned `hqn-meta-audit/1.0.0`), `creative-specs.ts`, `media-probe.ts` (reads real file headers), `url-params.ts`, `health.ts`, `server.ts`. Actions: `lib/actions/meta-studio.ts` (every export starts with `requireRole(['admin'])`; a test enforces it). Scheduler: `POST /api/meta/studio-tick` (`META_TICK_SECRET`), `.github/workflows/meta-studio-tick.yml` (hourly, secret `META_STUDIO_TICK_URL`).
+- **Credentials**: `META_MARKETING_ACCESS_TOKEN` (read) and new `META_ADS_WRITE_TOKEN` (write) live only in server env. No OAuth flow exists; accounts are connected via System User tokens. Managing other businesses' accounts needs Meta App Review (not implied anywhere).
+- **Behavior to know**: ads are only ever created PAUSED; budget increases always need a human; automatic rules can only pause/decrease, need an expiry, and are suspended on stale data / failing credentials / unverified tracking; stopping HQN automation never pauses running Meta ads; no historical backfill.
+- **Tests**: simulated (fakes/fixtures) `tests/meta-studio-{create,rules,misc,auth,render,money,contract,security}.test.ts`; local DB (in-process Postgres, real RLS) `meta-studio-sql.test.ts` + `meta-ads-sql.test.ts`; **real-browser end-to-end** `scripts/e2e/meta-studio/run.mjs` (real Next app + Supabase stand-in with every real migration + a strict fake Meta; see its README). **Nothing is verified against live Meta.**
+- **Money**: `lib/meta/studio/money.ts` holds Meta's documented currency-offset table (11 offset-1 currencies; others 100; unlisted currencies refused), exact decimal conversion (never rounds), and the per-account **budget-unit check**: Meta documents the offset for bids only, so budgets stay BLOCKED until a person confirms against a paused probe ad in Ads Manager (`meta_account_controls.budget_unit_*`). - **Execution-time controls**: proposals re-read Meta, prove the object belongs to the account, then re-evaluate the gate right before the write (blocked => released back to approved); unattended execution is hard-limited to pause / lower daily budget; rule scope re-checked (`proposalWithinRule`); account-wide rules can only notify. - **Ad-creation contract** follows Meta's lead-ads guide (link `https://fb.me/`, six allowed CTAs, video CTA shape, video cover via image_hash); manual placements disabled (values unverified). - **Still unverified against live Meta** (setup doc §3b): budget unit semantics, CTA-per-objective rules for website ads, `promoted_object` shape, video cover requirement/status values, file-size limits, lead-form listing by a System User, Instagram identity use.
+
+## 27. In-app assistant, customer documents, guided Meta tracking (migrations 0049-0051, 2026-10-19/20, NOT yet applied/deployed)
+Full guide (deploy order, budget behaviour and its limits, provider-side spend controls, security model, what is/isn't tested): `docs/assistant.md`.
+- **Assistant**: floating button + panel mounted in `app/app/layout.tsx` (`components/assistant/*`) for admin/setter/contractor. Chat API `POST /api/assistant/chat` (NDJSON stream), `/api/assistant/{status,context,conversations,actions/[id]}`. Engine `lib/assistant/{chat,registry,tools,doc-tools,meta-tools,execute,limits,pricing,prompt,access,session,untrusted,errors,config}.ts`. Default model `claude-sonnet-5-5` (`ANTHROPIC_MODEL`). Tools read through the user's RLS client with an explicit contractor pin; the model only *proposes* (`assistant_actions`), the user confirms, the server re-authorizes, claims atomically and verifies by read-back. Tables: `assistant_conversations/messages/actions/usage` (select-own RLS, server-only writes), function `assistant_spend_micros` (service role).
+- **Customer documents**: `contract_templates` gained `doc_type`, `jurisdictions`, `assistant_approved_version` (admin approval per published version; panel `components/contracts/template-doc-panel.tsx`, `setCustomerDocSettings`). New `customer_documents` (+ immutable `_versions`, `_events`; frozen once sent). Code `lib/documents/{service,preview}.ts`; starters `CUSTOMER_STARTER_TEMPLATES`; merge fields `customer_*`, `project_*`, `total_price`... in `lib/contracts/variables.ts`. Sending = e-signature request via the existing signing engine, bound to the approved version hash, separate Confirm.
+- **Meta tracking setup**: `lib/meta/setup/*` (OAuth `app/api/integrations/meta/connect/{start,callback}`, encrypted tokens, asset listing, configure/create/verify, guidance). Tables `meta_connections`, `meta_connection_secrets` (no policies), `meta_funnel_tracking`, `meta_setup_log` (append-only). Allowed: admins + contractor owners. Reuses `trackingPixels.metaPixelId`, the browser pixel and CAPI; "verified" only from Meta-reported events. Dormant until `META_APP_ID`/`META_APP_SECRET`/`META_TOKEN_ENCRYPTION_KEY` are set. Cannot publish ads, change budgets or edit active campaigns.
+- **Tests**: `tests/assistant-{sql,core,documents,meta,ui}.test.ts` (+ `tests/helpers/tenant-db.ts`). Not exercised against live Anthropic/Meta/email.
+- **Deploy order**: apply 0049, 0050, 0051 before deploying; `tests/migration-plan.test.ts` was updated for them.
+
+## 28. Automatic texting from the owner's Mac (migration 0052, 2026-10-21, ships OFF)
+
+New real funnel leads are texted as **HomeQuote** (house funnels; contractor-branded funnels only if "text as the contractor" is enabled in settings) from the owner's Mac via iMessage, and an AI agent asks call-or-text and qualifies over text. Nothing sends until: migration `0052_sms_texting.sql` applied, `SMS_BRIDGE_TOKEN` (24+ chars) set in Vercel, `ANTHROPIC_API_KEY` set, the Mac bridge running, and an admin turns it on at **`/app/texting`** (nav "Texting", admin only; "Stop all texting" cancels queued messages).
+
+- **Flow:** `app/api/funnels/[slug]/session/route.ts` PATCH, after a real (non-demo) contact submit and only if `smsConfigured()`, calls `startSmsForLead` (`lib/sms/service.ts`): checks settings/opt-out/phone/daily cap, creates one `sms_conversations` row per lead (unique `lead_id`, idempotent), queues a deterministic opening text (casual "Hey {name}, it's HomeQuote…", asks call vs text; no AI disclosure or "reply STOP" line since consent/STOP wording is on the form, but STOP replies are always honored; the AI admits being automated only if sincerely asked) with `send_after` = next time inside the lead's local texting window (default 8am–9pm; zone from lead state/ZIP via `lib/ai-calling/timezone.ts`, fallback ET+PT strictest).
+- **Bridge:** `scripts/mac-sms-bridge/bridge.mjs` (no deps; README + launchd plist alongside) polls `POST /api/sms/bridge/pull` (atomic `claim_sms_outbound`; also the heartbeat shown on `/app/texting`), sends through Messages with `osascript` (args, never string-spliced; optional SMS fallback), acks via `/ack`, and reads new incoming texts from `~/Library/Messages/chat.db` (read-only `sqlite3`, needs Full Disk Access) and posts them to `/inbound` (guid de-duplicated). All three routes require `Authorization: Bearer $SMS_BRIDGE_TOKEN`. Messages stuck "sending" 10+ min become failed, never resent.
+- **Agent:** `lib/sms/agent.ts` — forced `send_reply` tool call (message, mode call/text, qualification unknown/qualified/unqualified, call_time, handoff, close, summary), model `SMS_MODEL` (default `claude-haiku-5-5`), lead text and form answers passed as untrusted data, no tools/data access, links stripped, 320-char cap, max 14 AI turns then human handoff. Replies are queued a few seconds out. On handoff/close/provider failure the conversation moves to `handoff`/`closed`, a `lead_activities` system note with `needs_attention` is written, and the AI goes silent. It does **not** set `leads.qualified` (that fires the QualifiedLead Meta event/workflows); staff do.
+- **Goal = book the visit (2026-10-22):** the agent's one goal is a day and rough time for the free in-home estimate visit with a local contractor. After the opening call-or-text question it steers to the visit, asks day then morning/afternoon/evening, makes sure decision-makers can be there and that they own the home, and skips budget/payment questions unless raised. It sets `appointment_time` (their words); `replyWithAgent` then forces `handoff`, writes a `needs_attention` note ("Requested visit time: … (not confirmed yet)") and sends a "A lead wants a visit" push + email (replaces the generic call alert). The time is a REQUEST: the bot never confirms an exact time; a person confirms it and creates the appointment (`scheduleAppointment`). Not built yet: offering real slots from `lib/availability` and auto-creating the appointment.
+- **Wants-a-call alert (2026-10-22):** when the agent's reply sets `mode: 'call'` (first time), and again when the lead then gives a time, `replyWithAgent` calls `notifyAdmins` (`lib/sms/health-notify.ts`): push to every active admin in the HomeQuote app (type `workflow_alert`, links to `/app/leads/<id>`) plus email to the lead-alert recipients. Generic, lock-screen-safe text (no name or number). Best effort: a failed alert never affects the conversation. The bot's own replies and hand-off behaviour are unchanged.
+- **Compliance:** STOP/UNSUBSCRIBE/etc. (`lib/sms/rules.ts isOptOut`) → opt-out row, queued texts cancelled, one confirmation, conversation `opted_out`, never texted again (START re-subscribes to human handoff). HELP gets a canned reply. Texts from numbers we never contacted are ignored. Consent comes from the funnel consent line (already covers "call, text, or email … automated technology … Reply STOP").
+- **Tables (0052):** `sms_settings` (singleton: enabled/stopped_at, contractor_funnels_enabled, window hours, daily_cap, bridge_last_seen_at), `sms_opt_outs`, `sms_conversations`, `sms_messages`; admin SELECT RLS only, service-role writes. Admin UI: `/app/texting` (switch, bridge status, settings, conversation list), lead page "Text conversation" panel with take-over / hand-back (`lib/actions/sms.ts`). Tests: `tests/sms-texting.test.ts`.
+- **Bridge-down alert (migration 0053):** `checkBridgeHealth` (`lib/sms/health.ts`) runs from the existing 5-minute `POST /api/workflows/tick` (no new secret/scheduler). If texting is on and a due text has sat unsent 5+ min (or a claimed one 3+ min), admins get a push (`workflow_alert` type) and the lead-alert recipients get an email via `lib/sms/health-notify.ts`; repeats at most hourly (`sms_settings.bridge_alert_sent_at`), sends one "Texting is back" on recovery. `/app/texting` also shows how many texts are waiting.
+- **Caveats:** iMessage automation is unofficial (use a dedicated Apple ID/number; Mac must stay awake); replies the owner types by hand in Messages are not logged; green-bubble SMS needs a paired iPhone.
+
+## Brand (Oct 2026 rebrand, branch `rebrand`)
+Brand Guidelines v1.0 applied: tokens in `app/globals.css` and `app/(marketing)/marketing.css`, logos in `public/brand/` via `components/brand-logo.tsx`, fonts Sora + DM Sans in `app/layout.tsx`. Gold is the CTA colour on Navy marketing/ad pages only. Details and copy flags: `docs/rebrand/REBRAND_NOTES.md`.
+
+
+## 24. Contractor availability + calendar sync (migration 0047, added 2026-10-14, NOT yet applied/deployed)
+- **Data** (all keyed by `contractors.id`): `contractor_availability_settings` (tz, `weekly_schedule_enabled`, notice, buffer, daily cap, default duration), `contractor_availability_rules` (weekly windows, weekday 0=Sun, local minutes), `contractor_availability_exceptions` (blocked/available, date range or weekly repeat, optional hours). RLS: read = staff (admin/setter) or same company; write = admin or contractor **owner** of that company. No settings/rules/exceptions ⇒ the DEFAULT weekly hours apply (`DEFAULT_WEEKLY_RULES` in `lib/availability/slots.ts`, applied in `loadStoredAvailability`; changed 2026-10-23): Sun 9–7, Mon–Thu 9–6:30, Fri 9–3, Sat off. Saving anything on `/app/availability` replaces them; a contractor with an existing settings row keeps their own choice (weekly off ⇒ unrestricted).
+- **Calendar tables**: `calendar_connections` (per user; encrypted credentials; clients get column-level SELECT on safe columns only, no client writes), `appointment_calendar_events` (appointment↔external event; no FK so deleted appointments can still be cleaned up), `calendar_sync_jobs` (outbox, one pending job per appointment, filled by trigger `trg_appointments_calendar_sync`, claimed via `claim_calendar_sync_jobs`), `calendar_feed_tokens` (service-role only). Tests: `tests/availability-db.test.ts` (runs the real migration chain in PGlite; `fullSchema({supabaseGrants:true})`).
+- **Logic**: `lib/availability/{time,slots}.ts` pure (DST-safe; `unavailableReason`, `bookableSlots`, `unavailableIntervals`), `data.server.ts` loads context (service role), `enforce.server.ts` `checkContractorSlot`. Tests: `availability-slots.test.ts`.
+- **Enforcement**: `scheduleAppointment` (`lib/actions/leads.ts`) — admin/setter are rejected for unavailable times unless "Book anyway" (audited as `appointment.availability_override` via service role); contractors are not blocked by their own rules; lookup failures never block. The datetime-local value is now parsed as workspace time (`DEFAULT_TZ`) rather than the server zone. Funnel/Calendly bookings and workflow-created appointments are NOT checked.
+- **Google**: `lib/calendar/{config,google,connections.server,busy.server,sync.server,appointment-event.server}.ts`; OAuth with PKCE + state cookie bound to the user (`hqn_gcal_oauth_*`), scopes `calendar.events` + `calendar.freebusy`, refresh token AES-256-GCM (`CALENDAR_TOKEN_ENCRYPTION_KEY` or `GMAIL_TOKEN_ENCRYPTION_KEY`). Env: `GOOGLE_CALENDAR_CLIENT_ID/_SECRET/_REDIRECT_URI` (dormant until set). Deterministic event ids make retries idempotent; revoked grant ⇒ `needs_reconnect`. Sync is flushed with `flushCalendarSyncSoon()` and retried by `/api/workflows/tick` (`runCalendarMaintenance`). Primary calendar only; busy times read as start/end only.
+- **Primary connect path (2026-10-14 follow-up)**: the private subscribe link with "Add to Apple Calendar" / "Add to Google Calendar" (`calendar.google.com/calendar/render?cid=<webcal url>`) buttons needs no keys; the Google OAuth card is hidden unless `GOOGLE_CALENDAR_*` are set or a connection exists.
+- **Apple**: no OAuth exists; shipped = private subscribe `.ics` feed + per-appointment `.ics`. Two-way CalDAV NOT built.
+- **UI**: `app/app/availability/page.tsx`, `components/availability/*`; nav item "Availability" for admin+contractor only (setter nav is pinned to five sections by `tests/setter-access.test.ts`; setters use "View availability" on `/app/contractors/[id]` and the booking warning in `components/leads/assignment-manager.tsx`). Guide: `docs/contractor-availability-calendar.md`.
+- **Known gaps**: no push alert for needs-reconnect; no calendar picker; disconnect leaves already-written events; Google sensitive-scope verification required beyond test users.
+
+## 25. Password reset (own flow, 2026-10-15)
+- **Root cause of the old bug**: reset links used `redirectTo = NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'` and were sent by Supabase's default mailer; with the env var unset in production (and/or Supabase Auth → URL Configuration still on localhost / missing the live URL in the redirect allow-list) the email led to localhost.
+- **Now**: `forgotPasswordAction` and admin `resetPassword` (`lib/actions/team.ts`) call `sendPasswordReset` (`lib/auth/password-reset.ts`): `auth.admin.generateLink({type:'recovery'})` (no Supabase email) → branded email through the HomeQuote Gmail automation sender → link `/reset-password?token_hash=…` on our own domain. The one-time token is only spent when the person presses **Continue** (`continueResetAction`, `verifyOtp`), so email scanners can't burn it; then `/set-password`. Unknown emails are silent (no enumeration). If the Gmail sender isn't connected it falls back to Supabase's email with a corrected redirect.
+- `lib/auth/site-url.ts` `publicSiteUrl()` never returns localhost in production (env → `VERCEL_PROJECT_PRODUCTION_URL` → `https://homequotenet.com`). Invites (`inviteUserByEmail`) still use Supabase's mailer but now get the corrected redirect URL. Tests: `tests/password-reset.test.ts`.
+
+
+## 26. Send a Stripe payment for anything (migration 0048, 2026-10-15)
+- **What**: admins can send an ad-hoc Stripe payment from `/app/billing` ("Send payment" button): any amount (50¢ to $100,000), one-time or monthly (+ optional setup fee on monthly), a description shown at checkout, optional customer name/email, optional company link, optional email of the link (HomeQuote Gmail sender, branded). Independent of Growth Tools `service_requests` (those still only get paid after a contractor requests and an admin prices them).
+- **How**: `sendPaymentRequest` (`lib/actions/payment-requests.ts`, admin only) saves a `payment_requests` row (service role), creates Stripe Prices + a single-use **Payment Link** (`restrictions.completed_sessions.limit=1`, `managed_payments` off like Growth Tools checkout, metadata `payment_request_id`), stores the URL, writes `audit_logs` `payment_request.created`. `cancelPaymentRequest` deactivates an unpaid link. Validation/email in `lib/billing/payment-request.ts`. UI: `components/billing/send-payment-dialog.tsx`, `payment-links.tsx` (last 25, status, copy link, cancel).
+- **Paid status**: the existing `/api/stripe/webhook` handles `checkout.session.completed/async_payment_succeeded` for these sessions in `markPaymentRequestPaid` (`lib/billing/webhook.ts`): matches `metadata.payment_request_id` or the Payment Link id; async bank debits stay "sent" until they clear; Growth Tools handling is unchanged.
+- **Table**: `payment_requests` (admin SELECT via RLS; no client writes). Tests: `payment-requests.test.ts`, `payment-requests-db.test.ts`.
+- **Needs**: `STRIPE_SECRET_KEY` (must be allowed to create prices and payment links) and the webhook subscribed to the checkout events; `.env.example` now lists the Stripe vars. Recurring renewals of a monthly link are tracked in Stripe, not marked in this table.
+
+
+## 27. Blank funnel steps fix (2026-10-21, no migration)
+- **Symptom**: some question screens rendered empty (just the progress bar). **Cause**: `visibleQuestions()` hides any question whose `showWhen` rules aren't met by the answers so far. The builder's live preview jumps straight to a clicked step (`jumpToStep`) with no answers, so every conditional ("↳") question was hidden and the screen had no question to draw. The kitchen and bathroom presets have 8 of 11 questions conditional, and the same applies to any funnel with branching.
+- **Fix**: `previewAnswersForStep()` (`lib/funnels/builder.ts`) fills in answers that satisfy the target's `showWhen` chain (and plausible first options for other earlier questions) when the preview opens a step. `resolveStep()` (`lib/funnels/schema.ts`) is a guard in `components/funnels/funnel-experience.tsx`: if a saved/jumped step names a hidden or missing question it shows the first visible unanswered question instead (and re-syncs the server step) rather than a blank screen. Public visitors were never walked into this by the normal flow (verified over every answer path of all bundled funnels). Tests: `tests/funnel-blank-steps.test.ts`.
+
+## 29. Meta CRM stage events for website funnel leads (migration 0055, 2026-10-22, ships OFF)
+Bathroom and kitchen funnels (Pixel/dataset `29178560738497902`) now send Meta **Conversions API for CRM** stage events. `lib/meta/conversions.ts` has a third source kind `website_crm` (`usesWebsiteCrm`: website lead whose `session.pixelId` equals `meta_settings.dataset_id`, passed as `crmDatasetId` into `decide`). Events `lead_received`/`qualified`/`appointment_booked`/`won`, `action_source=system_generated`, `custom_data {event_source:'crm', lead_event_source:'HomeQuote Network'}`, event id `crm:<lead id>:<stage>`, `user_data` = hashed `em`/`ph` arrays + `fn/ln/zp/country`, raw `fbc`/`fbp`, `lead_id` only if a real leadgen id exists. `lib/meta/queue.ts` prepends `lead_received` for these leads like Instant Form leads and passes `crmDatasetId` in both feed and dispatch (so test-mode re-checks route the same way). Migration `0055_meta_website_crm_events.sql` widens the `meta_conversion_events.source_kind` check; **apply it before deploying the code**. The events page labels these "Website · CRM". Nothing is sent until `meta_settings.delivery_mode` = live (type `ENABLE LIVE` on Meta Ads -> Setup), which also needs `META_CONVERSIONS_API_TOKEN` to have access to the dataset. Docs: `docs/meta-ads-setup.md` §3 B2. Tests: `tests/meta-conversions.test.ts` ("website leads on the CRM dataset"). Not verified against real Meta.
+
+## 29. Niche tagging for the shared Meta Pixel (2026-10-23, no migration)
+
+One Pixel, many niches: every WEBSITE event now carries the same custom parameters, so Events Manager can split by niche. `lib/meta/niche.ts` (pure) maps a funnel's `industry` text + slug to a niche (`bathroom`, `kitchen`, `kitchen_bath`, `adu`, `pool`, `roofing`, `hvac`, `fencing`, `remodeling`, `other`; a slug like `bathroom-...` wins over vague industry text) and `nicheDataFor()` returns `{ content_category: 'Bathroom Remodeling', niche: 'bathroom', content_name: '<slug>' }`. Sent on: the browser Pixel (`lib/funnels/tracking.ts` `trackFunnel`, new 5th arg `industry`; ADU quiz `components/adu-quiz/tracking.ts`), the direct Conversions API events (`customData` on `MetaLeadEvent` in `lib/meta/capi.ts`: funnel session route Lead/Schedule, `lib/meta/qualified.ts` QualifiedLead, ADU quiz Lead/QualifiedLead/Schedule), and the queued website-pixel events (`buildPayload` `opts.niche`, loaded in `lib/meta/queue.server.ts`; merged with value/currency for WonJob). NOT added to the Conversions API for CRM events (instant-form and website-CRM stage events): Meta defines their `custom_data`. A new funnel is tagged automatically from its industry text; a new niche needs one rule in `nicheOf`. In Events Manager: Custom conversions / audiences with a rule on `niche` or `content_category` (parameters must have been received once before they appear). Tests: `tests/meta-niche.test.ts`, `tests/funnel-tracking.test.ts`.
+
+## 30. Creative Studio (REMOVED 2026-10-23; replaced by Seret, §31)
+The admin-only `/app/creative-studio` page (muapi.ai generator/agent embeds plus an "Add embed" dialog) was removed along with its code (`content/creative-studio.ts`, `components/creative-studio/*`, `lib/actions|data/creative-studio.ts`, `lib/creative-studio/embed.ts`, its tests). `/app/creative-studio` now redirects to `/studio` (`next.config.ts` `redirects`). Migration **0056** and its table `creative_studio_embeds` were left in place (nothing reads them any more; any rows added there are kept, not deleted). Drop the table in a later migration if it is not wanted.
+
+## 31. Seret studio (formerly MOTC) at /studio (2026-10-23, no migration)
+Seret (Hebrew סרט, "film"; renamed from MOTC 2026-10-23; "by HomeQuote Network": AI image, video, cinema and lip-sync studio, originally the private repo `tzarcheiliam-lgtm/MOTC-`) now lives in this repo under **`studio/`**: a separate static Vite + vanilla JS + Tailwind 4 app with its own `package.json`/lockfile, not part of the Next app. **Build:** root `npm run build` runs `build:studio` first (`cd studio && npm ci --include=dev && VITE_KIE_KEY= npm run build`; `--include=dev` is required because Vercel builds with NODE_ENV=production and all of the studio's build tools are devDependencies), which writes `public/studio/` (gitignored, regenerated every deploy; `studio/vite.config.mjs` sets `base: '/studio/'`, `outDir: '../public/studio'` and an inline empty PostCSS config so the site's `postcss.config.mjs` is not picked up). **Serving:** `next.config.ts` rewrites `/studio` -> `/studio/index.html`; `/studio/` 308s to `/studio`; **Admins only (2026-10-23):** `lib/supabase/middleware.ts` gates `/studio*` itself (static files have no page to run `requireRole`): signed out -> `/sign-in`; signed in but not an active admin (or no profile row) -> `/app`; Supabase unreachable or not configured -> 503 (fails closed). Images (`.png/.webp/.svg`) skip the middleware matcher, so only the lens pictures stay fetchable; the page, JS and CSS are gated. Tests: `tests/studio-access.test.ts`. Not linked from the marketing site. Admins open it from the portal menu: **Growth > Seret** (`lib/nav.ts`, `newTab: true`, `Clapperboard` icon), which opens `/studio` in a new tab via `components/nav-link.tsx` (plain `<a target=_blank>` for `newTab` items, Next `Link` otherwise) in both the sidebar and the mobile menu. **Keys/cost:** the studio calls kie.ai straight from the browser with each user's own kie.ai key (localStorage `kie_key`), so it runs on no shared account; the build script blanks `VITE_KIE_KEY` so a key can never be baked into the public bundle (tested in `tests/seret-studio.test.ts`). `studio/` and `public/studio/` are excluded from ESLint and `tsconfig.json`. **Look (2026-10-23):** rebranded from black/red to HomeQuote dark: Navy surfaces (`app-bg #06132e`, `panel-bg #0a1b3d`), HomeQuote Blue lifted for contrast on navy (`primary #2f6bff`, hover `#0038b8`), Gold `#f5b700` only for the active-nav dot, Sora headings + DM Sans body (Google Fonts in `studio/index.html`), its own logo in the header and as favicon: `public/brand/seret-icon.svg` (the HomeQuote house as a film frame: sprocket holes down the sides, white frame with a blue play button, gold roof window). Tokens live in `studio/src/styles/global.css` (`@theme`; `--color-black` is deep navy so overlays never read pure black) and `styles/variables.css`. **Redesign (2026-10-24), media-first:** brief in `docs/prompts/seret-redesign.md`.
+- **Shell and routes:** `components/Shell.js` (left icon rail on desktop, bottom bar on phones, credits pill) replaces `Header.js`. `lib/router.js` adds hash routes (`#/`, `#/models`, `#/models/<id>`, `#/image|video|lipsync|cinema|projects`), routed in `main.js`. Studios take `?prompt=&model=`: the prompt fills the textarea marked `data-prompt-box`, and the model is accepted only when it's a real id of that kind (saved as the preferred model).
+- **Explore** (`ExplorePage.js`, the default page): hero prompt, contractor presets (`lib/presets.js`), your recent creations, and a "Made with Seret" masonry feed.
+- **Models gallery and model detail** (`ModelsPage.js`, `ModelDetailPage.js`): specs come only from `inputs` (`lib/specs.js`). Maker, tagline, "best for" and price are hand-written in `lib/modelInfo.js`, keyed by `runsAs`; prices appear only where kie.ai's own site shows them (with source and date). Detail pages say plainly when a listed model runs as a different kie.ai model (e.g. Kling v3.0 Pro runs as Kling 2.1 Pro).
+- **Shared code:** `components/media.js` (placeholders, hover-play, viewer with Recreate, masonry) and `lib/creations.js` (reads the four histories).
+- **Samples:** `studio/scripts/generate-samples.mjs` is run by hand with `KIE_API_KEY`. It prints the plan and estimated cost (about $6.73 / 1,350 credits for 23 samples; `--images-only` about $0.56) and asks before spending. It downloads results to `studio/public/samples/` (served at `/studio/samples/`) and writes `lib/samples.js` (empty until run; pages show branded placeholders meanwhile). Re-runs only generate missing files. With ffmpeg, downloads are shrunk (videos ≤1280px H.264 + WebP poster, images ≤1600px WebP); `--optimize-existing` does the same for files already there. **Generated 2026-10-24:** 19 samples (9 models + 6 preset covers, 7.9 MB) for about 720 credits.
+- **kie.js:** uses `import.meta.env?.` and `globalThis` so the script can reuse it in Node; browser behaviour is unchanged.
+- **kie.ai model fixes (2026-10-24, checked against docs.kie.ai):**
+  - Model names: Nano Banana is `google/nano-banana` and its edit model `google/nano-banana-edit` (images in `image_urls`). Google and Qwen models only accept `output_format` `jpeg`.
+  - Field names: Kling i2v takes one `image_url` and a string duration. Seedance 2 i2v takes `first_frame_url`. Wan always uses `480P`-style resolutions. Veo no longer sends the deprecated `enableFallback`.
+  - Polling: a failed generation now stops polling at once. It used to retry until the attempt limit (up to 30 min).
+  - Unavailable text-to-video models, each with its reason (`catalog.js` `videoUnavailable`): Kling (kie.ai's Kling 2.1 is image-to-video only), Seedance 1.5 Pro, and Sora 2 / OVI (not in kie.ai's docs).
+  - Result: 9 kie.ai models are runnable. Newer kie.ai models (Kling 2.6/3.0, Seedance 2.5, Grok Imagine video, Veo's new jobs API) are not mapped yet.
+- **Phones:** the studios' fixed History strip is hidden below `md` (Projects covers it).
+- **Tests:** `tests/seret-studio.test.ts` (presets use runnable models and valid aspect ratios; `modelInfo` matches `runsAs`; router round-trip). Studio internals (generation flows) were not restyled beyond the shell, and nothing was verified against live kie.ai.
+
+**Projects tab (2026-10-23):** `studio/src/components/ProjectsPage.js` (route `projects`, last item in the header) lists *In progress* jobs from `kie_pending_jobs` and *Done* items merged from the four per-studio histories (`kie_history`, `video_history`, `lipsync_history`, `cinema_history`; all browser localStorage, so per browser), with a studio filter. It checks running jobs every 10s with `kie.checkTask()` (one request, no waiting) and shows Generating / Ready / Failed, but never writes history itself (the studio that started a job saves it when opened, via its existing resume code, so no studio's list can be overwritten). Same change: `kie._extractUrl()` now also reads the jobs API's `resultJson` string, and the studios' resume code uses it (it read fields kie.ai does not return). Not verified against live kie.ai. To work on it: `cd studio && npm install && npm run dev` (see `studio/README.md`). Not verified against live kie.ai generation in this change (UI, routing and assets verified in Chromium against a production build).
+
+
+## 30. In-app texting + default-hours controls (migration 0057, added 2026-10-23)
+- **Texting page** (`/app/texting`, admin): "What the assistant says" card saves `sms_settings.bot_extra_instructions` (≤1500 chars, appended to the fixed prompt by `systemPromptFor` in `lib/sms/agent.ts`; framed as goal/wording guidance that cannot override STOP/no prices/no links/handoff) and `house_sender_name` (name texts come from on HomeQuote funnels; default "HomeQuote"). `loadSettings` falls back to the old columns until 0057 is applied.
+- **Per-contractor texting:** `contractors.texting_enabled` (default false; backfilled true for existing contractors only if contractor-funnel texting was already on). A contractor funnel texts only when BOTH `sms_settings.contractor_funnels_enabled` (master) AND the contractor's switch are on. Toggle on `/app/contractors/[id]` ("Automatic texting", `setContractorTexting`).
+- **Default hours editable:** table `availability_defaults` (singleton; `timezone`, `rules` jsonb of `{weekday,startMinute,endMinute}`), editable by admins at the top of `/app/availability` (`saveDefaultHours`). `loadDefaultHours` (lib/availability/data.server.ts) falls back to `DEFAULT_WEEKLY_RULES` if the table is missing. Seeded: Sun 9–7, Mon–Thu 9–6:30, Fri 9–3, Sat off.
+
+## 31. Short house funnels (2026-10-24)
+- `bathroom-remodel` and `kitchen-remodel` (preset JSON in `content/funnels/`, and the live published rows) are now five questions: project type, ZIP, "Do you own the home?", "When do you want the work to start?" (asked, not used to qualify) and the property address (timeline and address asked only of homeowners; address required). Qualified = a full-remodel-type project AND homeowner = yes. Renters and small repairs are marked not qualified (`unqualifiedAction` still `review`). The live rows were updated directly in `funnels.config` (same as the builder's save); sessions already in progress keep their own `config_snapshot`.
+
+## 32. Seret API: Claude uses Seret through MCP (migration 0058, 2026-10-24, NOT yet applied/deployed)
+
+### Endpoint: `POST /api/seret/mcp`
+- A stateless MCP server over Streamable HTTP (`app/api/seret/mcp/route.ts`). It speaks JSON-RPC and replies with plain JSON.
+- GET and DELETE return 405. Notifications return 202.
+- **Auth:** the `Authorization: Bearer seret_…` header. Keys are never accepted in the URL.
+- The middleware skips this path, so no Supabase session is involved.
+
+### Tools
+- `list_models` and `list_presets`
+- `generate_image`: waits up to 45s and returns a link.
+- `generate_video`: returns a job id right away.
+- `get_job`
+- `list_recent`
+
+Tool problems (unknown model, bad aspect ratio, kie.ai errors) come back as `isError` tool results, so Claude can read them and fix its request.
+
+### Keys
+- `lib/seret/keys.ts` makes keys of the form `seret_` + 256 bits.
+- Only the SHA-256 hash is stored, in `seret_api_keys`. The key itself is shown once.
+- Revoking a key blocks it immediately.
+- Admins create and revoke keys at `/app/seret-api` (nav: Growth > Seret API). The page also shows the setup:
+  - Claude Code: `claude mcp add --transport http seret <url> --header "Authorization: Bearer <key>"`.
+  - claude.ai / Desktop: Settings → Connectors → Add custom connector → Request headers. This option is in beta per Anthropic's docs.
+
+### Engine (`lib/seret/engine.ts`)
+- **Shared code:** it reuses the studio's own `studio/src/lib/{kie,catalog,specs,modelInfo,presets}.js`, so model mapping is identical to the studio.
+- **Which kie.ai key it uses:** the server's `KIE_API_KEY` env var, not a browser key. Without it, generating fails with a clear error.
+- **Starting a job:** `kie.js` gained `noWait` (start the job and return its task id).
+- **Saving results:** rows go in `seret_generations`. On success the file is copied into the private `seret-media` bucket and served through 7-day signed links, because kie.ai's links are temporary `tempfile` URLs.
+- **Seret's Projects tab:** a "Made by Claude" section reads `GET /api/seret/generations` (signed-in, active admins only).
+
+### Deploy order
+1. Apply 0058.
+2. Set `KIE_API_KEY` in Vercel (Production).
+3. Deploy.
+
+### Tests
+- `tests/seret-mcp.test.ts`: auth, initialize, tools list, list_models, errors.
+- `tests/seret-keys.test.ts`.
+- Verified live: kie.ai start-then-check with `noWait` (1K image in 19s).
+- Not verified end to end against a real database. That needs 0058 applied.
+
+## 32. Call list "Next" stays in the list you're working (2026-10-26)
+- The Calls list carries its view + filters (niche, city, county, service, caller, …) in the URL (`lib/calls/context.ts`). Opening a prospect from the table/cards keeps them as query params; `/app/calls/[id]` and the log form (`list_context` hidden field) use them so **Next** and **Save & next** go to the next prospect in that same list (`nextProspectInContext` in `lib/data/prospects.ts`, same view/filter/sort as the list), not the caller's whole queue. With no narrowed list (plain "mine"), the old behaviour (`nextProspectIdFor`: due callbacks first) is kept. Test: `tests/calls-next-in-list.test.ts`.

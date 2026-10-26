@@ -1,3 +1,5 @@
+import { smsConfigured } from '@/lib/sms/config';
+import { startSmsForLead } from '@/lib/sms/service';
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { z } from 'zod';
@@ -11,6 +13,7 @@ import { sendLeadEmailsSoon } from '@/lib/leads/notify';
 import { flushNotificationsSoon } from '@/lib/notifications/outbox';
 import { runAiCallQueue } from '@/lib/ai-calling/run.server';
 import { buildFbc, sendMetaEvent } from '@/lib/meta/capi';
+import { nicheDataFor } from '@/lib/meta/niche';
 import { loadLeadMetaIds, rememberLeadMetaIds } from '@/lib/meta/lead-ids';
 import { directSendAudit } from '@/lib/meta/audit.server';
 
@@ -126,6 +129,7 @@ export async function PATCH(request: Request, context: Context) {
           await sendMetaEvent({
             pixelId: config.trackingPixels.metaPixelId!, eventName: 'Schedule', eventId: `${s.id}:Schedule`,
             eventSourceUrl: s.attribution.landing_page_url ?? `https://${request.headers.get('host')}/estimate/${funnel.slug}`,
+            customData: nicheDataFor(config.industry, funnel.slug),
             user: {
               email: s.contact!.email as string, phone: s.contact!.phone as string,
               firstName: s.contact!.firstName as string, lastName: s.contact!.lastName as string,
@@ -179,6 +183,8 @@ export async function PATCH(request: Request, context: Context) {
     // AI calling: the lead's assignment already enqueued a job (DB trigger). This only nudges the worker
     // after the response is sent; it is a no-op unless calling is enabled, and the scheduled tick is the backstop.
     if (body.contact && !funnel.is_demo) after(async () => { try { await runAiCallQueue({ limit: 3 }); } catch { /* the scheduled tick retries */ } });
+    // Text the lead right away from the owner's Mac (off unless enabled at /app/texting; never blocks or fails the submission).
+    if (body.contact && !funnel.is_demo && smsConfigured() && typeof data?.lead_id === 'string') after(async () => { try { await startSmsForLead(db, data.lead_id as string); } catch { /* never blocks the submission */ } });
     if (body.contact && !funnel.is_demo && funnel.integration_id) after(async () => { try { await deliverPendingFunnels(); } catch { /* Durable queue retains the job for retry. */ } });
     // Meta Lead conversion — only for a real submission that passed the (optional, per-funnel)
     // service-area gate. Never fires for an out-of-area submission (areaValid === false) or a
@@ -189,6 +195,7 @@ export async function PATCH(request: Request, context: Context) {
       after(() => sendMetaEvent({
         pixelId: config.trackingPixels.metaPixelId!, eventName: 'Lead', eventId: `${s.id}:Lead`,
         eventSourceUrl: s.attribution.landing_page_url ?? `https://${request.headers.get('host')}/estimate/${funnel.slug}`,
+        customData: nicheDataFor(config.industry, funnel.slug),
         user: {
           email: body.contact!.email, phone: body.contact!.phone, firstName: body.contact!.firstName, lastName: body.contact!.lastName,
           state: areaValid === true ? 'CA' : undefined, zip,

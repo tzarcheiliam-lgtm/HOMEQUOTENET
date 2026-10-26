@@ -1,4 +1,5 @@
 import 'server-only';
+import { redactSecrets } from './marketing-api';
 import { createHash } from 'node:crypto';
 import { normalizeEmail, normalizePhone } from '@/lib/leads/normalize';
 
@@ -50,6 +51,8 @@ export type MetaLeadEvent = {
   eventSourceUrl: string;
   eventTime?: number; // unix seconds; defaults to now
   user: MetaUserData;
+  /** Extra event parameters, e.g. the niche tags from lib/meta/niche.ts. Sent as custom_data. */
+  customData?: Record<string, string | number>;
 };
 
 /** Builds the Conversions API user_data object: hashed PII, raw IP/UA/fbp/fbc. */
@@ -107,6 +110,7 @@ export function buildEventsPayload(event: MetaLeadEvent, testCode?: string) {
       event_source_url: event.eventSourceUrl,
       action_source: 'website',
       user_data: buildUserData(event.user),
+      ...(event.customData && Object.keys(event.customData).length ? { custom_data: event.customData } : {}),
     }],
     ...(testCode ? { test_event_code: testCode } : {}),
   };
@@ -156,7 +160,7 @@ export async function sendMetaEvent(event: MetaLeadEvent, audit?: DirectSendAudi
     // Logged without PII or the token so an accepted-vs-dropped event is visible in the server logs.
     const body = await res.json().catch(() => ({})) as { events_received?: number; fbtrace_id?: string; error?: { message?: string; code?: number; fbtrace_id?: string } };
     if (!res.ok || body.error) {
-      console.error(`[meta-capi] ${event.eventName} rejected: HTTP ${res.status} code=${body.error?.code ?? 'n/a'} ${body.error?.message ?? ''} trace=${body.error?.fbtrace_id ?? 'n/a'}`);
+      console.error(`[meta-capi] ${event.eventName} rejected: HTTP ${res.status} code=${body.error?.code ?? 'n/a'} ${redactSecrets(body.error?.message)} trace=${body.error?.fbtrace_id ?? 'n/a'}`);
       result = { ...base, status: 'failed', httpStatus: res.status, code: `graph:${body.error?.code ?? res.status}`, message: (body.error?.message ?? '').slice(0, 300), fbtraceId: body.error?.fbtrace_id ?? null };
     } else {
       console.info(`[meta-capi] ${event.eventName} pixel=${event.pixelId} events_received=${body.events_received ?? 'n/a'} trace=${body.fbtrace_id ?? 'n/a'}`);

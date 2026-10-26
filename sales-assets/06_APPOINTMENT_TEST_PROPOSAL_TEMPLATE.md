@@ -208,7 +208,7 @@ appointment, request an estimate, or purchase.
 **Prepared by**
 Liam Tzarchei — Founder, HomeQuote Network
 Operated by Tzarchei Investments
-`747-217-5713` · `homequotenetwork@gmail.com` · homequotenet.com
+`747-217-5713` · `liam@homequotenet.com` · homequotenet.com
 
 ---
 

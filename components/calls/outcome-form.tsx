@@ -36,12 +36,15 @@ export function OutcomeForm({
   decisionMakerName,
   bestContactMethod,
   isDnc,
+  contextQuery,
 }: {
   prospectId: string;
   disposition: ProspectDisposition;
   decisionMakerName: string | null;
   bestContactMethod: string | null;
   isDnc: boolean;
+  /** The list this prospect was opened from, so Save & next stays inside it. */
+  contextQuery?: string;
 }) {
   const [state, formAction, pending] = useActionState<ProspectActionState, FormData>(
     logCallOutcome,
@@ -89,6 +92,7 @@ export function OutcomeForm({
       <CardContent className="max-lg:px-0">
         <form action={formAction} className="space-y-4">
           <input type="hidden" name="prospect_id" value={prospectId} />
+          <input type="hidden" name="list_context" value={contextQuery ?? ''} />
 
           <div className="space-y-1.5">
             <Label htmlFor="outcome">

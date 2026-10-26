@@ -119,6 +119,7 @@ export default async function AppointmentsPage({
                   <TableHead>Contractor</TableHead>
                   <TableHead>Location</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Calendar</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -147,6 +148,13 @@ export default async function AppointmentsPage({
                     </TableCell>
                     <TableCell>
                       <Badge variant="secondary">{statusLabel(a.status)}</Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {a.scheduled_at ? (
+                        <a href={`/api/calendar/appointment/${a.id}`} download className="text-sm underline">
+                          .ics
+                        </a>
+                      ) : null}
                     </TableCell>
                   </TableRow>
                 ))}

@@ -36,6 +36,10 @@ export const rootMetadata: Metadata = {
   title: site.defaultTitle,
   description: site.description,
   applicationName: site.name,
+  // Meta business domain verification; rendered server-side in <head>.
+  other: {
+    'facebook-domain-verification': 'cmx738y17dj6j5tebzgpx0jw9yikpk',
+  },
   openGraph: {
     ...baseOpenGraph,
     url: site.url,

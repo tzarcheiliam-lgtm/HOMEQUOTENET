@@ -48,10 +48,10 @@ describe('More info after our call template', () => {
     expect(html).toContain('alt="HomeQuote Network"');
     expect(html).toContain('width="72"');
     expect(html).toContain('font-family:Arial,Helvetica,sans-serif');
-    expect(html).toContain('color:#082f63');
+    expect(html).toContain('color:#0A1B3D');
     expect(html).toContain('Liam');
     expect(html).toContain(
-      '<a href="https://homequotenet.com/" style="color:#1267a8;text-decoration:underline;">homequotenet.com</a>'
+      '<a href="https://homequotenet.com/" style="color:#0038B8;text-decoration:underline;">homequotenet.com</a>'
     );
   });
 

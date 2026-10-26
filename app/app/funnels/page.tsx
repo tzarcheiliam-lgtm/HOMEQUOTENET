@@ -7,6 +7,8 @@ import { KpiCard } from '@/components/ui/kpi-card';
 import { Button } from '@/components/ui/button';
 import { FunnelFiltersBar, type FunnelListFilters } from '@/components/funnels/dashboard/funnel-filters';
 import { FunnelDashboard } from '@/components/funnels/dashboard/funnel-dashboard';
+import { InstallQualifiedFunnels } from '@/components/funnels/dashboard/install-qualified-funnels';
+import { FUNNEL_PRESETS } from '@/lib/funnels/presets';
 import type { FunnelCardData, FunnelGroup } from '@/components/funnels/dashboard/types';
 
 export const metadata = { title: 'Funnels · HomeQuote Network' };
@@ -93,8 +95,42 @@ export default async function FunnelsPage({ searchParams }: { searchParams: Prom
 
   return <div className="space-y-6">
     <PageHeader title="Lead funnels" description="Find and manage every funnel — search, filter and sort instead of scrolling.">
+      <Button asChild variant="outline"><Link href="/app/funnels/contractor-prospects">Contractor prospects</Link></Button>
       <Button asChild><Link href="/app/funnels/new">Create funnel</Link></Button>
     </PageHeader>
+
+    <section aria-labelledby="bk-heading" className="rounded-xl border bg-card p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 id="bk-heading" className="text-base font-semibold">Bathroom &amp; kitchen funnels</h2>
+          <p className="text-xs text-muted-foreground">Highly qualified remodel funnels · Meta dataset 29178560738497902 · no calendar step</p>
+        </div>
+        {FUNNEL_PRESETS.some((p) => !cards.some((c) => c.slug === p.slug)) && <InstallQualifiedFunnels />}
+      </div>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        {FUNNEL_PRESETS.map((p) => {
+          const c = cards.find((x) => x.slug === p.slug);
+          return (
+            <div key={p.slug} className="rounded-lg border p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium">{p.label}</span>
+                <span className="rounded-full border px-2 py-0.5 text-xs capitalize">{c ? c.status : 'not added yet'}</span>
+              </div>
+              {c ? (
+                <>
+                  <p className="mt-1 text-xs text-muted-foreground">{c.starts} starts · {c.leads} leads · /estimate/{c.slug}</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Button asChild size="sm"><Link href={`/app/funnels/${c.id}/builder`}>Edit &amp; publish</Link></Button>
+                    <Button asChild size="sm" variant="outline"><Link href={`/app/funnels/${c.id}/analytics`}>Analytics</Link></Button>
+                    {c.status === 'published' && <Button asChild size="sm" variant="outline"><Link href={`/estimate/${c.slug}`} target="_blank">Open live</Link></Button>}
+                  </div>
+                </>
+              ) : <p className="mt-1 text-xs text-muted-foreground">Click “Add bathroom &amp; kitchen funnels” to create it as a draft.</p>}
+            </div>
+          );
+        })}
+      </div>
+    </section>
 
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
       <KpiCard label="Total funnels" value={cards.length} />

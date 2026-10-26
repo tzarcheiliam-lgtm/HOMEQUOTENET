@@ -16,6 +16,19 @@ const nextConfig: NextConfig = {
     ppr: true,
     clientSegmentCache: true
   },
+  async redirects() {
+    // Short, readable links for ads' "display link" field. Query strings (UTMs, fbclid) pass through to the funnel.
+    return [
+      { source: '/bathroom-remodel', destination: '/estimate/bathroom-remodel', permanent: false },
+      { source: '/kitchen-remodel', destination: '/estimate/kitchen-remodel', permanent: false },
+      // The old Creative Studio page was replaced by the Seret studio.
+      { source: '/app/creative-studio', destination: '/studio', permanent: false },
+    ];
+  },
+  async rewrites() {
+    // Seret studio (static Vite build in public/studio/, source in studio/): serve its page at /studio.
+    return [{ source: '/studio', destination: '/studio/index.html' }];
+  },
   async headers() {
     return [
       {

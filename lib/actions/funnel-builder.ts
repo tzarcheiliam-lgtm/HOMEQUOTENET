@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth';
 import { funnelSchema, type FunnelConfig } from '@/lib/funnels/schema';
 import { blankFunnelConfig, slugify, type FunnelStatus } from '@/lib/funnels/builder';
+import { installPresetFunnels, type InstallResult } from '@/lib/funnels/presets';
 
 export type BuilderActionState = { error?: string; success?: boolean } | undefined;
 
@@ -110,4 +111,14 @@ export async function duplicateFunnelAction(formData: FormData): Promise<void> {
   }).select('id').single();
   revalidatePath('/app/funnels');
   if (copy) redirect(`/app/funnels/${copy.id}/builder`);
+}
+
+/** Admin: one click creates the bathroom and kitchen funnels (drafts). Safe to repeat; existing funnels are left alone. */
+export async function installQualifiedFunnelsAction(): Promise<InstallResult> {
+  await requireRole(['admin']);
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getUser();
+  const result = await installPresetFunnels(supabase, auth.user?.id ?? null);
+  revalidatePath('/app/funnels');
+  return result;
 }

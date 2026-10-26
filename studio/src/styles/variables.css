@@ -1,0 +1,49 @@
+:root {
+  /* Brand Colors */
+  --color-primary: #2f6bff;
+  /* HomeQuote Blue, lifted for navy */
+  --color-primary-hover: #0038b8;
+  --color-accent: #f5b700;
+  /* HomeQuote Gold (accent only) */
+  --color-accent-hover: #d99f00;
+  --color-danger: #ef4444;
+
+  /* Backgrounds - HomeQuote Navy */
+  --bg-app: #06132e;
+  /* Deep Navy */
+  --bg-panel: #0a1b3d;
+  /* Panel Background */
+  --bg-card: #102552;
+  /* Card/Input Background */
+  --bg-glass: rgba(10, 27, 61, 0.8);
+
+  /* Text */
+  --text-primary: #ffffff;
+  --text-secondary: #b6c2db;
+  --text-muted: #7d8baa;
+
+  /* UI Elements */
+  --border-color: #1e3a75;
+  --border-light: rgba(255, 255, 255, 0.1);
+
+  --border-radius-sm: 6px;
+  --border-radius-md: 10px;
+  --border-radius-lg: 16px;
+  --border-radius-xl: 24px;
+  --border-radius-full: 9999px;
+
+  /* Effects */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+  --shadow-glow: 0 0 20px rgba(47, 107, 255, 0.35);
+  --shadow-glow-accent: 0 0 20px rgba(245, 183, 0, 0.35);
+  --backdrop-blur: blur(20px);
+
+  /* Transitions */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Typography */
+  --font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+}

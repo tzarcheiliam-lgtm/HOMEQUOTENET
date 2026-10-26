@@ -17,9 +17,9 @@ export default function manifest(): MetadataRoute.Manifest {
     scope: '/',
     display: 'standalone',
     orientation: 'portrait',
-    // The portal is light; the splash matches it. theme_color is the brand dark.
-    background_color: '#ffffff',
-    theme_color: '#08090b',
+    // The portal is light; the splash is brand Mist. theme_color is brand Navy.
+    background_color: '#F4F7FC',
+    theme_color: '#0A1B3D',
     icons: [
       { src: '/icons/homequote-192.png', sizes: '192x192', type: 'image/png' },
       { src: '/icons/homequote-512.png', sizes: '512x512', type: 'image/png' },

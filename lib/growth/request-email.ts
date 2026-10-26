@@ -17,9 +17,9 @@ export interface ServiceRequestEmailData {
   sourceLabel: string | null;
 }
 
-const INK = '#243447';
-const MUTED = '#65758b';
-const RULE = '#d9e5f2';
+const INK = '#0A1B3D';
+const MUTED = '#5B6B8C';
+const RULE = '#DCE4F2';
 
 function appUrl(path: string, siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'): string {
   return new URL(path, siteUrl.endsWith('/') ? siteUrl : `${siteUrl}/`).toString();

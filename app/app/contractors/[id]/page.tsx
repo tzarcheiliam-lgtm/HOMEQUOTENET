@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Trash2, Plus } from 'lucide-react';
 import { requireRole } from '@/lib/auth';
@@ -6,6 +7,7 @@ import { ContractsPanel } from '@/components/contracts/contracts-panel';
 import { ContractorLogoCard } from '@/components/contracts/contractor-logo-card';
 import { assetUrl } from '@/lib/contracts/storage';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { setContractorTexting } from '@/lib/actions/sms';
 import { getContractor } from '@/lib/data/contractors';
 import { listVerticals } from '@/lib/data/verticals';
 import {
@@ -17,6 +19,8 @@ import { ContractorForm } from '@/components/contractors/contractor-form';
 import { VerticalsForm } from '@/components/contractors/verticals-form';
 import { PricingAgreementForm } from '@/components/contractors/pricing-agreement-form';
 import { Button } from '@/components/ui/button';
+import { ConfirmAction } from '@/components/ui/confirm-action';
+import { loadDemoData } from '@/lib/actions/demo';
 import { Badge } from '@/components/ui/badge';
 import {
   Card,
@@ -84,6 +88,9 @@ function ContractorReadOnly({
         backLabel="Contractors"
       >
         <Badge variant="muted">{contractor.status}</Badge>
+        <Button asChild variant="outline" size="sm">
+          <Link href={`/app/availability?contractor=${contractor.id}`}>View availability</Link>
+        </Button>
       </PageHeader>
 
       <Card>
@@ -162,7 +169,7 @@ export default async function ContractorDetailPage({
     );
   }
 
-  const { data: logoRow } = await createAdminClient().from('contractors').select('logo_path').eq('id', contractor.id).maybeSingle();
+  const { data: logoRow } = await createAdminClient().from('contractors').select('logo_path, texting_enabled').eq('id', contractor.id).maybeSingle();
   const logoUrl = await assetUrl(logoRow?.logo_path ?? null);
 
   return (
@@ -173,6 +180,19 @@ export default async function ContractorDetailPage({
         backLabel="Contractors"
       >
         <Badge variant="muted">{contractor.status}</Badge>
+        <Button asChild variant="outline" size="sm">
+          <Link href={`/app/availability?contractor=${contractor.id}`}>View availability</Link>
+        </Button>
+        {/test|demo/i.test(contractor.name) && (
+          <ConfirmAction
+            action={loadDemoData}
+            fields={{ id: contractor.id }}
+            triggerLabel="Load demo data"
+            title="Load demo data?"
+            description="Fills this account with placeholder leads, appointments, sales and billing for walkthroughs. Re-running replaces only the previous demo data."
+            confirmLabel="Load demo data"
+          />
+        )}
         <form action={deleteContractor}>
           <input type="hidden" name="id" value={contractor.id} />
           <Button type="submit" variant="outline" size="sm">
@@ -216,6 +236,24 @@ export default async function ContractorDetailPage({
             allVerticals={verticals}
             selectedIds={verticalIds}
           />
+        </CardContent>
+      </Card>
+
+      {/* Texting */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Automatic texting</CardTitle>
+          <CardDescription>
+            Text this contractor’s funnel leads from your Mac, as {contractor.name}. Also needs “contractor-branded funnels” switched on under Texting.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap items-center gap-3">
+          <Badge variant="muted">{logoRow?.texting_enabled ? 'On' : 'Off'}</Badge>
+          <form action={setContractorTexting}>
+            <input type="hidden" name="contractorId" value={contractor.id} />
+            <input type="hidden" name="enabled" value={logoRow?.texting_enabled ? 'false' : 'true'} />
+            <Button type="submit" variant="outline" size="sm">{logoRow?.texting_enabled ? 'Turn off' : 'Turn on'}</Button>
+          </form>
         </CardContent>
       </Card>
 

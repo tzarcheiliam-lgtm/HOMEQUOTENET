@@ -25,7 +25,7 @@ describe('migration planner', () => {
     expect(names).toEqual(expect.arrayContaining(['0040_signing_templates_reminders_codes.sql', '0041_visual_workflow_builder.sql', '0042_contracts_templates.sql', '0042_meta_ads_analytics_outcomes.sql']));
     // Policy/trigger-only migrations create nothing detectable; this list must not grow silently.
     const undetectable = files.filter((f) => !Object.values(sentinelsOf(f.sql)).some((v) => (v as { size?: number; length?: number }).size || (v as { length?: number }).length)).map((f) => f.name);
-    expect(undetectable).toEqual(['0022_restore_contractor_activity_visibility.sql', '0027_email_templates_call_workspace.sql', '0033_workflow_send_push.sql']);
+    expect(undetectable).toEqual(['0022_restore_contractor_activity_visibility.sql', '0027_email_templates_call_workspace.sql', '0033_workflow_send_push.sql', '0055_meta_website_crm_events.sql']);
   });
   it('FRESH database: every migration is missing, and the plan is ALL of them in order', async () => {
     const db = new PGlite();
@@ -43,7 +43,7 @@ describe('migration planner', () => {
     expect(nextSteps(rows)).toMatchObject({ ok: true, pending: [] });
     await db.close();
   }, 120_000);
-  it('EXISTING staging that stops at 0040: plan = 0041, then the two 0042 files in filename order', async () => {
+  it('EXISTING staging that stops at 0040: plan = 0041, both 0042 files in filename order, then 0043, 0045, 0046, 0047, 0048 and the assistant / customer-documents / Meta-setup migrations 0049-0051 and the texting migrations 0052-0053 and the ADU quiz leads migration 0054 and the Meta website CRM events migration 0055 and the Creative Studio embeds migration 0056 and the texting controls / default hours migration 0057 and the Seret API migration 0058', async () => {
     const db = new PGlite();
     await db.exec(`create role anon; create role authenticated; create role service_role; create role supabase_admin; create schema auth; create schema storage; create schema extensions;
       create table auth.users (id uuid primary key default gen_random_uuid(), email text, raw_user_meta_data jsonb default '{}', encrypted_password text);
@@ -56,7 +56,7 @@ describe('migration planner', () => {
       grant usage on schema auth, storage to anon, authenticated, service_role; grant execute on all functions in schema auth to anon, authenticated, service_role;`);
     for (const f of files.filter((x) => x.name < '0041')) await db.exec(f.sql.replace(/create extension if not exists ["']?pgcrypto["']?[^;]*;/gi, ''));
     const plan = nextSteps(await planMigrations(files, existsOn(db)));
-    expect(plan).toMatchObject({ ok: true, pending: ['0041_visual_workflow_builder.sql', '0042_contracts_templates.sql', '0042_meta_ads_analytics_outcomes.sql'] }); // two files share 0042; both apply, in filename order
+    expect(plan).toMatchObject({ ok: true, pending: ['0041_visual_workflow_builder.sql', '0042_contracts_templates.sql', '0042_meta_ads_analytics_outcomes.sql', '0043_meta_ads_studio.sql', '0045_contractor_prospect_funnel.sql', '0046_gmail_sender_per_user.sql', '0047_contractor_availability_calendar_sync.sql', '0048_payment_requests.sql', '0049_assistant.sql', '0050_customer_documents.sql', '0051_meta_tracking_setup.sql', '0052_sms_texting.sql', '0053_sms_bridge_alerts.sql', '0054_adu_quiz_leads.sql', '0055_meta_website_crm_events.sql', '0056_creative_studio_embeds.sql', '0057_texting_controls_default_hours.sql', '0058_seret_api.sql'] }); // two files share 0042; both apply, in filename order
     await db.close();
   }, 120_000);
   it('flags a half-applied or gapped database instead of guessing', async () => {
@@ -65,5 +65,5 @@ describe('migration planner', () => {
     const rows = await planMigrations(files, existsOn(db));
     expect(nextSteps(rows).ok).toBe(false); // profiles exists (0001's table) but nothing else of 0001 does -> partial
     await db.close();
-  });
+  }, 120_000);
 });

@@ -3,7 +3,7 @@ import 'server-only';
 import { randomUUID } from 'node:crypto';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { ContractError, contractMessage } from '@/lib/contracts/errors';
-import { DEFAULT_SIGNER_ROLES, STARTER_TEMPLATES, librarySection } from '@/lib/contracts/library';
+import { CUSTOMER_SIGNER_ROLES, CUSTOMER_STARTER_TEMPLATES, DEFAULT_SIGNER_ROLES, STARTER_TEMPLATES, librarySection } from '@/lib/contracts/library';
 import { loadHomeQuoteLogo } from '@/lib/contracts/logo';
 import { renderContractPdf } from '@/lib/contracts/pdf';
 import { buildRenderModel } from '@/lib/contracts/render-model';
@@ -16,6 +16,7 @@ export interface TemplateRow {
   id: string; name: string; description: string | null; category: string; status: 'draft' | 'published' | 'archived'; is_default: boolean;
   starter_key: string | null; requires_review: boolean; sections: ContractSection[]; signer_roles: { key: string; label: string }[];
   default_variables: Record<string, string>; branding: Branding; latest_version_no: number; created_at: string; updated_at: string; archived_at: string | null;
+  doc_type: 'agreement' | 'work_order' | 'proposal' | 'contract'; jurisdictions: string[]; assistant_approved_version: number | null;
 }
 export interface TemplateListItem {
   id: string; name: string; description: string | null; category: string; status: TemplateRow['status']; isDefault: boolean; starterKey: string | null;
@@ -51,12 +52,13 @@ export async function ensureStarterTemplates(actor: Profile): Promise<number> {
   const { data: seeded } = await db.from('contract_seed_log').select('key');
   const done = new Set((seeded ?? []).map((r: any) => r.key));
   let created = 0;
-  for (const st of STARTER_TEMPLATES) {
+  for (const st of [...STARTER_TEMPLATES, ...CUSTOMER_STARTER_TEMPLATES]) {
     if (done.has(st.starterKey)) continue;
     const id = randomUUID();
     const ins = await db.from('contract_templates').insert({
       id, name: st.name, description: st.description, category: st.category, status: 'draft', starter_key: st.starterKey, requires_review: true,
-      sections: st.sections, signer_roles: DEFAULT_SIGNER_ROLES, default_variables: st.defaultVariables, branding: brandingSchema.parse({}), created_by: actor.id, updated_by: actor.id,
+      sections: st.sections, signer_roles: st.docType ? CUSTOMER_SIGNER_ROLES : DEFAULT_SIGNER_ROLES, default_variables: st.defaultVariables, branding: brandingSchema.parse({}), created_by: actor.id, updated_by: actor.id,
+      ...(st.docType ? { doc_type: st.docType } : {}),
     });
     if (ins.error) { if (/duplicate|unique/i.test(ins.error.message)) { await db.from('contract_seed_log').insert({ key: st.starterKey }); } continue; }
     const pub = await db.rpc('contract_publish_template', { p_template: id, p_actor: actor.id });
@@ -67,7 +69,7 @@ export async function ensureStarterTemplates(actor: Profile): Promise<number> {
   return created;
 }
 
-export async function listTemplates(actor: Profile, filters: { q?: string; category?: string; status?: string } = {}): Promise<TemplateListItem[]> {
+export async function listTemplates(actor: Profile, filters: { q?: string; category?: string; status?: string; docType?: 'agreement' } = {}): Promise<TemplateListItem[]> {
   requireAdmin(actor);
   const db = createAdminClient();
   const { data } = await db.from('contract_templates').select('*').order('updated_at', { ascending: false }).limit(300);
@@ -75,6 +77,8 @@ export async function listTemplates(actor: Profile, filters: { q?: string; categ
   const q = filters.q?.trim().toLowerCase();
   if (q) rows = rows.filter((t) => `${t.name} ${t.description ?? ''} ${t.category}`.toLowerCase().includes(q));
   if (filters.category) rows = rows.filter((t) => t.category === filters.category);
+  // HomeQuote-to-contractor agreements only (customer work orders / proposals / contracts have their own flow).
+  if (filters.docType === 'agreement') rows = rows.filter((t) => (t.doc_type ?? 'agreement') === 'agreement');
   if (filters.status) rows = rows.filter((t) => t.status === filters.status);
   else rows = rows.filter((t) => t.status !== 'archived');
   const ids = rows.map((r) => r.id);
@@ -222,4 +226,46 @@ export async function previewTemplatePdf(actor: Profile, id: string): Promise<{ 
     signers: [{ role: 'client', label: 'Client', name: 'Sample Signer', email: 'signer@example.com' }, { role: 'homequote', label: 'HomeQuote Network', name: 'HomeQuote Representative', email: 'team@example.com' }],
   });
   return { base64: Buffer.from(out.bytes).toString('base64'), pageCount: out.pageCount };
+}
+
+// ---------------------------------------------------------------------------
+// Customer-document approval (work orders / proposals / contracts issued to homeowners)
+// ---------------------------------------------------------------------------
+export const CUSTOMER_DOC_TYPES = ['agreement', 'work_order', 'proposal', 'contract'] as const;
+const STATE_CODE = /^[A-Z]{2}$/;
+
+/**
+ * Admin tags a template with a document type and the states its wording is approved for, and (optionally) approves the
+ * CURRENT published version for use with customers. A template that is not published, or whose approved version is not
+ * the version being used, is never offered. Re-publishing new wording does not carry the old approval forward.
+ */
+export async function setCustomerDocSettings(
+  actor: Profile, id: string, input: { docType: (typeof CUSTOMER_DOC_TYPES)[number]; jurisdictions: string[]; approve: boolean }
+): Promise<{ approvedVersion: number | null }> {
+  requireAdmin(actor);
+  if (!(CUSTOMER_DOC_TYPES as readonly string[]).includes(input.docType)) throw new ContractError('invalid', 'Pick a valid document type.');
+  const jurisdictions = Array.from(new Set(input.jurisdictions.map((j) => j.trim().toUpperCase()).filter(Boolean)));
+  if (jurisdictions.some((j) => !STATE_CODE.test(j))) throw new ContractError('invalid', 'Use two-letter state codes, e.g. CA, TX.');
+  if (input.docType === 'contract' && input.approve && jurisdictions.length === 0) {
+    throw new ContractError('invalid', 'A contract template must list the states its wording is approved for before it can be approved.');
+  }
+  const t = await loadTemplateRow(id);
+  const update: Record<string, unknown> = { doc_type: input.docType, jurisdictions, updated_by: actor.id };
+  let approvedVersion: number | null = t.assistant_approved_version;
+  if (input.docType === 'agreement') {
+    approvedVersion = null;
+  } else if (input.approve) {
+    if (t.status !== 'published' || t.latest_version_no < 1) throw new ContractError('invalid', 'Publish the template first, then approve that version.');
+    const placeholders = JSON.stringify(t.sections).includes('[REVIEW:');
+    if (placeholders) throw new ContractError('invalid', 'The text still contains [REVIEW: …] passages. Replace them with approved wording and publish again before approving.');
+    approvedVersion = t.latest_version_no;
+  } else {
+    approvedVersion = null;
+  }
+  update.assistant_approved_version = approvedVersion;
+  update.assistant_approved_by = approvedVersion ? actor.id : null;
+  update.assistant_approved_at = approvedVersion ? new Date().toISOString() : null;
+  const { error } = await createAdminClient().from('contract_templates').update(update).eq('id', id);
+  if (error) throw new ContractError('server', contractMessage('server'));
+  return { approvedVersion };
 }

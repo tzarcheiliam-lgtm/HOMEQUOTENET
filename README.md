@@ -274,7 +274,8 @@ and includes readable text and alt text when images are blocked.
    | `GOOGLE_GMAIL_CLIENT_ID` | OAuth Web client ID |
    | `GOOGLE_GMAIL_CLIENT_SECRET` | OAuth Web client secret |
    | `GMAIL_OAUTH_REDIRECT_URI` | Exact URI registered in step 4 |
-   | `GMAIL_FROM_EMAIL` | HomeQuote Gmail address being connected |
+   | `GMAIL_FROM_EMAIL` | Optional. Support address shown in email templates (senders are connected in-app) |
+   | `GMAIL_AUTOMATION_EMAIL` | Optional. Pre-selected account when connecting the automation sender (default `info@homequotenet.com`) |
    | `GMAIL_TOKEN_ENCRYPTION_KEY` | Base64 key generated in step 5 |
 
 7. Apply `supabase/migrations/0009_prospect_emails.sql` and

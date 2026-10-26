@@ -97,9 +97,9 @@ const buttonSizes = {
 } as const;
 
 const buttonVariants = {
-  /** Primary CTA. The only saturated fill on the page. */
+  /** Primary CTA. Gold is the only saturated fill on the page. */
   primary:
-    'bg-[var(--hq-accent)] text-white shadow-[0_1px_0_rgba(255,255,255,0.14)_inset,0_8px_24px_-8px_rgba(61,125,255,0.6)] hover:bg-[var(--hq-accent-bright)] hover:shadow-[0_1px_0_rgba(255,255,255,0.18)_inset,0_10px_30px_-8px_rgba(61,125,255,0.7)]',
+    'bg-[var(--hq-cta)] text-[var(--hq-cta-ink)] shadow-[0_8px_24px_-10px_rgba(245,183,0,0.45)] hover:bg-[var(--hq-cta-hover)] hover:shadow-[0_10px_30px_-10px_rgba(245,183,0,0.55)]',
   /** Secondary: outlined, quiet. */
   secondary:
     'border border-[var(--hq-line-strong)] bg-[var(--hq-surface)]/60 text-[var(--hq-text)] hover:border-[var(--hq-text-dim)] hover:bg-[var(--hq-surface-2)]',

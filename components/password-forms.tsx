@@ -1,5 +1,6 @@
 'use client';
 
+import { BrandLogo } from '@/components/brand-logo';
 import { keepValuesOnError } from '@/lib/forms/keep-values';
 import Link from 'next/link';
 import { useActionState } from 'react';
@@ -34,6 +35,7 @@ export function ForgotPasswordForm({ action }: { action: Action }) {
   return (
     <Card className="w-full max-w-sm">
       <CardHeader>
+        <BrandLogo className="-ml-3 mb-1 w-[150px]" priority />
         <CardTitle className="text-xl">Reset your password</CardTitle>
         <CardDescription>
           Enter the email on your account and we&rsquo;ll send a link to set a
@@ -70,6 +72,33 @@ export function ForgotPasswordForm({ action }: { action: Action }) {
   );
 }
 
+export function ResetLinkForm({ action, tokenHash }: { action: Action; tokenHash: string }) {
+  const [state, formAction, pending] = useActionState<AuthState, FormData>(action, undefined);
+  return (
+    <Card className="w-full max-w-sm">
+      <CardHeader>
+        <BrandLogo className="-ml-3 mb-1 w-[150px]" priority />
+        <CardTitle className="text-xl">Reset your password</CardTitle>
+        <CardDescription>Press the button to continue and choose a new password.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form action={formAction} className="flex flex-col gap-4">
+          <input type="hidden" name="token_hash" value={tokenHash} />
+          {state?.error && (
+            <p className="text-sm text-destructive" role="alert">{state.error}</p>
+          )}
+          <Button type="submit" disabled={pending}>{pending ? 'Checking…' : 'Continue'}</Button>
+        </form>
+        {state?.error && (
+          <p className="mt-4 text-center text-sm">
+            <Link href="/forgot-password" className="text-primary hover:underline">Request a new link</Link>
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export function SetPasswordForm({
   action,
   email,
@@ -85,6 +114,7 @@ export function SetPasswordForm({
   return (
     <Card className="w-full max-w-sm">
       <CardHeader>
+        <BrandLogo className="-ml-3 mb-1 w-[150px]" priority />
         <CardTitle className="text-xl">Set your password</CardTitle>
         <CardDescription>
           {email ? (

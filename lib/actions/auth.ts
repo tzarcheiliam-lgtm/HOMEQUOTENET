@@ -5,11 +5,11 @@ import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { homePathFor } from '@/lib/nav';
 import { safeNextPath } from '@/lib/calls/redirect';
+import { sendPasswordReset } from '@/lib/auth/password-reset';
 import type { UserRole } from '@/lib/types';
 
 export type AuthState = { error?: string; success?: string } | undefined;
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
 
 const signInSchema = z.object({
   email: z.string().email('Enter a valid email'),
@@ -121,14 +121,29 @@ export async function forgotPasswordAction(
   const parsed = emailSchema.safeParse({ email: formData.get('email') });
   if (!parsed.success) return { error: parsed.error.errors[0].message };
 
-  const supabase = await createClient();
-  await supabase.auth.resetPasswordForEmail(parsed.data.email, {
-    redirectTo: `${SITE_URL}/auth/callback?next=/set-password`,
-  });
+  await sendPasswordReset(parsed.data.email);
   return {
     success:
       'If an account exists for that email, a reset link is on its way. It expires in one hour.',
   };
+}
+
+/**
+ * Step 2 of the reset: the person pressed the button on /reset-password, so spend
+ * the one-time token now (creating their session) and send them to choose a password.
+ */
+export async function continueResetAction(
+  _prev: AuthState,
+  formData: FormData
+): Promise<AuthState> {
+  const tokenHash = formData.get('token_hash');
+  if (typeof tokenHash !== 'string' || tokenHash.length < 10 || tokenHash.length > 200) {
+    return { error: 'This link isn’t valid. Request a new one.' };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: 'recovery' });
+  if (error) return { error: 'This link has expired or was already used. Request a new one.' };
+  redirect('/set-password');
 }
 
 /**

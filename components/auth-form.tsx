@@ -1,5 +1,6 @@
 'use client';
 
+import { BrandLogo } from '@/components/brand-logo';
 import { keepValuesOnError } from '@/lib/forms/keep-values';
 import Link from 'next/link';
 import { useActionState } from 'react';
@@ -35,6 +36,7 @@ export function AuthForm({
   return (
     <Card className="w-full max-w-sm">
       <CardHeader>
+        <BrandLogo className="-ml-3 mb-1 w-[150px]" priority />
         <CardTitle className="text-xl">
           {isSignUp ? 'Create your account' : 'Sign in'}
         </CardTitle>

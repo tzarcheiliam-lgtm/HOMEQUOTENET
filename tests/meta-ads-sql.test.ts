@@ -3,7 +3,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 /**
- * Runs migration 0041 in an in-process Postgres (PGlite) against minimal stand-ins for the existing
+ * Runs migration 0042 in an in-process Postgres (PGlite) against minimal stand-ins for the existing
  * tables: ledger triggers, append-only guard, queue uniqueness + claim, and the tenant-isolation RLS.
  * This proves the SQL, not any behaviour at Meta.
  */
@@ -51,7 +51,7 @@ afterAll(async () => { await db?.close(); });
 const outcomes = async (lead = lead1) => (await q<{ outcome: string; actor_kind: string; reason_code: string | null }>(
   `select outcome, actor_kind, reason_code from lead_outcome_events where lead_id=$1 order by recorded_at, outcome`, [lead]));
 
-describe('migration 0041', () => {
+describe('migration 0042', () => {
   it('is idempotent and starts with delivery OFF', async () => {
     await db.exec(read('0042_meta_ads_analytics_outcomes.sql'));
     expect((await q(`select delivery_mode from meta_settings`))[0]).toEqual({ delivery_mode: 'off' });

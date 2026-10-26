@@ -17,27 +17,29 @@ import path from 'node:path';
 const logoDataUrl =
   'data:image/png;base64,' +
   readFileSync(
-    path.join(process.cwd(), 'public', 'images', 'brand', 'homequote-network-logo.png')
+    path.join(process.cwd(), 'public', 'brand', 'homequote-logo-reversed-horizontal-transparent.png')
   ).toString('base64');
 
 export const ogSize = { width: 1200, height: 630 };
 
 // Mirrors the tokens in app/(marketing)/marketing.css.
-const BG = '#08090b';
-const SURFACE = '#111419';
-const LINE = '#2a313c';
-const TEXT = '#f4f6f8';
-const MUTED = '#9aa3b0';
-const DIM = '#767e8c';
-const ACCENT = '#196dcc';
-const ACCENT_BRIGHT = '#55a0f6';
+const BG = '#0a1b3d';
+const SURFACE = '#0f2754';
+const LINE = '#2f4c85';
+const TEXT = '#f4f7fc';
+const MUTED = '#b6c3de';
+const GOLD = '#f5b700';
+const NAVY = '#0a1b3d';
 
 export function renderOgCard({
   headline,
   subline,
+  chips = ['Southern California', 'No monthly retainer to start'],
 }: {
   headline: string;
   subline: string;
+  /** The two pills in the footer strip. Defaults to the contractor-facing pair. */
+  chips?: string[];
 }) {
   return new ImageResponse(
     (
@@ -63,18 +65,14 @@ export function renderOgCard({
             height: 700,
             display: 'flex',
             background:
-              'radial-gradient(circle at center, rgba(61,125,255,0.22) 0%, rgba(61,125,255,0.06) 42%, rgba(8,9,11,0) 70%)',
+              'radial-gradient(circle at center, rgba(0,56,184,0.45) 0%, rgba(0,56,184,0.12) 42%, rgba(10,27,61,0) 70%)',
           }}
         />
 
-        {/* Brand lockup */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+        {/* Brand lockup: reversed logo (clear space is built into the file) */}
+        <div style={{ display: 'flex', alignItems: 'center' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={logoDataUrl} width={72} height={72} alt="" />
-          <div style={{ display: 'flex', fontSize: 34, fontWeight: 700, letterSpacing: -0.5 }}>
-            <span style={{ color: TEXT }}>HomeQuote</span>
-            <span style={{ color: DIM, marginLeft: 10 }}>Network</span>
-          </div>
+          <img src={logoDataUrl} width={300} height={87} alt="" />
         </div>
 
         {/* Headline */}
@@ -97,7 +95,7 @@ export function renderOgCard({
               marginTop: 22,
               fontSize: 46,
               fontWeight: 600,
-              color: ACCENT_BRIGHT,
+              color: GOLD,
               letterSpacing: -1,
             }}
           >
@@ -116,7 +114,7 @@ export function renderOgCard({
           }}
         >
           <div style={{ display: 'flex', gap: 12 }}>
-            {['Southern California', 'No monthly retainer to start'].map((chip) => (
+            {chips.map((chip) => (
               <div
                 key={chip}
                 style={{
@@ -139,12 +137,12 @@ export function renderOgCard({
             style={{
               display: 'flex',
               alignItems: 'center',
-              backgroundColor: ACCENT,
+              backgroundColor: GOLD,
               borderRadius: 999,
               padding: '14px 30px',
               fontSize: 24,
               fontWeight: 700,
-              color: '#ffffff',
+              color: NAVY,
             }}
           >
             homequotenet.com

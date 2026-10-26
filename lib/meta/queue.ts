@@ -9,7 +9,7 @@
  * test_event_code so it appears only under Events Manager > Test events and never in reporting/optimization.
  */
 import {
-  OUTCOME_TO_STAGE, META_MAX_EVENT_AGE_MS, buildPayload, decide, identifierSummary, interpretResponse,
+  OUTCOME_TO_STAGE, META_MAX_EVENT_AGE_MS, buildPayload, decide, identifierSummary, interpretResponse, usesWebsiteCrm,
   type ActionSource, type LeadForMeta, type OutcomeRef, type Plan, type SessionForMeta, type SourceKind, type Stage, type SendOutcome,
 } from './conversions';
 
@@ -21,7 +21,7 @@ export type LedgerRow = {
   actor_kind: 'user' | 'ai' | 'system'; amount: number | null; currency: string | null;
   appointment_id: string | null; sale_id: string | null; reason_code: string | null;
 };
-export type LoadedLead = { lead: LeadForMeta; session: SessionForMeta | null; contractorId: string | null };
+export type LoadedLead = { lead: LeadForMeta; session: SessionForMeta | null; contractorId: string | null; /** Niche tags (lib/meta/niche.ts) added to website-pixel events. */ niche?: Record<string, string> | null };
 
 export type NewEvent = {
   lead_id: string; contractor_id: string | null; outcome_event_id: string | null;
@@ -74,10 +74,10 @@ export async function feedFromLedger(store: QueueStore, opts: { now?: number; li
     const stagesToSend: { stage: Stage; at: string; ledger: string | null; value: number | null; currency: string | null; ref?: OutcomeRef }[] = [];
     const ref: OutcomeRef = { appointmentId: row.appointment_id, saleId: row.sale_id, reasonCode: row.reason_code, ...(row.appointment_id ? await store.bookingProvenance(row.appointment_id) : {}) };
     // Conversion Leads wants every stage starting from the initial lead.
-    if (loaded.lead.source === 'meta' && stage !== 'lead') stagesToSend.push({ stage: 'lead', at: loaded.lead.created_at, ledger: null, value: null, currency: null });
+    if ((loaded.lead.source === 'meta' || usesWebsiteCrm(loaded.lead, loaded.session, s.datasetId)) && stage !== 'lead') stagesToSend.push({ stage: 'lead', at: loaded.lead.created_at, ledger: null, value: null, currency: null });
     stagesToSend.push({ stage, at: row.occurred_at, ledger: row.id, value: row.amount, currency: row.currency, ref });
     for (const st of stagesToSend) {
-      const d = decide({ stage: st.stage, occurredAt: st.at, now: opts.now, lead: loaded.lead, session: loaded.session, datasetId: s.datasetId, value: st.value, currency: st.currency, ref: st.ref });
+      const d = decide({ stage: st.stage, occurredAt: st.at, now: opts.now, lead: loaded.lead, session: loaded.session, datasetId: s.datasetId, crmDatasetId: s.datasetId, value: st.value, currency: st.currency, ref: st.ref });
       if (!d.ok && d.reason === 'not_meta_lead') continue;
       const p = (d.ok ? d.plan : d.plan) as Partial<Plan> | undefined;
       if (!p?.eventId || !p.eventName || !p.sourceKind || !p.actionSource) continue;
@@ -123,10 +123,10 @@ export async function dispatchBatch(store: QueueStore, send: SendFn, opts: { now
     const loaded = await store.loadLead(ev.lead_id);
     if (!loaded) { await store.finish(ev.id, { status: 'skipped', skip_reason: 'lead_missing' }); continue; }
     // Re-check consent at send time: a later opt-out must stop events that are still waiting.
-    const d = decide({ stage: stageOf(ev), occurredAt: ev.event_time, now, lead: loaded.lead, session: loaded.session, datasetId: ev.dataset_id, value: ev.value, currency: ev.currency,
+    const d = decide({ stage: stageOf(ev), occurredAt: ev.event_time, now, lead: loaded.lead, session: loaded.session, datasetId: ev.dataset_id, crmDatasetId: s.datasetId, value: ev.value, currency: ev.currency,
       ref: { appointmentId: ev.appointment_id, saleId: ev.sale_id, retryOfDirect: !!ev.retry_of, ...(ev.appointment_id ? await store.bookingProvenance(ev.appointment_id) : {}) } });
     if (!d.ok) { await store.finish(ev.id, { status: 'skipped', skip_reason: d.reason }); continue; }
-    const payload = buildPayload(ev, loaded.lead, { eventSourceUrl: loaded.lead.landing_page_url, testEventCode: ev.test_mode ? s.testEventCode : null });
+    const payload = buildPayload(ev, loaded.lead, { eventSourceUrl: loaded.lead.landing_page_url, testEventCode: ev.test_mode ? s.testEventCode : null, niche: loaded.niche ?? null });
     let out: SendOutcome;
     try { out = interpretResponse(ev.attempt_count, ev.max_attempts, await send({ datasetId: ev.dataset_id, payload, testMode: ev.test_mode })); }
     catch (e) { out = interpretResponse(ev.attempt_count, ev.max_attempts, { ok: false, failure: { kind: 'transient', retryable: true, code: null, message: e instanceof Error ? e.name : 'send error', httpStatus: null, fbtraceId: null } }); }

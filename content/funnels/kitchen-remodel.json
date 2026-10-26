@@ -1,0 +1,152 @@
+{
+  "version": 1,
+  "clientName": "HomeQuote Network",
+  "clientLogo": "/images/brand/homequote-network-logo.webp",
+  "industry": "Kitchen remodeling",
+  "serviceArea": {
+    "label": "your area",
+    "zipCodes": [],
+    "zipPrefixes": []
+  },
+  "questions": [
+    {
+      "id": "service",
+      "type": "choice",
+      "headline": "What kitchen project are you planning?",
+      "description": "Pick the closest match.",
+      "options": [
+        {
+          "value": "full_remodel",
+          "label": "Full kitchen remodel"
+        },
+        {
+          "value": "layout_change",
+          "label": "Remodel with a layout change"
+        },
+        {
+          "value": "cabinets_counters",
+          "label": "New cabinets and countertops"
+        },
+        {
+          "value": "counters_backsplash",
+          "label": "Countertops or backsplash only"
+        },
+        {
+          "value": "appliances_flooring",
+          "label": "Appliances or flooring only"
+        },
+        {
+          "value": "other",
+          "label": "Something else"
+        }
+      ],
+      "showWhen": []
+    },
+    {
+      "id": "zip",
+      "type": "zip",
+      "headline": "Where is your project located?",
+      "description": "Enter the ZIP code of the property.",
+      "showWhen": []
+    },
+    {
+      "id": "homeowner",
+      "type": "choice",
+      "headline": "Do you own the home where the work will be done?",
+      "description": "We work with homeowners only.",
+      "options": [
+        {
+          "value": "yes",
+          "label": "Yes, I own it"
+        },
+        {
+          "value": "no",
+          "label": "No, I rent or don’t own it"
+        }
+      ],
+      "showWhen": []
+    },
+    {
+      "id": "timeline",
+      "type": "choice",
+      "options": [
+        {
+          "label": "As soon as possible",
+          "value": "asap"
+        },
+        {
+          "label": "Within 1–3 months",
+          "value": "1_3_months"
+        },
+        {
+          "label": "In 3–6 months",
+          "value": "3_6_months"
+        },
+        {
+          "label": "Just researching for now",
+          "value": "researching"
+        }
+      ],
+      "headline": "When do you want the work to start?",
+      "showWhen": [
+        {
+          "values": [
+            "yes"
+          ],
+          "operator": "equals",
+          "question": "homeowner"
+        }
+      ]
+    },
+    {
+      "id": "address",
+      "type": "address",
+      "options": [],
+      "headline": "What is the property address?",
+      "showWhen": [
+        {
+          "values": [
+            "yes"
+          ],
+          "operator": "equals",
+          "question": "homeowner"
+        }
+      ],
+      "description": "So we can confirm the project location.",
+      "placeholder": "123 Main St, City, State"
+    }
+  ],
+  "qualificationRules": [
+    {
+      "question": "service",
+      "operator": "in",
+      "values": [
+        "full_remodel",
+        "layout_change",
+        "cabinets_counters"
+      ]
+    },
+    {
+      "question": "homeowner",
+      "operator": "equals",
+      "values": [
+        "yes"
+      ]
+    }
+  ],
+  "qualifiedMessage": "Great — your project looks like a strong fit.",
+  "reviewMessage": "Thanks — your project needs a personal review before we can confirm a fit.",
+  "unqualifiedAction": "review",
+  "seo": {
+    "title": "Kitchen Remodel Quote | HomeQuote Network",
+    "description": "Tell us about your kitchen remodel and get matched with a qualified local contractor."
+  },
+  "trackingPixels": {
+    "metaPixelId": "29178560738497902",
+    "consentMode": "opt_out"
+  },
+  "thankYouPage": {
+    "headline": "You’re all set.",
+    "message": "Your kitchen project details are saved. A HomeQuote project specialist will call you shortly to talk through your remodel and next steps."
+  }
+}

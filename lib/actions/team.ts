@@ -4,13 +4,15 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
+import { publicSiteUrl } from '@/lib/auth/site-url';
+import { sendPasswordReset } from '@/lib/auth/password-reset';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireRole } from '@/lib/auth';
 import type { AccountStatus, UserRole } from '@/lib/types';
 
 export type TeamState = { error?: string; success?: boolean } | undefined;
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
+const SITE_URL = publicSiteUrl();
 
 // --- helpers ----------------------------------------------------------------
 
@@ -104,6 +106,26 @@ function contractorPermissions(fd: FormData, role: UserRole) {
   };
 }
 
+/**
+ * "Delete" is a soft delete (profiles.deleted_at), so the login in auth.users survives and
+ * re-adding the same email fails with "already registered". Returns the id of a soft-deleted
+ * account for this email (to be restored), or an error when a live account already has it.
+ */
+async function findDeletedAccount(
+  admin: ReturnType<typeof createAdminClient>,
+  email: string
+): Promise<{ id?: string; error?: string }> {
+  const { data } = await admin
+    .from('profiles')
+    .select('id, deleted_at')
+    .ilike('email', email)
+    .limit(1)
+    .maybeSingle();
+  if (!data) return {};
+  if (!data.deleted_at) return { error: 'A user with this email already exists. Find them on the Team page.' };
+  return { id: data.id as string };
+}
+
 export async function createUser(
   _prev: TeamState,
   fd: FormData
@@ -126,15 +148,29 @@ export async function createUser(
     return { error: 'Select a contractor company for contractor users' };
 
   const admin = createAdminClient();
-  const { data, error } = await admin.auth.admin.createUser({
-    email: parsed.data.email,
-    password: parsed.data.password,
-    email_confirm: true,
-    user_metadata: { full_name: parsed.data.full_name },
-  });
-  if (error) return { error: error.message };
+  const existing = await findDeletedAccount(admin, parsed.data.email);
+  if (existing.error) return { error: existing.error };
 
-  const userId = data.user!.id;
+  let userId: string;
+  if (existing.id) {
+    // Restore the previously deleted login with the new password rather than failing.
+    const { error } = await admin.auth.admin.updateUserById(existing.id, {
+      password: parsed.data.password,
+      email_confirm: true,
+      user_metadata: { full_name: parsed.data.full_name },
+    });
+    if (error) return { error: error.message };
+    userId = existing.id;
+  } else {
+    const { data, error } = await admin.auth.admin.createUser({
+      email: parsed.data.email,
+      password: parsed.data.password,
+      email_confirm: true,
+      user_metadata: { full_name: parsed.data.full_name },
+    });
+    if (error) return { error: error.message };
+    userId = data.user!.id;
+  }
   const activate = fd.get('activate') === 'on';
 
   const { error: pErr } = await admin
@@ -145,6 +181,7 @@ export async function createUser(
       contractor_id: contractorId,
       ...contractorPermissions(fd, role),
       account_status: activate ? 'active' : 'pending',
+      deleted_at: null,
     })
     .eq('id', userId);
   if (pErr) return { error: pErr.message };
@@ -177,16 +214,26 @@ export async function inviteUser(
     return { error: 'Select a contractor company for contractor users' };
 
   const admin = createAdminClient();
-  const { data, error } = await admin.auth.admin.inviteUserByEmail(
-    parsed.data.email,
-    {
-      data: { full_name: parsed.data.full_name },
-      redirectTo: `${SITE_URL}/auth/callback?next=/set-password`,
-    }
-  );
-  if (error) return { error: error.message };
+  const existing = await findDeletedAccount(admin, parsed.data.email);
+  if (existing.error) return { error: existing.error };
 
-  const userId = data.user!.id;
+  let userId: string;
+  if (existing.id) {
+    // Previously deleted login: restore it and email a set-password link instead of a fresh invite.
+    userId = existing.id;
+    await admin.auth.admin.updateUserById(userId, { user_metadata: { full_name: parsed.data.full_name } });
+    await sendPasswordReset(parsed.data.email);
+  } else {
+    const { data, error } = await admin.auth.admin.inviteUserByEmail(
+      parsed.data.email,
+      {
+        data: { full_name: parsed.data.full_name },
+        redirectTo: `${SITE_URL}/auth/callback?next=/set-password`,
+      }
+    );
+    if (error) return { error: error.message };
+    userId = data.user!.id;
+  }
   await admin
     .from('profiles')
     .update({
@@ -195,6 +242,7 @@ export async function inviteUser(
       contractor_id: contractorId,
       ...contractorPermissions(fd, role),
       account_status: 'pending',
+      deleted_at: null,
     })
     .eq('id', userId);
 
@@ -275,10 +323,7 @@ export async function resetPassword(fd: FormData): Promise<void> {
   const email = await emailFor(userId);
   if (!email) return;
 
-  const supabase = await createClient();
-  await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${SITE_URL}/auth/callback?next=/set-password`,
-  });
+  await sendPasswordReset(email);
   await logAudit('user.password_reset', userId, { email });
   revalidatePath(`/app/team/${userId}`);
 }

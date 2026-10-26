@@ -22,7 +22,9 @@ export const site = {
     'HomeQuote Network delivers qualified homeowner leads and booked estimate appointments to remodeling, roofing, fencing, HVAC and pool contractors across Southern California.',
 
   contact: {
-    email: 'homequotenetwork@gmail.com',
+    email: 'info@homequotenet.com',
+    /** Second public address, shown beside `email`. */
+    founderEmail: 'liam@homequotenet.com',
     phone: '747-217-5713',
     /** E.164, for tel: links. */
     phoneHref: '+17472175713',

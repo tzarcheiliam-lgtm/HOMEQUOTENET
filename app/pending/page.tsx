@@ -1,3 +1,4 @@
+import { BrandLogo } from '@/components/brand-logo';
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { signOutAction } from '@/lib/actions/auth';
@@ -17,9 +18,10 @@ export const metadata: Metadata = {
 
 export default function PendingPage() {
   return (
-    <main className="flex min-h-[100dvh] items-center justify-center p-4">
+    <main className="flex min-h-[100dvh] bg-secondary items-center justify-center p-4">
       <Card className="w-full max-w-sm text-center">
         <CardHeader>
+        <BrandLogo className="-ml-3 mb-1 w-[150px]" priority />
           <CardTitle className="text-xl">Account pending approval</CardTitle>
           <CardDescription>
             Your account has been created but is not active yet. An administrator
