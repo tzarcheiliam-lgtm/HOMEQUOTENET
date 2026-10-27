@@ -212,3 +212,24 @@ export async function getLead(id: string): Promise<LeadDetail | null> {
     attachments: (attachments ?? []) as LeadAttachment[],
   };
 }
+
+/**
+ * The homeowner lead a setter should call next: still being worked
+ * (new / contact attempted), not archived, least recently contacted first —
+ * so a lead just logged drops to the back of the line. RLS decides which
+ * leads the user can see.
+ */
+export async function nextLeadToCall(excludeId?: string): Promise<string | null> {
+  const supabase = await createClient();
+  let q = supabase
+    .from('leads')
+    .select('id')
+    .is('archived_at', null)
+    .in('status', ['new', 'contact_attempted'])
+    .order('last_contact_date', { ascending: true, nullsFirst: true })
+    .order('created_at', { ascending: true })
+    .limit(1);
+  if (excludeId) q = q.neq('id', excludeId);
+  const { data } = await q;
+  return data && data.length > 0 ? (data[0] as { id: string }).id : null;
+}

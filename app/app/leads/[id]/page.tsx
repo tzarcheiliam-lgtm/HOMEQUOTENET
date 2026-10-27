@@ -80,6 +80,8 @@ export default async function LeadDetailPage({
   const { lead, assignments, activities, attachments } = detail;
   const isStaff = profile.role === 'admin' || profile.role === 'setter';
   const isAdmin = profile.role === 'admin';
+  // Setters call from the top of the page: the log sits above the contact card.
+  const isSetter = profile.role === 'setter';
   const canAssignUsers = isAdmin || isContractorOwner(profile);
 
   const [contractors, distribution, recipients] = isStaff
@@ -186,6 +188,13 @@ export default async function LeadDetailPage({
         {/* Left: lead info. On phones the column wrappers dissolve (contents)
             and the cards are re-ordered so what a call needs comes first. */}
         <div className="contents lg:col-span-1 lg:block lg:space-y-6">
+          {isSetter ? (
+            <Card className="order-1 lg:order-none">
+              <CardContent className="pt-4">
+                <ContactForm leadId={lead.id} />
+              </CardContent>
+            </Card>
+          ) : null}
           <div className="order-1 lg:order-none">
           <ContactCard
             phone={lead.phone}
@@ -403,7 +412,7 @@ export default async function LeadDetailPage({
               <CardTitle>Notes & activity</CardTitle>
             </CardHeader>
             <CardContent className="space-y-5">
-              <ContactForm leadId={lead.id} />
+              {isSetter ? null : <ContactForm leadId={lead.id} />}
               <NoteForm leadId={lead.id} canChooseVisibility={isStaff} />
               <div className="border-t pt-4">
                 <ActivityTimeline activities={activities} />
