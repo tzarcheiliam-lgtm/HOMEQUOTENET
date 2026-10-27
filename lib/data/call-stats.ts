@@ -109,15 +109,27 @@ async function loadEvents(
   return byUser;
 }
 
+interface Targets {
+  goal: number;
+  /** Setter pay (migration 0062); null when not set. */
+  payPerSale: number | null;
+  weeklyBookingGoal: number | null;
+}
+
+/** `select('*')` so a database without 0060/0062 still answers (with defaults). */
+async function targetsFor(db: Db, userId: string): Promise<Targets> {
+  const { data, error } = await db.from('profiles').select('*').eq('id', userId).maybeSingle();
+  if (error || !data) return { goal: DEFAULT_DAILY_GOAL, payPerSale: null, weeklyBookingGoal: null };
+  const p = data as { daily_call_goal?: number; pay_per_sale?: number | string | null; weekly_booking_goal?: number | null };
+  return {
+    goal: clampGoal(p.daily_call_goal ?? DEFAULT_DAILY_GOAL),
+    payPerSale: p.pay_per_sale === null || p.pay_per_sale === undefined ? null : Number(p.pay_per_sale),
+    weeklyBookingGoal: p.weekly_booking_goal ?? null,
+  };
+}
+
 async function goalFor(db: Db, userId: string): Promise<number> {
-  const { data, error } = await db
-    .from('profiles')
-    .select('daily_call_goal')
-    .eq('id', userId)
-    .maybeSingle();
-  // Before migration 0060 the column does not exist: fall back to the default.
-  if (error || !data) return DEFAULT_DAILY_GOAL;
-  return clampGoal((data as { daily_call_goal?: number }).daily_call_goal ?? DEFAULT_DAILY_GOAL);
+  return (await targetsFor(db, userId)).goal;
 }
 
 export async function isLeaderboardEnabled(): Promise<boolean> {
@@ -145,6 +157,10 @@ export interface GoalSnapshot {
   recent: { key: string; at: string }[];
   /** Last 7 days, oldest first: calls, DM conversations, bookings. */
   week: { key: string; calls: number; dms: number; booked: number }[];
+  /** Sales meetings booked this week (Mon–), the weekly booking goal and pay per sale. */
+  bookedThisWeek: number;
+  weeklyBookingGoal: number | null;
+  payPerSale: number | null;
   /** When the server computed this; a new value means fresh numbers. */
   asOf: string;
 }
@@ -156,7 +172,9 @@ export const getGoalSnapshot = cache(async (userId: string): Promise<GoalSnapsho
   const db = createAdminClient();
   const now = new Date();
   const todayKey = dayKey(now);
-  const [goal, byUser] = await Promise.all([goalFor(db, userId), loadEvents(db, sinceDaysAgo(45, now), userId)]);
+  const [targets, byUser] = await Promise.all([targetsFor(db, userId), loadEvents(db, sinceDaysAgo(45, now), userId)]);
+  const goal = targets.goal;
+  const monday = lastDays(todayKey, mondayOffset(todayKey) + 1)[0];
   const events = byUser.get(userId) ?? [];
   const todays = events.filter((e) => dayKey(e.at) === todayKey);
   const calls = countByDay(events);
@@ -180,6 +198,9 @@ export const getGoalSnapshot = cache(async (userId: string): Promise<GoalSnapsho
       dms: dms.get(k) ?? 0,
       booked: booked.get(k) ?? 0,
     })),
+    bookedThisWeek: [...booked].filter(([k]) => k >= monday).reduce((a, [, v]) => a + v, 0),
+    weeklyBookingGoal: targets.weeklyBookingGoal,
+    payPerSale: targets.payPerSale,
     asOf: now.toISOString(),
   };
 });
@@ -282,6 +303,9 @@ export interface BoardRow {
   week: number;
   bookedWeek: number;
   streak: number;
+  /** Setter pay settings (migration 0062); null = not set. */
+  payPerSale: number | null;
+  weeklyBookingGoal: number | null;
 }
 
 /**
@@ -310,6 +334,8 @@ export async function getTeamBoard(): Promise<BoardRow[]> {
     email: string | null;
     role: UserRole;
     daily_call_goal?: number;
+    pay_per_sale?: number | string | null;
+    weekly_booking_goal?: number | null;
   }[];
 
   return profiles
@@ -327,6 +353,8 @@ export async function getTeamBoard(): Promise<BoardRow[]> {
         week: thisWeek.length,
         bookedWeek: thisWeek.filter((e) => e.outcome === 'appointment_booked').length,
         streak: currentStreak(calls, goal, todayKey),
+        payPerSale: p.pay_per_sale === null || p.pay_per_sale === undefined ? null : Number(p.pay_per_sale),
+        weeklyBookingGoal: p.weekly_booking_goal ?? null,
       };
     })
     // Admins appear only once they have actually called this week.

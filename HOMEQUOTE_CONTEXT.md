@@ -133,6 +133,8 @@ auth callback route handler).
   `/app/calls/dial` (power hour → first due prospect) — the partner cold-calling
   workspace (admin/caller/setter only), all under the daily goal HUD (§34)
 - `/app/leads/next` (admin/setter) — redirects to the next homeowner lead to call (§34)
+- `/app/calls/payouts` (admin) — setter payouts by month; CSV at `/api/calls/payouts?month=YYYY-MM` (§36)
+- `/app` for setters — the money-first setter dashboard (§36)
 - `/app/appointments`, `/app/service-requests`
 - `/app/availability` (contractor owner/staff, admin; setters via `?contractor=` from a contractor page) — availability + calendar connections (§24)
 - `/app/growth`, `/app/growth/[service]` — Growth Tools catalog (contractor)
@@ -1214,3 +1216,59 @@ Charts are hand-written SVG/CSS (`components/calls/stats/charts.tsx`; no chart l
 - **One conversation per phone** (`phoneInUse`): a number that already has a conversation created in the last 14 days is not started again from a second lead (`reason: 'phone_in_use'`), for funnel and Meta leads.
 - **"Why wasn't this lead texted" note** (`withSkipNote` / `SKIP_NOTES`): when a new lead isn't texted (off, contractor off, daily limit, bad phone, opted out, number in use, Meta test lead, error) a plain-language "Not texted: …" activity is written on the lead (`metadata.sms_skipped`).
 - **Daily assistant-reply cap**: `sms_settings.max_ai_replies_per_day` (default 150, editable on `/app/texting`); past it, conversations hand off to a person. This is separate from `daily_cap` (all texts). `loadSettings` falls back to older columns until 0061 is applied.
+
+## 36. Setter pay + money-first setter dashboard (migration 0062, 2026-10-27, NOT yet applied)
+**Pay rule (owner's decision, 2026-10-27):** setters are paid for each **contractor sales meeting** they booked (`prospect_sales_appointments.partner_id`) that the owner then **sells**. Booking alone pays nothing. A meeting that is held but not sold pays nothing. Homeowner appointments are not part of setter pay. Plan: `docs/setter-dashboard-plan.md` (written before this rule; see its status note).
+
+**Migration 0062 (`0062_setter_pay.sql`):**
+- **Profile fields:** `profiles.pay_per_sale` and `profiles.weekly_booking_goal`, both nullable meaning "not set". `guard_profile_privileges()` is extended so only an admin can change them.
+- **Sale columns on `prospect_sales_appointments`:**
+  - `sale_outcome` (`sold` | `not_sold` | null = undecided);
+  - `sale_decided_at` / `sale_decided_by`;
+  - `setter_pay_amount`: the pay fixed when the meeting is marked sold. A check keeps it only on sold rows, so later rate changes never rewrite past earnings.
+- **New trigger `guard_sales_appointment_pay()`:** non-admins cannot set the sale columns on insert or update, and cannot move `partner_id` (the credit). Setters still update their own meeting's status and confirmation under the existing RLS.
+- **Tests:** `tests/setter-pay-db.test.ts` (PGlite, every real migration).
+
+**Money logic:** pure functions in `lib/setter/money.ts` and `lib/setter/queue.ts` (`tests/setter-money.test.ts`).
+- **Earned** = sum of `setter_pay_amount` for meetings sold, dated by `sale_decided_at`.
+- **Pending** = undecided meetings that are not `no_show`/`cancelled`.
+- **Bookings** are dated by when the meeting was booked (`created_at`). Weeks run Monday–Sunday; pace and streaks use the 8–5, Monday–Friday Los Angeles week.
+
+**Data:**
+- `lib/data/setter-money.ts`:
+  - `loadMeetings` reads through the service role with explicit filters. Sales-appointment RLS hides meetings on prospects a setter no longer holds, which would erase pay. Company names come from a second, chunked read.
+  - `loadPartners`.
+  - `getPayouts(month)` and `payoutsCsv`.
+- `lib/data/setter-dashboard.ts` (`getSetterDashboard(userId)`) returns earned this month and all time, pending, the weekly booking ring with pace, the booking streak, records, close rate, last week, badges, recently sold meetings, upcoming meetings, the ranked queue, and rivals.
+  - Rivals are only included when `call_workspace_settings.leaderboard_enabled` is on, and only as teammates' totals.
+- **Tests:** `tests/setter-dashboard-db.test.ts`.
+
+**Setter home (`/app` for role `setter`):** `components/setter/*`, one responsive layout. It replaced the old three-count setter dashboard and the phone `MobileHome` for setters; if its read fails, the page falls back to a plain welcome.
+- **Money hero:** earned this month (count-up, emerald), "N meetings waiting on a sale · $X if they all sell", and "Every meeting that sells = +$rate". If no rate is set, it says to ask the admin.
+- **Weekly booking ring:** uses `GoalRing`, with the pace line, booking streak and a best-week record. When no goal is set, it shows the count only.
+- **Last-week recap:** shown once per week until dismissed (localStorage).
+- **"Money on the table" queue, in priority order:**
+  1. confirm meetings in the next 48 h;
+  2. callbacks due;
+  3. hot (interested or follow-up due);
+  4. rebook no-shows and cancellations from the last 14 days that weren't rebooked;
+  5. slipping (interested, with no contact in 7+ days);
+  6. open homeowner leads;
+  7. never-called prospects (power hour).
+
+  Each prospect appears once, under its most urgent reason.
+- **The race:** head-to-head while the leaderboard is on. Next meetings. Seven setter badges.
+- **"Sold" celebration:** a jackpot banner when a meeting was marked sold since the setter last looked (localStorage). An in-app notification row (`type 'meeting_sold'`) is also inserted when the admin marks it sold.
+- The calling HUD's booking jackpot now says "N of goal booked this week · if it sells, +$rate". `GoalSnapshot` gained `bookedThisWeek`, `weeklyBookingGoal` and `payPerSale`.
+
+**Admin:**
+- **`/app/calls/appointments`:** a Sale column with Not decided / Sold / Not sold. Sold uses the partner's rate, or an amount typed in. It fixes the pay, marks an open meeting completed and notifies the setter.
+  - The page also has a credit selector (`creditMeeting`), a "Needs a sale decision" filter (`?when=decide`) and a Payouts button.
+  - Partner names now come from `listPartners()` (admin/caller/setter); `listCallers()` omitted setters.
+- **`/app/calls/payouts`:** per setter: booked, sold, not sold, awaiting a decision, and earned for the month. Below that, the sold-meeting lines and a CSV export.
+- **Pay inputs:** pay per sale and weekly booking goal can be set on the team board (`/app/calls/stats`) and on `/app/team/[id]` (callers and setters).
+- **Actions** (`lib/actions/setter-pay.ts`): `setPartnerPay`, `recordSale` and `creditMeeting`. All are admin-only and audited (`user.setter_pay`, `sales_appointment.sale`, `sales_appointment.credit`, `calls.payouts_export`).
+- `tests/setter-access.test.ts` pins payouts as admin-only.
+
+**Deploy order:** apply 0062, then deploy. Deploying first is safe: the dashboard and payouts read with `select('*')`, so without 0062 they show no rates or sales. Recording a sale or setting pay returns "needs database migration 0062". The "Needs a sale decision" filter shows nothing.
+

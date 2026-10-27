@@ -1,6 +1,5 @@
 import { redirect } from 'next/navigation';
 import { requireProfile } from '@/lib/auth';
-import { createClient } from '@/lib/supabase/server';
 import { getContractorDashboard } from '@/lib/data/contractor-dashboard';
 import { getAdminDashboard } from '@/lib/data/admin-dashboard';
 import { getGrowthContext } from '@/lib/data/service-requests';
@@ -8,52 +7,12 @@ import { OPEN_REQUEST_STATUSES } from '@/lib/growth/catalog';
 import { ContractorDashboard } from '@/components/dashboard/contractor-dashboard';
 import { AdminDashboard } from '@/components/dashboard/admin-dashboard';
 import { MobileHome } from '@/components/dashboard/mobile-home';
+import { SetterDashboard } from '@/components/setter/setter-dashboard';
+import { getSetterDashboard } from '@/lib/data/setter-dashboard';
 import { getMobileHome } from '@/lib/data/mobile-home';
 import { PageHeader } from '@/components/ui/page-header';
-import { KpiCard } from '@/components/ui/kpi-card';
-import { Inbox, BadgeCheck, CalendarDays } from 'lucide-react';
 
 export const metadata = { title: 'Dashboard · HomeQuote Network' };
-
-async function countOf(
-  table: string,
-  filter?: (q: any) => any
-): Promise<number> {
-  const supabase = await createClient();
-  let query = supabase.from(table).select('*', { count: 'exact', head: true });
-  if (filter) query = filter(query);
-  const { count } = await query;
-  return count ?? 0;
-}
-
-async function SetterDashboard({ name }: { name: string | null }) {
-  const [toQualify, qualified, appointments] = await Promise.all([
-    countOf('leads', (q) =>
-      q.in('status', ['new', 'contact_attempted']).is('archived_at', null)
-    ),
-    countOf('leads', (q) => q.eq('qualified', true).is('archived_at', null)),
-    countOf('appointments', (q) => q.eq('status', 'scheduled')),
-  ]);
-
-  return (
-    <div className="space-y-5 lg:space-y-8">
-      <PageHeader
-        showTitleOnMobile
-        title={`Welcome${name ? `, ${name}` : ''}`}
-        description="Leads to work and appointments to set."
-      />
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:gap-4">
-        <KpiCard label="Leads to qualify" value={toQualify} icon={Inbox} />
-        <KpiCard label="Qualified" value={qualified} icon={BadgeCheck} />
-        <KpiCard
-          label="Upcoming appointments"
-          value={appointments}
-          icon={CalendarDays}
-        />
-      </div>
-    </div>
-  );
-}
 
 export default async function DashboardPage() {
   const profile = await requireProfile();
@@ -96,5 +55,14 @@ export default async function DashboardPage() {
     return withMobile(<AdminDashboard data={data} name={profile.full_name} />);
   }
 
-  return withMobile(<SetterDashboard name={profile.full_name} />);
+  // Setters: one money-first home for phone and desktop. If its numbers cannot
+  // be read, fall back to the phone action center / a plain welcome.
+  const setter = await getSetterDashboard(profile.id).catch((e) => {
+    console.error('[home] setter dashboard failed', e);
+    return null;
+  });
+  if (setter) return <SetterDashboard d={setter} name={profile.full_name} />;
+  return withMobile(
+    <PageHeader showTitleOnMobile title={`Welcome${profile.full_name ? `, ${profile.full_name}` : ''}`} description="Leads to work and appointments to set." />
+  );
 }

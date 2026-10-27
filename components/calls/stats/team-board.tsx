@@ -5,6 +5,7 @@ import type { BoardRow } from '@/lib/data/call-stats';
 import { ROLE_LABELS } from '@/lib/nav';
 import { GoalRing } from '@/components/calls/goal/goal-ring';
 import { GoalInput } from './goal-input';
+import { PayInput } from './pay-input';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
@@ -45,7 +46,14 @@ export function TeamBoard({ rows, meId, isAdmin }: { rows: BoardRow[]; meId: str
               {isAdmin ? ` · ${ROLE_LABELS[r.role]}` : ''}
             </p>
           </div>
-          {isAdmin ? <GoalInput userId={r.id} goal={r.goal} name={r.name} /> : null}
+          {isAdmin ? (
+            <div className="flex flex-col items-end gap-1.5">
+              <GoalInput userId={r.id} goal={r.goal} name={r.name} />
+              {r.role !== 'admin' ? (
+                <PayInput userId={r.id} name={r.name} payPerSale={r.payPerSale} weeklyGoal={r.weeklyBookingGoal} />
+              ) : null}
+            </div>
+          ) : null}
         </li>
       ))}
     </ol>

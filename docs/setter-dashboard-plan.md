@@ -1,5 +1,14 @@
 # Appointment Setter Dashboard: "Hungry" Plan
 
+> **Status (2026-10-27): built.** What shipped is in `HOMEQUOTE_CONTEXT.md` §36.
+> The owner's pay rule replaced this plan's assumption: setters are paid for
+> each **contractor sales meeting** they book that the owner then **sells**
+> (not per appointment, not on "held"). Sales meetings
+> (`prospect_sales_appointments`) carry the sale outcome and pay snapshot.
+> Homeowner `appointments` gained nothing (no `set_by`), and pay basis is not
+> a setting. Push for hot replies was not built; a sale produces an in-app
+> notification and a dashboard celebration instead.
+
 Goal: when a setter opens `/app`, they should feel three things within a second:
 **what they've earned, what they're leaving on the table, and exactly who to
 call next to earn more.** The page is built around money, urgency and the next

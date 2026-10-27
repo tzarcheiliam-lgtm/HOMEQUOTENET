@@ -100,6 +100,9 @@ export interface Profile {
   deleted_at: string | null;
   /** Calls per day for the calling HUD (migration 0060; absent before it). */
   daily_call_goal?: number;
+  /** Migration 0062: pay per sold sales meeting and weekly booking goal (null = not set). */
+  pay_per_sale?: number | string | null;
+  weekly_booking_goal?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -523,6 +526,11 @@ export interface ProspectSalesAppointment {
   status: SalesAppointmentStatus;
   confirmed_at: string | null;
   notes: string | null;
+  /** Migration 0062: whether the owner sold it (admin-only), and the booking partner's pay snapshot. */
+  sale_outcome?: 'sold' | 'not_sold' | null;
+  sale_decided_at?: string | null;
+  sale_decided_by?: string | null;
+  setter_pay_amount?: number | string | null;
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
