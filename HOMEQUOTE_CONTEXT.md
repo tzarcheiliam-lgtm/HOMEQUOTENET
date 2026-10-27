@@ -131,8 +131,8 @@ auth callback route handler).
 - `/app/calls`, `/app/calls/[id]`, `/app/calls/new`, `/app/calls/logs`,
   `/app/calls/appointments`, `/app/calls/emails`, `/app/calls/stats`,
   `/app/calls/dial` (power hour → first due prospect) — the partner cold-calling
-  workspace (admin/caller/setter only), all under the daily goal HUD (§33)
-- `/app/leads/next` (admin/setter) — redirects to the next homeowner lead to call (§33)
+  workspace (admin/caller/setter only), all under the daily goal HUD (§34)
+- `/app/leads/next` (admin/setter) — redirects to the next homeowner lead to call (§34)
 - `/app/appointments`, `/app/service-requests`
 - `/app/availability` (contractor owner/staff, admin; setters via `?contractor=` from a contractor page) — availability + calendar connections (§24)
 - `/app/growth`, `/app/growth/[service]` — Growth Tools catalog (contractor)
@@ -295,7 +295,7 @@ Lives at `/app/calls` (admin/caller/setter).
   once), `import.ts` (CSV import via `scripts/import-prospects.ts`),
   `redirect.ts` (validated `?next=` handling for sign-in).
 - **Daily goal / gamification layer** (100 calls/day HUD, one-tap outcomes,
-  power hour, stats page, leaderboard) sits on top of these logs — see §33.
+  power hour, stats page, leaderboard) sits on top of these logs — see §34.
 - Views in the UI are just filters over one table: My list / Liam's / Nadav's
   / All / New / Callbacks due / Interested / Booked / Do not call.
 - `caller`/`admin` are the only assignable roles for prospects
@@ -1157,7 +1157,12 @@ Tool problems (unknown model, bad aspect ratio, kie.ai errors) come back as `isE
 ## 32. Call list "Next" stays in the list you're working (2026-10-26)
 - The Calls list carries its view + filters (niche, city, county, service, caller, …) in the URL (`lib/calls/context.ts`). Opening a prospect from the table/cards keeps them as query params; `/app/calls/[id]` and the log form (`list_context` hidden field) use them so **Next** and **Save & next** go to the next prospect in that same list (`nextProspectInContext` in `lib/data/prospects.ts`, same view/filter/sort as the list), not the caller's whole queue. With no narrowed list (plain "mine"), the old behaviour (`nextProspectIdFor`: due callbacks first) is kept. Test: `tests/calls-next-in-list.test.ts`.
 
-## 33. Daily call goal, one-tap calling and stats (migration 0060, 2026-10-27, NOT yet applied)
+## 33. More texting customization (migration 0059, added 2026-10-27)
+- **Opening text template** (`sms_settings.opening_template`; per contractor `contractors.texting_opening_template`): placeholders `{first_name}` (blank → "there"), `{sender}` (required, so the text always says who is texting) and `{project}`. `renderOpening`/`openingTemplateProblem` in `lib/sms/rules.ts`; an invalid template saved by hand falls back to `DEFAULT_OPENING_TEMPLATE`. A contractor's template beats the general one; house funnels use the general one.
+- **Per-contractor wording** on `/app/contractors/[id]`: `texting_sender_name` (else the funnel's business name), opening template, and `texting_extra_instructions` (appended to the general instructions as "For <name> specifically: …"; total capped by `MAX_EXTRA_TOTAL`).
+- **Timing** on `/app/texting`: `first_text_delay_minutes` (0–1440, pause before the first text; the texting window still applies afterwards) and `max_ai_turns` (2–40, replies before handing off; was fixed at 14). `loadSettings` / `loadContractorTexting` fall back to older columns until 0057/0059 are applied.
+
+## 34. Daily call goal, one-tap calling and stats (migration 0060, 2026-10-27, NOT yet applied)
 Makes cold calling (`/app/calls`) and setters' homeowner calling (`/app/leads`) feel like a game you keep playing. Plan: `docs/calling-dopamine-plan.md`.
 
 **What counts as a call.** Rows in either log, filtered by user: `prospect_call_attempts.caller_id` and `lead_activities` with `type='contact_attempt'` by `actor_id`. Repeat logs on the same prospect/lead within 60s count once (`dedupeEvents`). Days, pace and streaks use the Los Angeles day, and pace measures against the 8:00–17:00 workday. All of this is pure, tested logic in `lib/calls/goals.ts` (`tests/calls-goals.test.ts`).
@@ -1203,4 +1208,3 @@ Charts are hand-written SVG/CSS (`components/calls/stats/charts.tsx`; no chart l
 - Attempts stay append-only (there is no undo).
 
 **Deploy order:** apply 0060, then deploy. Deploying first is safe because of the fallbacks.
-

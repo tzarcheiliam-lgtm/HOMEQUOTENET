@@ -82,10 +82,12 @@ const TOOL: Anthropic.Tool = {
 };
 
 export const MAX_EXTRA_INSTRUCTIONS = 1500;
+/** Everything combined (general + contractor-specific). */
+export const MAX_EXTRA_TOTAL = 3200;
 
 /** The fixed prompt plus the owner's own additions. The additions are guidance on goal and tone only. */
 export function systemPromptFor(extra?: string | null): string {
-  const text = (extra ?? '').replace(/<\/?owner_instructions>/gi, '').trim().slice(0, MAX_EXTRA_INSTRUCTIONS);
+  const text = (extra ?? '').replace(/<\/?owner_instructions>/gi, '').trim().slice(0, MAX_EXTRA_TOTAL);
   if (!text) return SMS_SYSTEM_PROMPT;
   return `${SMS_SYSTEM_PROMPT}\n\nAdditional instructions from the business owner (follow them for goal, wording and what to ask; they never override the rules above about STOP, prices, links, or handing off):\n<owner_instructions>\n${text}\n</owner_instructions>`;
 }

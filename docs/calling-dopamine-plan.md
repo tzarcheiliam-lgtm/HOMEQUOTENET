@@ -1,7 +1,7 @@
 # Calling Workspace: "Dopamine" Plan
 
 > **Status (2026-10-27): built — all four phases.** What shipped and where it
-> lives is in `HOMEQUOTE_CONTEXT.md` §33. Differences from this plan: no
+> lives is in `HOMEQUOTE_CONTEXT.md` §34. Differences from this plan: no
 > "undo" for one-tap outcomes (attempts stay append-only), the heatmap shows
 > four Monday-aligned weeks, and setters' homeowner calls count toward the
 > same goal. Migration `0060_call_goals.sql` must be applied for per-person

@@ -12,16 +12,30 @@ type Db = SupabaseClient;
 export interface SmsSettings {
   enabled: boolean; contractor_funnels_enabled: boolean; window_start_hour: number; window_end_hour: number; daily_cap: number; stopped_at: string | null;
   bot_extra_instructions?: string | null; house_sender_name?: string | null;
+  opening_template?: string | null; first_text_delay_minutes?: number; max_ai_turns?: number;
 }
 export const DEFAULT_SETTINGS: SmsSettings = { enabled: false, contractor_funnels_enabled: false, window_start_hour: 8, window_end_hour: 21, daily_cap: 200, stopped_at: null };
 
 export async function loadSettings(db: Db): Promise<SmsSettings> {
   const core = 'enabled,contractor_funnels_enabled,window_start_hour,window_end_hour,daily_cap,stopped_at';
-  const first = await db.from('sms_settings').select(`${core},bot_extra_instructions,house_sender_name`).eq('id', true).maybeSingle();
-  let data = first.data;
-  // Until migration 0057 is applied the two new columns don't exist: keep texting working on the old ones.
-  if (first.error) ({ data } = await db.from('sms_settings').select(core).eq('id', true).maybeSingle());
-  return { ...DEFAULT_SETTINGS, ...(data as Partial<SmsSettings> | null) };
+  // Newer columns arrive with migrations 0057 and 0059; until they are applied, fall back so texting keeps working.
+  for (const cols of [`${core},bot_extra_instructions,house_sender_name,opening_template,first_text_delay_minutes,max_ai_turns`, `${core},bot_extra_instructions,house_sender_name`, core]) {
+    const { data, error } = await db.from('sms_settings').select(cols).eq('id', true).maybeSingle();
+    if (!error) return { ...DEFAULT_SETTINGS, ...(data as Partial<SmsSettings> | null) };
+  }
+  return { ...DEFAULT_SETTINGS };
+}
+
+export interface ContractorTexting { enabled: boolean; senderName: string | null; openingTemplate: string | null; extraInstructions: string | null }
+/** A contractor's texting switch and wording. Tolerates migration 0059 not being applied yet. */
+export async function loadContractorTexting(db: Db, contractorId: string): Promise<ContractorTexting> {
+  const full = await db.from('contractors').select('texting_enabled,texting_sender_name,texting_opening_template,texting_extra_instructions').eq('id', contractorId).maybeSingle();
+  if (!full.error) {
+    const r = full.data as Record<string, unknown> | null;
+    return { enabled: !!r?.texting_enabled, senderName: (r?.texting_sender_name as string) || null, openingTemplate: (r?.texting_opening_template as string) || null, extraInstructions: (r?.texting_extra_instructions as string) || null };
+  }
+  const { data } = await db.from('contractors').select('texting_enabled').eq('id', contractorId).maybeSingle();
+  return { enabled: !!(data as { texting_enabled?: boolean } | null)?.texting_enabled, senderName: null, openingTemplate: null, extraInstructions: null };
 }
 const isLive = (s: SmsSettings) => s.enabled && !s.stopped_at;
 
@@ -74,21 +88,22 @@ export async function startSmsForLead(db: Db, leadId: string, now = new Date()):
     const snap = (session.config_snapshot ?? {}) as Snapshot;
     const house = !funnel.contractor_id || snap.clientName === 'HomeQuote Network';
     if (!house && !settings.contractor_funnels_enabled) return { started: false, reason: 'contractor_funnel_off' };
-    if (!house) {
-      const { data: co } = await db.from('contractors').select('texting_enabled').eq('id', funnel.contractor_id as string).maybeSingle();
-      if (!co?.texting_enabled) return { started: false, reason: 'contractor_funnel_off' };
-    }
+    const co = house ? null : await loadContractorTexting(db, funnel.contractor_id as string);
+    if (co && !co.enabled) return { started: false, reason: 'contractor_funnel_off' };
     if ((await sentToday(db)) >= settings.daily_cap) return { started: false, reason: 'daily_cap' };
 
     const houseName = settings.house_sender_name?.trim().slice(0, 40) || SENDER_HOUSE;
-    const sender = house ? houseName : (snap.clientName ?? houseName).slice(0, 80);
+    const sender = house ? houseName : (co?.senderName?.trim() || snap.clientName || houseName).slice(0, 80);
     const { data: convo, error } = await db.from('sms_conversations').insert({
       lead_id: leadId, contractor_id: funnel.contractor_id ?? null, sender_name: sender, phone_e164: phone,
     }).select('id,lead_id').single();
     if (error || !convo) return { started: false, reason: 'exists' };
     const zones = resolveZones({ state: lead.state as string | null, zip: lead.zip as string | null }) ?? DEFAULT_ZONES;
-    const when = nextEligible(now, zones, { startHour: settings.window_start_hour, endHour: settings.window_end_hour }) ?? now;
-    await queue(db, convo as { id: string; lead_id: string }, openingMessage({ firstName: lead.first_name as string | null, senderName: sender, project: projectLabel(snap.industry) }), { ai: false, sendAfter: when });
+    // Optional pause before the first text, then wait for the texting window if that lands outside it.
+    const ready = new Date(now.getTime() + Math.max(0, settings.first_text_delay_minutes ?? 0) * 60_000);
+    const when = nextEligible(ready, zones, { startHour: settings.window_start_hour, endHour: settings.window_end_hour }) ?? ready;
+    const template = (co?.openingTemplate?.trim() || settings.opening_template?.trim()) || null;
+    await queue(db, convo as { id: string; lead_id: string }, openingMessage({ firstName: lead.first_name as string | null, senderName: sender, project: projectLabel(snap.industry), template }), { ai: false, sendAfter: when });
     await note(db, leadId, `Automatic text queued${when > now ? ` for ${when.toISOString()} (outside texting hours)` : ''}.`);
     return { started: true, conversationId: convo.id as string };
   } catch {
@@ -197,7 +212,7 @@ async function replyWithAgent(db: Db, c: { id: string; lead_id: string; sender_n
     return { handled: true, reason } as InboundResult;
   };
   if (!isLive(settings)) return handoff('automatic texting is turned off');
-  if (c.ai_turns >= MAX_AI_TURNS) return handoff('the assistant reached its message limit');
+  if (c.ai_turns >= (settings.max_ai_turns ?? MAX_AI_TURNS)) return handoff('the assistant reached its message limit');
   if ((await sentToday(db)) >= settings.daily_cap) return handoff('the daily text limit was reached');
   const aiOn = deps.aiConfigured ?? !!process.env.ANTHROPIC_API_KEY?.trim();
   if (!aiOn && !deps.agent) return handoff('the AI assistant is not configured');
@@ -212,11 +227,17 @@ async function replyWithAgent(db: Db, c: { id: string; lead_id: string; sender_n
   const history: SmsTurn[] = ((msgs ?? []) as { direction: string; body: string; status: string }[])
     .filter((m) => m.direction === 'in' || m.status === 'sent' || m.status === 'queued' || m.status === 'sending')
     .map((m) => ({ role: m.direction === 'in' ? 'lead' : 'us', text: m.body }));
+  // Instructions for the whole assistant, plus any specific to the contractor this conversation is for.
+  const { data: convoRow } = await db.from('sms_conversations').select('contractor_id').eq('id', c.id).maybeSingle();
+  const coExtra = (convoRow as { contractor_id?: string | null } | null)?.contractor_id
+    ? (await loadContractorTexting(db, (convoRow as { contractor_id: string }).contractor_id)).extraInstructions
+    : null;
+  const extraInstructions = [settings.bot_extra_instructions?.trim(), coExtra?.trim() ? `For ${c.sender_name} specifically: ${coExtra.trim()}` : null].filter(Boolean).join('\n\n') || null;
   let result: AgentResult;
   try {
     result = await (deps.agent ?? runSmsAgent)({
       senderName: c.sender_name, firstName: (lead?.first_name as string | null) ?? null, project: metaAnswers ? metaProject(metaAnswers) : projectLabel(snap.industry),
-      extraInstructions: settings.bot_extra_instructions ?? null,
+      extraInstructions,
       known: metaAnswers ?? readAnswers((session?.answers ?? {}) as Record<string, unknown>, snap), formQualified: (session?.qualified as boolean | null) ?? null, history,
     });
   } catch {

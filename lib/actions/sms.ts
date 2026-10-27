@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { requireRole } from '@/lib/auth';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { MAX_EXTRA_INSTRUCTIONS } from '@/lib/sms/agent';
+import { openingTemplateProblem } from '@/lib/sms/rules';
 
 export type SmsActionState = { ok: boolean; message?: string; error?: string } | undefined;
 const refresh = (leadId?: string) => { revalidatePath('/app/texting'); if (leadId) revalidatePath(`/app/leads/${leadId}`); };
@@ -26,6 +27,8 @@ const settingsSchema = z.object({
   window_start_hour: z.coerce.number().int().min(0).max(23),
   window_end_hour: z.coerce.number().int().min(1).max(24),
   daily_cap: z.coerce.number().int().min(1).max(5000),
+  first_text_delay_minutes: z.coerce.number().int().min(0, 'The delay can’t be negative.').max(1440, 'Keep the delay under 24 hours (1440 minutes).'),
+  max_ai_turns: z.coerce.number().int().min(2, 'Allow at least 2 assistant replies.').max(40, 'Keep it at 40 replies or fewer.'),
 }).refine((v) => v.window_end_hour > v.window_start_hour, { message: 'The window must close after it opens.' });
 
 export async function saveSmsSettings(_prev: SmsActionState, fd: FormData): Promise<SmsActionState> {
@@ -56,16 +59,21 @@ export async function setConversationOwner(fd: FormData): Promise<void> {
 const botSchema = z.object({
   bot_extra_instructions: z.string().max(MAX_EXTRA_INSTRUCTIONS, `Keep the instructions under ${MAX_EXTRA_INSTRUCTIONS} characters.`),
   house_sender_name: z.string().trim().max(40, 'The name is too long.'),
+  opening_template: z.string().max(1000),
+}).superRefine((v, ctx) => {
+  const problem = openingTemplateProblem(v.opening_template);
+  if (problem) ctx.addIssue({ code: 'custom', message: problem, path: ['opening_template'] });
 });
 
 /** The bot's extra instructions and the name it texts as for HomeQuote's own funnels. */
 export async function saveSmsBot(_prev: SmsActionState, fd: FormData): Promise<SmsActionState> {
   const me = await requireRole(['admin']);
-  const parsed = botSchema.safeParse({ bot_extra_instructions: String(fd.get('bot_extra_instructions') ?? ''), house_sender_name: String(fd.get('house_sender_name') ?? '') });
+  const parsed = botSchema.safeParse({ bot_extra_instructions: String(fd.get('bot_extra_instructions') ?? ''), house_sender_name: String(fd.get('house_sender_name') ?? ''), opening_template: String(fd.get('opening_template') ?? '') });
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Check the values.' };
   const { error } = await createAdminClient().from('sms_settings').update({
     bot_extra_instructions: parsed.data.bot_extra_instructions.trim() || null,
     house_sender_name: parsed.data.house_sender_name || null,
+    opening_template: parsed.data.opening_template.trim() || null,
     updated_by: me.id, updated_at: new Date().toISOString(),
   }).eq('id', true);
   if (error) return { ok: false, error: 'Could not save.' };
@@ -80,4 +88,35 @@ export async function setContractorTexting(fd: FormData): Promise<void> {
   const { error } = await createAdminClient().from('contractors').update({ texting_enabled: fd.get('enabled') === 'true' }).eq('id', id);
   if (error) throw new Error('Could not update texting for this contractor');
   revalidatePath(`/app/contractors/${id}`);
+}
+
+const contractorWordingSchema = z.object({
+  contractorId: z.string().uuid(),
+  texting_sender_name: z.string().trim().max(60, 'The name is too long.'),
+  texting_opening_template: z.string().max(1000),
+  texting_extra_instructions: z.string().max(MAX_EXTRA_INSTRUCTIONS, `Keep the instructions under ${MAX_EXTRA_INSTRUCTIONS} characters.`),
+}).superRefine((v, ctx) => {
+  const problem = openingTemplateProblem(v.texting_opening_template);
+  if (problem) ctx.addIssue({ code: 'custom', message: problem, path: ['texting_opening_template'] });
+});
+
+/** What texts say for one contractor: the name they come from, the first message, and extra instructions. Blank = use the general ones. */
+export async function saveContractorTextingWording(_prev: SmsActionState, fd: FormData): Promise<SmsActionState> {
+  await requireRole(['admin']);
+  const parsed = contractorWordingSchema.safeParse({
+    contractorId: String(fd.get('contractorId') ?? ''),
+    texting_sender_name: String(fd.get('texting_sender_name') ?? ''),
+    texting_opening_template: String(fd.get('texting_opening_template') ?? ''),
+    texting_extra_instructions: String(fd.get('texting_extra_instructions') ?? ''),
+  });
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Check the values.' };
+  const { contractorId, ...v } = parsed.data;
+  const { error } = await createAdminClient().from('contractors').update({
+    texting_sender_name: v.texting_sender_name || null,
+    texting_opening_template: v.texting_opening_template.trim() || null,
+    texting_extra_instructions: v.texting_extra_instructions.trim() || null,
+  }).eq('id', contractorId);
+  if (error) return { ok: false, error: 'Could not save. Has the latest database update been applied?' };
+  revalidatePath(`/app/contractors/${contractorId}`);
+  return { ok: true, message: 'Saved. New texts use it right away.' };
 }
