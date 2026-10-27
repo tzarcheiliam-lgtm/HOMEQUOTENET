@@ -13,6 +13,9 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { MetaSettingsForm } from '@/components/integrations/meta-settings-form';
 import { SimulateLeadForm } from '@/components/integrations/simulate-lead-form';
 import { IntakeEventsTable } from '@/components/integrations/intake-events-table';
+import { MetaPagesForm } from '@/components/integrations/meta-pages-form';
+import { listContractorOptions } from '@/lib/data/contractors';
+import { metaPageTokenEnvName, resolveMetaPages } from '@/lib/integrations/meta';
 import { Inbox } from 'lucide-react';
 
 export const metadata = { title: 'Meta Lead Ads · HomeQuote Network' };
@@ -34,6 +37,12 @@ export default async function MetaIntegrationPage() {
   const integration = await getIntegrationByProvider('meta');
   if (!integration) notFound();
 
+  const contractors = await listContractorOptions();
+  const pages = resolveMetaPages(integration.config as Record<string, unknown>).map((p) => ({
+    ...p,
+    token_env: metaPageTokenEnvName(p.page_id),
+    token_set: !!process.env[metaPageTokenEnvName(p.page_id)]?.trim(),
+  }));
   const events = await listIntakeEvents({ provider: 'meta', limit: 10 });
   const siteUrl =
     process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
@@ -74,6 +83,22 @@ export default async function MetaIntegrationPage() {
         </CardHeader>
         <CardContent>
           <MetaSettingsForm integration={integration} />
+        </CardContent>
+      </Card>
+
+      {/* Pages */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Facebook Pages</CardTitle>
+          <CardDescription>
+            Leads from a Page that is not listed here are not imported (they are logged as skipped under Recent Meta
+            intake). A Page with a contractor assigns its leads to that contractor and texts as its sender name, using
+            the same texting switches as contractor funnels. Each Page reads its own access token from its Vercel env
+            var; tokens are never shown or stored here.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <MetaPagesForm integrationId={integration.id} pages={pages} contractors={contractors} />
         </CardContent>
       </Card>
 

@@ -3,9 +3,9 @@ import { NextRequest } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 type TestIntegration = { id: string; secret: string; is_enabled: boolean; config: Record<string, unknown> };
-const mocks = vi.hoisted(() => ({ integration: null as unknown as TestIntegration, ingest: vi.fn(), touch: vi.fn() }));
+const mocks = vi.hoisted(() => ({ integration: null as unknown as TestIntegration, ingest: vi.fn(), touch: vi.fn(), inserts: [] as Record<string, unknown>[] }));
 vi.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: () => ({ from: () => ({ insert: async () => ({}), select: () => ({ eq: () => ({ order: () => ({ limit: () => ({ maybeSingle: async () => ({ data: mocks.integration }) }) }) }) }) }) }),
+  createAdminClient: () => ({ from: () => ({ insert: async (row: Record<string, unknown>) => { mocks.inserts.push(row); return {}; }, select: () => ({ eq: () => ({ order: () => ({ limit: () => ({ maybeSingle: async () => ({ data: mocks.integration }) }) }) }) }) }) }),
 }));
 vi.mock('@/lib/integrations/intake', () => ({ ingestLead: mocks.ingest, touchIntegration: mocks.touch }));
 
@@ -25,9 +25,10 @@ beforeEach(() => {
   mocks.integration = { id: 'int-1', secret: 'verify-me', is_enabled: true, config: { app_secret: APP_SECRET, page_access_token: 'tok', page_id: 'page-1' } };
   mocks.ingest.mockReset().mockResolvedValue({ status: 'created', leadId: 'lead-1' });
   mocks.touch.mockReset();
+  mocks.inserts.length = 0;
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
-afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe('Meta webhook security', () => {
   it('echoes the challenge only for the right verify token', async () => {
@@ -101,5 +102,66 @@ describe('Meta webhook import', () => {
     mocks.ingest.mockResolvedValue({ status: 'error', error: 'db down' });
     const body = envelope();
     expect((await post(body, sign(body))).status).toBe(500);
+  });
+});
+
+describe('Meta webhook with several Pages', () => {
+  const POOL_PAGE = '835963602930453';
+  const CONTRACTOR = '2b1f6c1e-6a5e-4b52-9d0e-1c0f6f0a7a11';
+  const bearer = (call: unknown[]) => ((call[1] as { headers: { Authorization: string } }).headers.Authorization);
+  beforeEach(() => {
+    mocks.integration.config.pages = [{ page_id: POOL_PAGE, label: 'Pool Masters Inc.', contractor_id: CONTRACTOR, sender_name: 'Pool Masters' }];
+    vi.stubEnv('META_PAGE_ACCESS_TOKEN', '');
+    vi.stubEnv(`META_PAGE_ACCESS_TOKEN_${POOL_PAGE}`, 'pool-page-token');
+  });
+
+  it('still imports the original HomeQuote Page as a house lead, with the shared token', async () => {
+    const send = vi.fn().mockResolvedValue(new Response(JSON.stringify(graphLead), { status: 200 })); vi.stubGlobal('fetch', send);
+    const body = envelope('L1', 'page-1');
+    expect((await post(body, sign(body))).status).toBe(200);
+    expect(bearer(send.mock.calls[0])).toBe('Bearer tok');
+    expect(mocks.ingest).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ contractorId: null, senderName: null }));
+  });
+
+  it('routes a Pool Masters lead to its contractor and sender, fetched with the own token of that Page', async () => {
+    const send = vi.fn().mockResolvedValue(new Response(JSON.stringify(graphLead), { status: 200 })); vi.stubGlobal('fetch', send);
+    const body = envelope('L2', POOL_PAGE);
+    const res = await post(body, sign(body));
+    expect(await res.json()).toMatchObject({ created: 1, skipped: 0 });
+    expect(bearer(send.mock.calls[0])).toBe('Bearer pool-page-token');
+    expect(mocks.ingest).toHaveBeenCalledWith(
+      expect.objectContaining({ page_id: POOL_PAGE }),
+      expect.objectContaining({ contractorId: CONTRACTOR, senderName: 'Pool Masters' }),
+    );
+  });
+
+  it('logs and skips a Page that is not configured (2xx so Meta does not redeliver)', async () => {
+    const send = vi.fn(); vi.stubGlobal('fetch', send);
+    const body = envelope('L3', 'stranger-page');
+    const res = await post(body, sign(body));
+    expect(res.status).toBe(200); expect(await res.json()).toMatchObject({ skipped: 1, created: 0 });
+    expect(send).not.toHaveBeenCalled(); expect(mocks.ingest).not.toHaveBeenCalled();
+    expect(mocks.inserts).toEqual([expect.objectContaining({ status: 'skipped', page_id: 'stranger-page', external_lead_id: 'L3' })]);
+  });
+
+  it('answers 500 with an intake error row when the Page token is rejected, and never logs a token', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{"error":{"code":190}}', { status: 400 })));
+    const body = envelope('L4', POOL_PAGE);
+    const res = await post(body, sign(body));
+    expect(res.status).toBe(500); expect(await res.json()).toMatchObject({ fetchFailures: 1, created: 0 });
+    expect(mocks.inserts).toEqual([expect.objectContaining({ status: 'error', page_id: POOL_PAGE, error: expect.stringContaining('auth') })]);
+    expect(mocks.ingest).not.toHaveBeenCalled();
+    const logged = JSON.stringify(vi.mocked(console.error).mock.calls) + JSON.stringify(mocks.inserts);
+    expect(logged).not.toContain('pool-page-token'); expect(logged).not.toContain('tok"');
+  });
+
+  it('answers 500 with an intake error row when no token exists for the Page', async () => {
+    vi.stubEnv(`META_PAGE_ACCESS_TOKEN_${POOL_PAGE}`, '');
+    mocks.integration.config.page_access_token = null;
+    const send = vi.fn(); vi.stubGlobal('fetch', send);
+    const body = envelope('L5', POOL_PAGE);
+    expect((await post(body, sign(body))).status).toBe(500);
+    expect(send).not.toHaveBeenCalled();
+    expect(mocks.inserts).toEqual([expect.objectContaining({ status: 'error', error: expect.stringContaining('missing_token') })]);
   });
 });

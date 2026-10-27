@@ -508,3 +508,45 @@ describe('Meta Instant Form leads', () => {
     expect(seen.known).toEqual(realAnswers);
   });
 });
+
+describe('Meta Pages owned by a contractor', () => {
+  const answers = { 'what_pool_project_do_you_have_in_mind?': 'resurface' };
+  async function poolLead() {
+    const leadId = randomUUID();
+    await q(`insert into public.leads(id, first_name, last_name, phone, state, status, source, answers) values ($1,'Sam','Lee','(818) 555-0177','CA','new','meta',$2)`, [leadId, JSON.stringify(answers)]);
+    return leadId;
+  }
+  async function contractor(texting: boolean) {
+    const id = randomUUID();
+    await q(`insert into public.contractors(id, name, texting_enabled) values ($1,'Pool Masters Inc.',$2)`, [id, texting]);
+    return id;
+  }
+
+  it('texts as the Page sender name, on the contractor conversation, once both switches are on', async () => {
+    await setSettings(`contractor_funnels_enabled=true`);
+    const contractorId = await contractor(true); const leadId = await poolLead();
+    expect((await startSmsForMetaLead(sb, leadId, T, { contractorId, senderName: 'Pool Masters' })).started).toBe(true);
+    const [c] = await q(`select sender_name, contractor_id from public.sms_conversations where lead_id=$1`, [leadId]);
+    expect(c).toMatchObject({ sender_name: 'Pool Masters', contractor_id: contractorId });
+    expect((await messages(leadId))[0].body).toContain("it's Pool Masters");
+  });
+
+  it('follows the contractor texting rules: off at the network level or for the contractor means no text', async () => {
+    const contractorId = await contractor(true); const first = await poolLead();
+    expect(await startSmsForMetaLead(sb, first, T, { contractorId, senderName: 'Pool Masters' })).toEqual({ started: false, reason: 'contractor_funnel_off' });
+    await setSettings(`contractor_funnels_enabled=true`);
+    const off = await contractor(false); const second = await poolLead();
+    expect(await startSmsForMetaLead(sb, second, T, { contractorId: off, senderName: 'Pool Masters' })).toEqual({ started: false, reason: 'contractor_funnel_off' });
+    expect(await q(`select 1 from public.sms_conversations where lead_id = any($1)`, [[first, second]])).toHaveLength(0);
+  });
+
+  it('uses the house name when the Page has no sender name, and house leads are unchanged', async () => {
+    await setSettings(`contractor_funnels_enabled=true`);
+    const contractorId = await contractor(true); const leadId = await poolLead();
+    await startSmsForMetaLead(sb, leadId, T, { contractorId, senderName: null });
+    expect((await q(`select sender_name from public.sms_conversations where lead_id=$1`, [leadId]))[0].sender_name).toBe('HomeQuote');
+    const house = await poolLead();
+    await startSmsForMetaLead(sb, house, T);
+    expect((await q(`select sender_name, contractor_id from public.sms_conversations where lead_id=$1`, [house]))[0]).toEqual({ sender_name: 'HomeQuote', contractor_id: null });
+  });
+});

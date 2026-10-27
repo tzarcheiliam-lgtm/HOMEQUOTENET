@@ -7,6 +7,8 @@ import { flushNotificationsSoon } from '@/lib/notifications/outbox';
 import { after } from 'next/server';
 import { smsConfigured, smsMetaLeadsEnabled } from '@/lib/sms/config';
 import { startSmsForMetaLead } from '@/lib/sms/service';
+import { selectActiveAgreement } from '@/lib/outcomes/pricing';
+import type { PricingAgreement } from '@/lib/types';
 import type { IntakeContext, IntakeResult, NormalizedLead } from './types';
 
 function splitName(full: string | null | undefined): {
@@ -91,6 +93,28 @@ async function findByExternalId(
 }
 
 /**
+ * Record a lead against a contractor business, exactly as a contractor funnel does (save_funnel_session):
+ * one lead_assignments row linked to the contractor's active pricing agreement. Emails nobody.
+ */
+async function assignToContractor(
+  admin: ReturnType<typeof createAdminClient>,
+  leadId: string,
+  contractorId: string
+): Promise<boolean> {
+  const { data: agreements } = await admin
+    .from('pricing_agreements')
+    .select('*')
+    .eq('contractor_id', contractorId)
+    .eq('is_active', true);
+  const agreement = selectActiveAgreement((agreements as PricingAgreement[]) ?? [], null);
+  const { error } = await admin.from('lead_assignments').upsert(
+    { lead_id: leadId, contractor_id: contractorId, pricing_agreement_id: agreement?.id ?? null },
+    { onConflict: 'lead_id,contractor_id', ignoreDuplicates: true }
+  );
+  return !error;
+}
+
+/**
  * The single intake pipeline every source flows through:
  *   normalize → duplicate detection → attribution → lead creation → log.
  * Runs with the service-role client (unauthenticated webhooks / system).
@@ -138,7 +162,18 @@ export async function ingestLead(
   let duplicateOf: string | null = null;
   let possibleDuplicateOf: string | null = null;
   if (emailNorm || phoneNorm) {
-    const m = await findContactMatch(admin, emailNorm, phoneNorm, first, last);
+    let m = await findContactMatch(admin, emailNorm, phoneNorm, first, last);
+    // A contractor's lead never merges into someone else's: only match leads already assigned to that contractor
+    // (same rule as contractor funnels), otherwise it is a new lead for them.
+    if (m && ctx.contractorId) {
+      const { data: owned } = await admin
+        .from('lead_assignments')
+        .select('id')
+        .eq('lead_id', m.id)
+        .eq('contractor_id', ctx.contractorId)
+        .limit(1);
+      if (!owned?.length) m = null;
+    }
     if (m?.kind === 'match') duplicateOf = m.id;
     else if (m) possibleDuplicateOf = m.id;
   }
@@ -225,13 +260,22 @@ export async function ingestLead(
     return { status: 'error', error: error?.message, intakeEventId: ev?.id };
   }
 
+  let assigned = true;
+  if (ctx.contractorId) assigned = await assignToContractor(admin, lead.id, ctx.contractorId);
+
   await admin.from('lead_activities').insert({
     lead_id: lead.id,
     type: 'system',
     body: possibleDuplicateOf
       ? `Lead captured via ${ctx.provider} intake. Shares an email or phone with an existing lead under a different name — review for a possible duplicate.`
-      : `Lead captured via ${ctx.provider} intake`,
-    metadata: { provider: ctx.provider, platform: eventBase.platform, possible_duplicate_of: possibleDuplicateOf },
+      : `Lead captured via ${ctx.provider} intake${ctx.contractorId && !assigned ? '. It could not be assigned to its contractor automatically — assign it manually.' : ''}`,
+    // A contractor's lead is scoped to them, so if it is later shared other contractors don't see where it came from.
+    metadata: {
+      provider: ctx.provider,
+      platform: eventBase.platform,
+      possible_duplicate_of: possibleDuplicateOf,
+      ...(ctx.contractorId ? { contractor_id: ctx.contractorId } : {}),
+    },
   });
 
   const { data: ev } = await admin
@@ -245,7 +289,7 @@ export async function ingestLead(
   flushNotificationsSoon();
   // Meta Instant Form leads get the same automatic opening text as funnel leads (needs SMS_META_LEADS=1 and /app/texting on).
   if (ctx.provider === 'meta' && smsConfigured() && smsMetaLeadsEnabled()) {
-    after(async () => { try { await startSmsForMetaLead(admin, lead.id); } catch { /* never blocks lead intake */ } });
+    after(async () => { try { await startSmsForMetaLead(admin, lead.id, new Date(), { contractorId: ctx.contractorId ?? null, senderName: ctx.senderName ?? null }); } catch { /* never blocks lead intake */ } });
   }
   return {
     status: 'created',

@@ -181,6 +181,57 @@ export function resolveMetaSecrets(integration: {
   };
 }
 
+/** One Facebook Page this integration accepts leads from. */
+export type MetaPageConfig = {
+  page_id: string;
+  label: string | null;
+  /** Contractor that owns this Page's leads; null = the house (HomeQuote Network). */
+  contractor_id: string | null;
+  /** Name the opening text is sent as; null = the house sender name. */
+  sender_name: string | null;
+};
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const META_PAGE_ID_RE = /^\d{5,25}$/;
+
+/**
+ * The Pages this integration accepts: `config.pages` plus the legacy single `config.page_id`
+ * (a listed entry wins). Empty = no restriction, which keeps a fresh install and the simulator working.
+ */
+export function resolveMetaPages(config: Record<string, unknown> | null | undefined): MetaPageConfig[] {
+  const out = new Map<string, MetaPageConfig>();
+  const raw = Array.isArray(config?.pages) ? (config?.pages as unknown[]) : [];
+  for (const item of raw) {
+    const r = (item ?? {}) as Record<string, unknown>;
+    const id = text(r.page_id)?.trim();
+    if (!id || out.has(id)) continue;
+    const contractor = text(r.contractor_id)?.trim() ?? '';
+    out.set(id, {
+      page_id: id,
+      label: text(r.label)?.trim() || null,
+      contractor_id: UUID_RE.test(contractor) ? contractor : null,
+      sender_name: text(r.sender_name)?.trim().slice(0, 40) || null,
+    });
+  }
+  const legacy = text(config?.page_id)?.trim();
+  if (legacy && !out.has(legacy)) out.set(legacy, { page_id: legacy, label: null, contractor_id: null, sender_name: null });
+  return [...out.values()];
+}
+
+/** Name of the Vercel env var holding a Page's own access token (the name is not secret). */
+export function metaPageTokenEnvName(pageId: string): string {
+  return `META_PAGE_ACCESS_TOKEN_${pageId}`;
+}
+
+/** A Page's own token (env), else the integration-wide token. Never logged or returned to the browser. */
+export function resolveMetaPageToken(pageId: string | null | undefined, fallback: string | null): string | null {
+  if (pageId && META_PAGE_ID_RE.test(pageId)) {
+    const own = process.env[metaPageTokenEnvName(pageId)]?.trim();
+    if (own) return own;
+  }
+  return fallback;
+}
+
 /**
  * Verify a Meta webhook subscription handshake (GET).
  * Returns the challenge string to echo back, or null if the token mismatches.

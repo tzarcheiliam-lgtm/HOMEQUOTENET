@@ -7,6 +7,8 @@ import {
   fetchMetaLead,
   extractLeadgenValues,
   resolveMetaSecrets,
+  resolveMetaPages,
+  resolveMetaPageToken,
 } from '@/lib/integrations/meta';
 import { ingestLead, touchIntegration } from '@/lib/integrations/intake';
 
@@ -77,7 +79,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const configuredPage = integration.config?.page_id ? String(integration.config.page_id) : null;
+  // Pages this integration accepts (empty = no restriction). Each may belong to a contractor and have its own token.
+  const pages = new Map(resolveMetaPages(integration.config).map((p) => [p.page_id, p]));
   const values = extractLeadgenValues(body);
 
   let created = 0;
@@ -88,18 +91,33 @@ export async function POST(req: NextRequest) {
   let lastFailure: string | null = null;
 
   for (const v of values) {
-    // Only import leads from the Page this integration is configured for.
-    if (configuredPage && v.page_id && String(v.page_id) !== configuredPage) {
+    const pageId = v.page_id ? String(v.page_id) : null;
+    // Only import leads from a configured Page. Unknown Pages are skipped (2xx, Meta must not redeliver) but logged.
+    if (pages.size > 0 && pageId && !pages.has(pageId)) {
       skipped++;
+      await createAdminClient()
+        .from('lead_intake_events')
+        .insert({
+          integration_id: integration.id,
+          provider: 'meta',
+          platform: 'facebook',
+          status: 'skipped',
+          external_lead_id: v.leadgen_id ? String(v.leadgen_id) : null,
+          form_id: v.form_id ? String(v.form_id) : null,
+          page_id: pageId,
+          error: 'Page is not configured on this integration — add it on the Meta Lead Ads page to import its leads.',
+          raw_payload: v,
+        });
       continue;
     }
     if (!v.leadgen_id) {
       skipped++;
       continue;
     }
+    const page = pageId ? pages.get(pageId) ?? null : null;
 
-    // Real deliveries carry only IDs — the answers must come from the Graph API.
-    const fetched = await fetchMetaLead(String(v.leadgen_id), accessToken);
+    // Real deliveries carry only IDs — the answers must come from the Graph API, with that Page's own token.
+    const fetched = await fetchMetaLead(String(v.leadgen_id), resolveMetaPageToken(pageId, accessToken));
     if (!fetched.ok) {
       fetchFailures++;
       lastFailure = fetched.reason;
@@ -132,6 +150,8 @@ export async function POST(req: NextRequest) {
       provider: 'meta',
       platform: 'facebook',
       rawPayload: value, // includes field_data, so a lead can be replayed from it
+      contractorId: page?.contractor_id ?? null,
+      senderName: page?.sender_name ?? null,
     });
     if (result.status === 'created') created++;
     else if (result.status === 'duplicate') duplicate++;
