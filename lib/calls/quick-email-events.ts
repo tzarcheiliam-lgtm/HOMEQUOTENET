@@ -17,6 +17,12 @@ export interface QuickEmailRequest {
 
 export const QUICK_EMAIL_EVENT = 'hq:quick-email';
 
-export function openQuickEmail(req: QuickEmailRequest = {}): void {
-  window.dispatchEvent(new CustomEvent<QuickEmailRequest>(QUICK_EMAIL_EVENT, { detail: req }));
+/**
+ * Returns whether the sheet opened. It may not (no sheet mounted, a DNC prospect), and a
+ * caller that was relying on the sheet to move on (Save, email & next) must move on itself.
+ */
+export function openQuickEmail(req: QuickEmailRequest = {}): boolean {
+  const e = new CustomEvent<QuickEmailRequest>(QUICK_EMAIL_EVENT, { detail: req, cancelable: true });
+  window.dispatchEvent(e);
+  return e.defaultPrevented;
 }

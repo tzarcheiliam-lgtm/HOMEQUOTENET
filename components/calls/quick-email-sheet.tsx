@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useCallback, useEffect, useRef, useState } from 'react';
+import { useActionState, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, Mail, Send, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -96,10 +96,15 @@ export function QuickEmailSheet({
     [templates, prospect, signer, homequote]
   );
 
-  useEffect(() => {
-    const onOpen = (e: Event) => {
-      const req = (e as CustomEvent<QuickEmailRequest>).detail ?? {};
-      if (prospect.disposition === 'do_not_call' && req.outcome !== undefined) return;
+  // The latest open handler, kept in a ref so the window listener below is added once.
+  // Re-adding it on every render left a gap: a save refreshes this page in the same
+  // commit that the outcome form asks the sheet to open, so the request could land
+  // between the old listener's removal and the new one's, and "Save, email & next"
+  // then stayed on the same prospect.
+  const onOpenRef = useRef<(req: QuickEmailRequest) => boolean>(() => false);
+  useLayoutEffect(() => {
+    onOpenRef.current = (req) => {
+      if (prospect.disposition === 'do_not_call' && req.outcome !== undefined) return false;
       const key = req.templateKey ?? FOLLOW_UP_FOR[req.outcome ?? prospect.disposition] ?? MORE_INFO_TEMPLATE_KEY;
       const contact = prospect.decision_maker_name ?? '';
       setNext(req.nextHref ?? null);
@@ -109,10 +114,16 @@ export function QuickEmailSheet({
       draft(key, req.when ?? null, contact);
       openedWith.current = state;
       setOpen(true);
+      return true;
+    };
+  });
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      if (onOpenRef.current((e as CustomEvent<QuickEmailRequest>).detail ?? {})) e.preventDefault();
     };
     window.addEventListener(QUICK_EMAIL_EVENT, onOpen);
     return () => window.removeEventListener(QUICK_EMAIL_EVENT, onOpen);
-  }, [prospect, draft, state]);
+  }, []);
 
   // Focus the address first when we don't have one.
   useEffect(() => {
