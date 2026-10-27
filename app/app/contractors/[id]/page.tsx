@@ -8,6 +8,8 @@ import { ContractorLogoCard } from '@/components/contracts/contractor-logo-card'
 import { assetUrl } from '@/lib/contracts/storage';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { setContractorTexting } from '@/lib/actions/sms';
+import { ContractorWordingForm } from '@/components/texting/contractor-wording-form';
+import { MAX_EXTRA_INSTRUCTIONS } from '@/lib/sms/agent';
 import { getContractor } from '@/lib/data/contractors';
 import { listVerticals } from '@/lib/data/verticals';
 import {
@@ -169,8 +171,10 @@ export default async function ContractorDetailPage({
     );
   }
 
-  const { data: logoRow } = await createAdminClient().from('contractors').select('logo_path, texting_enabled').eq('id', contractor.id).maybeSingle();
+  const { data: logoRow } = await createAdminClient().from('contractors').select('*').eq('id', contractor.id).maybeSingle();
   const logoUrl = await assetUrl(logoRow?.logo_path ?? null);
+  const { data: smsRow } = await createAdminClient().from('sms_settings').select('opening_template').eq('id', true).maybeSingle();
+  const generalOpening = (smsRow as { opening_template?: string | null } | null)?.opening_template ?? '';
 
   return (
     <div className="space-y-8">
@@ -254,6 +258,24 @@ export default async function ContractorDetailPage({
             <input type="hidden" name="enabled" value={logoRow?.texting_enabled ? 'false' : 'true'} />
             <Button type="submit" variant="outline" size="sm">{logoRow?.texting_enabled ? 'Turn off' : 'Turn on'}</Button>
           </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>What {contractor.name}’s texts say</CardTitle>
+          <CardDescription>The name, first text and extra instructions for this contractor’s leads. Anything left blank uses the general settings on the Texting page.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ContractorWordingForm
+            contractorId={contractor.id}
+            contractorName={contractor.name}
+            senderName={(logoRow as { texting_sender_name?: string | null } | null)?.texting_sender_name ?? ''}
+            template={(logoRow as { texting_opening_template?: string | null } | null)?.texting_opening_template ?? ''}
+            instructions={(logoRow as { texting_extra_instructions?: string | null } | null)?.texting_extra_instructions ?? ''}
+            generalTemplate={generalOpening}
+            max={MAX_EXTRA_INSTRUCTIONS}
+          />
         </CardContent>
       </Card>
 
