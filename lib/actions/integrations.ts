@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth';
 import { ingestLead } from '@/lib/integrations/intake';
-import { normalizeMetaValue } from '@/lib/integrations/meta';
+import { normalizeMetaValue, META_PAGE_ID_RE } from '@/lib/integrations/meta';
 
 export type IntegrationState = { error?: string; success?: string } | undefined;
 
@@ -63,6 +63,45 @@ export async function updateMetaIntegration(
   revalidatePath('/app/integrations/meta');
   revalidatePath('/app/integrations');
   return { success: 'Meta settings saved.' };
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Save the list of Facebook Pages whose leads this integration imports (admin only). Page tokens are never stored
+// here: each Page reads its own Vercel env var, META_PAGE_ACCESS_TOKEN_<page id>.
+export async function saveMetaPages(
+  _prev: IntegrationState,
+  fd: FormData
+): Promise<IntegrationState> {
+  await requireRole(['admin']);
+  const id = str(fd, 'id');
+  if (!id) return { error: 'Missing integration' };
+
+  const ids = fd.getAll('page_id').map((v) => String(v).trim());
+  const labels = fd.getAll('label').map((v) => String(v).trim());
+  const contractors = fd.getAll('contractor_id').map((v) => String(v).trim());
+  const senders = fd.getAll('sender_name').map((v) => String(v).trim());
+
+  const pages: { page_id: string; label: string | null; contractor_id: string | null; sender_name: string | null }[] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < ids.length; i++) {
+    if (!ids[i] && !labels[i] && !contractors[i] && !senders[i]) continue; // an empty row
+    if (!META_PAGE_ID_RE.test(ids[i])) return { error: `Page ${i + 1}: enter the numeric Facebook Page ID.` };
+    if (seen.has(ids[i])) return { error: `Page ${ids[i]} is listed twice.` };
+    if (contractors[i] && !UUID.test(contractors[i])) return { error: `Page ${ids[i]}: pick a contractor from the list.` };
+    if (senders[i].length > 40) return { error: `Page ${ids[i]}: the sender name is limited to 40 characters.` };
+    seen.add(ids[i]);
+    pages.push({ page_id: ids[i], label: labels[i] || null, contractor_id: contractors[i] || null, sender_name: senders[i] || null });
+  }
+
+  const supabase = await createClient();
+  const { data: current } = await supabase.from('integrations').select('config').eq('id', id).single();
+  const config = { ...((current?.config as Record<string, unknown>) ?? {}), pages };
+  const { error } = await supabase.from('integrations').update({ config }).eq('id', id);
+  if (error) return { error: error.message };
+
+  revalidatePath('/app/integrations/meta');
+  return { success: 'Pages saved.' };
 }
 
 // Generate (or rotate) the API key for a generic provider (website/zapier/api).

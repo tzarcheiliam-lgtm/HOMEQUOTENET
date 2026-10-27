@@ -104,9 +104,10 @@ export function metaProject(answers: Record<string, string>): string | null {
 
 /**
  * Called right after a Meta Instant Form lead is created. Same queue, texting hours, opt-out, daily cap and AI agent as
- * funnel leads; always sent as the house sender. Idempotent (one conversation per lead) and never throws.
+ * funnel leads. Sent as the house sender, or as the Page's sender name when the Page belongs to a contractor (which then
+ * also needs the same switches as a contractor funnel: contractor_funnels_enabled and the contractor's texting_enabled). Idempotent (one conversation per lead) and never throws.
  */
-export async function startSmsForMetaLead(db: Db, leadId: string, now = new Date()): Promise<StartResult> {
+export async function startSmsForMetaLead(db: Db, leadId: string, now = new Date(), source: { contractorId?: string | null; senderName?: string | null } = {}): Promise<StartResult> {
   try {
     const settings = await loadSettings(db);
     if (!isLive(settings)) return { started: false, reason: 'off' };
@@ -114,6 +115,12 @@ export async function startSmsForMetaLead(db: Db, leadId: string, now = new Date
     if (existing) return { started: false, reason: 'exists' };
     const { data: lead } = await db.from('leads').select('id,first_name,phone,state,zip,source,answers').eq('id', leadId).maybeSingle();
     if (!lead || lead.source !== 'meta') return { started: false, reason: 'no_lead' };
+    const contractorId = source.contractorId ?? null;
+    if (contractorId) {
+      if (!settings.contractor_funnels_enabled) return { started: false, reason: 'contractor_funnel_off' };
+      const { data: co } = await db.from('contractors').select('texting_enabled').eq('id', contractorId).maybeSingle();
+      if (!co?.texting_enabled) return { started: false, reason: 'contractor_funnel_off' };
+    }
     const answers = (lead.answers ?? {}) as Record<string, string>;
     // Meta's Lead Ads Testing Tool fills every answer with "<test lead: dummy data ...>": never text those.
     if (Object.values(answers).some((v) => String(v).startsWith('<test lead'))) return { started: false, reason: 'test_lead' };
@@ -123,9 +130,10 @@ export async function startSmsForMetaLead(db: Db, leadId: string, now = new Date
     if (optOut) return { started: false, reason: 'opted_out' };
     if ((await sentToday(db)) >= settings.daily_cap) return { started: false, reason: 'daily_cap' };
 
-    const sender = settings.house_sender_name?.trim().slice(0, 40) || SENDER_HOUSE;
+    const houseName = settings.house_sender_name?.trim().slice(0, 40) || SENDER_HOUSE;
+    const sender = source.senderName?.trim().slice(0, 40) || houseName;
     const { data: convo, error } = await db.from('sms_conversations').insert({
-      lead_id: leadId, contractor_id: null, sender_name: sender, phone_e164: phone,
+      lead_id: leadId, contractor_id: contractorId, sender_name: sender, phone_e164: phone,
     }).select('id,lead_id').single();
     if (error || !convo) return { started: false, reason: 'exists' };
     const zones = resolveZones({ state: lead.state as string | null, zip: lead.zip as string | null }) ?? DEFAULT_ZONES;

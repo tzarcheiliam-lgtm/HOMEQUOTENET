@@ -59,6 +59,10 @@ export interface IntakeContext {
   provider: string;
   platform?: string | null;
   rawPayload: unknown;
+  /** Contractor that owns the source (e.g. a Meta Page); the lead is assigned to them like a contractor funnel lead. */
+  contractorId?: string | null;
+  /** Name the automatic opening text is sent as, when the source is not the house. */
+  senderName?: string | null;
 }
 
 export interface IntakeResult {

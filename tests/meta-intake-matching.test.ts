@@ -16,6 +16,7 @@ vi.mock('@/lib/supabase/admin', () => ({
         select: () => chain,
         insert: (p: Record<string, unknown>) => { q.op = 'insert'; q.payload = p; return chain; },
         update: (p: Record<string, unknown>) => { q.op = 'update'; q.payload = p; return chain; },
+        upsert: (p: Record<string, unknown>) => { q.op = 'upsert'; q.payload = p; return chain; },
         eq: (c: string, v: unknown) => { q.filters.push(['eq', c, v]); return chain; },
         is: (c: string, v: unknown) => { q.filters.push(['is', c, v]); return chain; },
         in: (c: string, v: unknown) => { q.filters.push(['in', c, v]); return chain; },
@@ -126,5 +127,51 @@ describe('ingestLead conservative contact matching', () => {
     await ingestLead(lead({ email: 'a,phone_e164.neq.x)@example.com' }), ctx);
     const ors = state.calls.flatMap((c) => c.filters).filter((f) => f[0] === 'or');
     expect(ors).toEqual([]);
+  });
+});
+
+describe('ingestLead for a contractor-owned Page', () => {
+  const owned = { ...ctx, contractorId: 'co-1', senderName: 'Pool Masters' };
+  const agreement = { id: 'pa-1', contractor_id: 'co-1', is_active: true, vertical_id: null, active_from: '2020-01-01', active_to: null };
+  const withAgreement = (q: Call): Result | null =>
+    q.table === 'pricing_agreements' ? { data: [agreement], error: null } : null;
+
+  it('assigns the new lead to the contractor with their active pricing agreement, like a contractor funnel', async () => {
+    const base = state.resolve;
+    state.resolve = (q) => withAgreement(q) ?? base(q);
+    expect(await ingestLead(lead(), owned)).toMatchObject({ status: 'created', leadId: 'new-1' });
+    const assign = state.calls.find((c) => c.table === 'lead_assignments' && c.op === 'upsert');
+    expect(assign?.payload).toEqual({ lead_id: 'new-1', contractor_id: 'co-1', pricing_agreement_id: 'pa-1' });
+    const activity = inserted('lead_activities')[0];
+    expect(activity.payload?.metadata).toMatchObject({ contractor_id: 'co-1' });
+  });
+
+  it('assigns even with no active agreement (agreement left empty)', async () => {
+    expect(await ingestLead(lead(), owned)).toMatchObject({ status: 'created' });
+    expect(state.calls.find((c) => c.table === 'lead_assignments' && c.op === 'upsert')?.payload).toMatchObject({ contractor_id: 'co-1', pricing_agreement_id: null });
+  });
+
+  it('does not assign a house lead to anyone', async () => {
+    await ingestLead(lead(), ctx);
+    expect(state.calls.some((c) => c.table === 'lead_assignments')).toBe(false);
+  });
+
+  it('never merges into a lead that belongs to someone else: the contractor gets their own lead', async () => {
+    const base = state.resolve;
+    state.resolve = (q) => {
+      if (q.table === 'leads' && q.op === 'select' && filtersOn(q, 'email_normalized', 'phone_e164')) return { data: [existing()], error: null };
+      return base(q); // no lead_assignments row for this contractor
+    };
+    expect(await ingestLead(lead(), owned)).toMatchObject({ status: 'created', leadId: 'new-1' });
+  });
+
+  it('still treats a lead already assigned to the same contractor as a duplicate', async () => {
+    const base = state.resolve;
+    state.resolve = (q) => {
+      if (q.table === 'leads' && q.op === 'select' && filtersOn(q, 'email_normalized', 'phone_e164')) return { data: [existing()], error: null };
+      if (q.table === 'lead_assignments' && q.op === 'select') return { data: [{ id: 'as-1' }], error: null };
+      return base(q);
+    };
+    expect(await ingestLead(lead(), owned)).toMatchObject({ status: 'duplicate', duplicateOf: 'old-1' });
   });
 });
