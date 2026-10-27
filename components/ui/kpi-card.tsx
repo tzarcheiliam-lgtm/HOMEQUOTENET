@@ -13,6 +13,7 @@ export function KpiCard({
   sub,
   icon: Icon,
   accent,
+  trend,
   className,
 }: {
   label: string;
@@ -20,6 +21,8 @@ export function KpiCard({
   sub?: string;
   icon?: LucideIcon;
   accent?: 'money';
+  /** Optional small chart (e.g. a sparkline) beside the value. */
+  trend?: React.ReactNode;
   className?: string;
 }) {
   const isMoney = accent === 'money';
@@ -30,14 +33,17 @@ export function KpiCard({
           {Icon && <Icon className="size-3.5 shrink-0" aria-hidden="true" />}
           <span className="min-w-0">{label}</span>
         </p>
-        <p
-          className={cn(
-            'mt-1 text-xl font-semibold leading-7 tabular-nums tracking-tight lg:text-2xl lg:leading-8',
-            isMoney && 'text-emerald-700'
-          )}
-        >
-          {value}
-        </p>
+        <div className="mt-1 flex items-end justify-between gap-2">
+          <p
+            className={cn(
+              'text-xl font-semibold leading-7 tabular-nums tracking-tight lg:text-2xl lg:leading-8',
+              isMoney && 'text-emerald-700'
+            )}
+          >
+            {value}
+          </p>
+          {trend ? <span className="mb-1.5 shrink-0">{trend}</span> : null}
+        </div>
         {sub && <p className="text-xs leading-4 text-muted-foreground">{sub}</p>}
       </CardContent>
     </Card>

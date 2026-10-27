@@ -16,6 +16,7 @@ import {
   requireLeadAccess,
 } from '@/lib/contractor-access';
 import { resolvePricingAgreementId } from '@/lib/data/contractors';
+import { nextLeadToCall } from '@/lib/data/leads';
 import { leadFormToObject, leadInputSchema } from '@/lib/validation/leads';
 import { enqueueNotificationEvent, flushNotificationsSoon } from '@/lib/notifications/outbox';
 import { flushCalendarSyncSoon } from '@/lib/calendar/sync.server';
@@ -326,6 +327,11 @@ export async function logContactAttempt(
     .eq('status', 'new');
 
   revalidateLead(id);
+  // "Log & next lead": the setter's calling loop moves straight on.
+  if (formData.get('intent') === 'save_and_next' && profile.role !== 'contractor') {
+    const next = await nextLeadToCall(id);
+    redirect(next ? `/app/leads/${next}` : '/app/leads?done=1');
+  }
   return { success: true };
 }
 

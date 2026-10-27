@@ -9,6 +9,8 @@ import { StatusBadge } from '@/components/ui/status-badge';
 import { PageHeader } from '@/components/ui/page-header';
 import { UserActions } from '@/components/team/user-actions';
 import { ROLE_LABELS } from '@/lib/nav';
+import { GoalInput } from '@/components/calls/stats/goal-input';
+import { DEFAULT_DAILY_GOAL } from '@/lib/calls/goals';
 
 export const metadata = { title: 'User · HomeQuote Network' };
 
@@ -71,6 +73,25 @@ export default async function UserDetailPage({
               <Row label="Created" value={fmt(user.created_at)} />
             </CardContent>
           </Card>
+
+          {user.role !== 'contractor' ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Daily call goal</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  The number their calling HUD counts toward each day. Cold calls and
+                  homeowner contact attempts both count.
+                </p>
+                <GoalInput
+                  userId={user.id}
+                  goal={user.daily_call_goal ?? DEFAULT_DAILY_GOAL}
+                  name={user.full_name || user.email || 'This user'}
+                />
+              </CardContent>
+            </Card>
+          ) : null}
 
           <Card>
             <CardHeader>

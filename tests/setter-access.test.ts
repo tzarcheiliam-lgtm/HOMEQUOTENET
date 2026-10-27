@@ -74,6 +74,9 @@ describe('Appointment Setter server-side route guards', () => {
       'app/app/calls/logs/page.tsx',
       'app/app/calls/appointments/page.tsx',
       'app/app/calls/emails/page.tsx',
+      'app/app/calls/stats/page.tsx',
+      'app/app/calls/dial/page.tsx',
+      'app/app/calls/layout.tsx',
     ]) {
       expect(read(page)).toContain('requireCallWorkspace()');
     }

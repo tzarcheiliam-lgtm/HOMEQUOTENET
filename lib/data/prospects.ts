@@ -11,6 +11,7 @@ import type {
 } from '@/lib/types';
 import {
   CALL_PAGE_SIZE,
+  DM_REACHED_OUTCOMES,
   QUEUE_DISPOSITIONS,
   type CallSort,
   type CallView,
@@ -395,7 +396,17 @@ export async function getCallerDashboard(
   const now = new Date();
   const { start, end } = dayBoundsInZone(now, timeZone);
 
-  const [queue, callbacks, interested, booked, todayAttempts, allAttempts] = await Promise.all([
+  // All-time numbers are exact counts: fetching the rows would stop at the
+  // API's 1000-row page and quietly undercount a busy caller.
+  const allCount = (outcomes?: ProspectDisposition[]) => {
+    let q = supabase
+      .from('prospect_call_attempts')
+      .select('id', { count: 'exact', head: true })
+      .eq('caller_id', callerId);
+    if (outcomes) q = q.in('outcome', outcomes);
+    return q;
+  };
+  const [queue, callbacks, interested, booked, todayAttempts, allAttempts, allDm, allInterested, allBooked] = await Promise.all([
     supabase
       .from('contractor_prospects')
       .select('id', { count: 'exact', head: true })
@@ -428,11 +439,14 @@ export async function getCallerDashboard(
       .eq('caller_id', callerId)
       .gte('created_at', start.toISOString())
       .lt('created_at', end.toISOString()),
-    supabase
-      .from('prospect_call_attempts')
-      .select('outcome, created_at')
-      .eq('caller_id', callerId),
+    allCount(),
+    allCount(DM_REACHED_OUTCOMES),
+    allCount(['interested']),
+    allCount(['appointment_booked']),
   ]);
+  const attemptsAll = allAttempts.count ?? 0;
+  const dmAll = allDm.count ?? 0;
+  const rate = (n: number, d: number) => (d === 0 ? null : n / d);
 
   return {
     callsDueToday: queue.count ?? 0,
@@ -440,7 +454,15 @@ export async function getCallerDashboard(
     interestedOpen: interested.count ?? 0,
     appointmentsBooked: booked.count ?? 0,
     today: computeMetrics((todayAttempts.data ?? []) as AttemptLike[]),
-    allTime: computeMetrics((allAttempts.data ?? []) as AttemptLike[]),
+    allTime: {
+      attempts: attemptsAll,
+      dmConversations: dmAll,
+      interested: allInterested.count ?? 0,
+      appointmentsBooked: allBooked.count ?? 0,
+      contactRate: rate(dmAll, attemptsAll),
+      interestRate: rate(allInterested.count ?? 0, dmAll),
+      bookingRate: rate(allBooked.count ?? 0, dmAll),
+    },
   };
 }
 
