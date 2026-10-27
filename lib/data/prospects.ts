@@ -16,6 +16,7 @@ import {
   type CallSort,
   type CallView,
 } from '@/lib/calls/constants';
+import { isRestingUntil } from '@/lib/calls/cadence';
 import {
   computeMetrics,
   dayBoundsInZone,
@@ -116,12 +117,18 @@ function applyView(
   view: CallView,
   me: Profile,
   callers: CallerOption[],
-  now: Date
+  now: Date,
+  /** Keep this prospect in "mine" even if it just started resting (for Next). */
+  keepId?: string
 ) {
   switch (view) {
     case 'mine': {
       const assignedTo = assignedProfileIdForView('mine', me.id, callers);
-      return query.eq('assigned_to', assignedTo).in('disposition', QUEUE_DISPOSITIONS);
+      // The work queue: prospects the call cadence is resting wait in "Resting & parked".
+      return query
+        .eq('assigned_to', assignedTo)
+        .in('disposition', QUEUE_DISPOSITIONS)
+        .or(`resting_until.is.null,resting_until.lte.${now.toISOString()}${keepId ? `,id.eq.${keepId}` : ''}`);
     }
     case 'liam':
     case 'nadav': {
@@ -144,6 +151,9 @@ function applyView(
       return query.eq('disposition', 'appointment_booked');
     case 'dnc':
       return query.eq('disposition', 'do_not_call');
+    case 'resting':
+      // Not due yet under the cadence, or parked (parked for good = infinity).
+      return query.in('disposition', QUEUE_DISPOSITIONS).gt('resting_until', now.toISOString());
     default:
       return query;
   }
@@ -341,7 +351,8 @@ export async function nextProspectIdFor(
     .eq('assigned_to', me.id)
     .is('archived_at', null)
     .in('disposition', QUEUE_DISPOSITIONS)
-    .or(`next_callback_at.is.null,next_callback_at.lte.${now}`)
+    // Neither a future callback nor the call cadence says to wait.
+    .or(`dial_after.is.null,dial_after.lte.${now}`)
     .neq('id', currentId)
     .order('call_attempt_count', { ascending: true })
     .order('created_at', { ascending: true })
@@ -362,12 +373,17 @@ export async function nextProspectInContext(
 ): Promise<string | null> {
   const supabase = await createClient();
   const now = new Date();
-  let query = supabase.from('contractor_prospects').select('id').is('archived_at', null) as unknown as ListQuery;
-  query = applyView(query, filters.view ?? 'mine', me, callers, now);
+  const view = filters.view ?? 'mine';
+  let query = supabase.from('contractor_prospects').select('id, resting_until').is('archived_at', null) as unknown as ListQuery;
+  query = applyView(query, view, me, callers, now, currentId);
   query = applyFilters(query, filters, now);
   const sort: CallSort = filters.sort ?? (filters.view === 'callbacks' ? 'next_callback' : 'oldest');
   const { data } = await applySort(query, sort).order('id', { ascending: true }).limit(1000);
-  const ids = ((data ?? []) as { id: string }[]).map((r) => r.id);
+  // Next never lands on a prospect the cadence is resting, unless that list is what's being worked.
+  const rested = (r: { resting_until: string | null }) => view !== 'resting' && isRestingUntil(r.resting_until, now);
+  const ids = ((data ?? []) as unknown as { id: string; resting_until: string | null }[])
+    .filter((r) => r.id === currentId || !rested(r))
+    .map((r) => r.id);
   const i = ids.indexOf(currentId);
   if (i === -1) return ids.find((id) => id !== currentId) ?? null;
   return ids[i + 1] ?? null;
@@ -413,7 +429,7 @@ export async function getCallerDashboard(
       .eq('assigned_to', callerId)
       .is('archived_at', null)
       .in('disposition', QUEUE_DISPOSITIONS)
-      .or(`next_callback_at.is.null,next_callback_at.lte.${end.toISOString()}`),
+      .or(`dial_after.is.null,dial_after.lte.${end.toISOString()}`),
     supabase
       .from('contractor_prospects')
       .select('id', { count: 'exact', head: true })
@@ -604,4 +620,57 @@ export async function listSalesAppointments(
       partner_name: rest.partner_id ? (nameById.get(rest.partner_id) ?? null) : null,
     };
   });
+}
+
+/* ---- Spreading unassigned prospects (admin) ------------------------------ */
+
+export interface SpreadOverview {
+  /** Unassigned prospects still worth calling, per niche ('' = no niche). */
+  unassignedByNiche: { niche: string; count: number }[];
+  unassignedTotal: number;
+  /** Each assignable person's open list: in the queue and not parked. */
+  loads: (CallerOption & { load: number })[];
+}
+
+/**
+ * What the "Spread unassigned" dialog needs. Admin pages only: RLS shows
+ * callers just their own rows, so a caller would see nothing unassigned.
+ */
+export async function getSpreadOverview(callers: CallerOption[]): Promise<SpreadOverview> {
+  const supabase = await createClient();
+  const byNiche = new Map<string, number>();
+  // Page past the API's 1000-row cap; only the niche column is read.
+  for (let from = 0; ; from += 1000) {
+    const { data } = await supabase
+      .from('contractor_prospects')
+      .select('niche')
+      .is('assigned_to', null)
+      .is('archived_at', null)
+      .in('disposition', QUEUE_DISPOSITIONS)
+      .order('id', { ascending: true })
+      .range(from, from + 999);
+    const rows = (data ?? []) as { niche: string | null }[];
+    for (const r of rows) byNiche.set(r.niche ?? '', (byNiche.get(r.niche ?? '') ?? 0) + 1);
+    if (rows.length < 1000) break;
+  }
+  const loads = await Promise.all(
+    callers.map(async (c) => {
+      const { count } = await supabase
+        .from('contractor_prospects')
+        .select('id', { count: 'exact', head: true })
+        .eq('assigned_to', c.id)
+        .is('archived_at', null)
+        .is('parked_at', null)
+        .in('disposition', QUEUE_DISPOSITIONS);
+      return { ...c, load: count ?? 0 };
+    })
+  );
+  const unassignedByNiche = [...byNiche]
+    .map(([niche, count]) => ({ niche, count }))
+    .sort((a, b) => b.count - a.count || a.niche.localeCompare(b.niche));
+  return {
+    unassignedByNiche,
+    unassignedTotal: unassignedByNiche.reduce((n, r) => n + r.count, 0),
+    loads,
+  };
 }

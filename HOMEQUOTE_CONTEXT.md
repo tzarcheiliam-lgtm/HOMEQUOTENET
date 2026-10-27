@@ -298,6 +298,8 @@ Lives at `/app/calls` (admin/caller/setter).
   `redirect.ts` (validated `?next=` handling for sign-in).
 - **Daily goal / gamification layer** (100 calls/day HUD, one-tap outcomes,
   power hour, stats page, leaderboard) sits on top of these logs — see §34.
+- **Call cadence** (rests prospects after missed calls, parks them after 6 in a
+  row) decides who is due to call — see §38.
 - Views in the UI are just filters over one table: My list / Liam's / Nadav's
   / All / New / Callbacks due / Interested / Booked / Do not call.
 - `caller`/`admin` are the only assignable roles for prospects
@@ -1319,3 +1321,43 @@ Plan: `docs/quick-email-plan.md`.
   2. Set `EMAIL_MAILING_ADDRESS` in Vercel.
   3. Optionally seed the five templates so admins can edit them.
 
+
+
+## 38. Prospect call cadence (migration `0063_prospect_cadence.sql`, 2026-10-27; applied to production 2026-10-27, code not yet deployed)
+Spaces out retries to contractor prospects we couldn't reach, and takes them out of the queue after too many misses. It's the first piece of the outbound automation plan (A1); it sends nothing to anyone.
+
+**Rules** (`lib/calls/cadence.ts`, pure; constants in `CADENCE`):
+- A no-connect call (`no_answer`, `left_voicemail`, `gatekeeper`) adds 1 to the prospect's miss streak. The prospect then rests until its next try: 1, 2, 3, 5, then 7 days later (the last gap repeats). Tries land on a weekday, in the other half of the day from this call (a morning call is retried at 1pm, an afternoon one at 9am, Los Angeles time).
+- The 6th miss in a row parks it for 90 days, then it comes back once with a fresh streak. The next park is for good (no return date).
+- Any other result (reached someone, callback, interested, booked, not interested, wrong number, DNC) clears the streak, the rest and the park. `park_count` is kept. `calling` is not a result and changes nothing.
+- Both writers use it: `logCallOutcome` (`lib/actions/prospects.ts`) and the AI-call store's `recordProspectResult` (`lib/ai-calling/store.server.ts`), spread after `prospectPatchFor`.
+
+**Data (0063):**
+- Columns on `contractor_prospects`: `no_connect_streak`, `next_attempt_at` (don't dial before; null = any time), `parked_at`, `park_count`.
+- Two generated columns: `resting_until` (= `next_attempt_at`, or `'infinity'` when parked for good) and `dial_after` (= the later of `resting_until` and `next_callback_at`). Queries filter on these so each needs one `.or()`. Use `isRestingUntil()` in JS: `new Date('infinity')` is NaN.
+- The migration backfills `no_connect_streak` from the call log (misses since the last other result; `calling` ignored). It rests or parks nothing. `guard_prospect_caller_update()` is unchanged: these are calling fields the caller already owns.
+
+**Queue:**
+- "My Call List" hides prospects whose `resting_until` is in the future. The new **Resting & Parked** view (all call roles) lists them.
+- `nextProspectIdFor` (Next, Save & next, power hour `/app/calls/dial`) and the caller dashboard's "due today" count use `dial_after`.
+- `nextProspectInContext` skips resting prospects (except in the Resting view) but keeps the current one in the list, so Next still moves forward from it.
+- UI: `components/calls/cadence-label.tsx` ("Next try …" / "Parked until …" / "Parked") in the table's Next column, on the phone cards and on the prospect page. The prospect page also shows "N of 6 missed in a row" and a **Return to call list** button (`returnProspectToQueue`: holder or admin; clears rest/park/streak; audited as `prospect.return_to_queue` through the service role, since `audit_logs` insert is admin-only under RLS).
+
+**Tests:** `tests/calls-cadence.test.ts` (pure rules, weekend and DST) and `tests/calls-cadence-db.test.ts` (PGlite, every real migration: generated columns, backfill, the queue queries, the real call-log action). The fake client's `or()` now understands `lt/lte/gt/gte`.
+
+**Two files share 0063** (`0063_prospect_cadence.sql` here and `0063_prospect_email_opt_out.sql` in §37), like the two 0027 and 0042 files: unrelated columns, both applied to production, either order works, a fresh database applies them in filename order. Never renumber an applied file.
+
+**Deploy order:** apply 0063, then deploy. The queue queries filter on the new generated columns, so deploying first breaks the call list and Next. **Production:** 0063 applied 2026-10-27 by the owner in the Supabase SQL editor. Verified: the six columns (two generated), the check, the index, and the backfill (streaks 0: 677, 1: 192, 2: 8, 3: 1, 4: 1; nobody rested or parked).
+
+**Spread unassigned (no migration):** admins get a **Spread unassigned (N)** button on `/app/calls` (`components/calls/spread-prospects-dialog.tsx`).
+- The admin picks people (any active admin / caller / setter, each shown with their open list), optionally one niche and a max per person, and sees a live preview of the split.
+- Who gets what: `planSpread` (`lib/calls/spread.ts`, pure, shared by the preview and the server) gives each prospect, oldest first, to whoever has the shortest open list (existing + given so far). Ties go to the person listed first. The cap leaves the rest unassigned.
+- `spreadUnassignedProspects` (`lib/actions/prospects.ts`, admin-only):
+  - reads unassigned, unarchived prospects in a queue disposition (so never DNC or final outcomes), paging past 1000 rows;
+  - writes in chunks of 100 with `.is('assigned_to', null)`, so a prospect assigned by hand in the meantime is never taken;
+  - audits one `prospect.spread` row with the counts.
+- "Open list" for the preview = in the queue and not parked (`getSpreadOverview` in `lib/data/prospects.ts`).
+- Admin-triggered only; nothing runs on a schedule.
+- Tests: `tests/calls-spread.test.ts` (pure) and `tests/calls-spread-db.test.ts` (PGlite: only callable prospects move, the shortest list fills first, niche and cap, refusals, the overview).
+
+**Not built yet** (rest of A1): skipping prospects that already match a signed contractor. The cadence limits are code constants, not admin settings.

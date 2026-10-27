@@ -451,6 +451,14 @@ export interface ContractorProspect {
   email_service_interests: string[];
   best_contact_method: string | null;
   do_not_call_at: string | null;
+  // Call cadence (0063), rules in lib/calls/cadence.ts. resting_until and
+  // dial_after are generated columns ('infinity' when parked for good).
+  no_connect_streak: number;
+  next_attempt_at: string | null;
+  parked_at: string | null;
+  park_count: number;
+  resting_until: string | null;
+  dial_after: string | null;
   notes: string | null;
   source: string | null;
   import_batch: string | null;

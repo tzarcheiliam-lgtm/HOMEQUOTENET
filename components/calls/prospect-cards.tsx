@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { isDialable } from '@/lib/calls/rules';
 import type { ProspectListRow } from '@/lib/data/prospects';
 import { DispositionBadge } from './disposition-badge';
+import { CadenceLabel } from './cadence-label';
 import { fmtDateTime, fmtPhone, fmtRelative, isDue, telHref } from './format';
 
 /**
@@ -85,7 +86,9 @@ export function ProspectCards({
                       {due ? 'Due ' : 'Callback '}
                       {fmtDateTime(p.next_callback_at)}
                     </span>
-                  ) : null}
+                  ) : (
+                    <CadenceLabel prospect={p} />
+                  )}
                   {p.rating !== null ? (
                     <span className="inline-flex items-center gap-1 text-muted-foreground">
                       <Star className="size-3.5" aria-hidden="true" />

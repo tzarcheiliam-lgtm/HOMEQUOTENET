@@ -150,6 +150,7 @@ export type CallView =
   | 'callbacks'
   | 'interested'
   | 'booked'
+  | 'resting'
   | 'dnc';
 
 export const CALL_VIEWS: { value: CallView; label: string; adminOnly: boolean }[] = [
@@ -161,6 +162,7 @@ export const CALL_VIEWS: { value: CallView; label: string; adminOnly: boolean }[
   { value: 'callbacks', label: 'Callbacks Due', adminOnly: false },
   { value: 'interested', label: 'Interested', adminOnly: false },
   { value: 'booked', label: 'Appointments Booked', adminOnly: false },
+  { value: 'resting', label: 'Resting & Parked', adminOnly: false },
   { value: 'dnc', label: 'Do Not Call', adminOnly: false },
 ];
 

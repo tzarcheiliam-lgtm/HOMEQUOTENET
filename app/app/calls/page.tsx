@@ -4,12 +4,14 @@ import { cn } from '@/lib/utils';
 import { requireCallWorkspace } from '@/lib/auth';
 import {
   getCallerDashboard,
+  getSpreadOverview,
   listCallers,
   listProspectFilterOptions,
   listProspects,
   type ProspectFilters as Filters,
 } from '@/lib/data/prospects';
 import { CALL_VIEWS, type CallSort, type CallView } from '@/lib/calls/constants';
+import { CADENCE } from '@/lib/calls/cadence';
 import { buttonVariants } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/page-header';
 import { CallsSubnav } from '@/components/calls/calls-subnav';
@@ -19,6 +21,7 @@ import { ProspectFilters } from '@/components/calls/prospect-filters';
 import { ProspectsTable } from '@/components/calls/prospects-table';
 import { Pagination } from '@/components/calls/pagination';
 import { RefreshProspectsDialog } from '@/components/calls/refresh-prospects-dialog';
+import { SpreadProspectsDialog } from '@/components/calls/spread-prospects-dialog';
 import type { ProspectDisposition } from '@/lib/types';
 import { contextFrom, contextQuery } from '@/lib/calls/context';
 import { getGoalSnapshot, getTeamBoard, type BoardRow, type GoalSnapshot } from '@/lib/data/call-stats';
@@ -41,6 +44,7 @@ const EMPTY_HINTS: Record<CallView, string> = {
   callbacks: 'No callbacks are due. Promised callbacks appear here at their time.',
   interested: 'No one has said yes yet. Interested and follow-up outcomes land here.',
   booked: 'No sales appointments booked yet.',
+  resting: `Nobody is resting. Prospects we could not reach wait here until their next try; after ${CADENCE.maxNoConnect} misses in a row they are parked.`,
   dnc: 'No contractor has asked not to be called.',
 };
 
@@ -73,13 +77,14 @@ export default async function CallsPage({
   };
 
   const callers = await listCallers();
-  const [result, options, dashboard, snapshot, board] = await Promise.all([
+  const [result, options, dashboard, snapshot, board, spread] = await Promise.all([
     listProspects(filters, me, callers),
     listProspectFilterOptions(),
     isAdmin ? null : getCallerDashboard(me.id),
     // Shared with the layout's HUD (cached per request); never blocks the list.
     getGoalSnapshot(me.id).catch((): GoalSnapshot | null => null),
     isAdmin ? getTeamBoard().catch((): BoardRow[] => []) : Promise.resolve([] as BoardRow[]),
+    isAdmin ? getSpreadOverview(callers).catch(() => null) : null,
   ]);
 
   const done = first(sp.done) === '1';
@@ -101,6 +106,7 @@ export default async function CallsPage({
         {isAdmin ? (
           <>
             <RefreshProspectsDialog assignees={callers} />
+            {spread ? <SpreadProspectsDialog overview={spread} /> : null}
             <Link href="/app/calls/new" className={cn(buttonVariants(), 'max-lg:hidden')}>
               <Plus className="size-4" aria-hidden="true" /> Add prospect
             </Link>

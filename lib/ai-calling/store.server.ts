@@ -2,6 +2,7 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { prospectPatchFor } from '@/lib/calls/rules';
+import { cadencePatchFor, type CadenceState } from '@/lib/calls/cadence';
 import type { AiCallJob, AiCallingSettings, ContractorCallSettings, JobStore, LeadFacts, ProspectCallResult } from './types';
 
 /** Service-role implementation of JobStore. Only used from trusted server code. */
@@ -91,7 +92,7 @@ export function createSupabaseJobStore(db: SupabaseClient = createAdminClient())
     },
     async recordProspectResult(job: AiCallJob, r: ProspectCallResult) {
       if (!job.prospect_id) return;
-      const p = must(await db.from('contractor_prospects').select('disposition').eq('id', job.prospect_id).maybeSingle(), 'prospect') as { disposition: string } | null;
+      const p = must(await db.from('contractor_prospects').select('disposition, no_connect_streak, park_count, next_attempt_at, parked_at').eq('id', job.prospect_id).maybeSingle(), 'prospect') as ({ disposition: string } & CadenceState) | null;
       if (!p) return;
       // A do-not-call prospect is never touched by automation (only a person can lift it).
       if (p.disposition === 'do_not_call' && r.outcome !== 'do_not_call') return;
@@ -100,7 +101,7 @@ export function createSupabaseJobStore(db: SupabaseClient = createAdminClient())
         attempt_number: 0, previous_disposition: p.disposition, new_disposition: r.outcome,
       });
       if (ins.error) throw new Error(`prospect call log: ${ins.error.message}`);
-      const patch = prospectPatchFor(r.outcome, { outcome: r.outcome, notes: r.notes });
+      const patch = { ...prospectPatchFor(r.outcome, { outcome: r.outcome, notes: r.notes }), ...cadencePatchFor(r.outcome, p) };
       const up = await db.from('contractor_prospects').update({ ...patch, last_contacted_at: new Date().toISOString() }).eq('id', job.prospect_id);
       if (up.error) throw new Error(`prospect update: ${up.error.message}`);
     },
