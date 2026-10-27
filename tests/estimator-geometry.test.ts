@@ -62,7 +62,7 @@ describe('poolGeometry presets', () => {
   });
 
   it('missing, unknown or empty answers fall back to unsure / medium', () => {
-    for (const answers of [{}, { shape: ['hexagon'], size: ['huge'] }, { shape: [], size: [] }]) {
+    for (const answers of [{}, { shape: ['hexagon'], size: ['huge'] }, { shape: [], size: [] }] as Answers[]) {
       const g = geo(answers);
       expect([g.shape, g.size, g.lengthFt, g.widthFt, g.interiorSqft]).toEqual(['unsure', 'unsure', 30, 15, 900]);
     }
