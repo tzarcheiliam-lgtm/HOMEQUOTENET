@@ -9,7 +9,7 @@ vi.mock('server-only', () => ({}));
 
 import { finalizeOutbound, isHelp, isOptOut, openingMessage, projectLabel } from '@/lib/sms/rules';
 import { agentResultSchema, runSmsAgent, SMS_SYSTEM_PROMPT } from '@/lib/sms/agent';
-import { ackOutbound, claimOutbound, handleInbound, metaProject, startSmsForLead, startSmsForMetaLead } from '@/lib/sms/service';
+import { ackOutbound, claimOutbound, handleInbound, metaProject, queueWorkflowText, startSmsForLead, startSmsForMetaLead } from '@/lib/sms/service';
 import { checkBridgeHealth, describeStuck } from '@/lib/sms/health';
 import { presetConfig } from '@/lib/funnels/presets';
 
@@ -648,5 +648,95 @@ describe('Meta Pages owned by a contractor', () => {
     const house = await poolLead('(818) 555-0188');
     await startSmsForMetaLead(sb, house, T);
     expect((await q(`select sender_name, contractor_id from public.sms_conversations where lead_id=$1`, [house]))[0]).toEqual({ sender_name: 'HomeQuote', contractor_id: null });
+  });
+});
+
+describe('workflow texts through the Mac bridge', () => {
+  const agentOk = () => vi.fn(async () => ({ message: 'Great, what day works for a quick visit?', mode: 'text' as const, qualification: 'unknown' as const, call_time: null, appointment_time: null, handoff: false, close: false, summary: 's' }));
+  async function plainLead(phone: string) {
+    const leadId = randomUUID();
+    await q(`insert into public.leads(id, first_name, last_name, phone, state, status, source) values ($1,'Dana','Ray',$2,'CA','new','website')`, [leadId, phone]);
+    return leadId;
+  }
+  const step = () => randomUUID();
+
+  it('queues one text per workflow step, in a conversation the workflow owns', async () => {
+    const leadId = await plainLead('(818) 555-0301'); const s = step();
+    const r = await queueWorkflowText(sb, { leadId, body: 'Hi Dana, quick question about your project https://x.example', contractorId: null, stepRunId: s, assistant: false, now: T });
+    expect(r).toMatchObject({ ok: true, queued: true });
+    expect(await queueWorkflowText(sb, { leadId, body: 'again', contractorId: null, stepRunId: s, assistant: false, now: T })).toMatchObject({ ok: true, queued: false }); // retry = no second text
+    const msgs = await messages(leadId);
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].body).not.toContain('https://'); // links are removed, like every other text
+    expect((await q(`select workflow_owned, sender_name from public.sms_conversations where lead_id=$1`, [leadId]))[0]).toEqual({ workflow_owned: true, sender_name: 'HomeQuote' });
+  });
+
+  it('follows the texting rules: off, opted out, a number another lead is using, a person took over', async () => {
+    await setSettings(`enabled=false`);
+    expect(await queueWorkflowText(sb, { leadId: await plainLead('(818) 555-0302'), body: 'x', contractorId: null, stepRunId: step(), assistant: false, now: T })).toEqual({ ok: false, reason: 'texting_off' });
+    await setSettings(`enabled=true`);
+    await q(`insert into public.sms_opt_outs(phone_e164, source) values ('+18185550303','test')`);
+    expect(await queueWorkflowText(sb, { leadId: await plainLead('(818) 555-0303'), body: 'x', contractorId: null, stepRunId: step(), assistant: false, now: T })).toEqual({ ok: false, reason: 'opted_out' });
+    const first = await plainLead('(818) 555-0304');
+    await queueWorkflowText(sb, { leadId: first, body: 'hello there', contractorId: null, stepRunId: step(), assistant: false, now: T });
+    expect(await queueWorkflowText(sb, { leadId: await plainLead('(818) 555-0304'), body: 'x', contractorId: null, stepRunId: step(), assistant: false, now: T })).toEqual({ ok: false, reason: 'phone_in_use' });
+    await q(`update public.sms_conversations set status='paused' where lead_id=$1`, [first]);
+    expect(await queueWorkflowText(sb, { leadId: first, body: 'x', contractorId: null, stepRunId: step(), assistant: false, now: T })).toEqual({ ok: false, reason: 'person_took_over' });
+  });
+
+  it('a reply to a workflow text is saved and tells workflows, without the assistant answering', async () => {
+    const leadId = await plainLead('(818) 555-0305');
+    await queueWorkflowText(sb, { leadId, body: 'Hi Dana, still thinking about the remodel?', contractorId: null, stepRunId: step(), assistant: false, now: T });
+    const agent = agentOk();
+    const r = await handleInbound(sb, { phone: '(818) 555-0305', body: 'yes still interested', guid: `g-${randomUUID()}` }, { agent, now: () => T, aiConfigured: true });
+    expect(r).toEqual({ handled: true, reason: 'workflow_owned' });
+    expect(agent).not.toHaveBeenCalled();
+    const [ev] = await q(`select type, lead_id, payload from public.workflow_events where lead_id=$1 and type='message.received'`, [leadId]);
+    expect(ev).toMatchObject({ type: 'message.received', lead_id: leadId });
+    expect(ev.payload).toMatchObject({ channel: 'sms', leadId, hasBody: true });
+    // STOP still opts them out and is not passed on as a reply
+    await handleInbound(sb, { phone: '(818) 555-0305', body: 'STOP', guid: `g-${randomUUID()}` }, { agent, now: () => T });
+    expect(await q(`select 1 from public.workflow_events where lead_id=$1 and type='message.received'`, [leadId])).toHaveLength(1);
+  });
+
+  it('"skip if already being texted" leaves a lead who got the automatic first text alone', async () => {
+    const { leadId } = await newLead();
+    expect((await startSmsForLead(sb, leadId, T)).started).toBe(true);
+    expect(await queueWorkflowText(sb, { leadId, body: 'Hi again', contractorId: null, stepRunId: step(), assistant: true, onlyIfNotTexted: true, now: T })).toEqual({ ok: false, reason: 'already_texting' });
+    expect(await messages(leadId)).toHaveLength(1);
+  });
+
+  it('with "let the assistant answer" on, the texting assistant takes the replies', async () => {
+    const leadId = await plainLead('(818) 555-0306');
+    await queueWorkflowText(sb, { leadId, body: 'Hi Dana, want a free estimate visit?', contractorId: null, stepRunId: step(), assistant: true, now: T });
+    expect((await q(`select workflow_owned from public.sms_conversations where lead_id=$1`, [leadId]))[0].workflow_owned).toBe(false);
+    const agent = agentOk();
+    const r = await handleInbound(sb, { phone: '(818) 555-0306', body: 'sure, what times?', guid: `g-${randomUUID()}` }, { agent, now: () => T, aiConfigured: true });
+    expect(agent).toHaveBeenCalledTimes(1); expect(r).toMatchObject({ handled: true, replied: true });
+  });
+});
+
+describe('the workflow "Send text" step', () => {
+  it('queues the rendered text once, skips in a live test, and writes the reason on the lead when texting is off', async () => {
+    const { executeGraphAction } = await import('@/lib/workflows/graph/actions.server');
+    const leadId = randomUUID();
+    await q(`insert into public.leads(id, first_name, last_name, phone, state, status, source) values ($1,'Ada','Lee','(818) 555-0411','CA','new','website')`, [leadId]);
+    const stepId = randomUUID();
+    const node = { id: 'send_sms_1', type: 'send_sms' as const, position: { x: 0, y: 0 }, config: { body: 'Hi {{lead.first_name}}, got your request!', assistant: false } };
+    const ctx: any = { lead: { first_name: 'Ada', phone: '(818) 555-0411' }, assignment: null, contractor: null, appointment: null, estimate: null, call: null, event: { payload: {} } };
+    const live: any = { db: sb, node, config: node.config, ctx, event: { id: randomUUID(), type: 'lead.created' }, now: T,
+      run: { id: randomUUID(), workflowId: randomUUID(), contractorId: null, leadId, mode: 'live', testRecipients: [] }, stepRun: { id: stepId, stepKey: 'send_sms_1', attempt: 1, idempotencyKey: 'k' } };
+    expect((await executeGraphAction({ ...live, run: { ...live.run, mode: 'test' } })).outcome).toBe('skipped');
+    expect(await messages(leadId)).toHaveLength(0);
+    expect((await executeGraphAction(live)).outcome).toBe('success');
+    expect((await executeGraphAction(live)).outcome).toBe('success'); // a retried step still sends one text
+    expect((await messages(leadId)).map((m: any) => m.body)).toEqual(['Hi Ada, got your request!']);
+
+    await setSettings(`enabled=false`);
+    const other = randomUUID();
+    await q(`insert into public.leads(id, first_name, last_name, phone, state, status, source) values ($1,'Bo','Lee','(818) 555-0412','CA','new','website')`, [other]);
+    const r = await executeGraphAction({ ...live, run: { ...live.run, leadId: other }, stepRun: { ...live.stepRun, id: randomUUID() } });
+    expect(r).toEqual({ outcome: 'skipped', reason: 'text_not_sent' });
+    expect((await q(`select body from public.lead_activities where lead_id=$1 and metadata->>'sms_skipped'='texting_off'`, [other]))[0].body).toMatch(/^Workflow text not sent: Automatic texting is turned off/);
   });
 });

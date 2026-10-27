@@ -18,6 +18,7 @@ const SKIP_TEXT: Record<string, string> = {
   anchor_past: 'Skipped — the appointment is too soon',
   no_email: 'Skipped — the homeowner has no email on file',
   no_phone: 'Skipped — the homeowner has no phone number on file',
+  text_not_sent: 'Skipped — the text was not sent (texting rules)',
 };
 
 export const describeSkip = (reason: string) => SKIP_TEXT[reason] ?? `Skipped — ${humanize(reason).toLowerCase()}`;

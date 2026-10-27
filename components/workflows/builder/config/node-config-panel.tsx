@@ -79,7 +79,7 @@ const FORMS: Record<GraphNodeType, (props: FormProps) => ReactNode> = {
 const INLINE_FIELDS: Record<GraphNodeType, string[]> = {
   trigger: ['event', 'filters', 'entry'],
   send_email: ['to', 'templateId', 'subject', 'body', 'onError'],
-  send_sms: [],
+  send_sms: ['body', 'assistant', 'onlyIfNotTexted', 'onError'],
   ai_call: ['purpose', 'note', 'contextFields', 'maxAttempts', 'retryDelayMinutes', 'windowStartHour', 'windowEndHour', 'resultTimeoutMinutes', 'analysisGraceMinutes'],
   create_task: ['title', 'description', 'dueInMinutes', 'assignee', 'onError'],
   add_note: ['body', 'onError'],

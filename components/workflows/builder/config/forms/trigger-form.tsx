@@ -31,7 +31,7 @@ const EVENT_HELP: Record<WorkflowEventType, string> = {
   'deal.won': 'A sale is recorded as won.',
   'deal.lost': 'The contractor marks the lead as lost.',
   'task.completed': 'A staff task created by a workflow is marked done.',
-  'message.received': 'The homeowner replies by text or email. Not available yet.',
+  'message.received': 'The homeowner replies by text to your Mac.',
   'ai_call.completed': 'An AI call ends. This only says the call finished, not that the homeowner qualified.',
   'ai_call.failed': 'An AI call ends without a conversation: it failed, expired, went unanswered or hit a busy line.',
   'workflow.manual_enrollment': 'Someone adds a lead to this workflow by hand.',

@@ -30,6 +30,12 @@ Pause and resume: see **§2a** below (defined, tested semantics).
 
 Testing: **dry run** (no sends, calls or writes; real leads only read) and **live test** (explicit test recipients required; no call is ever placed — the tester picks the result; status changes/assignments/notifications skipped; tasks/notes labelled `[Test]`).
 
+## 2b. Starter templates and the plain-English run history
+- **Templates** (`lib/workflows/graph/templates.ts`) are code, only ever create an unpublished draft, and each declares a `scope` (`any` | `network` | `contractor`) and an `icon`. A template with `contractorGraph` uses that wording for a contractor's own workflow (`templateGraphFor`); `templateFitsOwner` is enforced in `createGraphWorkflowAction`, not just the UI. Texting templates: *Text new website leads in 2 minutes* (`lead.source = 'website'` + consent), *Text new Meta form leads right away* (`lead.source = 'meta'` + consent), *No reply follow-up*, *Appointment reminders by text*, *Alert me when a lead texts back*. Network wording says "the HomeQuote team" because `{{contractor.name}}` is not available to a network workflow on "New lead" / "Appointment booked".
+- **Gallery**: `components/workflows/template-gallery.tsx` (radio cards: icon, summary, "For:", "Starts:", step chips, topic filter), used by `CreateGraphForm` on `/app/workflows/new`.
+- **Run history**: `lib/workflows/graph/run-story.ts` (`buildRunStory`, `runHeadline`; pure, tests in `tests/workflow-run-story.test.ts`) turns step runs, skip reasons and output codes into sentences, in Pacific time (`HISTORY_TIME_ZONE`). The run page shows it first and keeps the technical step list behind a "Details" toggle; the run list shows the latest sentence. For `text_not_sent`, the exact bridge reason is read from the lead's "Workflow text not sent" note (`metadata.sms_skipped`, matched by `step_run_id`).
+- **Known gap**: website funnel leads already get the automatic first text when texting is on, so a lead in the website template gets a second text (the template's "Needs" says so); there is no "already in a text conversation" condition yet.
+
 ## 2a. Pause and resume (defined behavior)
 Pausing sets `graph_status='paused'`, `enabled=false`, `paused_at=now()`. Resuming sets `enabled=true`, `enroll_from=now()`, `paused_at=null`. Pausing or resuming twice is a no-op.
 
@@ -82,7 +88,7 @@ In one transaction it: (1) disables and pauses every graph workflow; (2) cancels
 
 
 ## 6. Known limitations
-- No SMS provider; no outbound-webhook node in the builder. SMS opt-out is not exercised end to end.
+- Texting goes through the owner's Mac (iMessage bridge, `lib/sms`), not an SMS provider; see HOMEQUOTE_CONTEXT "Workflows text through the Mac bridge". No outbound-webhook node in the builder.
 - Live test never dials, so it does **not** verify real phone calling (see §7).
 - Booking is confirmed only against `appointments` rows. Nothing in this repo lets the Fish agent write an appointment itself, so unless a human or another flow records the appointment, "booked" claims end in *Needs human review* after the grace period. That is intentional (no false "Booked").
 - A call already with the provider cannot be hung up (no end-call API).

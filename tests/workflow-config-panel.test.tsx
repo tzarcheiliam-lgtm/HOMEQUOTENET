@@ -72,10 +72,12 @@ describe('NodeConfigPanel', () => {
     expect(render(nodeOf('add_note'))).toContain('Duplicate step');
   });
 
-  it('shows the SMS step as requiring setup', () => {
-    const html = render(nodeOf('send_sms'));
-    expect(html).toContain('Requires setup');
-    expect(decode(html)).toContain(NODE_TYPES.send_sms.setupNote);
+  it('shows the text step as editable, with the texting status and the reply choice', () => {
+    const html = decode(render(nodeOf('send_sms')));
+    expect(html).toContain('Texting off'); // the fixture has texting switched off
+    expect(html).toContain('Let the texting assistant answer replies');
+    expect(html).not.toContain('Requires setup');
+    expect(NODE_TYPES.send_sms.availability).toBe('ready');
   });
 
   it('lists all 9 AI call result paths and the completed-vs-qualified note', () => {

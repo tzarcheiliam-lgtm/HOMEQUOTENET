@@ -25,6 +25,7 @@ import { PublishDialog } from './panels/publish-dialog';
 import { LifecycleDialog, type LifecycleKind } from './panels/lifecycle-dialog';
 import { useAutosave } from './use-autosave';
 import { useGraphEditor } from './use-graph-editor';
+import { ChangeWithAi } from '../ai/change-with-ai';
 
 type Tab = 'step' | 'workflow' | 'issues' | 'test' | 'versions';
 type AddRequest = { kind: 'after'; nodeId: string; handle: string } | { kind: 'edge'; edgeId: string };
@@ -45,7 +46,11 @@ const STATUS_BADGE: Record<string, string> = {
   paused: 'bg-amber-100 text-amber-800',
 };
 
-export function BuilderShell({ detail, lookups, canEdit, isAdmin }: { detail: GraphWorkflowDetail; lookups: BuilderLookups; canEdit: boolean; isAdmin: boolean }) {
+export function BuilderShell({ detail, lookups, canEdit, isAdmin, aiRemaining }: {
+  detail: GraphWorkflowDetail; lookups: BuilderLookups; canEdit: boolean; isAdmin: boolean;
+  /** Set (number, or null when unknown) only for users who get the AI builder; undefined hides "Change with AI". */
+  aiRemaining?: number | null;
+}) {
   const router = useRouter();
   const desktop = useIsDesktop();
   const readOnly = !canEdit || !!detail.archivedAt;
@@ -234,6 +239,10 @@ export function BuilderShell({ detail, lookups, canEdit, isAdmin }: { detail: Gr
       {status === 'paused' && <p role="note" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">This workflow is paused: no new leads are enrolled and waiting runs are held. {detail.paused?.skippedEvents ?? 0} new {detail.paused?.skippedEvents === 1 ? 'event was' : 'events were'} not enrolled since it was paused; they will not enroll after you resume.{!readOnly && <> <button className="font-semibold underline" onClick={() => setLifecycle('resume')}>Resume</button></>}</p>}
       {autosave.status === 'conflict' && <p role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{autosave.message ?? 'This workflow was changed in another window.'}<Button size="sm" onClick={() => window.location.reload()}>Reload latest</Button></p>}
       {autosave.status === 'error' && autosave.message && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{autosave.message}</p>}
+
+      {!readOnly && aiRemaining !== undefined && (
+        <ChangeWithAi workflowId={detail.id} graph={graph} flushSave={autosave.saveNow} getRevision={autosave.revision} onApply={editor.replace} initialRemaining={aiRemaining} />
+      )}
 
       {/* Workspace */}
       {desktop === null && <div className="h-[60dvh] animate-pulse rounded-xl border bg-muted/40" aria-hidden />}

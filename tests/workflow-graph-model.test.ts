@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   GRAPH_TEMPLATES, GRAPH_NODE_TYPES, NODE_TYPES, addNodeAfter, autoLayout, canonicalGraph, checkConnection, connect, createNode,
   duplicateNode, emptyGraph, findCycle, handlesFor, insertOnEdge, nextBusinessWindow, previewTemplate, removeNode, resolveCallOutcome,
-  sampleContext, semanticGraph, updateNode, validateGraph, buildCallBrief, setTriggerEvent,
+  sampleContext, semanticGraph, templateGraphFor, updateNode, validateGraph, buildCallBrief, setTriggerEvent,
   type WorkflowGraph,
 } from '@/lib/workflows/graph';
 
@@ -29,8 +29,8 @@ describe('graph registry', () => {
   it('gives the AI call node a distinct handle for every supported result', () => {
     expect(handlesFor('ai_call', {}).map((h) => h.id)).toEqual(['booked', 'qualified_awaiting_scheduling', 'callback_requested', 'needs_human_review', 'no_answer', 'wrong_number', 'opted_out', 'failed', 'timed_out']);
   });
-  it('marks SMS as requiring setup', () => {
-    expect(NODE_TYPES.send_sms.availability).toBe('setup_required');
+  it('texting through the Mac bridge is a ready step', () => {
+    expect(NODE_TYPES.send_sms.availability).toBe('ready');
   });
 });
 
@@ -86,9 +86,12 @@ describe('structural validation', () => {
     expect(issue?.nodeId).toBe('assign_lead_1');
     expect(issue?.message).toMatch(/Assign to team member/);
   });
-  it('blocks steps that need setup (SMS)', () => {
+  it('a text step can be built anytime but only published while texting is on', () => {
     const g = addNodeAfter(emptyGraph('lead.assigned'), 'trigger', 'next', 'send_sms').graph;
-    expect(codes(g)).toContain('setup_required');
+    expect(codes(g)).not.toContain('setup_required');
+    const off = { sms: false, smsReason: 'Automatic texting is turned off.', calling: null };
+    expect(codes(g, { contractorId: null, mode: 'publish', integrations: off })).toContain('sms_not_ready');
+    expect(codes(g, { contractorId: null, mode: 'publish', integrations: { ...off, sms: true, smsReason: null } })).not.toContain('sms_not_ready');
   });
   it('rejects variables the trigger cannot supply', () => {
     let g = addNodeAfter(emptyGraph('lead.created'), 'trigger', 'next', 'add_note').graph;
@@ -111,7 +114,7 @@ describe('structural validation', () => {
   });
   it('checks AI-call readiness only at publish and never lets a workflow bypass the contractor mode', () => {
     const g = addNodeAfter(emptyGraph('lead.assigned'), 'trigger', 'next', 'ai_call').graph;
-    const ready = { sms: false, calling: { contractorMode: 'workflow_only' as const, agentConfigured: true, phoneConfigured: true, globalEnabled: true, adminEnabled: true } };
+    const ready = { sms: true, calling: { contractorMode: 'workflow_only' as const, agentConfigured: true, phoneConfigured: true, globalEnabled: true, adminEnabled: true } };
     expect(errorsOf(g, { contractorId, mode: 'publish', integrations: ready })).toEqual([]);
     const manual = { ...ready, calling: { ...ready.calling, contractorMode: 'manual_only' as const } };
     expect(codes(g, { contractorId, mode: 'publish', integrations: manual })).toContain('calling_mode');
@@ -189,15 +192,17 @@ describe('editing operations', () => {
 });
 
 describe('starter templates', () => {
-  const ready = { sms: false, calling: { contractorMode: 'workflow_only' as const, agentConfigured: true, phoneConfigured: true, globalEnabled: true, adminEnabled: true } };
+  const ready = { sms: true, calling: { contractorMode: 'workflow_only' as const, agentConfigured: true, phoneConfigured: true, globalEnabled: true, adminEnabled: true } };
   it.each(GRAPH_TEMPLATES.map((t) => [t.key, t] as const))('%s is a valid, publishable graph', (_k, t) => {
-    const result = validateGraph(t.graph, { contractorId, mode: 'publish', integrations: ready });
+    // Contractor wording when the template has it (tests/workflow-graph-templates.test.ts covers network workflows).
+    const result = validateGraph(templateGraphFor(t, contractorId), { contractorId, mode: 'publish', integrations: ready });
     expect(result.issues.filter((i) => i.severity === 'error')).toEqual([]);
   });
-  it('there are four, none can enroll by itself, and each declares its stop conditions', () => {
-    expect(GRAPH_TEMPLATES).toHaveLength(4);
+  it('there are nine, none can enroll by itself, and each one that contacts the homeowner declares its stop conditions', () => {
+    expect(GRAPH_TEMPLATES).toHaveLength(9);
     for (const t of GRAPH_TEMPLATES) {
-      expect(t.graph.settings.exitEvents.length + t.graph.nodes.filter((n) => n.type === 'ai_call').length).toBeGreaterThan(0);
+      const contacts = t.graph.nodes.some((n) => NODE_TYPES[n.type].contactsHomeowner);
+      if (contacts) expect(t.graph.settings.exitEvents.length + t.graph.nodes.filter((n) => n.type === 'ai_call').length).toBeGreaterThan(0);
       expect(t.graph.nodes.every((n) => NODE_TYPES[n.type].availability === 'ready')).toBe(true);
     }
   });

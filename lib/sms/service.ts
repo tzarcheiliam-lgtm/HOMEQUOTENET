@@ -74,9 +74,10 @@ async function withSkipNote(db: Db, leadId: string, run: Promise<StartResult>): 
   return r;
 }
 
-async function queue(db: Db, c: { id: string; lead_id: string }, body: string, opts: { ai: boolean; sendAfter?: Date }) {
+async function queue(db: Db, c: { id: string; lead_id: string }, body: string, opts: { ai: boolean; sendAfter?: Date; workflowStepRunId?: string }) {
   const { data } = await db.from('sms_messages').insert({
     conversation_id: c.id, lead_id: c.lead_id, direction: 'out', body, status: 'queued', ai: opts.ai, send_after: (opts.sendAfter ?? new Date()).toISOString(),
+    ...(opts.workflowStepRunId ? { workflow_step_run_id: opts.workflowStepRunId } : {}),
   }).select('id').single();
   await db.from('sms_conversations').update({ last_outbound_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', c.id);
   return data?.id as string | undefined;
@@ -217,8 +218,8 @@ export async function handleInbound(db: Db, input: InboundInput, deps: InboundDe
       .in('status', ['sent', 'sending', 'queued']).gte('created_at', new Date(now.getTime() - 30 * 60_000).toISOString()).order('created_at', { ascending: false }).limit(20);
     if ((recentOut ?? []).some((m: { body: string }) => normalizeBody(m.body) === normalizeBody(body))) return { handled: true, reason: 'echo' };
   }
-  const c = convo as { id: string; lead_id: string; sender_name: string; status: string; ai_turns: number; mode?: string | null; call_time_preference?: string | null };
-  await db.from('sms_messages').insert({ conversation_id: c.id, lead_id: c.lead_id, direction: 'in', body, status: 'received', external_guid: input.guid, sent_at: input.receivedAt ?? now.toISOString() });
+  const c = convo as { id: string; lead_id: string; sender_name: string; status: string; ai_turns: number; mode?: string | null; call_time_preference?: string | null; workflow_owned?: boolean; contractor_id?: string | null };
+  const { data: inRow } = await db.from('sms_messages').insert({ conversation_id: c.id, lead_id: c.lead_id, direction: 'in', body, status: 'received', external_guid: input.guid, sent_at: input.receivedAt ?? now.toISOString() }).select('id').single();
   await db.from('sms_conversations').update({ last_inbound_at: now.toISOString(), updated_at: now.toISOString() }).eq('id', c.id);
 
   if (isOptOut(body)) {
@@ -236,13 +237,99 @@ export async function handleInbound(db: Db, input: InboundInput, deps: InboundDe
     return { handled: true, reason: 'resubscribed' };
   }
   if (c.status === 'opted_out') return { handled: true, reason: 'opted_out' };
+  // A real reply: let workflows see it (a "wait for a reply" step, or a workflow that starts on replies). Never throws.
+  await emitReplyEvent(db, c, (inRow as { id: string } | null)?.id ?? null, now);
   if (isHelp(body)) { await queue(db, c, helpReply(c.sender_name), { ai: false }); return { handled: true, replied: true }; }
   // A person owns this conversation now: store the message, flag it, no AI reply.
+  // A workflow started this conversation and is handling replies itself (the assistant was not asked to take over).
+  if (c.workflow_owned) return { handled: true, reason: 'workflow_owned' };
   if (c.status !== 'active') {
     await note(db, c.lead_id, `New text from the lead: “${body.slice(0, 300)}”`, { needs_attention: true });
     return { handled: true, reason: `status_${c.status}` };
   }
   return replyWithAgent(db, c, deps, now);
+}
+
+/** Tell the workflow engine a lead replied by text (message.received). Best effort: a failure never affects texting. */
+async function emitReplyEvent(db: Db, c: { id: string; lead_id: string; contractor_id?: string | null }, messageId: string | null, now: Date) {
+  if (!messageId) return;
+  try {
+    await db.rpc('emit_workflow_event', {
+      p_type: 'message.received', p_idempotency_key: `message.received|sms:${messageId}`, p_entity_type: 'message', p_entity_id: messageId,
+      p_source: 'sms:bridge', p_occurred_at: now.toISOString(), p_contractor_id: c.contractor_id ?? null, p_lead_id: c.lead_id,
+      p_actor_type: 'contact', p_actor_id: null,
+      p_payload: { messageId, channel: 'sms', leadId: c.lead_id, conversationId: c.id, hasBody: true }, p_metadata: {},
+    });
+  } catch { /* the event is a courtesy to workflows */ }
+}
+
+export type WorkflowTextResult = { ok: true; queued: boolean; conversationId: string } | { ok: false; reason: string };
+export const WORKFLOW_TEXT_SKIP_REASONS: Record<string, string> = {
+  texting_off: 'Automatic texting is turned off.',
+  contractor_texting_off: 'Texting is off for this contractor.',
+  bad_phone: 'The lead has no valid US phone number.',
+  opted_out: 'This number opted out of texts.',
+  person_took_over: 'A person has taken over this text conversation.',
+  phone_in_use: 'This number is already in a text conversation with another lead.',
+  daily_cap: 'The daily text limit was reached.',
+  empty: 'The message was empty.',
+  already_texting: 'This lead is already in a text conversation (for example the automatic first text), and the step is set to skip in that case.',
+  no_lead: 'The lead could not be found.',
+};
+
+/**
+ * A workflow "send text" step: queues one text for the Mac bridge, through the same rules as the texting assistant
+ * (switches, opt-outs, texting hours, daily cap, one conversation per number). Idempotent per step run.
+ * `assistant` = let the texting assistant answer replies; otherwise the workflow handles replies itself.
+ */
+export async function queueWorkflowText(db: Db, input: { leadId: string; body: string; contractorId: string | null; stepRunId: string; assistant: boolean; onlyIfNotTexted?: boolean; now?: Date }): Promise<WorkflowTextResult> {
+  const now = input.now ?? new Date();
+  try {
+    const { data: already } = await db.from('sms_messages').select('id,conversation_id').eq('workflow_step_run_id', input.stepRunId).maybeSingle();
+    if (already) return { ok: true, queued: false, conversationId: (already as { conversation_id: string }).conversation_id };
+    const settings = await loadSettings(db);
+    if (!isLive(settings)) return { ok: false, reason: 'texting_off' };
+    const { data: lead } = await db.from('leads').select('id,phone,state,zip').eq('id', input.leadId).maybeSingle();
+    if (!lead) return { ok: false, reason: 'no_lead' };
+    const phone = normalizeUsPhone(lead.phone as string | null);
+    if (!phone) return { ok: false, reason: 'bad_phone' };
+    const { data: optOut } = await db.from('sms_opt_outs').select('phone_e164').eq('phone_e164', phone).maybeSingle();
+    if (optOut) return { ok: false, reason: 'opted_out' };
+    const houseName = settings.house_sender_name?.trim().slice(0, 40) || SENDER_HOUSE;
+    let sender = houseName;
+    if (input.contractorId) {
+      const co = await loadContractorTexting(db, input.contractorId);
+      if (!settings.contractor_funnels_enabled || !co.enabled) return { ok: false, reason: 'contractor_texting_off' };
+      const { data: row } = await db.from('contractors').select('name').eq('id', input.contractorId).maybeSingle();
+      sender = (co.senderName?.trim() || (row as { name?: string } | null)?.name || houseName).slice(0, 80);
+    }
+    const body = finalizeOutbound(input.body);
+    if (!body) return { ok: false, reason: 'empty' };
+
+    const { data: existing } = await db.from('sms_conversations').select('id,lead_id,status,workflow_owned').eq('lead_id', input.leadId).maybeSingle();
+    let convo = existing as { id: string; lead_id: string; status: string; workflow_owned?: boolean } | null;
+    if (convo) {
+      if (convo.status === 'opted_out') return { ok: false, reason: 'opted_out' };
+      if (input.onlyIfNotTexted) return { ok: false, reason: 'already_texting' };
+      if (convo.status !== 'active') return { ok: false, reason: 'person_took_over' };
+      if (input.assistant && convo.workflow_owned) await db.from('sms_conversations').update({ workflow_owned: false }).eq('id', convo.id);
+    } else {
+      if (await phoneInUse(db, phone, now)) return { ok: false, reason: 'phone_in_use' };
+      const { data: created, error } = await db.from('sms_conversations').insert({
+        lead_id: input.leadId, contractor_id: input.contractorId, sender_name: sender, phone_e164: phone, workflow_owned: !input.assistant,
+      }).select('id,lead_id,status').single();
+      if (error || !created) return { ok: false, reason: 'phone_in_use' };
+      convo = created as { id: string; lead_id: string; status: string };
+    }
+    if ((await sentToday(db)) >= settings.daily_cap) return { ok: false, reason: 'daily_cap' };
+    const zones = resolveZones({ state: lead.state as string | null, zip: lead.zip as string | null }) ?? DEFAULT_ZONES;
+    const when = nextEligible(now, zones, { startHour: settings.window_start_hour, endHour: settings.window_end_hour }) ?? now;
+    await queue(db, convo, body, { ai: false, sendAfter: when, workflowStepRunId: input.stepRunId });
+    await note(db, input.leadId, `Workflow text queued${when > now ? ` for ${when.toISOString()} (outside texting hours)` : ''}.`, { workflow: true });
+    return { ok: true, queued: true, conversationId: convo.id };
+  } catch {
+    return { ok: false, reason: 'error' };
+  }
 }
 
 async function replyWithAgent(db: Db, c: { id: string; lead_id: string; sender_name: string; ai_turns: number; mode?: string | null; call_time_preference?: string | null }, deps: InboundDeps, now: Date): Promise<InboundResult> {

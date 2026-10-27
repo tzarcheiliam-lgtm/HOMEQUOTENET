@@ -15,6 +15,7 @@ const EVENT_LABELS: Record<(typeof WAIT_EVENT_TYPES)[number], string> = {
   'deal.lost': 'The deal is lost',
   'lead.status_changed': "The lead's stage changes",
   'ai_call.completed': 'An AI call ends',
+  'message.received': 'The homeowner texts back',
 };
 
 export function WaitEventForm({ config, onChange, readOnly, issues }: FormProps) {

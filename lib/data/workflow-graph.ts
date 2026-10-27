@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import type { Profile } from '@/lib/types';
 import { graphCapabilities, type GraphCapabilities } from '@/lib/workflows/graph/permissions';
 import { semanticGraph, parseWorkflowGraph, type WorkflowGraph } from '@/lib/workflows/graph';
+import { runHeadline, type StoryStep } from '@/lib/workflows/graph/run-story';
 
 /**
  * Reads for the visual workflow builder. Everything goes through the signed-in user's
@@ -143,6 +144,8 @@ export interface BuilderLookups {
   recipients: { id: string; name: string; email: string }[];
   calling: null | { mode: string | null; agentConfigured: boolean; phoneConfigured: boolean; globalEnabled: boolean; adminEnabled: boolean };
   smsConnected: boolean;
+  /** Texting detail for the text step's side panel. */
+  texting?: { ready: boolean; bridgeConnected: boolean; reason: string | null };
 }
 
 export async function loadBuilderLookups(contractorId: string | null, isAdmin: boolean): Promise<BuilderLookups> {
@@ -150,20 +153,22 @@ export async function loadBuilderLookups(contractorId: string | null, isAdmin: b
   const admin = createAdminClient();
   let templates = db.from('email_templates').select('id,name,subject').eq('is_active', true).order('name');
   if (contractorId) templates = templates.eq('contractor_visible', true);
-  const [{ data: t }, { data: people }, { data: rec }, readiness] = await Promise.all([
+  const [{ data: t }, { data: people }, { data: rec }, readiness, texting] = await Promise.all([
     templates,
     contractorId
       ? db.from('profiles').select('id,full_name,email,contractor_role').eq('contractor_id', contractorId).eq('role', 'contractor').eq('is_active', true).order('full_name')
       : isAdmin ? db.from('profiles').select('id,full_name,email,role').in('role', ['admin', 'setter', 'caller']).eq('is_active', true).order('full_name') : Promise.resolve({ data: [] }),
     isAdmin && !contractorId ? db.from('lead_recipients').select('id,name,email').eq('is_active', true).order('name') : Promise.resolve({ data: [] }),
     import('./workflow-graph-readiness').then((m) => m.readiness(admin, contractorId)),
+    import('@/lib/sms/workflow-readiness').then((m) => m.loadTextingReadiness(admin)),
   ]);
   return {
     emailTemplates: ((t ?? []) as { id: string; name: string; subject: string }[]),
     teamMembers: ((people ?? []) as { id: string; full_name: string | null; email: string | null; role?: string; contractor_role?: string }[]).map((p) => ({ id: p.id, name: p.full_name || p.email || 'Team member', role: p.contractor_role ?? p.role ?? '' })),
     recipients: ((rec ?? []) as { id: string; name: string; email: string }[]),
     calling: readiness.calling,
-    smsConnected: false,
+    smsConnected: texting.ready,
+    texting,
   };
 }
 
@@ -185,13 +190,32 @@ export interface RunListItem {
   currentStepKey: string | null;
   enrolledAt: string;
   resumeAt: string | null;
+  /** The latest thing that happened, in plain English ("Waited for a reply — no reply after 1 day"). */
+  headline?: string | null;
+}
+
+const STORY_STEP_COLUMNS = 'id,run_id,step_key,status,started_at,completed_at,resume_at,next_retry_at,skip_reason,output,last_error,created_at';
+type StepRow = {
+  id: string; run_id?: string; step_key: string; status: string; started_at: string | null; completed_at: string | null; resume_at: string | null;
+  next_retry_at: string | null; skip_reason: string | null; output: unknown; last_error: unknown; created_at: string;
+};
+/** Only ids and codes are read from stored output: it never holds message bodies or contact details. */
+function storyStep(s: StepRow, textSkip: string | null = null): StoryStep {
+  const out = (s.output ?? {}) as Record<string, unknown>;
+  const e = s.last_error as { code?: string; message?: string } | null;
+  return {
+    id: s.id, nodeId: s.step_key, status: s.status, startedAt: s.started_at, completedAt: s.completed_at, resumeAt: s.resume_at, nextRetryAt: s.next_retry_at,
+    skipReason: s.skip_reason, handle: typeof out.handle === 'string' ? out.handle : null, outcome: typeof out.outcome === 'string' ? out.outcome : null,
+    executionStatus: typeof out.executionStatus === 'string' ? out.executionStatus : null,
+    error: e?.code ? { code: e.code, message: String(e.message ?? '').slice(0, 300) } : null, textSkip,
+  };
 }
 
 export async function listGraphRuns(opts: { workflowId?: string; status?: string; limit?: number } = {}): Promise<RunListItem[]> {
   const db = await createClient();
   let q = db
     .from('workflow_runs')
-    .select('id,workflow_id,workflow_version,status,current_step_key,created_at,resume_at,lead_id,mode,enrollment_source,definition_snapshot,workflow:workflows(name,engine,trigger_type),contractor:contractors(name),lead:leads(first_name,last_name),event:workflow_events!workflow_runs_trigger_event_id_fkey(type)')
+    .select('id,workflow_id,workflow_version,status,current_step_key,created_at,completed_at,cancel_reason,metadata,resume_at,lead_id,mode,enrollment_source,definition_snapshot,workflow:workflows(name,engine,trigger_type),contractor:contractors(name),lead:leads(first_name,last_name),event:workflow_events!workflow_runs_trigger_event_id_fkey(type)')
     .eq('workflow.engine', 'graph')
     .order('created_at', { ascending: false })
     .limit(opts.limit ?? 50);
@@ -203,18 +227,39 @@ export async function listGraphRuns(opts: { workflowId?: string; status?: string
     throw new Error('Runs are unavailable');
   }
   const one = <T,>(v: unknown): T | null => (Array.isArray(v) ? (v[0] as T) : (v as T)) ?? null;
-  return (data ?? [])
-    .filter((r) => one<{ engine?: string }>(r.workflow)?.engine === 'graph')
-    .map((r) => {
-      const lead = one<{ first_name?: string | null; last_name?: string | null }>(r.lead);
-      return {
-        id: r.id, workflowId: r.workflow_id, workflowName: one<{ name: string }>(r.workflow)?.name ?? 'Workflow', workflowVersion: r.workflow_version,
-        contractorName: one<{ name: string }>(r.contractor)?.name ?? null, leadId: r.lead_id,
-        leadName: [lead?.first_name, lead?.last_name].filter(Boolean).join(' ') || null,
-        trigger: one<{ trigger_type: string }>(r.workflow)?.trigger_type ?? '', source: r.enrollment_source, mode: r.mode,
-        status: r.status, currentStepKey: r.current_step_key, enrolledAt: r.created_at, resumeAt: r.resume_at && !r.resume_at.startsWith('infinity') ? r.resume_at : null,
-      };
-    });
+  const rows = (data ?? []).filter((r) => one<{ engine?: string }>(r.workflow)?.engine === 'graph');
+  // One extra read for the plain-English headline; a failure only hides the headline.
+  const stepsByRun = new Map<string, StepRow[]>();
+  if (rows.length) {
+    const { data: stepRows } = await db.from('workflow_step_runs').select(STORY_STEP_COLUMNS).in('run_id', rows.map((r) => r.id as string)).order('created_at');
+    for (const s of (stepRows ?? []) as StepRow[]) stepsByRun.set(s.run_id!, [...(stepsByRun.get(s.run_id!) ?? []), s]);
+  }
+  return rows.map((r) => {
+    const lead = one<{ first_name?: string | null; last_name?: string | null }>(r.lead);
+    const leadName = [lead?.first_name, lead?.last_name].filter(Boolean).join(' ') || null;
+    const trigger = one<{ trigger_type: string }>(r.workflow)?.trigger_type ?? '';
+    const resumeAt = r.resume_at && !r.resume_at.startsWith('infinity') ? r.resume_at : null;
+    let headline: string | null = null;
+    try {
+      const graph = parseWorkflowGraph((r.definition_snapshot as { graph?: unknown } | null)?.graph);
+      const meta = (r as { metadata?: Record<string, unknown> }).metadata ?? {};
+      headline = runHeadline({
+        graph,
+        steps: (stepsByRun.get(r.id as string) ?? []).map((s) => storyStep(s)),
+        run: {
+          status: r.status, mode: r.mode, leadName, triggerEvent: trigger, enrolledAt: r.created_at, completedAt: (r as { completed_at?: string | null }).completed_at ?? null,
+          cancelReason: (r as { cancel_reason?: string | null }).cancel_reason ?? null, endReason: typeof meta.end_reason === 'string' ? meta.end_reason : null,
+          lastError: null, paused: String(r.resume_at ?? '').startsWith('infinity'),
+        },
+      });
+    } catch { headline = null; }
+    return {
+      id: r.id, workflowId: r.workflow_id, workflowName: one<{ name: string }>(r.workflow)?.name ?? 'Workflow', workflowVersion: r.workflow_version,
+      contractorName: one<{ name: string }>(r.contractor)?.name ?? null, leadId: r.lead_id, leadName,
+      trigger, source: r.enrollment_source, mode: r.mode,
+      status: r.status, currentStepKey: r.current_step_key, enrolledAt: r.created_at, resumeAt, headline,
+    };
+  });
 }
 
 export interface RunDetail {
@@ -230,6 +275,8 @@ export interface RunDetail {
     resumeAt: string | null; nextRetryAt: string | null; skipReason: string | null; handle: string | null;
     outcome: string | null; executionStatus: string | null; reason: string | null; callJobId: string | null; adopted: boolean;
     error: { code: string; message: string } | null;
+    /** Why the texting bridge did not take this step's text, in words (null when unknown or not a text step). */
+    textSkip?: string | null;
   }[];
   waits: { stepKey: string; kind: string; status: string; timeoutAt: string }[];
   calls: { id: string; status: string; attempts: number; maxAttempts: number; createdAt: string; source: string }[];
@@ -260,6 +307,7 @@ export async function getGraphRun(runId: string, includeLogs: boolean): Promise<
   const lead = one<{ first_name?: string | null; last_name?: string | null }>(r.lead);
   const meta = (r.metadata ?? {}) as Record<string, unknown>;
   const err = r.last_error as { code?: string; message?: string } | null;
+  const textSkips = await loadTextSkips(db, r.lead_id as string | null, runId, (steps ?? []).some((s) => s.skip_reason === 'text_not_sent'));
   return {
     run: {
       id: r.id, workflowId: r.workflow_id, workflowName: one<{ name: string }>(r.workflow)?.name ?? 'Workflow', workflowVersion: r.workflow_version,
@@ -283,6 +331,7 @@ export async function getGraphRun(runId: string, includeLogs: boolean): Promise<
         executionStatus: typeof out.executionStatus === 'string' ? out.executionStatus : null, reason: typeof out.reason === 'string' ? out.reason : null,
         callJobId: typeof out.jobId === 'string' ? out.jobId : null, adopted: out.adopted === true,
         error: e?.code ? { code: e.code, message: String(e.message ?? '').slice(0, 300) } : null,
+        textSkip: s.skip_reason === 'text_not_sent' ? textSkips.get(s.id) ?? null : null,
       };
     }),
     waits: (waits ?? []).map((w) => ({ stepKey: w.step_key, kind: w.kind, status: w.status, timeoutAt: w.timeout_at })),
@@ -290,6 +339,29 @@ export async function getGraphRun(runId: string, includeLogs: boolean): Promise<
     appointments: ((appts ?? []) as { id: string; scheduled_at: string | null; status: string }[]).map((a) => ({ id: a.id, scheduledAt: a.scheduled_at, status: a.status })),
     logs: ((logs ?? []) as { id: string; created_at: string; level: string; code: string; message: string }[]).map((l) => ({ id: l.id, at: l.created_at, level: l.level, code: l.code, message: l.message })),
   };
+}
+
+/**
+ * A skipped text step records only `text_not_sent`; the texting bridge's precise reason is in the "Workflow text not
+ * sent" note it wrote on the lead (metadata.sms_skipped + step_run_id). Read through the user's own client, so a viewer
+ * who cannot see that note just gets the generic sentence. Only the reason CODE is read, then put into words here.
+ */
+async function loadTextSkips(db: Awaited<ReturnType<typeof createClient>>, leadId: string | null, runId: string, needed: boolean): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (!leadId || !needed) return out;
+  try {
+    const [{ data }, { WORKFLOW_TEXT_SKIP_REASONS }] = await Promise.all([
+      db.from('lead_activities').select('metadata').eq('lead_id', leadId).eq('type', 'system').order('created_at', { ascending: false }).limit(200),
+      import('@/lib/sms/service'),
+    ]);
+    for (const row of (data ?? []) as { metadata: Record<string, unknown> | null }[]) {
+      const m = row.metadata ?? {};
+      if (m.run_id !== runId || typeof m.step_run_id !== 'string' || typeof m.sms_skipped !== 'string') continue;
+      const text = WORKFLOW_TEXT_SKIP_REASONS[m.sms_skipped];
+      if (text && !out.has(m.step_run_id)) out.set(m.step_run_id, text);
+    }
+  } catch { /* the precise reason is a courtesy */ }
+  return out;
 }
 
 // ---------------------------------------------------------------------------------------

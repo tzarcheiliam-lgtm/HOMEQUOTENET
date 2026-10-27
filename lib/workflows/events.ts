@@ -326,8 +326,8 @@ export const WORKFLOW_TRIGGERS = {
   }),
   'message.received': t({
     idempotencyRef: 'message:<messageId>',
-    type: 'message.received', label: 'Message received', entityTypes: ['message'], contractorScope: 'optional', availability: 'needs_domain',
-    description: 'An inbound SMS/email reply from a lead. HomeQuote has no inbound messaging yet.', emittedFrom: '(none yet)',
+    type: 'message.received', label: 'Message received', entityTypes: ['message'], contractorScope: 'optional', availability: 'ready',
+    description: 'A lead replied by text to the Mac bridge (STOP, START and HELP are handled separately and do not count).', emittedFrom: 'lib/sms/service.ts handleInbound (emit_workflow_event)',
   }),
   'ai_call.completed': t({
     idempotencyRef: 'ai_call:<callJobId>:completed',

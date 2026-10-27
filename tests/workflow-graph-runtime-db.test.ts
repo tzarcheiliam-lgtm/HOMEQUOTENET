@@ -955,7 +955,7 @@ describe('graph runs and the classic engine coexist', () => {
     const lead = await newLead(); await assign(lead, c1);
     const ev = await eventOf('lead.assigned', lead);
     await new Promise((r) => setTimeout(r, 5));
-    const bad = { kind: 'graph', version: 1, versionId: wf.versionId, graph: { schemaVersion: 2, settings: { reentry: 'once_per_entity', exitEvents: [], allowManualEnrollment: false, runLifetimeDays: 30 }, nodes: [{ id: 'trigger', type: 'trigger', position: { x: 0, y: 0 }, config: { event: 'lead.assigned', filters: {}, entry: null } }, { id: 'a', type: 'send_sms', position: { x: 0, y: 0 }, config: { body: 'Hi' } }], edges: [{ id: 'e', source: 'trigger', sourceHandle: 'next', target: 'a' }] } };
+    const bad = { kind: 'graph', version: 1, versionId: wf.versionId, graph: { schemaVersion: 2, settings: { reentry: 'once_per_entity', exitEvents: [], allowManualEnrollment: false, runLifetimeDays: 30 }, nodes: [{ id: 'trigger', type: 'trigger', position: { x: 0, y: 0 }, config: { event: 'lead.assigned', filters: {}, entry: null } }, { id: 'a', type: 'send_webhook', position: { x: 0, y: 0 }, config: { url: 'https://example.com' } }], edges: [{ id: 'e', source: 'trigger', sourceHandle: 'next', target: 'a' }] } };
     const run = (await q<any>(`insert into workflow_runs(workflow_id, workflow_version, definition_snapshot, trigger_event_id, lead_id, entity_type, entity_id, status, resume_at, locked_by) values ($1,1,$2::jsonb,$3,$4,'lead',$4,'running',now(),'w1') returning *`, [wf.id, JSON.stringify(bad), ev, lead]))[0];
     await executeGraphRun(run, 'w1', h.client);
     const after = (await q<any>(`select status, last_error from workflow_runs where id=$1`, [run.id]))[0];

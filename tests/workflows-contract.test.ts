@@ -211,9 +211,9 @@ describe('trigger registry', () => {
     for (const t of ['lead.assigned', 'assignment.status_changed', 'appointment.no_show', 'estimate.sent', 'deal.won', 'deal.lost'] as const) {
       expect(WORKFLOW_TRIGGERS[t].contractorScope).toBe('required');
     }
-    // task.completed became ready with workflow_tasks (migration 0041); inbound messages still have no table.
+    // task.completed became ready with workflow_tasks (migration 0041); inbound texts arrive through the Mac bridge (lib/sms).
     expect(WORKFLOW_TRIGGERS['task.completed'].availability).toBe('ready');
-    expect(WORKFLOW_TRIGGERS['message.received'].availability).toBe('needs_domain');
+    expect(WORKFLOW_TRIGGERS['message.received'].availability).toBe('ready');
     expect(WORKFLOW_TRIGGERS['lead.created'].availability).toBe('ready');
   });
 
