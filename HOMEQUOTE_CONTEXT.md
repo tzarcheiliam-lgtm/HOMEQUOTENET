@@ -103,7 +103,8 @@ middleware.ts           Delegates to lib/supabase/middleware.ts (session refresh
 `/general-contractors`, `/lead-standards`, `/apply` (contractor application
 form), `/privacy`, `/terms`, `/adu-estimator` (homeowner ADU price estimator, see
 `docs/adu-estimator.md`: pricing in `lib/adu/pricing-config.ts`,
-in the sitemap, lead capture OFF until a destination is approved). Dark theme scoped to a `.hq` wrapper so it never
+in the sitemap, lead capture OFF until a destination is approved),
+`/estimator/[slug]` (instant pool estimator, `noindex` while prices are examples, see §33). Dark theme scoped to a `.hq` wrapper so it never
 touches the CRM's light shadcn tokens. Copy lives in `content/` so a new
 vertical/niche is a content file, not a rewrite (see MARKETING_SITE.md, still
 broadly accurate).
@@ -113,6 +114,10 @@ broadly accurate).
 visual ADU builder (live SVG preview, `ADU_LAYERS`) followed by a screening quiz; qualified homeowners book on a GoHighLevel calendar, and the price range is revealed server-side only after the contact step (`PRICING`, all unset). Config in
 `lib/adu-quiz/config.ts`, leads in `adu_quiz_leads` (migration 0054, applied by the owner),
 forwarded to a webhook with retries from `/api/workflows/tick`. See `docs/adu-quiz.md` for the placeholder checklist.
+
+### Instant pool estimator (embed)
+`/embed/estimator/[slug]` (bare iframe version of `/estimator/[slug]`, route group `app/(estimator-embed)/`, `noindex`),
+`POST /api/estimator/[slug]/lead`. See §33.
 
 ### Public homeowner funnel
 `/estimate/[slug]` — the visual funnel runtime (multi-step qualification form →
@@ -1344,5 +1349,12 @@ Admins only (contractor owners don't get it). An admin describes an automation i
 - **Known gaps**: the Meta template only enrolls leads with recorded consent (stricter than the built-in Meta auto-text; editable). Replies to workflow-owned texts (no-reply, reminders) are saved and passed to workflows only; pair with the reply-alert template.
 - **Tests**: `tests/workflow-graph-templates.test.ts`, `tests/workflow-run-story.test.ts`, `tests/workflow-template-gallery.test.tsx`.
 
-## 33. Instant estimator engine — DRAFT, not wired up (2026-10-27, no migration)
-`lib/estimator/engine.ts` (pure: trade template + answers → low/high price range, `visibleQuestions` with `showWhen`, size factor, site-visit flags, `validateConfig`), `lib/estimator/templates/pool.ts` (pool remodel template, **example prices only**, `pricesConfirmed: false`) and `lib/estimator/lead.ts` (lead capture **disabled**, `ESTIMATOR_LEAD_CAPTURE_ENABLED = false`). No page, route, component or test uses them yet. Planned: a Pool Masters LA pool estimator (shape picker, contact-gated range, leads into the existing Pool Masters funnel), then per-contractor self-serve templates. Self-serve estimator leads must never enter the network `leads` pipeline. Prices must come from the contractor before `pricesConfirmed` is set.
+## 33. Instant pool estimator (2026-10-27, no migration; example prices, `noindex`)
+Homeowner flow (project, shape, size, package or custom choices, property questions, "which look", ZIP/homeowner/timeline, contact) → ballpark price **range** with a line-by-line breakdown → book a free on-site consultation. Full write-up: `docs/pool-estimator.md`.
+- **Routes**: `/estimator/[slug]` (marketing group; `noindex, nofollow` while `pricesConfirmed` is false; not in the sitemap), `/embed/estimator/[slug]` (route group `app/(estimator-embed)/`: bare layout with the `.hq` marketing theme, `<Estimator embedded />`, always `noindex`), `POST /api/estimator/[slug]/lead`. All public: middleware only guards `/app` and `/studio`. No `X-Frame-Options` / `frame-ancestors` header exists anywhere (`next.config.ts`, middleware checked), so the embed can be iframed as is; if a site-wide frame header is added, exempt `/embed/estimator/*`.
+- **Contract** (`lib/estimator/types.ts`, change deliberately): `EstimatorTemplate` (questions with fixed ids/roles, packages, geometry, `minimumJob`, `roundTo`, `pricesConfirmed`), `Price` = `{unit, low, high, quantity?}` per unit (`interior_sqft | perimeter_lf | deck_sqft | linear_ft | each | flat`), `ContractorEstimatorConfig` (slug, name, license, `funnelSlug`, financing text, `revealRange`, option overrides keyed `questionId.optionId`, `gallery`). Limits: 4 options per single question, 5 per multi (`DEFAULT_LIMITS`).
+- **Code**: `lib/estimator/` (`engine.ts` pure estimate/validation/formatting, `geometry.ts`, `config.ts` `applyContractorConfig`, `registry.ts` `getEstimator(slug)` + `ESTIMATOR_SLUGS` merging `templates/pool.ts` + `catalog/pool.ts` + the contractor config, `lead-client.ts` browser contract, `lead.ts` server mapping), `components/estimator/` (`Estimator` entry, flow hook, screens, summary, swatches, pool shapes), `content/estimators/pool-masters.ts` (the only Pool Masters specifics) + `pool-masters-photos.ts` (photos in `public/estimator/pool-masters/`), `scripts/estimator-price-sheet.mjs` (CSV for the contractor's real prices). Tests: `tests/estimator-*.test.ts(x)`.
+- **Data flow**: registry merges template + catalog + contractor config server-side → page passes the merged template to the client `Estimator` → client computes the live estimate with `computeEstimate`. With `revealRange: 'after_contact'` the range shows only after the contact step.
+- **Lead path**: the browser posts answers + contact to `POST /api/estimator/[slug]/lead` (never prices); the server recomputes the estimate and files the lead under the contractor's `funnelSlug` (`pool-masters`) through the existing homeowner funnel pipeline (`save_funnel_session`: same consent, spam handling, rate limits, alerts, delivery). Self-serve estimator leads for other contractors must never enter the network `leads` pipeline.
+- **Compliance**: ranges only, always "ballpark, not a quote"; no AI pricing; **no monthly payment amounts** (financing is a plain note plus the lender disclosure); no trademarked product names in the generic catalog/template; "Example prices" label + `noindex` until the owner confirms prices and `pricesConfirmed` is set (also add to the sitemap then).
+- **Open items**: (1) real prices from the owner (all prices are examples); (2) someone with access to poolmastersla.com must paste the iframe, and the embed has no auto-height script yet; (3) the estimator shows the brochure service area (LA, Orange, Ventura, Riverside, San Bernardino counties) but the Pool Masters funnel qualification gate (`content/funnels/clients/pool-masters-la.json`) only covers LA and Ventura ZIP prefixes; (4) sitemap/linking once prices are confirmed.
