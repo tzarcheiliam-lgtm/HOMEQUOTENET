@@ -1272,7 +1272,7 @@ Charts are hand-written SVG/CSS (`components/calls/stats/charts.tsx`; no chart l
 
 **Status:** 0062 was applied to production on 2026-10-27 by the owner in the Supabase SQL editor. Verified: both profile columns, all four sale columns, the four checks, the extended profile guard, the pay-guard trigger and the sold index. **Deploy order (other environments):** apply 0062, then deploy. Deploying first is safe: the dashboard and payouts read with `select('*')`, so without 0062 they show no rates or sales. Recording a sale or setting pay returns "needs database migration 0062". The "Needs a sale decision" filter shows nothing.
 
-## 37. One-tap follow-up emails from the call workspace (migration 0063, 2026-10-27, NOT yet applied)
+## 37. One-tap follow-up emails from the call workspace (migration 0063, 2026-10-27; applied to production 2026-10-27)
 Plan: `docs/quick-email-plan.md`.
 - **Owner decisions:**
   - The email sheet **pops up automatically** after a qualifying outcome.
@@ -1313,7 +1313,8 @@ Plan: `docs/quick-email-plan.md`.
   - The Stats page gained a **Follow-up emails** card: sent today and this week, and per template, how many led to a sales meeting within 7 days.
   - Prospect History shows each email's template name.
 - **Tests:** `tests/call-followups.test.ts`, `tests/prospect-send-db.test.ts` (PGlite + mocked Gmail, including the 0063 guard), plus updated library counts (54 templates) in `tests/email-templates.test.ts`.
-- **Deploy:**
+- **Status:** 0063 was applied to production on 2026-10-27 by the owner. Verified: the column, the guard function and its trigger. `EMAIL_MAILING_ADDRESS` is not yet confirmed as set.
+- **Deploy (other environments):**
   1. Apply 0063 (sending works without it).
   2. Set `EMAIL_MAILING_ADDRESS` in Vercel.
   3. Optionally seed the five templates so admins can edit them.
