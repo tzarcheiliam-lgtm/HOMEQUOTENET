@@ -29,12 +29,36 @@ export function finalizeOutbound(text: string, max = 320): string {
 
 export const SENDER_HOUSE = 'HomeQuote';
 
+/** The first text's wording. {first_name}, {sender} and {project} are filled in per lead. */
+export const DEFAULT_OPENING_TEMPLATE =
+  "Hey {first_name}, it's {sender}. Just got your {project} request. Easier to hop on a quick call, or want to just knock it out here over text?";
+export const OPENING_PLACEHOLDERS = ['{first_name}', '{sender}', '{project}'] as const;
+export const MAX_OPENING_TEMPLATE = 300;
+
+/** Why an opening template can't be used, or null when it can. It must say who is texting. */
+export function openingTemplateProblem(template: string): string | null {
+  const t = template.trim();
+  if (!t) return null;
+  if (t.length > MAX_OPENING_TEMPLATE) return `Keep the opening text under ${MAX_OPENING_TEMPLATE} characters.`;
+  if (!t.includes('{sender}')) return 'The opening text must include {sender} so people know who is texting them.';
+  const unknown = (t.match(/\{[^}]*\}/g) ?? []).filter((x) => !(OPENING_PLACEHOLDERS as readonly string[]).includes(x));
+  if (unknown.length) return `Unknown placeholder ${unknown[0]}. Use ${OPENING_PLACEHOLDERS.join(', ')}.`;
+  return null;
+}
+
+/** Fills a template for one lead. Missing first name reads "there"; missing project reads "project". */
+export function renderOpening(template: string | null | undefined, input: { firstName?: string | null; senderName: string; project?: string | null }): string {
+  const t = template?.trim() && !openingTemplateProblem(template) ? template.trim() : DEFAULT_OPENING_TEMPLATE;
+  const out = t
+    .replaceAll('{first_name}', input.firstName?.trim() || 'there')
+    .replaceAll('{sender}', input.senderName)
+    .replaceAll('{project}', input.project?.trim() || 'project');
+  return finalizeOutbound(out, 400);
+}
+
 /** The first text. Deterministic (not AI). Consent and STOP language are on the form, so it stays short and casual; STOP replies are still honored. */
-export function openingMessage(input: { firstName?: string | null; senderName: string; project?: string | null }): string {
-  const hi = input.firstName?.trim() ? `Hey ${input.firstName.trim()}` : 'Hey there';
-  const what = input.project ? `your ${input.project}` : 'your project';
-  return finalizeOutbound(
-    `${hi}, it's ${input.senderName}. Just got ${what} request. Easier to hop on a quick call, or want to just knock it out here over text?`, 400);
+export function openingMessage(input: { firstName?: string | null; senderName: string; project?: string | null; template?: string | null }): string {
+  return renderOpening(input.template, input);
 }
 
 export const optOutConfirmation = (senderName: string) => `You're unsubscribed from ${senderName} texts and won't get any more. Reply START if that was a mistake.`;
