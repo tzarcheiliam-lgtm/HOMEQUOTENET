@@ -143,6 +143,8 @@ export interface BuilderLookups {
   recipients: { id: string; name: string; email: string }[];
   calling: null | { mode: string | null; agentConfigured: boolean; phoneConfigured: boolean; globalEnabled: boolean; adminEnabled: boolean };
   smsConnected: boolean;
+  /** Texting detail for the text step's side panel. */
+  texting?: { ready: boolean; bridgeConnected: boolean; reason: string | null };
 }
 
 export async function loadBuilderLookups(contractorId: string | null, isAdmin: boolean): Promise<BuilderLookups> {
@@ -150,20 +152,22 @@ export async function loadBuilderLookups(contractorId: string | null, isAdmin: b
   const admin = createAdminClient();
   let templates = db.from('email_templates').select('id,name,subject').eq('is_active', true).order('name');
   if (contractorId) templates = templates.eq('contractor_visible', true);
-  const [{ data: t }, { data: people }, { data: rec }, readiness] = await Promise.all([
+  const [{ data: t }, { data: people }, { data: rec }, readiness, texting] = await Promise.all([
     templates,
     contractorId
       ? db.from('profiles').select('id,full_name,email,contractor_role').eq('contractor_id', contractorId).eq('role', 'contractor').eq('is_active', true).order('full_name')
       : isAdmin ? db.from('profiles').select('id,full_name,email,role').in('role', ['admin', 'setter', 'caller']).eq('is_active', true).order('full_name') : Promise.resolve({ data: [] }),
     isAdmin && !contractorId ? db.from('lead_recipients').select('id,name,email').eq('is_active', true).order('name') : Promise.resolve({ data: [] }),
     import('./workflow-graph-readiness').then((m) => m.readiness(admin, contractorId)),
+    import('@/lib/sms/workflow-readiness').then((m) => m.loadTextingReadiness(admin)),
   ]);
   return {
     emailTemplates: ((t ?? []) as { id: string; name: string; subject: string }[]),
     teamMembers: ((people ?? []) as { id: string; full_name: string | null; email: string | null; role?: string; contractor_role?: string }[]).map((p) => ({ id: p.id, name: p.full_name || p.email || 'Team member', role: p.contractor_role ?? p.role ?? '' })),
     recipients: ((rec ?? []) as { id: string; name: string; email: string }[]),
     calling: readiness.calling,
-    smsConnected: false,
+    smsConnected: texting.ready,
+    texting,
   };
 }
 

@@ -282,6 +282,8 @@ export const WORKFLOW_SKIP_REASONS = [
   'missing_lead',
   'already_done',
   'test_mode',
+  // Texting bridge: the text was not queued (texting off, no valid phone, daily limit, a person took over...). The exact reason is on the lead.
+  'text_not_sent',
 ] as const;
 export type WorkflowSkipReason = (typeof WORKFLOW_SKIP_REASONS)[number];
 

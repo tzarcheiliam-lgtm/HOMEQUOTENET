@@ -29,6 +29,8 @@ export interface GraphIssue {
 /** Facts about integrations, supplied by the server at publish time (never trusted from the browser). */
 export interface IntegrationReadiness {
   sms: boolean;
+  /** Why texting is not ready (shown on the step); null when it is. */
+  smsReason?: string | null;
   /** null when AI calling is not configured for this workflow's contractor, or there is no single contractor. */
   calling: null | {
     contractorMode: 'off' | 'manual_only' | 'automatic' | 'workflow_only' | null;
@@ -296,7 +298,7 @@ export function validateGraph(input: unknown, ctx: ValidationContext): { issues:
     // integration readiness (publish gate)
     if (ctx.mode === 'publish' && integrations) {
       if (n.type === 'send_sms' && !integrations.sms) {
-        // setup_required above already blocks; kept so a future connected provider is checked per account.
+        issues.push(err('sms_not_ready', `${label}: ${integrations.smsReason ?? 'Texting is not set up.'}`, { nodeId: n.id }));
       }
       if (n.type === 'send_email' && parsed.success) {
         const tid = (parsed.data as { templateId?: string }).templateId;

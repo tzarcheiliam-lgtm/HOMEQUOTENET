@@ -132,6 +132,7 @@ export const WAIT_EVENT_TYPES = [
   'deal.lost',
   'lead.status_changed',
   'ai_call.completed',
+  'message.received',
 ] as const satisfies readonly WorkflowEventType[];
 
 /** Statuses a workflow may set. Won/sold and distribution statuses are deliberately excluded. */
@@ -193,7 +194,12 @@ export const NODE_CONFIG_SCHEMAS = {
     })
     .strict()
     .refine((c) => !!c.templateId || (!!c.subject && !!c.body), 'Choose a saved template or enter a subject and message'),
-  send_sms: z.object({ body: templated(1600), onError }).strict(),
+  send_sms: z.object({
+    body: templated(1600),
+    /** Let the texting assistant answer the lead's replies to this text. Off = the workflow handles replies itself. */
+    assistant: z.boolean().default(false),
+    onError,
+  }).strict(),
   ai_call: z
     .object({
       purpose: z.enum(CALL_PURPOSES),
@@ -345,7 +351,7 @@ const def = (d: NodeTypeDef) => d;
 export const NODE_TYPES: Record<GraphNodeType, NodeTypeDef> = {
   trigger: def({ type: 'trigger', kind: 'trigger', category: 'start', label: 'When this happens', description: 'The event that enrolls a lead.', icon: 'Zap', availability: 'ready', contactsHomeowner: false, requiresLead: false, requiresContractor: false, requiresAssignment: false, maxAttempts: 1, keywords: ['start', 'trigger', 'event'] }),
   send_email: def({ type: 'send_email', kind: 'action', category: 'contact', label: 'Send email', description: 'Send a saved email template or a custom message through the connected Gmail account.', icon: 'Mail', availability: 'ready', contactsHomeowner: true, requiresLead: true, requiresContractor: false, requiresAssignment: false, maxAttempts: 5, keywords: ['email', 'message', 'template'] }),
-  send_sms: def({ type: 'send_sms', kind: 'action', category: 'contact', label: 'Send text message', description: 'Text the homeowner.', icon: 'MessageSquare', availability: 'setup_required', setupNote: 'No SMS provider is connected. Connect one before this step can be used.', contactsHomeowner: true, requiresLead: true, requiresContractor: false, requiresAssignment: false, maxAttempts: 5, keywords: ['sms', 'text'] }),
+  send_sms: def({ type: 'send_sms', kind: 'action', category: 'contact', label: 'Send text message', description: 'Text the homeowner from your Mac (blue iMessage bubbles). Follows the texting rules: opt-outs, texting hours, daily limit. Waits in line if the Mac is offline.', icon: 'MessageSquare', availability: 'ready', contactsHomeowner: true, requiresLead: true, requiresContractor: false, requiresAssignment: false, maxAttempts: 5, keywords: ['sms', 'text'] }),
   ai_call: def({ type: 'ai_call', kind: 'action', category: 'contact', label: 'Call homeowner', description: 'An AI voice agent (Fish Audio) calls the homeowner. The workflow waits for the result and branches on it.', icon: 'PhoneCall', availability: 'ready', contactsHomeowner: true, requiresLead: true, requiresContractor: true, requiresAssignment: false, maxAttempts: 3, keywords: ['call', 'phone', 'ai', 'voice', 'fish', 'qualify'] }),
   create_task: def({ type: 'create_task', kind: 'action', category: 'records', label: 'Create staff task', description: 'Add a follow-up task or reminder for your team.', icon: 'ListTodo', availability: 'ready', contactsHomeowner: false, requiresLead: false, requiresContractor: false, requiresAssignment: false, maxAttempts: 3, keywords: ['task', 'reminder', 'follow up', 'todo'] }),
   add_note: def({ type: 'add_note', kind: 'action', category: 'records', label: 'Add lead note', description: 'Write a note on the lead timeline.', icon: 'StickyNote', availability: 'ready', contactsHomeowner: false, requiresLead: true, requiresContractor: false, requiresAssignment: false, maxAttempts: 3, keywords: ['note', 'timeline', 'log'] }),

@@ -29,8 +29,8 @@ describe('graph registry', () => {
   it('gives the AI call node a distinct handle for every supported result', () => {
     expect(handlesFor('ai_call', {}).map((h) => h.id)).toEqual(['booked', 'qualified_awaiting_scheduling', 'callback_requested', 'needs_human_review', 'no_answer', 'wrong_number', 'opted_out', 'failed', 'timed_out']);
   });
-  it('marks SMS as requiring setup', () => {
-    expect(NODE_TYPES.send_sms.availability).toBe('setup_required');
+  it('texting through the Mac bridge is a ready step', () => {
+    expect(NODE_TYPES.send_sms.availability).toBe('ready');
   });
 });
 
@@ -86,9 +86,12 @@ describe('structural validation', () => {
     expect(issue?.nodeId).toBe('assign_lead_1');
     expect(issue?.message).toMatch(/Assign to team member/);
   });
-  it('blocks steps that need setup (SMS)', () => {
+  it('a text step can be built anytime but only published while texting is on', () => {
     const g = addNodeAfter(emptyGraph('lead.assigned'), 'trigger', 'next', 'send_sms').graph;
-    expect(codes(g)).toContain('setup_required');
+    expect(codes(g)).not.toContain('setup_required');
+    const off = { sms: false, smsReason: 'Automatic texting is turned off.', calling: null };
+    expect(codes(g, { contractorId: null, mode: 'publish', integrations: off })).toContain('sms_not_ready');
+    expect(codes(g, { contractorId: null, mode: 'publish', integrations: { ...off, sms: true, smsReason: null } })).not.toContain('sms_not_ready');
   });
   it('rejects variables the trigger cannot supply', () => {
     let g = addNodeAfter(emptyGraph('lead.created'), 'trigger', 'next', 'add_note').graph;

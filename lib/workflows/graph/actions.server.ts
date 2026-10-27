@@ -66,6 +66,24 @@ export async function executeGraphAction(input: GraphActionInput): Promise<Workf
       return deliverWorkflowEmail(exec, c.to, c.subject!, c.body!, undefined, override);
     }
 
+    case 'send_sms': {
+      const c = NODE_CONFIG_SCHEMAS.send_sms.parse(config);
+      // A live test never texts a real homeowner (test recipients are email addresses).
+      if (test) return { outcome: 'skipped', reason: 'test_mode' };
+      if (!run.leadId) return { outcome: 'skipped', reason: 'missing_lead' };
+      const { queueWorkflowText, WORKFLOW_TEXT_SKIP_REASONS } = await import('@/lib/sms/service');
+      const r = await queueWorkflowText(db, { leadId: run.leadId, body: render(c.body, ctx), contractorId: run.contractorId, stepRunId: input.stepRun.id, assistant: c.assistant, now: input.now });
+      if (r.ok) return { outcome: 'success', output: { queued: r.queued, conversationId: r.conversationId, assistant: c.assistant } };
+      if (r.reason === 'error') return temporary('sms_queue_failed', 'Could not queue the text');
+      // Same wording the lead page shows, so the run log and the lead agree.
+      await db.from('lead_activities').insert({
+        lead_id: run.leadId, actor_id: null, type: 'system',
+        body: `Workflow text not sent: ${WORKFLOW_TEXT_SKIP_REASONS[r.reason] ?? r.reason}`,
+        metadata: { source: 'workflow', sms: true, sms_skipped: r.reason, run_id: run.id, step_run_id: input.stepRun.id },
+      });
+      return { outcome: 'skipped', reason: r.reason === 'opted_out' ? 'contact_suppressed' : 'text_not_sent' };
+    }
+
     case 'create_task': {
       const c = NODE_CONFIG_SCHEMAS.create_task.parse(config);
       let assignee: string | null = null;

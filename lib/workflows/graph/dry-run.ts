@@ -173,6 +173,14 @@ export async function dryRunGraph(
         preview = { to: to ?? 'nobody (no email on file)', subject: subject.text, body: body.text, template: tpl?.name ?? null };
         break;
       }
+      case 'send_sms': {
+        const body = previewTemplate(String(config.body ?? ''), ctx, system);
+        if (!asString(ctx.lead?.phone)) warnings.push('The lead has no phone number, so this text would be skipped.');
+        warnings.push(...body.missing.map((m) => `{{${m}}} has no value for this lead.`));
+        warnings.push('When it really runs: not sent if the number opted out, texting is off or the daily limit is reached; outside texting hours it waits until they open.');
+        preview = { to: asString(ctx.lead?.phone) ? 'the homeowner (by text from your Mac)' : 'nobody (no phone on file)', message: body.text, replies: config.assistant === true ? 'the texting assistant answers' : 'this workflow handles them' };
+        break;
+      }
       case 'create_task': {
         const title = previewTemplate(String(config.title), ctx, system);
         const desc = config.description ? previewTemplate(String(config.description), ctx, system) : null;
