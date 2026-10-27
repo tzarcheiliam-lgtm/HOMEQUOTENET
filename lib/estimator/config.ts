@@ -55,10 +55,35 @@ function syncPackageOptions(q: EstimatorQuestion, packages: EstimatorPackage[]) 
   q.options = options;
 }
 
-/** A package's answers without picks for options (or whole questions' worth of picks) that no longer exist. */
-function pruneAnswers(answers: Answers, questions: EstimatorQuestion[]): Answers {
+/**
+ * After options were removed: drop their ids from other questions' showWhen, and
+ * remove a question left with nothing that could ever show it (and, in turn,
+ * the questions that hang off it). Returns the removed question ids.
+ */
+function dropUnreachable(questions: EstimatorQuestion[]): Set<string> {
+  const removed = new Set<string>();
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const q of [...questions]) {
+      if (!q.showWhen) continue;
+      const parent = questions.find((p) => p.id === q.showWhen!.questionId);
+      if (parent) q.showWhen.anyOf = q.showWhen.anyOf.filter((id) => parent.options.some((o) => o.id === id));
+      if (!parent || q.showWhen.anyOf.length === 0) {
+        questions.splice(questions.indexOf(q), 1);
+        removed.add(q.id);
+        changed = true;
+      }
+    }
+  }
+  return removed;
+}
+
+/** A package's answers without picks for options or questions that no longer exist. */
+function pruneAnswers(answers: Answers, questions: EstimatorQuestion[], removed: Set<string>): Answers {
   const out: Answers = {};
   for (const [questionId, picks] of Object.entries(answers)) {
+    if (removed.has(questionId)) continue;
     const q = questions.find((x) => x.id === questionId);
     if (!q) {
       out[questionId] = [...picks];
@@ -86,7 +111,10 @@ function pruneAnswers(answers: Answers, questions: EstimatorQuestion[]): Answers
  * 3. config.customOptions are appended to their question.
  * 4. config.packages, when set, replace the template's packages and the package
  *    question's options are rebuilt to match (plus the custom option).
- * 5. Every package then loses picks for options that no longer exist.
+ * 5. Options removed in step 2 are dropped from other questions' showWhen; a
+ *    question left with no way to show (e.g. its only trigger was removed) is
+ *    removed too, along with questions that depended on it.
+ * 6. Every package then loses picks for options and questions that were removed.
  *
  * When the inputs are sane, the result passes validateTemplate.
  */
@@ -132,7 +160,8 @@ export function applyContractorConfig(
     const packageQ = next.questions.find((q) => q.role === 'package');
     if (packageQ) syncPackageOptions(packageQ, next.packages);
   }
-  next.packages = next.packages.map((p) => ({ ...p, answers: pruneAnswers(p.answers, next.questions) }));
+  const removed = dropUnreachable(next.questions);
+  next.packages = next.packages.map((p) => ({ ...p, answers: pruneAnswers(p.answers, next.questions, removed) }));
 
   return next;
 }

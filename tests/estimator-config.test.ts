@@ -199,8 +199,10 @@ describe('packages', () => {
 
   it('drops package picks that point at removed options', () => {
     const out = applyContractorConfig(FIXTURE_TEMPLATE, cfg({ options: { 'surface.plaster': { enabled: false }, 'scope.coping': { enabled: false } } }));
-    // refresh: scope [surface, coping] -> [surface]; surface [plaster] -> dropped; coping [precast] stays.
-    expect(out.packages[0].answers).toEqual({ scope: ['surface'], coping: ['precast'] });
+    // refresh: scope [surface, coping] -> [surface]; surface [plaster] -> dropped;
+    // the coping question loses its only trigger, so it and its pick go too.
+    expect(out.packages[0].answers).toEqual({ scope: ['surface'] });
+    expect(out.questions.some((q) => q.id === 'coping')).toBe(false);
     expect(validateTemplate(out)).toEqual([]);
   });
 
@@ -218,6 +220,32 @@ describe('packages', () => {
     t.questions = t.questions.filter((q) => q.role !== 'package');
     const out = applyContractorConfig(t, cfg({ packages: [premium] }));
     expect(out.packages).toHaveLength(1);
+  });
+});
+
+describe('removing a trigger option', () => {
+  it('trims showWhen when other triggers remain', () => {
+    const t = structuredClone(FIXTURE_TEMPLATE);
+    t.questions.find((q) => q.id === 'coping')!.showWhen = { questionId: 'scope', anyOf: ['coping', 'deck'] };
+    const out = applyContractorConfig(t, cfg({ options: { 'scope.deck': { enabled: false } } }));
+    expect(out.questions.find((q) => q.id === 'coping')!.showWhen).toEqual({ questionId: 'scope', anyOf: ['coping'] });
+    expect(out.questions.some((q) => q.id === 'deck')).toBe(false);
+    expect(out.questions.some((q) => q.id === 'deckSize')).toBe(false);
+    expect(validateTemplate(out)).toEqual([]);
+  });
+
+  it('removes questions that depended on a removed question', () => {
+    const t = structuredClone(FIXTURE_TEMPLATE);
+    t.questions.splice(t.questions.findIndex((q) => q.id === 'deck') + 1, 0, {
+      id: 'deckColor',
+      label: 'Deck color',
+      kind: 'single',
+      showWhen: { questionId: 'deck', anyOf: ['pavers'] },
+      options: [{ id: 'tan', label: 'Tan' }],
+    });
+    const out = applyContractorConfig(t, cfg({ options: { 'scope.deck': { enabled: false } } }));
+    expect(out.questions.some((q) => q.id === 'deckColor')).toBe(false);
+    expect(validateTemplate(out)).toEqual([]);
   });
 });
 
