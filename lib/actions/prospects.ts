@@ -5,10 +5,12 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { isCallAssigneeRole } from '@/lib/calls/callers';
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { requireCallWorkspace, requireRole } from '@/lib/auth';
 import { listCallers, nextProspectIdFor, nextProspectInContext, type ProspectFilters } from '@/lib/data/prospects';
 import { contextFrom, contextQuery, hasListContext, withContext } from '@/lib/calls/context';
 import { flushNotificationsSoon } from '@/lib/notifications/outbox';
+import { cadencePatchFor } from '@/lib/calls/cadence';
 import {
   prospectPatchFor,
   validateOutcome,
@@ -88,7 +90,7 @@ async function assertCallerOwns(prospectId: string, userId: string, isAdmin: boo
   const supabase = await createClient();
   const { data } = await supabase
     .from('contractor_prospects')
-    .select('id, assigned_to, disposition, company_name, call_attempt_count')
+    .select('id, assigned_to, disposition, company_name, call_attempt_count, no_connect_streak, park_count, next_attempt_at, parked_at')
     .eq('id', prospectId)
     .maybeSingle();
   if (!data) throw new Error('Prospect not found or not accessible');
@@ -101,6 +103,10 @@ async function assertCallerOwns(prospectId: string, userId: string, isAdmin: boo
     disposition: ProspectDisposition;
     company_name: string;
     call_attempt_count: number;
+    no_connect_streak: number;
+    park_count: number;
+    next_attempt_at: string | null;
+    parked_at: string | null;
   };
 }
 
@@ -172,8 +178,9 @@ export async function logCallOutcome(
     .single();
   if (aErr) return { ok: false, error: aErr.message };
 
-  // 2. The prospect's current state, derived from the same input.
-  const patch = prospectPatchFor(outcome, input);
+  // 2. The prospect's current state, derived from the same input, plus when
+  //    to try again if nobody was reached (lib/calls/cadence.ts).
+  const patch = { ...prospectPatchFor(outcome, input), ...cadencePatchFor(outcome, owned) };
   const { error: pErr } = await supabase
     .from('contractor_prospects')
     .update({ ...patch, updated_by: me.id })
@@ -408,6 +415,35 @@ export async function createProspect(
   }
   revalidatePath('/app/calls');
   redirect(`/app/calls/${data.id}`);
+}
+
+/* ---- Return a resting or parked prospect to the queue now ------------------ */
+
+/**
+ * Puts a prospect the cadence is resting (or has parked) back in the call
+ * list immediately with a fresh run of tries. The person who holds it or an
+ * admin can do this; it never touches do-not-call.
+ */
+export async function returnProspectToQueue(fd: FormData): Promise<void> {
+  const me = await requireCallWorkspace();
+  const id = str(fd, 'prospect_id');
+  if (!id) throw new Error('Missing prospect');
+  await assertCallerOwns(id, me.id, me.role === 'admin');
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from('contractor_prospects')
+    .update({ next_attempt_at: null, parked_at: null, no_connect_streak: 0, updated_by: me.id })
+    .eq('id', id);
+  if (error) throw new Error(error.message);
+  // Service role: audit_logs is insert-restricted to admins by RLS, but callers may do this too.
+  await createAdminClient().from('audit_logs').insert({
+    actor_id: me.id,
+    action: 'prospect.return_to_queue',
+    target_user_id: null,
+    metadata: { prospect_id: id },
+  });
+  revalidatePath(`/app/calls/${id}`);
+  revalidatePath('/app/calls');
 }
 
 /* ---- Lift do-not-call (admin only, audited) -------------------------------- */

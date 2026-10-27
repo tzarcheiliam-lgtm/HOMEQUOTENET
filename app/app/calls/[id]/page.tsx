@@ -4,9 +4,10 @@ import { Phone, ExternalLink, PhoneOff, AlarmClock, CalendarCheck } from 'lucide
 import { requireCallWorkspace } from '@/lib/auth';
 import { getProspect, listCallers, nextProspectIdFor, nextProspectInContext, type ProspectFilters } from '@/lib/data/prospects';
 import { contextFrom, contextQuery, hasListContext, withContext } from '@/lib/calls/context';
-import { clearDoNotCall } from '@/lib/actions/prospects';
+import { clearDoNotCall, returnProspectToQueue } from '@/lib/actions/prospects';
 import { isDialable } from '@/lib/calls/rules';
-import { buttonVariants } from '@/components/ui/button';
+import { CADENCE, restStateOf } from '@/lib/calls/cadence';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/ui/page-header';
 import { ConfirmAction } from '@/components/ui/confirm-action';
@@ -16,6 +17,7 @@ import { OutcomeForm } from '@/components/calls/outcome-form';
 import { CallWorkspace } from '@/components/calls/call-workspace';
 import { CallScript } from '@/components/calls/call-script';
 import { ActivityTimeline } from '@/components/calls/activity-timeline';
+import { CadenceLabel } from '@/components/calls/cadence-label';
 import { AssignControl } from '@/components/calls/assign-control';
 import {
   fmtDateTime,
@@ -252,6 +254,26 @@ export default async function ProspectPage({
                     >
                       <AlarmClock className="size-3.5" aria-hidden="true" />
                       {fmtDateTime(p.next_callback_at)}
+                    </span>
+                  </Row>
+                ) : null}
+                {p.no_connect_streak > 0 || restStateOf(p) !== 'due' ? (
+                  <Row label="Call cadence" className="col-span-2">
+                    <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+                      {p.no_connect_streak > 0 ? (
+                        <span className="tabular-nums">
+                          {p.no_connect_streak} of {CADENCE.maxNoConnect} missed in a row
+                        </span>
+                      ) : null}
+                      <CadenceLabel prospect={p} />
+                      {restStateOf(p) !== 'due' && !dnc ? (
+                        <form action={returnProspectToQueue}>
+                          <input type="hidden" name="prospect_id" value={p.id} />
+                          <Button type="submit" size="sm" variant="outline">
+                            Return to call list
+                          </Button>
+                        </form>
+                      ) : null}
                     </span>
                   </Row>
                 ) : null}

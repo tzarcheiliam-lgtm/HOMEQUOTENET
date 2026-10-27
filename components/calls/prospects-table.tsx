@@ -19,6 +19,8 @@ import { assignProspects } from '@/lib/actions/prospects';
 import { isDialable } from '@/lib/calls/rules';
 import type { ProspectListRow, CallerOption } from '@/lib/data/prospects';
 import { DispositionBadge } from './disposition-badge';
+import { CadenceLabel } from './cadence-label';
+import { restStateOf } from '@/lib/calls/cadence';
 import { ProspectCards } from './prospect-cards';
 import { fmtDateTime, fmtPhone, fmtRelative, isDue, siteHref, siteLabel, telHref } from './format';
 
@@ -206,6 +208,8 @@ export function ProspectsTable({
                         <AlarmClock className="size-3.5" aria-hidden="true" />
                         {fmtDateTime(p.next_callback_at)}
                       </span>
+                    ) : restStateOf(p) !== 'due' ? (
+                      <CadenceLabel prospect={p} />
                     ) : (
                       <span className="text-muted-foreground">{'—'}</span>
                     )}

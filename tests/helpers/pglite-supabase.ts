@@ -65,7 +65,8 @@ class Builder {
           if (op === 'is') return `${ident(col)} is ${v}`;
           if (op === 'not' && rest[0] === 'is') return `${ident(col)} is not ${rest.slice(1).join('.')}`; // col.not.is.null
           params.push(v);
-          return `${ident(col)} ${op === 'neq' ? 'is distinct from' : '='} $${params.length}`;
+          const cmp: Record<string, string> = { neq: 'is distinct from', lte: '<=', lt: '<', gte: '>=', gt: '>' };
+          return `${ident(col)} ${cmp[op] ?? '='} $${params.length}`;
         });
         return `(${parts.join(' or ')})`;
       }

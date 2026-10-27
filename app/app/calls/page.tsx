@@ -10,6 +10,7 @@ import {
   type ProspectFilters as Filters,
 } from '@/lib/data/prospects';
 import { CALL_VIEWS, type CallSort, type CallView } from '@/lib/calls/constants';
+import { CADENCE } from '@/lib/calls/cadence';
 import { buttonVariants } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/page-header';
 import { CallsSubnav } from '@/components/calls/calls-subnav';
@@ -41,6 +42,7 @@ const EMPTY_HINTS: Record<CallView, string> = {
   callbacks: 'No callbacks are due. Promised callbacks appear here at their time.',
   interested: 'No one has said yes yet. Interested and follow-up outcomes land here.',
   booked: 'No sales appointments booked yet.',
+  resting: `Nobody is resting. Prospects we could not reach wait here until their next try; after ${CADENCE.maxNoConnect} misses in a row they are parked.`,
   dnc: 'No contractor has asked not to be called.',
 };
 
