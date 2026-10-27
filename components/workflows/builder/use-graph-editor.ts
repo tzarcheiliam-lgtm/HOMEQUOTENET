@@ -111,6 +111,8 @@ export function useGraphEditor(initial: WorkflowGraph, validation: { contractorI
     layout: () => commit(autoLayout(current.current)),
     settings: (patch: Partial<GraphSettings>) => commit(updateSettings(current.current, patch), 'settings'),
     triggerEvent: (event: WorkflowEventType) => commit(setTriggerEvent(current.current, event)),
+    /** Replace the whole graph as ONE undoable edit (used by "Change with AI"). */
+    replace: (next: WorkflowGraph) => commit(next),
   }), [commit]);
 
   return { graph, issues, undo, redo, canUndo: past.length > 0, canRedo: future.length > 0, reset, ...api };

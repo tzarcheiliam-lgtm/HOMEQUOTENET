@@ -14,6 +14,8 @@ import { WorkflowBuilder } from '@/components/workflows/workflow-builder';
 import { getGraphWorkflow, loadBuilderLookups, loadCapabilities } from '@/lib/data/workflow-graph';
 import { BuilderShell } from '@/components/workflows/builder/builder-shell';
 import { DryRunPanel } from '@/components/workflows/dry-run-panel';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { aiBuildsRemaining, canUseAiBuilder } from '@/lib/workflows/ai-builder/build.server';
 
 export default async function WorkflowDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ enable_error?: string }> }) {
   const profile = await requireRole(['admin', 'contractor']);
@@ -24,7 +26,8 @@ export default async function WorkflowDetailPage({ params, searchParams }: { par
   if (graph) {
     const caps = await loadCapabilities(profile);
     const lookups = await loadBuilderLookups(graph.contractorId, profile.role === 'admin');
-    return <BuilderShell detail={graph} lookups={lookups} canEdit={caps.edit(graph.contractorId)} isAdmin={profile.role === 'admin'} />;
+    const aiRemaining = canUseAiBuilder(profile) ? await aiBuildsRemaining(createAdminClient(), profile.id) : undefined;
+    return <BuilderShell detail={graph} lookups={lookups} canEdit={caps.edit(graph.contractorId)} isAdmin={profile.role === 'admin'} aiRemaining={aiRemaining} />;
   }
   const canEdit = profile.role === 'admin';
 
