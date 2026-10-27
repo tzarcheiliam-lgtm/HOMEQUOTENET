@@ -30,11 +30,10 @@ export function LooksScreen({
             value={img.src}
             checked={liked.includes(img.src)}
             onChange={() => onToggle(img.src)}
-            label={img.alt}
-            note={img.caption}
+            label={img.caption ?? img.alt}
             visual={
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={img.src} alt="" loading="lazy" className="h-28 w-full object-cover sm:h-32" />
+              <img src={img.src} alt="" loading="lazy" className="h-full w-full object-cover" />
             }
           />
         ))}

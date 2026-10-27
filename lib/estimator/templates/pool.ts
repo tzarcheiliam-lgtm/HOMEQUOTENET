@@ -216,6 +216,7 @@ export const POOL_TEMPLATE: EstimatorTemplate = {
       kind: 'multi',
       summaryLabel: 'Backyard',
       showWhen: { questionId: 'project', anyOf: ['backyard'] },
+      optional: true,
       options: [
         {
           id: 'kitchen',

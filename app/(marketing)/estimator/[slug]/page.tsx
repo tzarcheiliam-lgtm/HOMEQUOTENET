@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { Container } from '@/components/marketing/primitives';
 import { Estimator } from '@/components/estimator/estimator';
+import { publicTemplate } from '@/lib/estimator/config';
 import { ESTIMATOR_SLUGS, getEstimator } from '@/lib/estimator/registry';
 
 /** "Pool remodel" -> "Pool Remodel" for page titles. */
@@ -51,7 +52,7 @@ export default async function EstimatorPage({ params }: Props) {
           minutes, and a free on-site consultation gets you a firm quote.
         </p>
         <div className="mt-10">
-          <Estimator template={template} contractor={contractor} />
+          <Estimator template={publicTemplate(template, contractor)} contractor={contractor} />
         </div>
       </Container>
     </section>

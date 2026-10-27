@@ -47,11 +47,13 @@ export type FlowState = {
   homeowner: '' | 'yes' | 'no';
   timeline: '' | LeadTimeline;
   contact: ContactInput;
+  /** "Allow optional advertising measurement". */
+  measurement: boolean;
 };
 
 export const NOTE_MAX_LENGTH = 1000;
 
-export function initialFlowState(answers: Answers = {}): FlowState {
+export function initialFlowState(answers: Answers = {}, measurement = false): FlowState {
   return {
     answers,
     customize: false,
@@ -62,6 +64,7 @@ export function initialFlowState(answers: Answers = {}): FlowState {
     homeowner: '',
     timeline: '',
     contact: { firstName: '', lastName: '', email: '', phone: '', consent: false, website: '', note: '' },
+    measurement,
   };
 }
 
@@ -214,9 +217,9 @@ export function visibleAnswers(template: EstimatorTemplate, answers: Answers): A
   return out;
 }
 
-/** True when every question on a questions screen has a pick (a multi needs at least one). */
+/** True when every question on a questions screen has a pick (a multi needs at least one, unless optional). */
 export function questionsAnswered(screen: FlowScreen, answers: Answers): boolean {
-  return screen.questions.length > 0 && screen.questions.every((q) => picksFor(q, answers).length > 0);
+  return screen.questions.length > 0 && screen.questions.every((q) => q.optional || picksFor(q, answers).length > 0);
 }
 
 /* ------------------------------------------------------------------ */
@@ -318,6 +321,8 @@ export function buildLeadRequest(
   template: EstimatorTemplate,
   state: FlowState,
   tracking?: EstimatorLeadRequest['tracking'],
+  /** The consent wording shown on the contact screen (estimatorConsentText). */
+  consentText = '',
 ): EstimatorLeadRequest {
   const { dimensions } = parseDimensions(template, state.dimensions, state.knowDimensions);
   const note = state.contact.note.trim();
@@ -334,6 +339,8 @@ export function buildLeadRequest(
       consent: state.contact.consent,
       website: state.contact.website,
     },
+    consentText,
+    measurement: state.measurement,
   };
   if (dimensions) request.dimensions = dimensions;
   if (state.likedLooks.length) request.likedLooks = [...state.likedLooks];

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { submitEstimatorLead, type EstimatorLeadRequest } from '@/lib/estimator/lead-client';
+import { estimatorConsentText, submitEstimatorLead, type EstimatorLeadRequest } from '@/lib/estimator/lead-client';
 import type { Answers, ContractorEstimatorConfig, EstimatorQuestion, EstimatorTemplate } from '@/lib/estimator/types';
 import { cn } from '@/lib/utils';
 import { LooksScreen } from './screens/looks-screen';
@@ -36,14 +36,20 @@ const FIELD_KEYS = new Set(['zip', 'homeowner', 'timeline', 'firstName', 'lastNa
 /** Start somewhere other than the first screen (tests and previews); never used by the live pages. */
 export type EstimatorSeed = { screenId?: string; answers?: Answers; state?: Partial<FlowState>; result?: LeadSuccess };
 
-function readTracking(): EstimatorLeadRequest['tracking'] {
+/**
+ * The page URL (with its UTM / click-id query, which attribution reads) and, only
+ * when the visitor allowed advertising measurement, the Meta browser ids.
+ */
+function readTracking(measurement: boolean): EstimatorLeadRequest['tracking'] {
   try {
+    const pageUrl = window.location.href.slice(0, 4000);
+    if (!measurement) return { pageUrl };
     const cookie = (name: string) => document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))?.[1];
     return {
       fbp: cookie('_fbp'),
       fbc: cookie('_fbc'),
       eventId: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : undefined,
-      pageUrl: `${window.location.origin}${window.location.pathname}`,
+      pageUrl,
     };
   } catch {
     return undefined;
@@ -65,7 +71,10 @@ export function EstimatorFlow({
   const hasGallery = gallery.length > 0;
   const immediate = contractor.revealRange === 'immediately';
 
-  const [state, setState] = useState<FlowState>(() => ({ ...initialFlowState(seed?.answers), ...seed?.state }));
+  const [state, setState] = useState<FlowState>(() => ({
+    ...initialFlowState(seed?.answers, contractor.adMeasurement === 'opt_out'),
+    ...seed?.state,
+  }));
   const [screenId, setScreenId] = useState<string | undefined>(seed?.screenId);
   const [result, setResult] = useState<LeadSuccess | null>(seed?.result ?? null);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -131,7 +140,7 @@ export function EstimatorFlow({
     submittingRef.current = true;
     setSubmitting(true);
     setErrors({});
-    const res = await submitEstimatorLead(contractor.slug, buildLeadRequest(template, state, readTracking()));
+    const res = await submitEstimatorLead(contractor.slug, buildLeadRequest(template, state, readTracking(state.measurement), estimatorConsentText(contractor.contractorName)));
     submittingRef.current = false;
     setSubmitting(false);
     if (res.ok) {
@@ -178,7 +187,15 @@ export function EstimatorFlow({
         : 'Next';
 
   const showSummary = immediate && !result;
-  const stepText = `Step ${index + 1} of ${screens.length}`;
+  // The screen count grows as answers reveal detail screens, so show the step without a
+  // total and keep the bar from sliding backwards while moving forward.
+  const stepText = `Step ${index + 1}`;
+  const rawPercent = Math.round(((index + 1) / screens.length) * 100);
+  const progress = useRef({ index, percent: rawPercent });
+  if (progress.current.index !== index) {
+    progress.current = { index, percent: index > progress.current.index ? Math.max(progress.current.percent, rawPercent) : rawPercent };
+  }
+  const percent = Math.min(100, progress.current.percent);
 
   return (
     <section
@@ -199,15 +216,15 @@ export function EstimatorFlow({
               <div
                 role="progressbar"
                 aria-label="Estimator progress"
-                aria-valuemin={1}
-                aria-valuemax={screens.length}
-                aria-valuenow={index + 1}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={percent}
                 aria-valuetext={stepText}
                 className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--hq-line)]"
               >
                 <div
                   className="h-full rounded-full bg-[var(--hq-accent-bright)] transition-[width] duration-300 motion-reduce:transition-none"
-                  style={{ width: `${((index + 1) / screens.length) * 100}%` }}
+                  style={{ width: `${percent}%` }}
                 />
               </div>
               {!immediate ? <p className="mt-2 text-xs text-[var(--hq-text-dim)]">Your price range appears at the end.</p> : null}
@@ -273,11 +290,12 @@ export function EstimatorFlow({
                 <ZipScreen state={state} errors={errors} onChange={(patch) => update(patch, Object.keys(patch))} />
               ) : (
                 <ContactScreen
-                  template={template}
                   contractor={contractor}
                   contact={state.contact}
                   errors={errors}
                   onChange={(patch) => update({ contact: { ...state.contact, ...patch } }, Object.keys(patch))}
+                  measurement={state.measurement}
+                  onMeasurementChange={(measurement) => update({ measurement })}
                 />
               )}
 

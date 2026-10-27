@@ -105,10 +105,12 @@ export function computeEstimate(template: EstimatorTemplate, input: EstimateInpu
 
   for (const q of questions) {
     const picks = picksFor(q, input.answers);
-    if (picks.length === 0) unanswered.push(q.id);
+    if (picks.length === 0 && !q.optional) unanswered.push(q.id);
     for (const id of picks) {
       const opt = q.options.find((o) => o.id === id)!;
-      if (opt.siteVisit && !seenSiteVisit.has(opt.siteVisit)) {
+      // "Not sure" on size needs no measuring visit once the homeowner typed valid dimensions.
+      const measured = q.role === 'size' && geometry.source === 'dimensions';
+      if (opt.siteVisit && !measured && !seenSiteVisit.has(opt.siteVisit)) {
         seenSiteVisit.add(opt.siteVisit);
         siteVisitItems.push({ questionId: q.id, label: opt.siteVisit });
       }
@@ -148,6 +150,8 @@ export function computeEstimate(template: EstimatorTemplate, input: EstimateInpu
     const sumHigh = Math.max(floor, cents(lines.reduce((t, l) => t + l.high, 0)));
     low = Math.max(floor, step ? Math.floor(sumLow / step) * step : sumLow);
     high = Math.max(floor, step ? Math.ceil(sumHigh / step) * step : sumHigh);
+    // Always a range, never one figure that reads like a quote (e.g. both ends at the minimum job).
+    if (high <= low) high = low + (step || Math.max(1, Math.ceil(low * 0.1)));
   }
 
   const status = unanswered.length ? 'incomplete' : siteVisitItems.length ? 'site_visit' : 'ready';

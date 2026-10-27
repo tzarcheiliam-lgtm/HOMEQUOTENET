@@ -77,6 +77,8 @@ export type EstimatorQuestion = {
   options: EstimatorOption[];
   /** Ask only when an earlier question has one of these answers. */
   showWhen?: { questionId: string; anyOf: string[] };
+  /** May be left with no picks (multi questions such as backyard extras). */
+  optional?: boolean;
 };
 
 /** Picked option ids per question id. A single question uses a one-element array. */
@@ -250,8 +252,13 @@ export type ContractorEstimatorConfig = {
   funnelSlug: string;
   /** Booking link shown after the range. */
   calendarUrl?: string;
-  /** after_contact: the range appears only after the contact step. */
+  /** after_contact: the range appears only after the contact step (prices never reach the browser before it). */
   revealRange: 'after_contact' | 'immediately';
+  /**
+   * Default of the "Allow optional advertising measurement" checkbox. Mirror the
+   * funnel's trackingPixels.consentMode (opt_out = checked by default).
+   */
+  adMeasurement?: 'opt_in' | 'opt_out';
   pricesConfirmed: boolean;
   minimumJob?: number;
   options?: Record<string, OptionOverride>;

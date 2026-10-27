@@ -1,3 +1,4 @@
+import { consentText, type FunnelConfig } from '../funnels/schema.ts';
 import type { Answers, Estimate, PoolDimensions } from './types.ts';
 
 /**
@@ -34,6 +35,10 @@ export type EstimatorLeadRequest = {
     /** Honeypot: must be empty. */
     website: string;
   };
+  /** The exact consent wording shown next to the checkbox; the server rejects a mismatch. */
+  consentText: string;
+  /** The visitor's "Allow optional advertising measurement" choice. */
+  measurement: boolean;
   /** Browser Meta ids for event deduplication (optional). */
   tracking?: { fbc?: string; fbp?: string; eventId?: string; pageUrl?: string };
 };
@@ -48,6 +53,15 @@ export type EstimatorLeadResponse =
       calendarUrl?: string;
     }
   | { ok: false; errors: Record<string, string> };
+
+/**
+ * The consent wording for an estimator whose leads go to `funnelClientName`'s funnel.
+ * Same text the funnel shows and stores (consentText only reads clientName), so the
+ * stored disclosure always matches what the homeowner saw.
+ */
+export function estimatorConsentText(funnelClientName: string): string {
+  return consentText({ clientName: funnelClientName } as FunnelConfig);
+}
 
 export async function submitEstimatorLead(
   slug: string,

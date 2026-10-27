@@ -31,6 +31,8 @@ export const leadRequestSchema = z.object({
   homeowner: z.enum(['yes', 'no'], { errorMap: () => ({ message: 'Tell us whether you own the home.' }) }),
   timeline: z.enum(LEAD_TIMELINES.map((t) => t.id) as [string, ...string[]], { errorMap: () => ({ message: 'Choose when you want to start.' }) }),
   contact,
+  consentText: z.string().max(1000),
+  measurement: z.boolean().default(false),
   tracking: z.object({
     fbc: z.string().max(256).optional(),
     fbp: z.string().max(100).optional(),

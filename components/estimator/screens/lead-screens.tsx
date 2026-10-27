@@ -1,8 +1,8 @@
 'use client';
 
 import { useId, type InputHTMLAttributes } from 'react';
-import { LEAD_TIMELINES } from '@/lib/estimator/lead-client';
-import type { ContractorEstimatorConfig, EstimatorTemplate } from '@/lib/estimator/types';
+import { LEAD_TIMELINES, estimatorConsentText } from '@/lib/estimator/lead-client';
+import type { ContractorEstimatorConfig } from '@/lib/estimator/types';
 import { ChoiceTile, Field, QuestionFieldset, inputClass, textareaClass } from '../ui';
 import { NOTE_MAX_LENGTH, type ContactInput, type FlowState } from '../use-estimator-flow';
 
@@ -79,16 +79,18 @@ export function ZipScreen({
 
 /** Lead screen 2: contact details, consent, honeypot and an optional note. */
 export function ContactScreen({
-  template,
   contractor,
   contact,
   onChange,
+  measurement,
+  onMeasurementChange,
   errors,
 }: {
-  template: EstimatorTemplate;
   contractor: ContractorEstimatorConfig;
   contact: ContactInput;
   onChange: (patch: Partial<ContactInput>) => void;
+  measurement: boolean;
+  onMeasurementChange: (allowed: boolean) => void;
   errors: Record<string, string>;
 }) {
   const consentId = useId();
@@ -128,13 +130,13 @@ export function ContactScreen({
         )}
       </Field>
 
-      {/* Honeypot: invisible and unreachable for people; bots fill it in. */}
-      <div aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
+      {/* Honeypot: hidden, inert and named so autofill ignores it; bots fill it in. */}
+      <div hidden inert className="hidden">
         <label>
-          Website
+          Leave this empty
           <input
             type="text"
-            name="website"
+            name="contact_url_2"
             tabIndex={-1}
             autoComplete="off"
             value={contact.website}
@@ -153,7 +155,16 @@ export function ContactScreen({
             aria-describedby={errors.consent ? consentErrorId : undefined}
             className="mt-1 size-4 shrink-0 accent-[var(--hq-accent)]"
           />
-          <span>{`I agree to be contacted by ${contractor.contractorName} by call, text or email about my ${template.projectNoun}. Consent is not a condition of purchase.`}</span>
+          <span>
+            {estimatorConsentText(contractor.contractorName)}{' '}
+            <a href="/privacy" target="_blank" rel="noreferrer" className="underline underline-offset-2">
+              Privacy policy
+            </a>
+            {' · '}
+            <a href="/terms" target="_blank" rel="noreferrer" className="underline underline-offset-2">
+              Terms
+            </a>
+          </span>
         </label>
         {errors.consent ? (
           <p id={consentErrorId} className="mt-1 text-sm text-[var(--hq-bad)]">
@@ -161,6 +172,16 @@ export function ContactScreen({
           </p>
         ) : null}
       </div>
+
+      <label className="flex cursor-pointer items-start gap-3 text-xs leading-5 text-[var(--hq-text-muted)]">
+        <input
+          type="checkbox"
+          checked={measurement}
+          onChange={(e) => onMeasurementChange(e.target.checked)}
+          className="mt-0.5 size-4 shrink-0 accent-[var(--hq-accent)]"
+        />
+        <span>Allow optional advertising measurement</span>
+      </label>
     </div>
   );
 }

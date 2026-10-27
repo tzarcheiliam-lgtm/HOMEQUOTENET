@@ -49,6 +49,8 @@ describe('pool template: structure', () => {
     expect(ids('features')).toEqual(['baja', 'spa', 'water', 'fire', 'lighting']);
     expect(ids('equipment')).toEqual(['pump_filter', 'heater', 'automation', 'salt']);
     expect(ids('extras')).toEqual(['kitchen', 'patio_cover', 'turf_planting', 'fire_pit']);
+    // Backyard extras can be skipped; every other question needs an answer.
+    expect(POOL_TEMPLATE.questions.filter((q) => q.optional).map((q) => q.id)).toEqual(['extras']);
     for (const id of ['cracks', 'access', 'hillside']) expect(ids(id)).toEqual(['no', 'yes', 'unsure']);
   });
 

@@ -29,8 +29,11 @@ Limits: at most 4 options on a single question and 5 on a multi (`DEFAULT_LIMITS
 | `/embed/estimator/[slug]` | Bare page for iframes (no site header/footer, same `.hq` theme), compact layout, always `noindex`. |
 | `POST /api/estimator/[slug]/lead` | Lead capture (see Lead path). |
 
-Both pages are public: `lib/supabase/middleware.ts` only guards `/app` (and `/studio`), and these paths are not
-redirected. Unknown slugs return 404.
+Both pages and the lead route are public: `lib/supabase/middleware.ts` only guards `/app` (and `/studio`) and returns
+early for `/estimator/`, `/embed/estimator/` and `/api/estimator/` (no Auth refresh). Unknown slugs return 404.
+
+With `revealRange: 'after_contact'` (Pool Masters) the pages pass `publicTemplate(...)` to the browser: every option price
+and the minimum job/rounding are stripped, so the range cannot be read from the page source before the contact step.
 
 ## File map
 
@@ -100,6 +103,9 @@ Recommended height: 1100 px on desktop, and about 1400 px on narrow phones (long
 There is no auto-height script yet: the page does not post its height to the parent. If the owner's site needs it, add a
 `postMessage({ type: 'estimator:height', height })` from the embedded layout and a small listener on the host page.
 
+Attribution: the lead records the full page URL, so add UTMs to the iframe `src`
+(`/embed/estimator/pool-masters?utm_source=site&utm_campaign=...`) to keep them on embed leads.
+
 Framing: the app sets no `X-Frame-Options` or CSP `frame-ancestors` header on any path (`next.config.ts` and middleware
 checked), so the embed can be framed today. If a site-wide frame header is ever added, exempt `/embed/estimator/*` and
 nothing else.
@@ -108,8 +114,16 @@ nothing else.
 
 At the contact step the browser calls `POST /api/estimator/[slug]/lead` (types in `lib/estimator/lead-client.ts`). The
 server looks the estimator up by slug, **recomputes the estimate itself** (the client never sends prices), and files the
-lead under the contractor's `funnelSlug` through the existing Pool Masters homeowner funnel pipeline, so consent text,
-spam handling, rate limiting, internal alerts and delivery are the same as a funnel lead. Self-serve estimator leads for
+lead under the contractor's `funnelSlug` through the existing Pool Masters homeowner funnel pipeline, so spam handling,
+rate limiting, internal alerts and delivery are the same as a funnel lead.
+
+- **Consent.** The contact screen shows the funnel's own consent wording (`estimatorConsentText`, which names HomeQuote
+  Network and the contractor) with Privacy and Terms links. The request carries the wording that was shown, and the route
+  rejects it (409) if it differs from what the funnel stores, so the saved disclosure always matches the screen.
+  `contractorName` in the contractor config must equal the funnel's `clientName`.
+- **Advertising measurement.** An "Allow optional advertising measurement" checkbox (checked by default for Pool Masters,
+  mirroring the funnel's `opt_out` mode). Only when it is on are Meta browser ids sent and the server Lead event fired.
+- **Attribution.** The full page URL (with UTMs and click ids) is recorded, as on funnel leads. Self-serve estimator leads for
 other contractors must never enter the network `leads` pipeline.
 
 ## Compliance checklist
@@ -118,7 +132,9 @@ other contractors must never enter the network `leads` pipeline.
 - No monthly payment amounts anywhere; financing is a plain note plus the lender disclosure
 - No trademarked product names (for example PebbleTec) in the generic catalog or template
 - "Example prices" label and `noindex` until `pricesConfirmed` is true; the page is not in the sitemap meanwhile
-- Contact consent line is required before submitting; the honeypot field stays empty
+- Contact consent line is the funnel's stored wording (server-checked), required before submitting, with Privacy/Terms links
+- Optional advertising measurement checkbox; no Meta event without it
+- No prices in the page source before the contact step (`publicTemplate`)
 - Pool Masters photos are used with the owner's permission (from the brochure)
 
 ## Open items
@@ -130,3 +146,7 @@ other contractors must never enter the network `leads` pipeline.
   only accepts Los Angeles and Ventura ZIP prefixes. Leads from the other counties would be saved as unqualified until the
   owner confirms the area and the funnel's `zipPrefixes` are updated.
 - **Sitemap and linking** once prices are confirmed.
+- **Duplicate timeline rows.** A replayed submission that `save_funnel_session` dedupes onto an existing lead still adds a
+  second estimator timeline entry.
+- **`unqualifiedAction: 'stop'` copy.** For such a funnel nothing is saved, but the result still says the team will reach
+  out. Dormant: Pool Masters uses `review`.

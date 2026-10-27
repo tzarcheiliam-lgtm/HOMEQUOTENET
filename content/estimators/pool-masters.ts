@@ -26,6 +26,8 @@ export const POOL_MASTERS_ESTIMATOR: ContractorEstimatorConfig = {
   // Same booking link as content/funnels/clients/pool-masters-la.json.
   calendarUrl: 'https://calendly.com/homequotenetwork/30min',
   revealRange: 'after_contact',
+  // Mirrors the funnel's trackingPixels.consentMode.
+  adMeasurement: 'opt_out',
   pricesConfirmed: false,
   options: Object.fromEntries(Object.entries(POOL_MASTERS_OPTION_IMAGES).map(([key, image]) => [key, { image }])),
   gallery: POOL_MASTERS_GALLERY,

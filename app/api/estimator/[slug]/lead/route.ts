@@ -67,6 +67,11 @@ export async function POST(request: Request, context: Context) {
     const funnel = await getFunnel(contractor.funnelSlug);
     if (!funnel) return fail('This estimator is not accepting requests right now.', 503);
 
+    // The stored disclosure must be exactly what the homeowner saw next to the checkbox.
+    if (lead.consentText !== consentText(funnel.config)) {
+      return reply({ ok: false, errors: { consent: 'The consent wording was updated. Please read it and check the box again.' } }, 409);
+    }
+
     const likedLooks = pickLikedLooks(contractor, lead.likedLooks);
     const payload = buildLeadPayload({
       template, contractor, funnel: { slug: funnel.slug, contractorId: funnel.contractor_id, config: funnel.config },
@@ -84,11 +89,10 @@ export async function POST(request: Request, context: Context) {
     if (rateError) throw rateError;
     if ((count ?? 0) >= 30) return fail('Too many requests. Please try again later.', 429);
 
-    // The browser only has Meta ids / an event id when it was allowed to run the Pixel, so
-    // their presence is the visitor's advertising-measurement choice; without them nothing
-    // goes to Meta from the server.
-    const tracking = lead.tracking;
-    const measurementAllowed = !!(tracking?.eventId || tracking?.fbp || tracking?.fbc);
+    // The visitor's own "Allow optional advertising measurement" choice; without it nothing
+    // goes to Meta from the server and no browser ids are kept.
+    const measurementAllowed = lead.measurement;
+    const tracking = measurementAllowed ? lead.tracking : { pageUrl: lead.tracking?.pageUrl };
 
     const origin = new URL(request.url).origin;
     const attribution = captureAttribution(tracking?.pageUrl ?? request.headers.get('referer') ?? `${origin}/`, request.headers.get('referer') ?? '', deviceOf(request.headers.get('user-agent')));

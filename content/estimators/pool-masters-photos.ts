@@ -57,8 +57,6 @@ export const POOL_MASTERS_OPTION_IMAGES: Record<string, string> = {
   'features.water': `${DIR}fire-water-bowls-spilling-into-pool.webp`,
   'features.fire': `${DIR}fire-water-bowls-spilling-into-pool.webp`,
   'features.lighting': `${DIR}color-led-pool-spa-lighting.webp`,
-  'deck.pavers': `${DIR}herringbone-pavers-turf-bands.webp`,
-  'deck.porcelain': `${DIR}zero-edge-pool-porcelain-pavers.webp`,
   'extras.kitchen': `${DIR}outdoor-kitchen-slab-counter.webp`,
   'extras.fire_pit': `${DIR}fire-pit-seating-wall.webp`,
 };

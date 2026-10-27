@@ -16,7 +16,7 @@ function visualFor(q: EstimatorQuestion, o: EstimatorOption) {
   if (o.image) {
     // Plain img: contractor photos are public paths of unknown size, and the card crops them to a fixed height.
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={o.image} alt="" loading="lazy" className="h-24 w-full object-cover sm:h-28" />;
+    return <img src={o.image} alt="" loading="lazy" className="h-full w-full object-cover" />;
   }
   if (o.swatch) return <Swatch id={o.swatch} className="h-full w-full" />;
   return undefined;

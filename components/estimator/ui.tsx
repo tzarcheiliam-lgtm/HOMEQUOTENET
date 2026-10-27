@@ -60,7 +60,7 @@ export function ChoiceTile({
   const describedBy = note || hint ? `${uid}-d` : undefined;
   return (
     <label className={cn(tile, className)}>
-      {visual ? <span className="block overflow-hidden rounded-lg [&>*]:block [&>*]:h-full [&>*]:w-full">{visual}</span> : null}
+      {visual ? <span className="block h-24 overflow-hidden rounded-lg sm:h-28 [&>*]:block [&>*]:h-full [&>*]:w-full [&>img]:object-cover">{visual}</span> : null}
       <span className="flex items-start gap-3">
         <input
           type={type}

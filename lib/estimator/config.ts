@@ -165,3 +165,26 @@ export function applyContractorConfig(
 
   return next;
 }
+
+/**
+ * The template as sent to the browser. With revealRange 'after_contact' every
+ * price (and the minimum job / rounding) is removed, so the range cannot be read
+ * from the page source before the contact step; the lead route computes it from
+ * the full server-side template.
+ */
+export function publicTemplate(template: EstimatorTemplate, config: Pick<ContractorEstimatorConfig, 'revealRange'>): EstimatorTemplate {
+  if (config.revealRange === 'immediately') return template;
+  return {
+    ...template,
+    minimumJob: 0,
+    roundTo: 0,
+    questions: template.questions.map((q) => ({
+      ...q,
+      options: q.options.map((option) => {
+        const copy = { ...option };
+        delete copy.price;
+        return copy;
+      }),
+    })),
+  };
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyContractorConfig } from '@/lib/estimator/config';
+import { applyContractorConfig, publicTemplate } from '@/lib/estimator/config';
 import { validateTemplate } from '@/lib/estimator/engine';
 import {
   CUSTOM_PACKAGE_ID,
@@ -323,5 +323,22 @@ describe('merged template stays valid', () => {
     expect(out.minimumJob).toBe(8000);
     // refresh's coping pick (precast) was removed, so it is dropped.
     expect(out.packages[0].answers).toEqual({ scope: ['surface', 'coping'], surface: ['plaster'] });
+  });
+});
+
+describe('publicTemplate', () => {
+  it('strips every price, the minimum job and rounding when the range is revealed after contact', () => {
+    const pub = publicTemplate(FIXTURE_TEMPLATE, { revealRange: 'after_contact' });
+    expect(JSON.stringify(pub)).not.toMatch(/"price"|"low"|"high"/);
+    expect(pub.minimumJob).toBe(0);
+    expect(pub.roundTo).toBe(0);
+    // Questions, options and packages are otherwise intact, and the input is untouched.
+    expect(pub.questions.map((q) => q.options.map((o) => o.id))).toEqual(FIXTURE_TEMPLATE.questions.map((q) => q.options.map((o) => o.id)));
+    expect(pub.packages).toEqual(FIXTURE_TEMPLATE.packages);
+    expect(FIXTURE_TEMPLATE.questions.find((q) => q.id === 'surface')!.options[0].price).toBeDefined();
+  });
+
+  it('keeps prices when the range shows immediately (the live summary needs them)', () => {
+    expect(publicTemplate(FIXTURE_TEMPLATE, { revealRange: 'immediately' })).toBe(FIXTURE_TEMPLATE);
   });
 });

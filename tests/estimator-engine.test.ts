@@ -171,9 +171,9 @@ describe('computeEstimate units', () => {
     const e = est(answers({ scope: ['deck'], deck: ['pavers'], deckSize: ['medium'] }));
     expect(e.lines[0]).toMatchObject({ label: 'Deck: Pavers', unit: 'deck_sqft', quantity: 600, low: 12000, high: 18000 });
     expect([e.low, e.high]).toEqual([12000, 18000]);
-    // small 300 x 6..10 = 1800..3000 -> minimum job
+    // small 300 x 6..10 = 1800..3000 -> minimum job, still shown as a range (one roundTo step)
     const r = est(answers({ scope: ['deck'], deck: ['resurface'], deckSize: ['small'] }));
-    expect([r.low, r.high]).toEqual([5000, 5000]);
+    expect([r.low, r.high]).toEqual([5000, 5500]);
   });
 
   it('flat: quantity 1; each: default quantity', () => {
@@ -281,10 +281,14 @@ describe('computeEstimate totals', () => {
     expect([noPrice.low, noPrice.high]).toEqual([null, null]);
   });
 
-  it('applies the minimum job to both ends', () => {
-    // lights alone: 1600..2400
+  it('applies the minimum job to both ends, keeping a range (never a single figure)', () => {
+    // lights alone: 1600..2400 -> both at 5000, high lifted one roundTo step
     const e = est(answers({ scope: ['equipment'], equipment: ['lights'] }));
-    expect([e.low, e.high]).toEqual([5000, 5000]);
+    expect([e.low, e.high]).toEqual([5000, 5500]);
+    const t = clone();
+    t.roundTo = 0;
+    const r = est(answers({ scope: ['equipment'], equipment: ['lights'] }), t);
+    expect([r.low, r.high]).toEqual([5000, 5500]); // 10% spread without a rounding step
   });
 
   it('applies the minimum job to the low end only when it is the only end below', () => {
@@ -325,7 +329,7 @@ describe('computeEstimate totals', () => {
     const t = clone();
     t.minimumJob = 20000;
     const e = est(answers({ scope: ['surface'], surface: ['plaster'] }), t);
-    expect([e.low, e.high]).toEqual([20000, 20000]);
+    expect([e.low, e.high]).toEqual([20000, 20500]);
   });
 
   it('skips prices that are not finite', () => {
@@ -643,3 +647,21 @@ describe('formatUsd / formatRange', () => {
   });
 });
 
+describe('optional questions and measured size', () => {
+  it('an optional multi with no picks is not unanswered', () => {
+    const t = clone();
+    const equipment = t.questions.find((q) => q.id === 'equipment')!;
+    equipment.optional = true;
+    const e = est(answers({ scope: ['equipment', 'surface'], surface: ['plaster'] }), t);
+    expect(e.unanswered).not.toContain('equipment');
+    expect(est(answers({ scope: ['equipment', 'surface'], surface: ['plaster'] })).unanswered).toContain('equipment');
+  });
+
+  it('"Not sure" on size flags a measuring visit only when no dimensions were typed', () => {
+    const base = answers({ size: ['unsure'], scope: ['surface'], surface: ['plaster'] });
+    expect(computeEstimate(FIXTURE_TEMPLATE, { answers: base }).siteVisitItems.map((i) => i.label)).toContain('Pool size to be measured');
+    const typed = computeEstimate(FIXTURE_TEMPLATE, { answers: base, dimensions: { lengthFt: 30, widthFt: 15 } });
+    expect(typed.geometry.source).toBe('dimensions');
+    expect(typed.siteVisitItems.map((i) => i.label)).not.toContain('Pool size to be measured');
+  });
+});

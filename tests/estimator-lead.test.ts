@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import poolMasters from '@/content/funnels/clients/pool-masters-la.json';
-import { funnelSchema } from '@/lib/funnels/schema';
+import { consentText, funnelSchema } from '@/lib/funnels/schema';
 import { computeEstimate } from '@/lib/estimator/engine';
 import type { Answers, ContractorEstimatorConfig } from '@/lib/estimator/types';
 import { FIXTURE_CONTRACTOR, FIXTURE_TEMPLATE } from './fixtures/estimator-template';
@@ -58,7 +58,8 @@ const answers: Answers = {
   scope: ['surface', 'coping'], surface: ['plaster'], coping: ['precast'], cracks: ['no'],
 };
 const contact = { firstName: 'Jordan', lastName: 'Rivera', email: 'jordan@example.test', phone: '8185550142', consent: true, website: '' };
-const valid = { answers, zip: '91301', homeowner: 'yes', timeline: 'asap', contact };
+const valid = { answers, zip: '91301', homeowner: 'yes', timeline: 'asap', contact, consentText: consentText(funnelConfig), measurement: false };
+const measured = { ...valid, measurement: true };
 const post = (body: unknown, slug = 'fixture-pools') =>
   POST(new Request('https://pool.example/api/estimator/x/lead', { method: 'POST', headers: { origin: 'https://pool.example', 'user-agent': 'Mozilla/5.0 (iPhone) Mobile' }, body: JSON.stringify(body) }), { params: Promise.resolve({ slug }) });
 const flush = () => Promise.all(m.later.splice(0));
@@ -205,7 +206,7 @@ describe('POST /api/estimator/[slug]/lead', () => {
     expect(rpcArgs()).toMatchObject({ p_qualified: false, p_step: 'thanks', p_service_area_valid: true });
   });
   it('out-of-area ZIP: saved for review, qualified=false, flagged out of area, no Meta Lead', async () => {
-    const res = await post({ ...valid, zip: '10001', tracking: { eventId: 'evt-1', fbp: 'fb.1.1.111' } });
+    const res = await post({ ...measured, zip: '10001', tracking: { eventId: 'evt-1', fbp: 'fb.1.1.111' } });
     const body = await res.json();
     expect(body).toMatchObject({ ok: true, qualified: false });
     expect(body.calendarUrl).toBeUndefined();
@@ -221,10 +222,16 @@ describe('POST /api/estimator/[slug]/lead', () => {
   });
   it('a demo funnel sends no alerts and no Meta event', async () => {
     m.funnel = { id: 'f1', slug: 'pool-masters', is_demo: true, contractor_id: null, integration_id: 'i1', config: funnelConfig };
-    await post({ ...valid, tracking: { eventId: 'evt-1' } }); await flush();
+    await post({ ...measured, tracking: { eventId: 'evt-1' } }); await flush();
     expect(m.emails).not.toHaveBeenCalled();
     expect(m.send).not.toHaveBeenCalled();
     expect(m.inserts.some((i) => i.table === 'lead_activities')).toBe(false);
+  });
+  it('rejects a consent wording that differs from what the funnel stores, saving nothing', async () => {
+    const res = await post({ ...valid, consentText: 'I agree to be contacted by Pool Masters LA.' });
+    expect(res.status).toBe(409);
+    expect((await res.json()).errors).toHaveProperty('consent');
+    expect(m.rpc).not.toHaveBeenCalled();
   });
   it('503s when the funnel is unavailable or the save fails', async () => {
     m.funnel = null;
@@ -239,7 +246,7 @@ describe('POST /api/estimator/[slug]/lead', () => {
 
 describe('Meta Lead event', () => {
   it('sends the funnel Lead event with the browser event id and stores the ids', async () => {
-    const res = await post({ ...valid, tracking: { eventId: 'evt-1', fbp: 'fb.1.1.111', fbc: 'fb.1.2.cookie' } });
+    const res = await post({ ...measured, tracking: { eventId: 'evt-1', fbp: 'fb.1.1.111', fbc: 'fb.1.2.cookie' } });
     expect((await res.json()).ok).toBe(true);
     await flush();
     expect(rpcArgs()).toBeTruthy();
@@ -252,13 +259,14 @@ describe('Meta Lead event', () => {
     });
     expect(m.remember).toHaveBeenCalledWith(expect.anything(), 'lead-9', { fbp: 'fb.1.1.111', fbc: 'fb.1.2.cookie' });
   });
-  it('sends nothing without the browser ids (the visitor did not allow measurement)', async () => {
-    await post(valid); await flush();
+  it('sends nothing and keeps no ids when the visitor did not allow measurement, even with ids present', async () => {
+    await post({ ...valid, tracking: { eventId: 'evt-1', fbp: 'fb.1.1.111', fbc: 'fb.1.2.cookie' } }); await flush();
+    expect(m.inserts.find((i) => i.table === 'funnel_sessions')!.row).toMatchObject({ measurement_allowed: false });
     expect(m.send).not.toHaveBeenCalled();
     expect(m.remember).not.toHaveBeenCalled();
   });
   it('falls back to the funnel event id formula when only Meta ids are present', async () => {
-    await post({ ...valid, tracking: { fbp: 'fb.1.1.111' } }); await flush();
+    await post({ ...measured, tracking: { fbp: 'fb.1.1.111' } }); await flush();
     expect(m.send.mock.calls[0][0]).toMatchObject({ eventId: 'sess-1:Lead' });
   });
 });

@@ -1,3 +1,4 @@
+import { estimatorConsentText } from '@/lib/estimator/lead-client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { EstimatorFlow } from '@/components/estimator/estimator-flow';
@@ -137,6 +138,13 @@ describe('estimator answers', () => {
     expect(screenComplete(twoQuestions, initialFlowState({ equipment: ['pump'] }))).toBe(false);
     expect(screenComplete(twoQuestions, initialFlowState({ equipment: ['pump'], cracks: ['no'] }))).toBe(true);
   });
+
+  it('lets an optional multi question (backyard extras) continue with no picks', () => {
+    const screens = flowScreens(TEMPLATE, { ...applyPackage(TEMPLATE, BASE, 'custom'), scope: ['equipment'] }, { customize: false, hasGallery: false });
+    const equipment = screens.find((s) => s.id === 'equipment')!;
+    const optional = { ...equipment, questions: [{ ...q('equipment'), optional: true }] };
+    expect(screenComplete(optional, initialFlowState({ scope: ['equipment'] }))).toBe(true);
+  });
 });
 
 describe('typed dimensions', () => {
@@ -176,7 +184,7 @@ describe('lead request', () => {
   };
 
   it('sends trimmed fields, valid dimensions, liked looks and only the answers that are still shown', () => {
-    const req = buildLeadRequest(TEMPLATE, filled, { pageUrl: 'https://example.com/estimate' });
+    const req = buildLeadRequest(TEMPLATE, filled, { pageUrl: 'https://example.com/estimate' }, 'Consent wording');
     expect(req).toEqual({
       answers: {
         project: ['backyard'],
@@ -196,6 +204,8 @@ describe('lead request', () => {
       homeowner: 'yes',
       timeline: '1_3_months',
       contact: { firstName: 'Ana', lastName: 'Lee', email: 'ana@example.com', phone: '(555) 555-0100', consent: true, website: '' },
+      consentText: 'Consent wording',
+      measurement: false,
       tracking: { pageUrl: 'https://example.com/estimate' },
     });
     // Stale deck answer is gone (deck is hidden), and no prices are ever sent.
@@ -258,7 +268,7 @@ describe('estimator rendering', () => {
     const html = renderToStaticMarkup(<Estimator template={FIXTURE_TEMPLATE} contractor={FIXTURE_CONTRACTOR} />);
     expect(html).toContain('What are you planning?');
     expect(html).toContain('Remodel my pool');
-    expect(html).toContain('Step 1 of');
+    expect(html).toContain('Step 1');
     expect(html).toMatch(/role="progressbar"/);
     expect(html).toMatch(/<fieldset/);
     expect(html).toMatch(/<legend/);
@@ -365,8 +375,14 @@ describe('estimator rendering', () => {
 
   it('renders the contact screen with the consent line, a hidden honeypot and a 1000-character note', () => {
     const html = render('contact');
-    expect(html).toContain('I agree to be contacted by Fixture Pools by call, text or email about my pool project. Consent is not a condition of purchase.');
-    expect(html).toMatch(/<input[^>]*tabindex="-1"[^>]*name="website"/);
+    // The exact wording the funnel stores, naming HomeQuote Network and the contractor.
+    expect(html).toContain(estimatorConsentText('Fixture Pools'));
+    expect(html).toContain('I agree that HomeQuote Network and Fixture Pools may call, text, or email me');
+    expect(html).toMatch(/href="\/privacy"/);
+    expect(html).toMatch(/href="\/terms"/);
+    expect(html).toContain('Allow optional advertising measurement');
+    // Honeypot: hidden + inert, and not named like a field autofill would fill.
+    expect(html).toMatch(/<div hidden="" inert=""[^>]*><label>[^<]*<input[^>]*tabindex="-1"[^>]*name="contact_url_2"/);
     expect(html).toMatch(/maxLength="1000"|maxlength="1000"/);
     expect(html).toContain('Anything else we should know?');
     expect(html).toContain('See my estimate');
