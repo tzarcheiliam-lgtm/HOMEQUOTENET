@@ -4,7 +4,7 @@
 > lives is in `HOMEQUOTE_CONTEXT.md` §33. Differences from this plan: no
 > "undo" for one-tap outcomes (attempts stay append-only), the heatmap shows
 > four Monday-aligned weeks, and setters' homeowner calls count toward the
-> same goal. Migration `0059_call_goals.sql` must be applied for per-person
+> same goal. Migration `0060_call_goals.sql` must be applied for per-person
 > goals and the leaderboard switch; without it everything else works with a
 > goal of 100.
 

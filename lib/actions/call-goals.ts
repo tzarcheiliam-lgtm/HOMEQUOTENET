@@ -9,7 +9,7 @@ import { MAX_DAILY_GOAL, MIN_DAILY_GOAL } from '@/lib/calls/goals';
 /**
  * Administrator controls for the calling HUD: each person's daily call goal
  * and the opt-in leaderboard. Both write through the signed-in admin's own
- * client, so RLS and the profile guard (0059) are the boundary, not just this
+ * client, so RLS and the profile guard (0060) are the boundary, not just this
  * check — and both are audited.
  */
 
@@ -51,7 +51,7 @@ export async function setDailyCallGoal(_prev: GoalActionState, fd: FormData): Pr
     return {
       ok: false,
       error: /daily_call_goal/.test(error.message)
-        ? 'Call goals need database migration 0059 — apply it, then try again.'
+        ? 'Call goals need database migration 0060 — apply it, then try again.'
         : error.message,
     };
   }

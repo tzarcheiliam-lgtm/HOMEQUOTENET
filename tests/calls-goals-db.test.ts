@@ -3,7 +3,7 @@ import type { PGlite } from '@electric-sql/pglite';
 import { fullSchema } from './helpers/full-migrations';
 
 /**
- * Migration 0059 against every real migration (PGlite, in-process): the goal
+ * Migration 0060 against every real migration (PGlite, in-process): the goal
  * column, its guard, and the single-row calling-workspace settings with RLS.
  */
 const id = {
@@ -46,7 +46,7 @@ beforeAll(async () => {
   }
 }, 120000);
 
-describe('0059 daily call goals', () => {
+describe('0060 daily call goals', () => {
   it('defaults every profile to 100 and rejects out-of-range goals', async () => {
     const { rows } = await db.query<{ daily_call_goal: number }>(
       'select daily_call_goal from public.profiles where id = $1',
@@ -81,7 +81,7 @@ describe('0059 daily call goals', () => {
   });
 });
 
-describe('0059 call_workspace_settings', () => {
+describe('0060 call_workspace_settings', () => {
   it('seeds one row with the leaderboard off', async () => {
     const { rows } = await db.query<{ leaderboard_enabled: boolean }>(
       'select leaderboard_enabled from public.call_workspace_settings'

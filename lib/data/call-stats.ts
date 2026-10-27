@@ -115,7 +115,7 @@ async function goalFor(db: Db, userId: string): Promise<number> {
     .select('daily_call_goal')
     .eq('id', userId)
     .maybeSingle();
-  // Before migration 0059 the column does not exist: fall back to the default.
+  // Before migration 0060 the column does not exist: fall back to the default.
   if (error || !data) return DEFAULT_DAILY_GOAL;
   return clampGoal((data as { daily_call_goal?: number }).daily_call_goal ?? DEFAULT_DAILY_GOAL);
 }

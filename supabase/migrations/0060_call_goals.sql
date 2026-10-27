@@ -1,5 +1,5 @@
 -- =============================================================================
--- 0059 — Daily call goals + calling-workspace settings
+-- 0060 — Daily call goals + calling-workspace settings
 --
 --   profiles.daily_call_goal      per-person target for the calling HUD (100)
 --   call_workspace_settings       single-row switches for the calling

@@ -98,7 +98,7 @@ export interface Profile {
   account_status: AccountStatus;
   last_login_at: string | null;
   deleted_at: string | null;
-  /** Calls per day for the calling HUD (migration 0059; absent before it). */
+  /** Calls per day for the calling HUD (migration 0060; absent before it). */
   daily_call_goal?: number;
   created_at: string;
   updated_at: string;
