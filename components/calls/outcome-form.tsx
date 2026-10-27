@@ -124,12 +124,14 @@ export function OutcomeForm({
     const nextUrl = state.nextId
       ? `/app/calls/${state.nextId}${qs ? `?${qs}` : ''}`
       : `/app/calls?${qs || 'view=mine'}&done=1`;
-    openQuickEmail({
+    const shown = openQuickEmail({
       outcome: f.outcome,
       when: f.at ? { iso: f.at, timeZone: f.timeZone, type: f.type } : null,
       nextHref: nextUrl,
     });
-  }, [state, contextQuery]);
+    // No sheet to send or skip from: still honor the "& next".
+    if (!shown) router.push(nextUrl);
+  }, [state, contextQuery, router]);
 
   // The "next" button saves then emails when this outcome has a follow-up.
   const withEmail = emailFollowUps && !!outcome && !!FOLLOW_UP_FOR[outcome];

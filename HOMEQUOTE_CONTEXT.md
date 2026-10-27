@@ -1294,6 +1294,8 @@ Plan: `docs/quick-email-plan.md`.
 - **Log form:** a **Best email** field for those outcomes (`EMAIL_CAPTURE_OUTCOMES`, `decision_maker_email`, validated, saved even if nothing is sent).
   - When the outcome has a follow-up and Gmail can send, "Save and open next" (and the one-tap outcome buttons) submit `intent=save_then_email`. `logCallOutcome` saves, returns `nextId` + `followUp`, and the form opens `QuickEmailSheet`.
   - **Send & next** or **Skip** (Esc) moves on. `E` opens the sheet any time, alongside an Email button in the header and the phone action bar. The `openQuickEmail` event lives in `lib/calls/quick-email-events.ts`.
+  - `openQuickEmail` returns whether the sheet opened; if it didn't, the outcome form navigates to the next prospect itself.
+  - The sheet adds its window listener once and reads the latest props through a ref. Re-adding it on every render lost the open request, because the save's page refresh lands in the same commit, and "Save, email & next" then stayed on the same prospect (fixed 2026-10-27).
   - Workspace shortcuts are ignored while the sheet (a modal) is open.
 - **One send path:** `sendProspectEmailCore` (`lib/emails/prospect-send.server.ts`) is used by the full composer (`sendProspectEmail`) and the sheet (`sendQuickEmail`). It refuses:
   - do-not-call, an email opt-out, or a prospect not assigned to the sender;
