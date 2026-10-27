@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DispositionBadge } from './disposition-badge';
 import { fmtDateTime } from './format';
+import { templateLabel } from '@/lib/emails/call-followups';
 import { Mail, PhoneCall } from 'lucide-react';
 import type { ProspectCallAttempt, ProspectEmailLog } from '@/lib/types';
 
@@ -71,6 +72,7 @@ export function ActivityTimeline({
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
                   <Mail className="size-3.5" aria-hidden="true" />
                   <span className="font-medium">Email {item.email.status}</span>
+                  <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">{templateLabel(item.email.template_key)}</span>
                   <span className="text-muted-foreground">
                     {item.email.sender_name ?? item.email.sender_email} &middot; {fmtDateTime(item.email.sent_at ?? item.email.created_at)}
                   </span>

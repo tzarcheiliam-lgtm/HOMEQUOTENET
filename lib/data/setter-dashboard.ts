@@ -67,7 +67,7 @@ export async function getSetterDashboard(userId: string): Promise<SetterDashboar
   const lastMonday = shiftDay(monday, -7);
   const month = monthOf(todayKey);
 
-  const [allMeetings, partners, leaderboard, callbacks, warm, fresh, homeowner] = await Promise.all([
+  const [allMeetings, partners, leaderboard, callbacks, warm, fresh, homeowner, emailed] = await Promise.all([
     loadMeetings({ db }),
     loadPartners(db),
     isLeaderboardEnabled(),
@@ -99,6 +99,16 @@ export async function getSetterDashboard(userId: string): Promise<SetterDashboar
       .select('id', { count: 'exact', head: true })
       .is('archived_at', null)
       .in('status', ['new', 'contact_attempted']),
+    // Follow-up emails this setter sent 3–10 days ago.
+    db
+      .from('prospect_email_logs')
+      .select('prospect_id, sent_at, subject')
+      .eq('sender_user_id', userId)
+      .eq('status', 'sent')
+      .gte('sent_at', new Date(now.getTime() - 10 * DAY).toISOString())
+      .lte('sent_at', new Date(now.getTime() - 3 * DAY).toISOString())
+      .order('sent_at', { ascending: false })
+      .limit(50),
   ]);
 
   const me = partners.find((p) => p.id === userId);
@@ -167,6 +177,34 @@ export async function getSetterDashboard(userId: string): Promise<SetterDashboar
       });
     }
   }
+  // Emailed, then nothing: no call logged since and no meeting booked — call back.
+  const lastEmail = new Map<string, { sent_at: string; subject: string }>();
+  for (const e of (emailed.data ?? []) as { prospect_id: string; sent_at: string; subject: string }[]) {
+    if (!lastEmail.has(e.prospect_id)) lastEmail.set(e.prospect_id, e);
+  }
+  if (lastEmail.size > 0) {
+    const { data: ps } = await db
+      .from('contractor_prospects')
+      .select('id, company_name, phone, disposition, last_contacted_at')
+      .eq('assigned_to', userId)
+      .is('archived_at', null)
+      .in('id', [...lastEmail.keys()]);
+    for (const p of (ps ?? []) as { id: string; company_name: string; phone: string | null; disposition: string; last_contacted_at: string | null }[]) {
+      const e = lastEmail.get(p.id)!;
+      if (['appointment_booked', 'not_interested', 'do_not_call', 'wrong_number', 'duplicate'].includes(p.disposition)) continue;
+      if (p.last_contacted_at && Date.parse(p.last_contacted_at) > Date.parse(e.sent_at)) continue;
+      items.push({
+        kind: 'emailed',
+        id: `emailed-${p.id}`,
+        title: p.company_name,
+        detail: `Emailed ${fmtRelative(e.sent_at).toLowerCase()} (“${e.subject}”) — no reply logged, call them`,
+        href: `/app/calls/${p.id}`,
+        at: e.sent_at,
+        phone: p.phone,
+      });
+    }
+  }
+
   // No-shows / cancellations in the last 14 days that have not been rebooked.
   const rebooked = new Set(mine.filter((m) => !['no_show', 'cancelled'].includes(m.status)).map((m) => m.prospectId));
   for (const m of mine) {

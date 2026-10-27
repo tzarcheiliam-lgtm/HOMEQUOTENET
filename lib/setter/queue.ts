@@ -8,6 +8,7 @@ export type QueueKind =
   | 'confirm' //   a booked meeting soon that is not confirmed — protects a pending sale
   | 'callback' //  a promised callback that is due
   | 'hot' //       an interested / follow-up prospect whose follow-up is due
+  | 'emailed' //   emailed 3–10 days ago, no call or meeting since — call back
   | 'rescue' //    a recent no-show or cancellation to rebook
   | 'slipped' //   interested, but nobody has called in 7+ days
   | 'homeowner' // homeowner leads waiting (one summary row)
@@ -24,12 +25,13 @@ export interface QueueItem {
   phone?: string | null;
 }
 
-const ORDER: QueueKind[] = ['confirm', 'callback', 'hot', 'rescue', 'slipped', 'homeowner', 'fresh'];
+const ORDER: QueueKind[] = ['confirm', 'callback', 'hot', 'emailed', 'rescue', 'slipped', 'homeowner', 'fresh'];
 
 export const QUEUE_LABELS: Record<QueueKind, { tag: string; tone: 'red' | 'amber' | 'blue' | 'slate' }> = {
   confirm: { tag: 'Confirm', tone: 'red' },
   callback: { tag: 'Callback due', tone: 'amber' },
   hot: { tag: 'Hot', tone: 'amber' },
+  emailed: { tag: 'Emailed', tone: 'blue' },
   rescue: { tag: 'Rebook', tone: 'blue' },
   slipped: { tag: 'Slipping', tone: 'blue' },
   homeowner: { tag: 'Leads', tone: 'slate' },
@@ -52,5 +54,5 @@ export function rankQueue(items: QueueItem[]): QueueItem[] {
 
 /** Rows that can turn into a booked (and so payable) meeting today. */
 export function chancesToBook(items: QueueItem[]): number {
-  return items.filter((i) => i.kind === 'callback' || i.kind === 'hot' || i.kind === 'rescue' || i.kind === 'slipped').length;
+  return items.filter((i) => ['callback', 'hot', 'emailed', 'rescue', 'slipped'].includes(i.kind)).length;
 }

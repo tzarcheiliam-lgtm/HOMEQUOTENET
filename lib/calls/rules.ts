@@ -18,6 +18,8 @@ export interface OutcomeInput {
   appointment_type?: string | null;
   time_zone?: string | null;
   contact_info?: string | null;
+  /** The best email for the follow-up, asked for on the call. Optional. */
+  decision_maker_email?: string | null;
   /** Explicit confirmation is required to mark a prospect do-not-call. */
   confirm_do_not_call?: boolean;
 }
@@ -32,7 +34,19 @@ export type OutcomeField =
   | 'appointment_type'
   | 'time_zone'
   | 'contact_info'
+  | 'decision_maker_email'
   | 'confirm_do_not_call';
+
+/** Outcomes that come with a follow-up email, so the form asks for the best address. */
+export const EMAIL_CAPTURE_OUTCOMES: ProspectDisposition[] = [
+  'spoke_with_dm',
+  'gatekeeper',
+  'left_voicemail',
+  'callback_requested',
+  'interested',
+  'follow_up_required',
+  'appointment_booked',
+];
 
 /** Fields that must be present for a given outcome. */
 export function requiredFieldsFor(outcome: ProspectDisposition): OutcomeField[] {
@@ -68,6 +82,8 @@ export function visibleFieldsFor(outcome: ProspectDisposition): OutcomeField[] {
   if (outcome === 'callback_requested' || outcome === 'interested') {
     optional.push('decision_maker_name', 'best_contact_method');
   }
+  // Outcomes with a follow-up email: ask for the address while they're on the line.
+  if (EMAIL_CAPTURE_OUTCOMES.includes(outcome)) optional.push('decision_maker_email');
   return Array.from(new Set([...required, ...optional]));
 }
 
@@ -81,6 +97,7 @@ const FIELD_LABELS: Record<OutcomeField, string> = {
   appointment_type: 'Appointment type',
   time_zone: 'Time zone',
   contact_info: 'Confirmation phone or email',
+  decision_maker_email: 'Best email',
   confirm_do_not_call: 'Do-not-call confirmation',
 };
 
@@ -140,6 +157,10 @@ export function validateOutcome(input: OutcomeInput): OutcomeValidation {
     }
   }
 
+  if (present(input.decision_maker_email) && !/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(String(input.decision_maker_email).trim())) {
+    errors.decision_maker_email = 'Enter a valid email, or leave it blank';
+  }
+
   return { ok: Object.keys(errors).length === 0, outcome, errors };
 }
 
@@ -176,6 +197,7 @@ export function prospectPatchFor(
   appointment_at: string | null;
   decision_maker_name?: string;
   best_contact_method?: string;
+  decision_maker_email?: string;
 } {
   const patch: ReturnType<typeof prospectPatchFor> = {
     disposition: outcome,
@@ -192,6 +214,9 @@ export function prospectPatchFor(
   }
   if (present(input.best_contact_method)) {
     patch.best_contact_method = String(input.best_contact_method).trim();
+  }
+  if (present(input.decision_maker_email)) {
+    patch.decision_maker_email = String(input.decision_maker_email).trim().toLowerCase();
   }
   return patch;
 }

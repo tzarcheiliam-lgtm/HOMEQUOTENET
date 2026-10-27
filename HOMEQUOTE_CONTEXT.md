@@ -1272,3 +1272,50 @@ Charts are hand-written SVG/CSS (`components/calls/stats/charts.tsx`; no chart l
 
 **Status:** 0062 was applied to production on 2026-10-27 by the owner in the Supabase SQL editor. Verified: both profile columns, all four sale columns, the four checks, the extended profile guard, the pay-guard trigger and the sold index. **Deploy order (other environments):** apply 0062, then deploy. Deploying first is safe: the dashboard and payouts read with `select('*')`, so without 0062 they show no rates or sales. Recording a sale or setting pay returns "needs database migration 0062". The "Needs a sale decision" filter shows nothing.
 
+## 37. One-tap follow-up emails from the call workspace (migration 0063, 2026-10-27; applied to production 2026-10-27)
+Plan: `docs/quick-email-plan.md`.
+- **Owner decisions:**
+  - The email sheet **pops up automatically** after a qualifying outcome.
+  - With no decision-maker email, follow-ups (voicemail included) go to the **company's general inbox**.
+- **Outcome → email** (`FOLLOW_UP_FOR` in `lib/emails/call-followups.ts`):
+
+  | Outcome | Email |
+  |---|---|
+  | spoke_with_dm, interested, follow_up_required | "More info after our call" (existing builder) |
+  | appointment_booked | "Meeting confirmed", with an `.ics` invite for the next booked sales meeting (`lib/emails/meeting-invite.ts`) |
+  | callback_requested | "Talk soon" |
+  | left_voicemail | "Sorry I missed you" |
+  | gatekeeper | "For the owner" |
+  | anything else | none |
+
+  "If anything changes" is available but never auto-offered. `contractor_second_follow_up` ("hold your area") is never a quick action.
+- **Five new templates** (`CALL_FOLLOW_UP_SEEDS`, category **Cold Call Follow-Up**) are part of `EMAIL_TEMPLATE_LIBRARY`. `quickTemplates()` uses the database copy when present (admin-edited), else the built-in text. That means the sheet works before the rows are seeded; `scripts/seed-email-templates.ts` inserts them.
+- **New merge fields:** `sender.name`, `sender.phone`, `contractor.city`, `appointment.time_zone`, `appointment.how`. Prospect contexts also fill `lead.city`, fixing the blank city in older contractor templates.
+- **Log form:** a **Best email** field for those outcomes (`EMAIL_CAPTURE_OUTCOMES`, `decision_maker_email`, validated, saved even if nothing is sent).
+  - When the outcome has a follow-up and Gmail can send, "Save and open next" (and the one-tap outcome buttons) submit `intent=save_then_email`. `logCallOutcome` saves, returns `nextId` + `followUp`, and the form opens `QuickEmailSheet`.
+  - **Send & next** or **Skip** (Esc) moves on. `E` opens the sheet any time, alongside an Email button in the header and the phone action bar. The `openQuickEmail` event lives in `lib/calls/quick-email-events.ts`.
+  - Workspace shortcuts are ignored while the sheet (a modal) is open.
+- **One send path:** `sendProspectEmailCore` (`lib/emails/prospect-send.server.ts`) is used by the full composer (`sendProspectEmail`) and the sheet (`sendQuickEmail`). It refuses:
+  - do-not-call, an email opt-out, or a prospect not assigned to the sender;
+  - the same template to the same prospect within 7 days, unless the sender clicks "Send anyway" (`allow_repeat`);
+  - more than 100 sends per sender per Los Angeles day.
+
+  Logging is unchanged: pending → sent only with a Gmail id, else failed.
+- **Signature and compliance:**
+  - Emails are signed by the **sender** (name + phone from their profile), no longer always "Liam". The From name reads "Sam Setter · HomeQuote Network"; ASCII names are left unencoded.
+  - Every prospect email carries an opt-out line ("Reply 'stop'…") and, when `EMAIL_MAILING_ADDRESS` is set (server env), the postal address CAN-SPAM requires. Admins see a warning on `/app/calls/emails` until it's set.
+  - `buildRawGmailMessage` supports attachments (multipart/mixed) and a From name. Unsafe names and header injection are dropped.
+- **Opt-out (0063):**
+  - `contractor_prospects.email_opt_out_at`. "Asked to stop emails" on the prospect page (`setEmailOptOut`); only an admin can lift it, and `guard_prospect_email_opt_out()` enforces that in the database. Audited.
+  - Before 0063 the column is absent: sends still work, recording an opt-out says the migration is needed.
+- **Follow-through:**
+  - The setter money queue has a new **Emailed** row (emailed 3–10 days ago, no call or meeting since), ranked after Hot.
+  - The Stats page gained a **Follow-up emails** card: sent today and this week, and per template, how many led to a sales meeting within 7 days.
+  - Prospect History shows each email's template name.
+- **Tests:** `tests/call-followups.test.ts`, `tests/prospect-send-db.test.ts` (PGlite + mocked Gmail, including the 0063 guard), plus updated library counts (54 templates) in `tests/email-templates.test.ts`.
+- **Status:** 0063 was applied to production on 2026-10-27 by the owner. Verified: the column, the guard function and its trigger. `EMAIL_MAILING_ADDRESS` is not yet confirmed as set.
+- **Deploy (other environments):**
+  1. Apply 0063 (sending works without it).
+  2. Set `EMAIL_MAILING_ADDRESS` in Vercel.
+  3. Optionally seed the five templates so admins can edit them.
+

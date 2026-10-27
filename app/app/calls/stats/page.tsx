@@ -5,6 +5,7 @@ import { getCallStats, getTeamBoard, isLeaderboardEnabled } from '@/lib/data/cal
 import { listCallers } from '@/lib/data/prospects';
 import { setLeaderboardEnabled } from '@/lib/actions/call-goals';
 import { zonedParts } from '@/lib/calls/goals';
+import { templateLabel } from '@/lib/emails/call-followups';
 import { cn } from '@/lib/utils';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -150,6 +151,32 @@ export default async function CallStatsPage({
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Follow-up emails</CardTitle>
+          <CardDescription>
+            {stats.emails.today} today · {stats.emails.week} this week. &ldquo;Booked&rdquo; = a sales meeting with that company within 7 days of the email.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {stats.emails.byTemplate.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No follow-up emails in the last 90 days. Log a call with a decision-maker or a voicemail and the email is one tap away.</p>
+          ) : (
+            <ul className="divide-y text-sm">
+              {stats.emails.byTemplate.map((t) => (
+                <li key={t.key} className="flex items-center justify-between gap-3 py-2">
+                  <span className="min-w-0 truncate font-medium">{templateLabel(t.key)}</span>
+                  <span className="shrink-0 tabular-nums text-muted-foreground">
+                    {t.sent} sent · <span className={cn(t.booked > 0 && 'font-semibold text-emerald-700')}>{t.booked} booked</span>
+                    {t.sent > 0 ? ` (${Math.round((t.booked / t.sent) * 100)}%)` : ''}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="pb-2">

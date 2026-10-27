@@ -1,5 +1,6 @@
 import { buildBrandedEmailHtml, buildBrandedEmailText, emailLogoUrl } from '@/lib/emails/template';
 import { variablesIn } from '@/lib/emails/variables';
+import { CALL_FOLLOW_UP_CATEGORY, CALL_FOLLOW_UP_SEEDS } from '@/lib/emails/call-followups';
 
 export interface EmailTemplateSeed {
   key: string;
@@ -17,6 +18,7 @@ export const EMAIL_TEMPLATE_CATEGORIES = [
   'Appointments',
   'Estimate Follow-Up',
   'Contractor Sales',
+  'Cold Call Follow-Up',
   'Contractor Onboarding',
   'Upsells',
   'Billing',
@@ -296,6 +298,17 @@ export const EMAIL_TEMPLATE_LIBRARY: EmailTemplateSeed[] = [
       "Want me to set that up this week?",
     ],
   },
+  // ------------------------------------------------------------- Cold Call Follow-Up
+  // Short emails offered in the call workspace right after an outcome is logged.
+  ...CALL_FOLLOW_UP_SEEDS.map((seed) => ({
+    key: seed.key,
+    category: CALL_FOLLOW_UP_CATEGORY,
+    name: seed.name,
+    subject: seed.subject,
+    description: seed.description,
+    contractorVisible: false,
+    paragraphs: seed.paragraphs,
+  })),
   // ------------------------------------------------------------- Contractor Onboarding
   {
     key: 'contractor_welcome',

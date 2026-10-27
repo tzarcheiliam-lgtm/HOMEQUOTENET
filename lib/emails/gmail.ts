@@ -186,6 +186,9 @@ export async function sendGmailMessage(
     html: string;
     text?: string;
     replyTo?: string;
+    /** Sender display name (e.g. "Sam Setter · HomeQuote Network"). */
+    fromName?: string;
+    attachments?: import('@/lib/emails/gmail-message').MailAttachment[];
     /** Send from this team member's own Gmail when connected; omit for automations. */
     senderUserId?: string;
   },

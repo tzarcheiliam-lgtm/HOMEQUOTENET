@@ -78,9 +78,40 @@ function messageHtml(message: string): string {
     .join('');
 }
 
+/** Who signs a prospect email: the team member sending it (Liam by default). */
+export interface EmailSigner {
+  name: string;
+  phone?: string | null;
+}
+
+export const DEFAULT_SIGNER: EmailSigner = { name: 'Liam' };
+
+/**
+ * Required in commercial email (CAN-SPAM, B2B included): a way to opt out and
+ * the sender's postal address. The address comes from EMAIL_MAILING_ADDRESS
+ * (server env); without it only the opt-out line is shown.
+ */
+export const OPT_OUT_LINE = 'Not interested in hearing from us? Reply "stop" and we won\u2019t email you again.';
+
+export function mailingAddress(): string | null {
+  const v = typeof process !== 'undefined' ? process.env.EMAIL_MAILING_ADDRESS : undefined;
+  return v && v.trim() ? v.trim() : null;
+}
+
+function signerName(signer: EmailSigner | null | undefined): string {
+  const name = signer?.name?.trim();
+  return name ? name : DEFAULT_SIGNER.name;
+}
+
 /** Gmail-safe, inline-styled HTML used verbatim by both preview and delivery. */
-export function buildProspectEmailHtml(message: string, logoUrl: string): string {
+export function buildProspectEmailHtml(
+  message: string,
+  logoUrl: string,
+  signer: EmailSigner = DEFAULT_SIGNER,
+  address: string | null = null
+): string {
   const safeLogoUrl = escapeHtml(logoUrl);
+  const phone = signer.phone?.trim();
   return [
     '<div style="margin:0;padding:0;background:#ffffff;color:#0A1B3D;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.65;">',
     '<div style="max-width:600px;margin:0;padding:4px 0;">',
@@ -89,19 +120,39 @@ export function buildProspectEmailHtml(message: string, logoUrl: string): string
     '<tr>',
     `<td style="padding:0 14px 0 0;vertical-align:middle;"><img src="${safeLogoUrl}" width="72" height="72" alt="HomeQuote Network" style="display:block;width:72px;height:72px;border:0;outline:none;text-decoration:none;"></td>`,
     '<td style="padding:0;vertical-align:middle;font-family:Arial,Helvetica,sans-serif;line-height:1.4;">',
-    '<div style="font-size:16px;font-weight:700;color:#0A1B3D;">Liam</div>',
+    `<div style="font-size:16px;font-weight:700;color:#0A1B3D;">${escapeHtml(signerName(signer))}</div>`,
     '<div style="font-size:14px;font-weight:700;color:#0038B8;">HomeQuote Network</div>',
+    phone ? `<div style="font-size:13px;color:#0A1B3D;">${escapeHtml(phone)}</div>` : '',
     '<div style="font-size:13px;color:#5B6B8C;">Homeowner qualification &amp; pool project appointments</div>',
     '</td>',
     '</tr>',
     '</table>',
+    `<p style="margin:20px 0 0 0;font-size:12px;line-height:1.5;color:#8A96B0;">${escapeHtml(OPT_OUT_LINE)}${
+      address ? `<br>HomeQuote Network · ${escapeHtml(address)}` : ''
+    }</p>`,
     '</div>',
     '</div>',
   ].join('');
 }
 
-export function buildProspectEmailText(message: string): string {
-  return `${message.trim()}\n\nBest,\nLiam\nHomeQuote Network`;
+export function buildProspectEmailText(
+  message: string,
+  signer: EmailSigner = DEFAULT_SIGNER,
+  address: string | null = null
+): string {
+  const phone = signer.phone?.trim();
+  return [
+    message.trim(),
+    '',
+    'Best,',
+    signerName(signer),
+    'HomeQuote Network',
+    ...(phone ? [phone] : []),
+    '',
+    '--',
+    OPT_OUT_LINE,
+    ...(address ? [`HomeQuote Network · ${address}`] : []),
+  ].join('\n');
 }
 
 // ---------------------------------------------------------------------------
