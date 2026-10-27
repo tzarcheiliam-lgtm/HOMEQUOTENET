@@ -18,6 +18,7 @@ class Builder {
   private filters: Filter[] = [];
   private _order: { col: string; asc: boolean }[] = [];
   private _limit: number | null = null;
+  private _offset = 0;
   private _single: 'single' | 'maybe' | null = null;
   private _cols = '*';
   private _count = false;
@@ -46,6 +47,7 @@ class Builder {
   or(expr: string) { this.filters.push({ col: '', op: 'or', val: expr }); return this; }
   order(col: string, o?: { ascending?: boolean }) { this._order.push({ col, asc: o?.ascending !== false }); return this; }
   limit(n: number) { this._limit = n; return this; }
+  range(from: number, to: number) { this._offset = from; this._limit = to - from + 1; return this; }
   single() { this._single = 'single'; return this; }
   maybeSingle() { this._single = 'maybe'; return this; }
   private where(params: unknown[]) {
@@ -102,6 +104,7 @@ class Builder {
         if (!this._head) {
           if (this._order.length) sql += ' order by ' + this._order.map((o) => `${ident(o.col)} ${o.asc ? 'asc' : 'desc'}`).join(',');
           if (this._limit !== null) sql += ` limit ${this._limit}`;
+          if (this._offset) sql += ` offset ${this._offset}`;
         }
       }
       if (this.op !== 'select' && this._returning) sql += ' returning ' + (this._cols === '*' ? '*' : this._cols.split(',').map((c) => ident(c.trim())).join(','));

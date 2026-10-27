@@ -1,7 +1,9 @@
 'use client';
 
-import { useActionState, useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Check, Save } from 'lucide-react';
+import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
+import { useRouter } from 'next/navigation';
+import { ArrowRight, Check, Keyboard, Save, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,12 +16,35 @@ import {
   CONTACT_METHODS,
   DISPOSITIONS,
   LOGGABLE_OUTCOMES,
+  OUTCOME_KEYS,
+  QUICK_LABELS,
+  QUICK_OUTCOMES,
   TIME_ZONES,
 } from '@/lib/calls/constants';
 import { requiredFieldsFor, visibleFieldsFor, type OutcomeField } from '@/lib/calls/rules';
 import type { ProspectDisposition } from '@/lib/types';
 import { cn } from '@/lib/utils';
-import { useOutcomePreset } from './call-workspace';
+import { useOutcomePreset, useWorkspaceNav } from './call-workspace';
+import { useGoal } from './goal/goal-provider';
+
+/** The field to focus when a shortcut picks an outcome that needs details. */
+const FIRST_FIELD: Partial<Record<ProspectDisposition, string>> = {
+  callback_requested: 'callback_date',
+  interested: 'decision_maker_name',
+  follow_up_required: 'follow_up_date',
+  appointment_booked: 'appointment_date',
+};
+
+const KEY_FOR = Object.fromEntries(
+  Object.entries(OUTCOME_KEYS).map(([k, v]) => [v, k])
+) as Partial<Record<ProspectDisposition, string>>;
+
+function isTyping(el: EventTarget | null): boolean {
+  if (!(el instanceof HTMLElement)) return false;
+  // The outcome picker is focused on load; shortcuts stand in for it.
+  if (el.id === 'outcome') return false;
+  return el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
+}
 
 /**
  * Log the outcome of a call. Picking an outcome reveals only the fields that
@@ -29,6 +54,11 @@ import { useOutcomePreset } from './call-workspace';
  * Two submit buttons: "Save" stays on the record; "Save and open next" moves
  * straight to the next prospect in the queue, which is how a caller works
  * through a list without touching the mouse between calls.
+ *
+ * Outcomes with nothing else to fill in (QUICK_OUTCOMES) are one tap: they
+ * save and open the next prospect immediately. On a keyboard, 1–9/0 pick an
+ * outcome, C dials, N skips, Enter saves and moves on, ? shows the keys.
+ * Every save bumps the daily goal HUD the moment it is submitted.
  */
 export function OutcomeForm({
   prospectId,
@@ -56,6 +86,75 @@ export function OutcomeForm({
   useEffect(() => {
     if (preset) setOutcome(preset.outcome);
   }, [preset]);
+
+  const router = useRouter();
+  const { tel, nextHref } = useWorkspaceNav();
+  const goal = useGoal();
+  const formRef = useRef<HTMLFormElement>(null);
+  const nextRef = useRef<HTMLButtonElement>(null);
+  const bumpRef = useRef<number | null>(null);
+  const [showKeys, setShowKeys] = useState(false);
+
+  // A save the server rejected never counted: take its bump back.
+  useEffect(() => {
+    if (state && !state.ok) {
+      goal?.revert(bumpRef.current);
+      bumpRef.current = null;
+    }
+  }, [state, goal]);
+
+  const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    const o = new FormData(e.currentTarget).get('outcome');
+    if (o) bumpRef.current = goal?.bump({ key: prospectId, outcome: o as ProspectDisposition }) ?? null;
+  };
+
+  /** One tap: choose the outcome, save, open the next prospect. */
+  const quick = useCallback(
+    (o: ProspectDisposition) => {
+      if (pending) return;
+      flushSync(() => setOutcome(o));
+      formRef.current?.requestSubmit(nextRef.current ?? undefined);
+    },
+    [pending]
+  );
+
+  /** Choose an outcome that needs details and jump to its first field. */
+  const pick = useCallback((o: ProspectDisposition) => {
+    flushSync(() => setOutcome(o));
+    const id = FIRST_FIELD[o];
+    if (id) document.getElementById(id)?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (isDnc) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
+      if (isTyping(e.target)) return;
+      const k = e.key;
+      const o = OUTCOME_KEYS[k];
+      if (o) {
+        e.preventDefault();
+        if (QUICK_OUTCOMES.includes(o)) quick(o);
+        else pick(o);
+      } else if ((k === 'c' || k === 'C') && tel) {
+        e.preventDefault();
+        window.location.href = tel;
+      } else if ((k === 'n' || k === 'N' || k === 'ArrowRight') && nextHref) {
+        e.preventDefault();
+        router.push(nextHref);
+      } else if (k === 'Enter' && outcome && !pending) {
+        e.preventDefault();
+        formRef.current?.requestSubmit(nextRef.current ?? undefined);
+      } else if (k === '?') {
+        e.preventDefault();
+        setShowKeys((v) => !v);
+      } else if (k === 'Escape') {
+        setShowKeys(false);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isDnc, quick, pick, tel, nextHref, router, outcome, pending]);
   const visible = useMemo(
     () => new Set<OutcomeField>(outcome ? visibleFieldsFor(outcome) : ['notes']),
     [outcome]
@@ -90,7 +189,7 @@ export function OutcomeForm({
         <CardTitle className="text-base">Log this call</CardTitle>
       </CardHeader>
       <CardContent className="max-lg:px-0">
-        <form action={formAction} className="space-y-4">
+        <form ref={formRef} action={formAction} onSubmit={onSubmit} className="space-y-4">
           <input type="hidden" name="prospect_id" value={prospectId} />
           <input type="hidden" name="list_context" value={contextQuery ?? ''} />
 
@@ -111,19 +210,53 @@ export function OutcomeForm({
                   </Button>
                 </div>
               ) : (
-                <div role="group" aria-label="Outcome" className="grid grid-cols-2 gap-2">
-                  {DISPOSITIONS.filter((d) => LOGGABLE_OUTCOMES.includes(d.value)).map((d) => (
-                    <button
-                      key={d.value}
-                      type="button"
-                      onClick={() => setOutcome(d.value)}
-                      className="min-h-12 rounded-xl border bg-card px-3 py-2 text-left text-sm font-medium leading-tight active:bg-accent"
-                    >
-                      {d.label}
-                    </button>
-                  ))}
-                </div>
+                <>
+                  <div role="group" aria-label="Outcome" className="grid grid-cols-2 gap-2">
+                    {DISPOSITIONS.filter((d) => LOGGABLE_OUTCOMES.includes(d.value)).map((d) => {
+                      const isQuick = QUICK_OUTCOMES.includes(d.value);
+                      return (
+                        <button
+                          key={d.value}
+                          type="button"
+                          disabled={pending}
+                          onClick={() => (isQuick ? quick(d.value) : setOutcome(d.value))}
+                          className={cn(
+                            'flex min-h-12 items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-sm font-medium leading-tight active:scale-[0.98] active:bg-accent disabled:opacity-60',
+                            isQuick ? 'border-primary/25 bg-primary/5' : 'bg-card'
+                          )}
+                        >
+                          {d.label}
+                          {isQuick ? <Zap className="size-3.5 shrink-0 text-primary" aria-hidden="true" /> : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-1.5 flex items-center gap-1 text-xs text-muted-foreground">
+                    <Zap className="size-3 text-primary" aria-hidden="true" /> saves and opens the next prospect in one tap
+                  </p>
+                </>
               )}
+            </div>
+            <div className="hidden flex-wrap gap-1.5 pb-1 lg:flex" role="group" aria-label="One-tap outcomes">
+              {QUICK_OUTCOMES.map((o) => (
+                <Button
+                  key={o}
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={pending}
+                  onClick={() => quick(o)}
+                  className="gap-1.5 border-primary/25 bg-primary/5 hover:bg-primary/10"
+                  title={`Save as ${DISPOSITIONS.find((d) => d.value === o)?.label} and open the next prospect`}
+                >
+                  {KEY_FOR[o] ? (
+                    <kbd className="rounded border bg-background px-1 font-mono text-[10px] leading-4 text-muted-foreground">
+                      {KEY_FOR[o]}
+                    </kbd>
+                  ) : null}
+                  {QUICK_LABELS[o]}
+                </Button>
+              ))}
             </div>
             <Select
               id="outcome"
@@ -145,9 +278,18 @@ export function OutcomeForm({
               ))}
             </Select>
             <FieldError message={errors.outcome} />
-            <p className="text-xs text-muted-foreground max-lg:hidden">
-              Currently: {DISPOSITIONS.find((d) => d.value === disposition)?.label ?? disposition}
+            <p className="flex items-center justify-between gap-2 text-xs text-muted-foreground max-lg:hidden">
+              <span>Currently: {DISPOSITIONS.find((d) => d.value === disposition)?.label ?? disposition}</span>
+              <button
+                type="button"
+                onClick={() => setShowKeys((v) => !v)}
+                className="inline-flex items-center gap-1 hover:text-foreground"
+                aria-expanded={showKeys}
+              >
+                <Keyboard className="size-3.5" aria-hidden="true" /> Shortcuts <kbd className="font-mono">?</kbd>
+              </button>
             </p>
+            {showKeys ? <ShortcutSheet /> : null}
           </div>
 
           {show('callback_at') ? (
@@ -336,6 +478,7 @@ export function OutcomeForm({
               name="intent"
               value="save_and_next"
               variant="outline"
+              ref={nextRef}
               disabled={pending || !outcome}
             >
               Save and open next
@@ -345,6 +488,35 @@ export function OutcomeForm({
         </form>
       </CardContent>
     </Card>
+  );
+}
+
+function ShortcutSheet() {
+  const rows: [string, string][] = [
+    ...Object.entries(OUTCOME_KEYS).map(
+      ([k, o]) =>
+        [k, `${DISPOSITIONS.find((d) => d.value === o)?.label}${QUICK_OUTCOMES.includes(o) ? ' — saves & next' : ''}`] as [string, string]
+    ),
+    ['C', 'Call this number'],
+    ['N / →', 'Skip to the next prospect'],
+    ['Enter', 'Save and open next'],
+    ['?', 'Show / hide this list'],
+  ];
+  return (
+    <div className="rounded-lg border bg-muted/40 p-3 text-xs max-lg:hidden">
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
+        {rows.map(([k, label]) => (
+          <div key={k} className="flex items-center gap-2">
+            <dt>
+              <kbd className="inline-block min-w-6 rounded border bg-background px-1 text-center font-mono text-[10px] leading-4">
+                {k}
+              </kbd>
+            </dt>
+            <dd className="text-muted-foreground">{label}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
   );
 }
 

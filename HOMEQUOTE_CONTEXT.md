@@ -129,8 +129,10 @@ auth callback route handler).
 - `/app/contractors`, `/app/contractors/new`, `/app/contractors/[id]`
 - `/app/lead-recipients` — who qualified leads can be sent to (admin)
 - `/app/calls`, `/app/calls/[id]`, `/app/calls/new`, `/app/calls/logs`,
-  `/app/calls/appointments`, `/app/calls/emails` — the partner cold-calling
-  workspace (admin/caller/setter only)
+  `/app/calls/appointments`, `/app/calls/emails`, `/app/calls/stats`,
+  `/app/calls/dial` (power hour → first due prospect) — the partner cold-calling
+  workspace (admin/caller/setter only), all under the daily goal HUD (§33)
+- `/app/leads/next` (admin/setter) — redirects to the next homeowner lead to call (§33)
 - `/app/appointments`, `/app/service-requests`
 - `/app/availability` (contractor owner/staff, admin; setters via `?contractor=` from a contractor page) — availability + calendar connections (§24)
 - `/app/growth`, `/app/growth/[service]` — Growth Tools catalog (contractor)
@@ -292,6 +294,8 @@ Lives at `/app/calls` (admin/caller/setter).
   outcome, do-not-call enforcement), `metrics.ts` (caller metrics defined
   once), `import.ts` (CSV import via `scripts/import-prospects.ts`),
   `redirect.ts` (validated `?next=` handling for sign-in).
+- **Daily goal / gamification layer** (100 calls/day HUD, one-tap outcomes,
+  power hour, stats page, leaderboard) sits on top of these logs — see §33.
 - Views in the UI are just filters over one table: My list / Liam's / Nadav's
   / All / New / Callbacks due / Interested / Booked / Do not call.
 - `caller`/`admin` are the only assignable roles for prospects
@@ -1152,3 +1156,51 @@ Tool problems (unknown model, bad aspect ratio, kie.ai errors) come back as `isE
 
 ## 32. Call list "Next" stays in the list you're working (2026-10-26)
 - The Calls list carries its view + filters (niche, city, county, service, caller, …) in the URL (`lib/calls/context.ts`). Opening a prospect from the table/cards keeps them as query params; `/app/calls/[id]` and the log form (`list_context` hidden field) use them so **Next** and **Save & next** go to the next prospect in that same list (`nextProspectInContext` in `lib/data/prospects.ts`, same view/filter/sort as the list), not the caller's whole queue. With no narrowed list (plain "mine"), the old behaviour (`nextProspectIdFor`: due callbacks first) is kept. Test: `tests/calls-next-in-list.test.ts`.
+
+## 33. Daily call goal, one-tap calling and stats (migration 0059, 2026-10-27, NOT yet applied)
+Makes cold calling (`/app/calls`) and setters' homeowner calling (`/app/leads`) feel like a game you keep playing. Plan: `docs/calling-dopamine-plan.md`.
+
+**What counts as a call.** Rows in either log, filtered by user: `prospect_call_attempts.caller_id` and `lead_activities` with `type='contact_attempt'` by `actor_id`. Repeat logs on the same prospect/lead within 60s count once (`dedupeEvents`). Days, pace and streaks use the Los Angeles day, and pace measures against the 8:00–17:00 workday. All of this is pure, tested logic in `lib/calls/goals.ts` (`tests/calls-goals.test.ts`).
+
+**Data.** `lib/data/call-stats.ts` reads through the **service role, always filtered to an explicit user id**. The reason: call-attempt RLS only shows attempts on prospects a caller still holds, so reassigning a prospect would otherwise erase calls from their goal. Who may see whose numbers is decided by the pages:
+- Your own: everyone.
+- Anyone's (`/app/calls/stats?caller=`): admins.
+- The team board: admins always; callers/setters only when the leaderboard switch is on.
+
+Reads paginate past the 1000-row API cap. `getGoalSnapshot` is `cache()`d per request, so the layout and the page share one read. `getCallerDashboard`'s all-time numbers are now exact head counts; before, they silently stopped at the first 1000 rows.
+
+**Migration 0059 (`0059_call_goals.sql`):**
+- Adds `profiles.daily_call_goal` (default 100, range 1–1000). `guard_profile_privileges()` now also blocks non-admins from changing it.
+- Adds a single-row `call_workspace_settings` table (`leaderboard_enabled`, default off). Admins and call agents can read it; only admins can update it.
+- **The app runs without 0059**: goals fall back to 100 and the leaderboard stays off. Only saving a goal says the migration is needed.
+- Tests: `tests/calls-goals-db.test.ts` and `tests/call-stats-db.test.ts` (PGlite, every real migration; the fake client gained `range()`).
+
+**HUD.** The calls layout and the leads layout (`app/app/calls/layout.tsx`, `app/app/leads/layout.tsx`) mount `GoalProvider` and `GoalHud`. The leads layout does this for **setters only**; contractors and admins see the leads pages as before. If the snapshot read fails, the pages render without the HUD. The HUD shows:
+- A ring with an animated count and color tiers (slate → blue → gold at the goal).
+- The pace line, a 🔥 streak (workdays; weekends never break it; today joins once the goal is hit), an "on fire" combo after 3 decision-maker conversations in a row, and bookings today.
+- Power hour (a session clock in sessionStorage, an optional auto-dial), a link to stats, and a sound toggle (WebAudio, `lib/calls/sound.ts`, off by default).
+
+Optimistic counting: forms call `useGoal().bump()` on submit. A server rejection calls `revert()`, and any fresh server snapshot (`asOf`) replaces the optimistic bumps. Milestones at 10/25/50/75/100% of the goal give a toast plus small confetti. Hitting the goal or booking an appointment gives a banner plus big confetti (`components/calls/goal/celebrations.tsx`). All motion respects `prefers-reduced-motion`.
+
+**Frictionless loop.**
+- `QUICK_OUTCOMES` (no answer, voicemail, gatekeeper, spoke with DM, not interested, wrong number) have no required fields, which a test pins. Picking one saves and opens the next prospect in one tap or keypress.
+- Keyboard: 1–9/0 pick outcomes (`OUTCOME_KEYS`), C dials, N/→ skips, Enter saves & next, ? shows the list. Shortcuts are off while typing in a field, except the auto-focused outcome select.
+- The workspace prefetches the next prospect.
+- Setters on a lead page get the contact log at the top, with one-tap chips and "Log & next lead". `logContactAttempt` takes `intent=save_and_next` and redirects to `nextLeadToCall()` (open lead contacted least recently, under RLS).
+
+**Stats (`/app/calls/stats`, in `CallsSubnav`):**
+- Today by hour against the best earlier day (ghost bars).
+- Four Monday-aligned weeks of goal days (gold = goal hit).
+- The cold-call funnel, today vs the 7-day average.
+- Personal bests over 90 days, with "New PB" flags.
+- Computed badges.
+- The team board, where admins also set each person's goal inline and flip the leaderboard. Goals can also be set on `/app/team/[id]`. Both are audited (`user.daily_call_goal`, `calls.leaderboard`).
+
+Charts are hand-written SVG/CSS (`components/calls/stats/charts.tsx`; no chart library). The Calls page also shows sparklines on the caller KPI tiles and, for admins, a "Team today" strip of mini rings.
+
+**Not changed:**
+- The setter sidebar stays at its five sections (`tests/setter-access.test.ts`, which now also pins `requireCallWorkspace()` on the new calls pages and the layout).
+- Attempts stay append-only (there is no undo).
+
+**Deploy order:** apply 0059, then deploy. Deploying first is safe because of the fallbacks.
+

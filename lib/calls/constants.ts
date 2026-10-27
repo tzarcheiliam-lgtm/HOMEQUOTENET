@@ -61,6 +61,44 @@ export const LOGGABLE_OUTCOMES = DISPOSITIONS.filter(
   (d) => d.value !== 'new'
 ).map((d) => d.value);
 
+/**
+ * One-tap outcomes: nothing else to fill in, so picking one saves the call and
+ * opens the next prospect straight away. Each must have no required fields
+ * (pinned by tests/calls-goals.test.ts against requiredFieldsFor).
+ */
+export const QUICK_OUTCOMES: ProspectDisposition[] = [
+  'no_answer',
+  'left_voicemail',
+  'gatekeeper',
+  'spoke_with_dm',
+  'not_interested',
+  'wrong_number',
+];
+
+/** Short labels for the quick buttons. */
+export const QUICK_LABELS: Partial<Record<ProspectDisposition, string>> = {
+  no_answer: 'No answer',
+  left_voicemail: 'Voicemail',
+  gatekeeper: 'Gatekeeper',
+  spoke_with_dm: 'Spoke w/ DM',
+  not_interested: 'Not interested',
+  wrong_number: 'Wrong #',
+};
+
+/** Keyboard shortcuts in the calling workspace: digit → outcome. */
+export const OUTCOME_KEYS: Record<string, ProspectDisposition> = {
+  '1': 'no_answer',
+  '2': 'left_voicemail',
+  '3': 'gatekeeper',
+  '4': 'spoke_with_dm',
+  '5': 'callback_requested',
+  '6': 'interested',
+  '7': 'appointment_booked',
+  '8': 'not_interested',
+  '9': 'wrong_number',
+  '0': 'follow_up_required',
+};
+
 export const SALES_APPOINTMENT_STATUSES: {
   value: SalesAppointmentStatus;
   label: string;

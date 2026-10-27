@@ -21,6 +21,9 @@ import { Pagination } from '@/components/calls/pagination';
 import { RefreshProspectsDialog } from '@/components/calls/refresh-prospects-dialog';
 import type { ProspectDisposition } from '@/lib/types';
 import { contextFrom, contextQuery } from '@/lib/calls/context';
+import { getGoalSnapshot, getTeamBoard, type BoardRow, type GoalSnapshot } from '@/lib/data/call-stats';
+import { tierFor } from '@/lib/calls/goals';
+import { GoalRing } from '@/components/calls/goal/goal-ring';
 
 export const metadata = { title: 'Calls · HomeQuote Network' };
 
@@ -70,10 +73,13 @@ export default async function CallsPage({
   };
 
   const callers = await listCallers();
-  const [result, options, dashboard] = await Promise.all([
+  const [result, options, dashboard, snapshot, board] = await Promise.all([
     listProspects(filters, me, callers),
     listProspectFilterOptions(),
     isAdmin ? null : getCallerDashboard(me.id),
+    // Shared with the layout's HUD (cached per request); never blocks the list.
+    getGoalSnapshot(me.id).catch((): GoalSnapshot | null => null),
+    isAdmin ? getTeamBoard().catch((): BoardRow[] => []) : Promise.resolve([] as BoardRow[]),
   ]);
 
   const done = first(sp.done) === '1';
@@ -104,7 +110,37 @@ export default async function CallsPage({
 
       <CallsSubnav />
 
-      {dashboard ? <CallerDashboard data={dashboard} name={me.full_name} /> : null}
+      {dashboard ? <CallerDashboard data={dashboard} name={me.full_name} week={snapshot?.week} /> : null}
+
+      {isAdmin && board.length > 0 ? (
+        <section aria-label="Team today" className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold">Team today</h2>
+            <Link href="/app/calls/stats" className="text-xs text-muted-foreground hover:text-foreground hover:underline">
+              Goals &amp; stats
+            </Link>
+          </div>
+          <ul className="no-scrollbar -mx-3 flex gap-2 overflow-x-auto px-3 sm:mx-0 sm:flex-wrap sm:px-0">
+            {board.map((r) => (
+              <li key={r.id} className="shrink-0">
+                <Link
+                  href={`/app/calls/stats?caller=${r.id}`}
+                  className="flex items-center gap-2 rounded-xl border bg-card px-2.5 py-1.5 hover:bg-accent"
+                >
+                  <GoalRing count={r.today} goal={r.goal} tier={tierFor(r.today, r.goal)} size={34} stroke={4} />
+                  <span className="text-sm">
+                    <span className="block font-medium leading-tight">{r.name.split(' ')[0]}</span>
+                    <span className="block text-xs leading-tight text-muted-foreground tabular-nums">
+                      {r.today}/{r.goal}
+                      {r.streak > 0 ? ` · 🔥${r.streak}` : ''}
+                    </span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {done ? (
         <p

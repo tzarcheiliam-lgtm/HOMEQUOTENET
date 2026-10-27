@@ -93,6 +93,15 @@ export default async function LeadsPage({
         </Button>
       </PageHeader>
 
+      {sp.done === '1' ? (
+        <p
+          role="status"
+          className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
+        >
+          Every open lead has been called — nothing new or waiting on a first contact right now. 🎉
+        </p>
+      ) : null}
+
       {/* Quick views for the setter workflow */}
       <nav
         aria-label="Quick views"

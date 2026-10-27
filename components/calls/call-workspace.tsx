@@ -6,6 +6,7 @@ import { CalendarPlus, ClipboardEdit, Phone, PhoneOff, SkipForward } from 'lucid
 import { cn } from '@/lib/utils';
 import { ActionBarItem, MobileActionBar } from '@/components/mobile/mobile-action-bar';
 import type { ProspectDisposition } from '@/lib/types';
+import { useGoal } from './goal/goal-provider';
 
 type Tab = 'info' | 'script' | 'log' | 'history';
 
@@ -21,11 +22,24 @@ interface Preset {
   n: number;
 }
 
-const WorkspaceContext = createContext<{ preset: Preset | null }>({ preset: null });
+interface WorkspaceValue {
+  preset: Preset | null;
+  /** tel: href, or null when the prospect cannot be dialled. */
+  tel: string | null;
+  nextHref: string | null;
+}
+
+const WorkspaceContext = createContext<WorkspaceValue>({ preset: null, tel: null, nextHref: null });
 
 /** OutcomeForm reads this to honour the action bar's "Appt" shortcut. */
 export function useOutcomePreset(): Preset | null {
   return useContext(WorkspaceContext).preset;
+}
+
+/** Dial and skip targets, for the outcome form's keyboard shortcuts. */
+export function useWorkspaceNav(): { tel: string | null; nextHref: string | null } {
+  const { tel, nextHref } = useContext(WorkspaceContext);
+  return { tel, nextHref };
 }
 
 /**
@@ -73,7 +87,23 @@ export function CallWorkspace({
     if (window.location.hash === '#log') setTab('log');
   }, []);
 
-  const ctx = useMemo(() => ({ preset }), [preset]);
+  // The next prospect is usually where the caller goes next: have it ready.
+  useEffect(() => {
+    router.prefetch(nextHref);
+  }, [router, nextHref]);
+
+  // Power hour with auto-dial: open the dialer as each prospect loads.
+  const goal = useGoal();
+  const autoDial = Boolean(goal?.power && goal.autoDial && tel && !dnc);
+  useEffect(() => {
+    if (!autoDial || !tel) return;
+    const id = setTimeout(() => {
+      window.location.href = tel;
+    }, 700);
+    return () => clearTimeout(id);
+  }, [autoDial, tel]);
+
+  const ctx = useMemo(() => ({ preset, tel: dnc ? null : tel, nextHref }), [preset, tel, dnc, nextHref]);
 
   const panel = (id: Tab) => cn(tab === id ? 'block' : 'hidden', 'lg:block');
 
