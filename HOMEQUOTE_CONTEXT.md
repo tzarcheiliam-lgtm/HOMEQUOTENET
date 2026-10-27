@@ -1275,7 +1275,7 @@ Charts are hand-written SVG/CSS (`components/calls/stats/charts.tsx`; no chart l
 **Status:** 0062 was applied to production on 2026-10-27 by the owner in the Supabase SQL editor. Verified: both profile columns, all four sale columns, the four checks, the extended profile guard, the pay-guard trigger and the sold index. **Deploy order (other environments):** apply 0062, then deploy. Deploying first is safe: the dashboard and payouts read with `select('*')`, so without 0062 they show no rates or sales. Recording a sale or setting pay returns "needs database migration 0062". The "Needs a sale decision" filter shows nothing.
 
 
-## 37. Prospect call cadence (migration 0063, 2026-10-27, NOT yet applied/deployed)
+## 37. Prospect call cadence (migration 0063, 2026-10-27; applied to production 2026-10-27, code not yet deployed)
 Spaces out retries to contractor prospects we couldn't reach, and takes them out of the queue after too many misses. It's the first piece of the outbound automation plan (A1); it sends nothing to anyone.
 
 **Rules** (`lib/calls/cadence.ts`, pure; constants in `CADENCE`):
@@ -1297,6 +1297,6 @@ Spaces out retries to contractor prospects we couldn't reach, and takes them out
 
 **Tests:** `tests/calls-cadence.test.ts` (pure rules, weekend and DST) and `tests/calls-cadence-db.test.ts` (PGlite, every real migration: generated columns, backfill, the queue queries, the real call-log action). The fake client's `or()` now understands `lt/lte/gt/gte`.
 
-**Deploy order:** apply 0063, then deploy. The queue queries filter on the new generated columns, so deploying first breaks the call list and Next.
+**Deploy order:** apply 0063, then deploy. The queue queries filter on the new generated columns, so deploying first breaks the call list and Next. **Production:** 0063 applied 2026-10-27 by the owner in the Supabase SQL editor. Verified: the six columns (two generated), the check, the index, and the backfill (streaks 0: 677, 1: 192, 2: 8, 3: 1, 4: 1; nobody rested or parked).
 
 **Not built yet** (rest of A1): automatic spreading of unassigned prospects across callers; skipping prospects that already match a signed contractor. The limits are code constants, not admin settings.
