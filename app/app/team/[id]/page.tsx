@@ -10,6 +10,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { UserActions } from '@/components/team/user-actions';
 import { ROLE_LABELS } from '@/lib/nav';
 import { GoalInput } from '@/components/calls/stats/goal-input';
+import { PayInput } from '@/components/calls/stats/pay-input';
 import { DEFAULT_DAILY_GOAL } from '@/lib/calls/goals';
 
 export const metadata = { title: 'User · HomeQuote Network' };
@@ -88,6 +89,26 @@ export default async function UserDetailPage({
                   userId={user.id}
                   goal={user.daily_call_goal ?? DEFAULT_DAILY_GOAL}
                   name={user.full_name || user.email || 'This user'}
+                />
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {user.role === 'setter' || user.role === 'caller' ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Setter pay</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  What they earn for each contractor sales meeting they book that you sell,
+                  and how many meetings to aim for each week. Leave blank to hide.
+                </p>
+                <PayInput
+                  userId={user.id}
+                  name={user.full_name || user.email || 'This user'}
+                  payPerSale={user.pay_per_sale === null || user.pay_per_sale === undefined ? null : Number(user.pay_per_sale)}
+                  weeklyGoal={user.weekly_booking_goal ?? null}
                 />
               </CardContent>
             </Card>

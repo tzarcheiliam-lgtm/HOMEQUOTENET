@@ -67,6 +67,11 @@ describe('Appointment Setter navigation', () => {
 const read = (p: string) => readFileSync(p, 'utf8');
 
 describe('Appointment Setter server-side route guards', () => {
+  it('keeps setter payouts administrator-only (page and CSV)', () => {
+    expect(read('app/app/calls/payouts/page.tsx')).toContain("requireRole(['admin'])");
+    expect(read('app/api/calls/payouts/route.ts')).toContain('isHqnAdministrator(profile)');
+  });
+
   it('opens every calling-workspace page to the shared call-workspace guard', () => {
     for (const page of [
       'app/app/calls/page.tsx',

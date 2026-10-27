@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { CalendarCheck, Flame, PhoneOutgoing, Trophy } from 'lucide-react';
 import { requireCallWorkspace } from '@/lib/auth';
 import { getCallStats, getTeamBoard, isLeaderboardEnabled } from '@/lib/data/call-stats';
@@ -5,7 +6,7 @@ import { listCallers } from '@/lib/data/prospects';
 import { setLeaderboardEnabled } from '@/lib/actions/call-goals';
 import { zonedParts } from '@/lib/calls/goals';
 import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { KpiCard } from '@/components/ui/kpi-card';
 import { PageHeader } from '@/components/ui/page-header';
@@ -65,7 +66,13 @@ export default async function CallStatsPage({
         }
         backHref={mine ? undefined : '/app/calls/stats'}
         backLabel={mine ? undefined : 'Your stats'}
-      />
+      >
+        {isAdmin ? (
+          <Link href="/app/calls/payouts" className={buttonVariants({ variant: 'outline' })}>
+            Setter payouts
+          </Link>
+        ) : null}
+      </PageHeader>
       <CallsSubnav />
 
       {newPbs.length > 0 && mine ? (

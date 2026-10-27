@@ -22,6 +22,7 @@ import {
 } from '@/lib/calls/goals';
 import { playSound, setSoundEnabled, soundEnabled } from '@/lib/calls/sound';
 import { toast } from '@/components/ui/toaster';
+import { formatMoney } from '@/lib/setter/money';
 import { celebrate, Celebrations } from './celebrations';
 
 /**
@@ -95,6 +96,15 @@ function writeJson(store: 'local' | 'session', key: string, v: unknown): void {
 
 const isDm = (o: ProspectDisposition | null) => !!o && DM_REACHED_OUTCOMES.includes(o);
 
+/** "3 of 10 booked this week · each one that sells pays $150" — whatever is known. */
+function bookingLine(s: GoalSnapshot, pendingBumps: Bump[]): string {
+  // `pendingBumps` are the bumps before this one; this booking is +1.
+  const n = (s.bookedThisWeek ?? 0) + pendingBumps.filter((b) => b.outcome === 'appointment_booked').length + 1;
+  const week = s.weeklyBookingGoal ? `${n} of ${s.weeklyBookingGoal} booked this week` : `${n} booked this week`;
+  const pay = s.payPerSale !== null && s.payPerSale !== undefined ? ` · if it sells, +${formatMoney(s.payPerSale)}` : '';
+  return `${week}${pay}. Keep going.`;
+}
+
 export function GoalProvider({
   snapshot,
   children,
@@ -125,8 +135,8 @@ export function GoalProvider({
   const bookedToday = snapshot.bookedToday + bumps.filter((b) => b.outcome === 'appointment_booked').length;
 
   // bump() reads the latest numbers without re-creating itself each render.
-  const live = useRef({ count, combo, goal: snapshot.goal, bumps, recent: snapshot.recent });
-  live.current = { count, combo, goal: snapshot.goal, bumps, recent: snapshot.recent };
+  const live = useRef({ count, combo, goal: snapshot.goal, bumps, recent: snapshot.recent, snapshot });
+  live.current = { count, combo, goal: snapshot.goal, bumps, recent: snapshot.recent, snapshot };
 
   const bump = useCallback<GoalContextValue['bump']>(({ key, outcome }) => {
     const now = Date.now();
@@ -146,7 +156,7 @@ export function GoalProvider({
 
     if (outcome === 'appointment_booked') {
       playSound('jackpot');
-      celebrate({ title: '💰 Appointment booked!', sub: 'That is the one that pays. Keep going.', intensity: 'jackpot' });
+      celebrate({ title: '💰 Appointment booked!', sub: bookingLine(live.current.snapshot, current), intensity: 'jackpot' });
     } else if (milestone !== null && milestone >= goal) {
       playSound('jackpot');
       celebrate({ title: milestoneMessage(milestone, goal), sub: 'Everything from here is bonus.', intensity: 'big' });

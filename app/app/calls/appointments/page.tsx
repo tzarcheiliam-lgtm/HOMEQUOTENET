@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { CalendarCheck } from 'lucide-react';
 import { requireCallWorkspace } from '@/lib/auth';
-import { listCallers, listSalesAppointments } from '@/lib/data/prospects';
+import { listPartners, listSalesAppointments } from '@/lib/data/prospects';
 import { SALES_APPOINTMENT_STATUSES } from '@/lib/calls/constants';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { MobileCard } from '@/components/mobile/mobile-card';
@@ -23,6 +23,7 @@ import { CallsSubnav } from '@/components/calls/calls-subnav';
 import { SalesAppointmentBadge } from '@/components/calls/disposition-badge';
 import { AppointmentStatusControl } from '@/components/calls/appointment-status-control';
 import { fmtDateTime, fmtPhone, telHref } from '@/components/calls/format';
+import { CreditControl, SaleBadge, SaleOutcomeControl } from '@/components/calls/sale-outcome-control';
 import type { SalesAppointmentStatus } from '@/lib/types';
 
 export const metadata = { title: 'Sales appointments · HomeQuote Network' };
@@ -48,19 +49,34 @@ export default async function SalesAppointmentsPage({
   const status = first(sp.status) as SalesAppointmentStatus | undefined;
   const when = first(sp.when) ?? 'upcoming';
 
-  const callers = await listCallers();
-  const rows = await listSalesAppointments(callers, {
+  const partners = await listPartners();
+  const rateOf = new Map(partners.map((p) => [p.id, p.payPerSale]));
+  const needsDecision = isAdmin && when === 'decide';
+  const rows = await listSalesAppointments(partners, {
     partner,
     status,
     upcoming: when === 'upcoming',
+    needsDecision,
   });
+  const payOf = (a: (typeof rows)[number]) =>
+    a.setter_pay_amount === null || a.setter_pay_amount === undefined ? null : Number(a.setter_pay_amount);
 
   return (
     <div className="space-y-4 lg:space-y-6">
       <PageHeader
         title="Sales appointments"
-        description="Calls booked with contractor prospects. Confirm them the day before; mark the result afterwards."
-      />
+        description={
+          isAdmin
+            ? 'Calls booked with contractor prospects. Mark each one Sold or Not sold after the meeting — Sold pays the setter who booked it.'
+            : 'Calls booked with contractor prospects. Confirm them the day before; mark the result afterwards. You earn when one sells.'
+        }
+      >
+        {isAdmin ? (
+          <Link href="/app/calls/payouts" className={buttonVariants({ variant: 'outline' })}>
+            Payouts
+          </Link>
+        ) : null}
+      </PageHeader>
       <CallsSubnav />
 
       <Card className="p-3">
@@ -68,7 +84,7 @@ export default async function SalesAppointmentsPage({
           {isAdmin ? (
             <Select name="partner" defaultValue={partner ?? ''} aria-label="Partner" className="col-span-2 sm:col-span-1 sm:w-auto">
               <option value="">All partners</option>
-              {callers.map((c) => (
+              {partners.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
@@ -86,6 +102,7 @@ export default async function SalesAppointmentsPage({
           <Select name="when" defaultValue={when} aria-label="When" className="sm:w-auto">
             <option value="upcoming">Upcoming</option>
             <option value="all">All dates</option>
+            {isAdmin ? <option value="decide">Needs a sale decision</option> : null}
           </Select>
           <Button type="submit" size="sm" className="col-span-2 sm:col-span-1">
             Apply
@@ -168,6 +185,22 @@ export default async function SalesAppointmentsPage({
                     ) : null}
                     <AppointmentStatusControl id={a.id} status={a.status} />
                   </div>
+                  {isAdmin ? (
+                    <div className="space-y-2 border-t pt-3">
+                      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Sale</p>
+                      <SaleOutcomeControl
+                        id={a.id}
+                        outcome={a.sale_outcome ?? null}
+                        pay={payOf(a)}
+                        partnerRate={a.partner_id ? (rateOf.get(a.partner_id) ?? null) : null}
+                      />
+                      <CreditControl id={a.id} partnerId={a.partner_id} partners={partners} />
+                    </div>
+                  ) : a.sale_outcome ? (
+                    <div className="border-t pt-3">
+                      <SaleBadge outcome={a.sale_outcome} pay={payOf(a)} />
+                    </div>
+                  ) : null}
                 </MobileCard>
               </li>
             );
@@ -175,7 +208,7 @@ export default async function SalesAppointmentsPage({
         </ul>
         <Card className="hidden p-0 lg:block">
           <div className="overflow-x-auto">
-            <Table className="min-w-[960px]">
+            <Table className={isAdmin ? 'min-w-[1280px]' : 'min-w-[1040px]'}>
               <TableHeader>
                 <TableRow>
                   <TableHead>When</TableHead>
@@ -184,6 +217,7 @@ export default async function SalesAppointmentsPage({
                   {isAdmin ? <TableHead>Partner</TableHead> : null}
                   <TableHead>Type / contact</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Sale</TableHead>
                   <TableHead>Notes</TableHead>
                   <TableHead className="text-right">Update</TableHead>
                 </TableRow>
@@ -204,7 +238,11 @@ export default async function SalesAppointmentsPage({
                       </span>
                     </TableCell>
                     <TableCell>{a.decision_maker_name ?? '—'}</TableCell>
-                    {isAdmin ? <TableCell>{a.partner_name ?? '—'}</TableCell> : null}
+                    {isAdmin ? (
+                      <TableCell>
+                        <CreditControl id={a.id} partnerId={a.partner_id} partners={partners} />
+                      </TableCell>
+                    ) : null}
                     <TableCell>
                       <span className="capitalize">{(a.appointment_type ?? '—').replace('_', ' ')}</span>
                       {a.contact_info ? (
@@ -218,6 +256,18 @@ export default async function SalesAppointmentsPage({
                           Confirmed {fmtDateTime(a.confirmed_at)}
                         </span>
                       ) : null}
+                    </TableCell>
+                    <TableCell>
+                      {isAdmin ? (
+                        <SaleOutcomeControl
+                          id={a.id}
+                          outcome={a.sale_outcome ?? null}
+                          pay={payOf(a)}
+                          partnerRate={a.partner_id ? (rateOf.get(a.partner_id) ?? null) : null}
+                        />
+                      ) : (
+                        a.sale_outcome ? <SaleBadge outcome={a.sale_outcome} pay={payOf(a)} /> : <span className="text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell className="max-w-[260px]">
                       <span className="line-clamp-2 text-xs leading-5 text-muted-foreground">

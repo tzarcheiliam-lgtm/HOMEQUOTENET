@@ -542,9 +542,38 @@ export interface SalesAppointmentRow extends ProspectSalesAppointment {
   partner_name: string | null;
 }
 
+export interface PartnerOption extends CallerOption {
+  role: string;
+  /** Pay per sold meeting (migration 0062), null when not set. */
+  payPerSale: number | null;
+}
+
+/**
+ * Everyone who can book a sales meeting (admin, caller, setter), with their
+ * pay rate. Wider than listCallers(), which is only who prospects can be
+ * assigned to — setters book meetings too.
+ */
+export async function listPartners(): Promise<PartnerOption[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('profiles')
+    .select('*')
+    .in('role', ['admin', 'caller', 'setter'])
+    .eq('account_status', 'active')
+    .is('deleted_at', null)
+    .order('full_name', { ascending: true });
+  return ((data ?? []) as (ProfileRow & { role: string; pay_per_sale?: number | string | null })[]).map((p) => ({
+    id: p.id,
+    name: p.full_name || p.email || 'Partner',
+    email: p.email,
+    role: p.role,
+    payPerSale: p.pay_per_sale === null || p.pay_per_sale === undefined ? null : Number(p.pay_per_sale),
+  }));
+}
+
 export async function listSalesAppointments(
   callers: CallerOption[],
-  filters: { partner?: string; status?: SalesAppointmentStatus; upcoming?: boolean } = {}
+  filters: { partner?: string; status?: SalesAppointmentStatus; upcoming?: boolean; needsDecision?: boolean } = {}
 ): Promise<SalesAppointmentRow[]> {
   const supabase = await createClient();
   let query = supabase
@@ -554,6 +583,12 @@ export async function listSalesAppointments(
   if (filters.partner) query = query.eq('partner_id', filters.partner);
   if (filters.status) query = query.eq('status', filters.status);
   if (filters.upcoming) query = query.gte('scheduled_at', new Date().toISOString());
+  // Past meetings that happened (or may have) and still have no sale outcome.
+  if (filters.needsDecision)
+    query = query
+      .lt('scheduled_at', new Date().toISOString())
+      .is('sale_outcome', null)
+      .not('status', 'in', '(cancelled,no_show)');
 
   const { data } = await query.limit(500);
   const nameById = new Map(callers.map((c) => [c.id, c.name]));
