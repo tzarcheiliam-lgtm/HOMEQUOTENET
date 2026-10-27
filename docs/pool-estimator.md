@@ -141,10 +141,9 @@ other contractors must never enter the network `leads` pipeline.
 
 - **Real prices.** All prices are examples until the owner fills in the price sheet.
 - **Site access for the embed.** Someone with access to poolmastersla.com has to paste the iframe; auto-height is not built.
-- **Service-area mismatch.** The estimator shows the brochure's service area (Los Angeles, Orange, Ventura, Riverside and
-  San Bernardino counties), but the Pool Masters funnel's qualification gate (`content/funnels/clients/pool-masters-la.json`)
-  only accepts Los Angeles and Ventura ZIP prefixes. Leads from the other counties would be saved as unqualified until the
-  owner confirms the area and the funnel's `zipPrefixes` are updated.
+- **Service area (resolved 2026-10-27).** The Pool Masters funnel's qualification gate now matches the brochure: Los
+  Angeles, Orange, Ventura, Riverside and San Bernardino counties (ZIP prefixes 900–918, 922–928, 930, 935). Prefixes are
+  coarse: 922 also covers Imperial County and 935 parts of Kern County, so a few out-of-area ZIPs still qualify.
 - **Sitemap and linking** once prices are confirmed.
 - **Duplicate timeline rows.** A replayed submission that `save_funnel_session` dedupes onto an existing lead still adds a
   second estimator timeline entry.

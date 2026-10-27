@@ -27,6 +27,16 @@ describe('Ethan / Pool Masters LA funnel', () => {
     expect(qualify(ethan, { ...answers, homeowner: 'no' })).toBe(false);
     expect(qualify(ethan, { ...answers, zip: '10001' })).toBe(false);
   });
+  it('serves all five brochure counties: LA, Orange, Ventura, Riverside and San Bernardino', () => {
+    const answers = { service: 'full_remodel', homeowner: 'yes', timeline: 'asap' };
+    // Sherman Oaks (LA), Irvine / Anaheim / Huntington Beach (Orange), Ventura, Riverside,
+    // Palm Desert (Riverside), San Bernardino, Rancho Cucamonga (San Bernardino).
+    for (const zip of ['91423', '92618', '92801', '92648', '93003', '92507', '92260', '92401', '91730']) {
+      expect(qualify(ethan, { ...answers, zip }), zip).toBe(true);
+    }
+    // San Diego and Bakersfield stay out.
+    for (const zip of ['92101', '93301']) expect(qualify(ethan, { ...answers, zip }), zip).toBe(false);
+  });
   it('leaves the general form unchanged', () => {
     expect(general.clientName).toBe('HomeQuote Network');
     expect(general.calendarProvider).toBe('ghl');

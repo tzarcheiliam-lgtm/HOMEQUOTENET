@@ -16,8 +16,8 @@ export const POOL_MASTERS_ESTIMATOR: ContractorEstimatorConfig = {
   phone: '(818) 643-6888',
   website: 'https://poolmastersla.com',
   logoUrl: '/images/brand/poolmasters-logo.png',
-  // From the brochure. The funnel's own qualification gate (content/funnels/clients/pool-masters-la.json)
-  // only covers Los Angeles and Ventura ZIP prefixes today.
+  // From the brochure; the funnel's qualification gate (content/funnels/clients/pool-masters-la.json
+  // zipPrefixes) covers the same five counties.
   serviceAreaLabel: 'Los Angeles, Orange, Ventura, Riverside and San Bernardino counties',
   financingNote: 'Financing is available through third-party lenders, including Lyon Financial. Ask about it during your free on-site estimate.',
   financingDisclosure:
