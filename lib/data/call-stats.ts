@@ -224,13 +224,58 @@ export interface CallStats {
   bests: PersonalBest[];
   badges: Badge[];
   bookingsAllTime: number;
+  /** Follow-up emails sent (last 90 days) and how often a meeting followed within 7 days. */
+  emails: {
+    today: number;
+    week: number;
+    byTemplate: { key: string; sent: number; booked: number }[];
+  };
+}
+
+async function emailStats(db: Db, userId: string, now: Date): Promise<CallStats['emails']> {
+  const since = sinceDaysAgo(90, now);
+  const { data: logs } = await db
+    .from('prospect_email_logs')
+    .select('prospect_id, template_key, sent_at')
+    .eq('sender_user_id', userId)
+    .eq('status', 'sent')
+    .gte('sent_at', since)
+    .limit(5000);
+  const sent = (logs ?? []) as { prospect_id: string; template_key: string; sent_at: string }[];
+  const ids = [...new Set(sent.map((l) => l.prospect_id))];
+  const booked = new Map<string, number[]>();
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data } = await db
+      .from('prospect_sales_appointments')
+      .select('prospect_id, created_at')
+      .in('prospect_id', ids.slice(i, i + 200))
+      .gte('created_at', since);
+    for (const m of (data ?? []) as { prospect_id: string; created_at: string }[]) {
+      booked.set(m.prospect_id, [...(booked.get(m.prospect_id) ?? []), Date.parse(m.created_at)]);
+    }
+  }
+  const todayKey = dayKey(now);
+  const monday = lastDays(todayKey, mondayOffset(todayKey) + 1)[0];
+  const byKey = new Map<string, { sent: number; booked: number }>();
+  for (const l of sent) {
+    const t = Date.parse(l.sent_at);
+    const row = byKey.get(l.template_key) ?? { sent: 0, booked: 0 };
+    row.sent += 1;
+    if ((booked.get(l.prospect_id) ?? []).some((b) => b >= t && b <= t + 7 * 86_400_000)) row.booked += 1;
+    byKey.set(l.template_key, row);
+  }
+  return {
+    today: sent.filter((l) => dayKey(l.sent_at) === todayKey).length,
+    week: sent.filter((l) => dayKey(l.sent_at) >= monday).length,
+    byTemplate: [...byKey].map(([key, v]) => ({ key, ...v })).sort((a, b) => b.sent - a.sent),
+  };
 }
 
 export async function getCallStats(userId: string): Promise<CallStats> {
   const db = createAdminClient();
   const now = new Date();
   const todayKey = dayKey(now);
-  const [goal, byUser, booked] = await Promise.all([
+  const [goal, byUser, booked, emails] = await Promise.all([
     goalFor(db, userId),
     loadEvents(db, sinceDaysAgo(90, now), userId),
     db
@@ -238,6 +283,7 @@ export async function getCallStats(userId: string): Promise<CallStats> {
       .select('id', { count: 'exact', head: true })
       .eq('caller_id', userId)
       .eq('outcome', 'appointment_booked'),
+    emailStats(db, userId, now),
   ]);
   const events = byUser.get(userId) ?? [];
   const calls = countByDay(events);
@@ -283,6 +329,7 @@ export async function getCallStats(userId: string): Promise<CallStats> {
     bests: personalBests(events, goal, todayKey),
     badges: badgesFor({ events, goal, todayKey, bookingsAllTime }),
     bookingsAllTime,
+    emails,
   };
 }
 

@@ -4,11 +4,13 @@ import { requireCallWorkspace } from '@/lib/auth';
 import { listEmailProspects } from '@/lib/data/emails';
 import { listEmailTemplates } from '@/lib/data/email-templates';
 import { getGmailConnectionStatus } from '@/lib/emails/gmail';
-import { emailLogoUrl } from '@/lib/emails/template';
+import { emailLogoUrl, mailingAddress } from '@/lib/emails/template';
+import { signerFor } from '@/lib/emails/prospect-send.server';
 import { homequoteSystemValues } from '@/lib/emails/variables';
 
 const PROSPECT_TEMPLATE_CATEGORIES = [
   'Contractor Sales',
+  'Cold Call Follow-Up',
   'Contractor Onboarding',
   'Homeowner Follow-Up',
   'Estimate Follow-Up',
@@ -60,6 +62,13 @@ export default async function EmailsPage({
         </p>
       ) : null}
 
+      {me.role === 'admin' && !mailingAddress() ? (
+        <p role="alert" className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Prospect emails show an opt-out line but no mailing address. US law (CAN-SPAM) requires a postal address in
+          commercial email — set <code className="font-mono">EMAIL_MAILING_ADDRESS</code> in Vercel (Production), then redeploy.
+        </p>
+      ) : null}
+
       <SenderPanel
         environmentReady={gmail.environmentReady}
         mine={gmail.mine}
@@ -73,6 +82,8 @@ export default async function EmailsPage({
         logoUrl={logoUrl}
         libraryTemplates={libraryTemplates}
         homequote={homequoteSystemValues()}
+        signer={signerFor(me)}
+        address={mailingAddress()}
       />
     </div>
   );

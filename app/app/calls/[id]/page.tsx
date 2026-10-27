@@ -4,7 +4,15 @@ import { Phone, ExternalLink, PhoneOff, AlarmClock, CalendarCheck } from 'lucide
 import { requireCallWorkspace } from '@/lib/auth';
 import { getProspect, listCallers, nextProspectIdFor, nextProspectInContext, type ProspectFilters } from '@/lib/data/prospects';
 import { contextFrom, contextQuery, hasListContext, withContext } from '@/lib/calls/context';
-import { clearDoNotCall } from '@/lib/actions/prospects';
+import { clearDoNotCall, setEmailOptOut } from '@/lib/actions/prospects';
+import { listEmailTemplates } from '@/lib/data/email-templates';
+import { getGmailConnectionStatus } from '@/lib/emails/gmail';
+import { emailLogoUrl, mailingAddress } from '@/lib/emails/template';
+import { homequoteSystemValues } from '@/lib/emails/variables';
+import { signerFor } from '@/lib/emails/prospect-send.server';
+import { CALL_FOLLOW_UP_CATEGORY, quickTemplates } from '@/lib/emails/call-followups';
+import { QuickEmailSheet } from '@/components/calls/quick-email-sheet';
+import { EmailButton } from '@/components/calls/email-button';
 import { isDialable } from '@/lib/calls/rules';
 import { buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -63,6 +71,21 @@ export default async function ProspectPage({
   if (!detail) notFound();
   const { prospect: p, attempts, emails, appointments } = detail;
 
+  // Quick follow-up emails: the templates, who it's signed by, and whether Gmail can send.
+  const QUICK_CATEGORIES = ['Contractor Sales', CALL_FOLLOW_UP_CATEGORY, 'Appointments'];
+  const [library, gmail] = await Promise.all([
+    listEmailTemplates().catch(() => []),
+    getGmailConnectionStatus(me.id).catch(() => ({ canSend: false })),
+  ]);
+  const templates = quickTemplates(library.filter((t) => QUICK_CATEGORIES.includes(t.category)));
+  const optedOut = Boolean((p as { email_opt_out_at?: string | null }).email_opt_out_at);
+  const lastEmailAt =
+    emails
+      .filter((e) => e.status === 'sent' && e.sent_at)
+      .map((e) => e.sent_at as string)
+      .sort()
+      .at(-1) ?? null;
+
   const dnc = p.disposition === 'do_not_call';
   const tel = isDialable(p) ? telHref(p.phone) : null;
   const site = siteHref(p.website);
@@ -103,6 +126,7 @@ export default async function ProspectPage({
             {dnc ? 'Do not call' : 'No phone number'}
           </span>
         )}
+        {!dnc && !optedOut ? <EmailButton className="max-lg:hidden" /> : null}
       </PageHeader>
 
       <div className="hidden lg:block">
@@ -157,6 +181,7 @@ export default async function ProspectPage({
         tel={tel}
         dnc={dnc}
         nextHref={nextId ? withContext(`/app/calls/${nextId}`, ctxQs) : withContext('/app/calls', ctxQs || 'view=mine')}
+        emailable={!dnc && !optedOut}
         historyCount={attempts.length + emails.length}
         info={
           <Card>
@@ -270,6 +295,38 @@ export default async function ProspectPage({
                     </span>
                   </Row>
                 ) : null}
+                <Row label="Email" className="col-span-2">
+                  <span className="flex flex-wrap items-center gap-2">
+                    {optedOut ? (
+                      <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-900">Asked not to be emailed</span>
+                    ) : (
+                      <span className={cn(!(p.decision_maker_email || p.email) && 'text-muted-foreground')}>
+                        {p.decision_maker_email || p.email || 'None yet — ask for it on the call'}
+                        {!p.decision_maker_email && p.email ? <span className="ml-1 text-xs text-muted-foreground">(company inbox)</span> : null}
+                      </span>
+                    )}
+                    {!optedOut && !dnc ? (
+                      <ConfirmAction
+                        action={setEmailOptOut}
+                        fields={{ prospect_id: p.id }}
+                        triggerLabel="Asked to stop emails"
+                        title="Stop emailing this contractor?"
+                        description="No more emails can be sent to them from anywhere in the app. Only an administrator can undo this."
+                        confirmLabel="Stop emails"
+                      />
+                    ) : null}
+                    {optedOut && isAdmin ? (
+                      <ConfirmAction
+                        action={setEmailOptOut}
+                        fields={{ prospect_id: p.id, lift: '1' }}
+                        triggerLabel="Lift"
+                        title="Allow emails again?"
+                        description="Only if the opt-out was recorded by mistake. The change is audited."
+                        confirmLabel="Allow emails"
+                      />
+                    ) : null}
+                  </span>
+                </Row>
                 {p.notes ? (
                   <Row label="Notes" className="col-span-2">
                     <span className="whitespace-pre-wrap">{p.notes}</span>
@@ -284,13 +341,36 @@ export default async function ProspectPage({
             prospectId={p.id}
             disposition={p.disposition}
             decisionMakerName={p.decision_maker_name}
+            decisionMakerEmail={p.decision_maker_email}
             bestContactMethod={p.best_contact_method}
             isDnc={dnc}
             contextQuery={ctxQs}
+            emailFollowUps={gmail.canSend && !dnc && !optedOut}
           />
         }
         script={<CallScript />}
         history={<ActivityTimeline attempts={attempts} emails={emails} />}
+      />
+
+      <QuickEmailSheet
+        prospect={{
+          id: p.id,
+          company_name: p.company_name,
+          city: p.city,
+          disposition: p.disposition,
+          decision_maker_name: p.decision_maker_name,
+          decision_maker_email: p.decision_maker_email,
+          email: p.email,
+          email_service_interests: p.email_service_interests ?? [],
+          email_opt_out_at: (p as { email_opt_out_at?: string | null }).email_opt_out_at ?? null,
+        }}
+        templates={templates}
+        signer={signerFor(me)}
+        address={mailingAddress()}
+        logoUrl={emailLogoUrl(process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000')}
+        gmailConnected={gmail.canSend}
+        homequote={homequoteSystemValues()}
+        lastEmailAt={lastEmailAt}
       />
     </div>
   );

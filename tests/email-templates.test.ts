@@ -61,9 +61,9 @@ describe('email template library', () => {
     for (const key of keys) expect(key).toMatch(/^[a-z][a-z0-9_]*$/);
   });
 
-  it('seeds exactly 49 branded rows with rendered HTML and text bodies', () => {
+  it('seeds exactly 54 branded rows with rendered HTML and text bodies', () => {
     const rows = buildEmailTemplateSeedRows('https://homequotenet.com');
-    expect(rows).toHaveLength(49);
+    expect(rows).toHaveLength(54); // 49 + the 5 cold-call follow-ups
     for (const row of rows) {
       expect(row.html_body).toContain('<div');
       expect(row.text_body.length).toBeGreaterThan(0);
@@ -80,6 +80,7 @@ describe('email template library', () => {
         'Appointments',
         'Estimate Follow-Up',
         'Contractor Sales',
+        'Cold Call Follow-Up',
         'Contractor Onboarding',
         'Upsells',
         'Billing',

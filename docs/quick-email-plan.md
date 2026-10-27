@@ -1,5 +1,11 @@
 # Quick Emails from the Call Workspace: Plan
 
+> **Status (2026-10-27): built.** See `HOMEQUOTE_CONTEXT.md` §37. Decisions:
+> automatic pop-up, and voicemail follow-ups go to the company inbox when
+> there's no decision-maker email. The mailing address is read from
+> `EMAIL_MAILING_ADDRESS` (not set yet). A calendar invite is attached to
+> "Meeting confirmed".
+
 Goal: sending the follow-up email a cold call calls for should be as fast as
 logging the call, one tap from the prospect you're on, with the right
 template already picked for what just happened. Today it means leaving the
