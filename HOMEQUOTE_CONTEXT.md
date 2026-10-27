@@ -1111,7 +1111,7 @@ Seret (Hebrew סרט, "film"; renamed from MOTC 2026-10-23; "by HomeQuote Networ
 ## 31. Short house funnels (2026-10-24)
 - `bathroom-remodel` and `kitchen-remodel` (preset JSON in `content/funnels/`, and the live published rows) are now five questions: project type, ZIP, "Do you own the home?", "When do you want the work to start?" (asked, not used to qualify) and the property address (timeline and address asked only of homeowners; address required). Qualified = a full-remodel-type project AND homeowner = yes. Renters and small repairs are marked not qualified (`unqualifiedAction` still `review`). The live rows were updated directly in `funnels.config` (same as the builder's save); sessions already in progress keep their own `config_snapshot`.
 
-## 32. Seret API: Claude uses Seret through MCP (migration 0058, 2026-10-24, NOT yet applied/deployed)
+## 32. Seret API: Claude uses Seret through MCP (migration 0058, 2026-10-24; applied to production 2026-10-27)
 
 ### Endpoint: `POST /api/seret/mcp`
 - A stateless MCP server over Streamable HTTP (`app/api/seret/mcp/route.ts`). It speaks JSON-RPC and replies with plain JSON.
@@ -1144,25 +1144,25 @@ Tool problems (unknown model, bad aspect ratio, kie.ai errors) come back as `isE
 - **Seret's Projects tab:** a "Made by Claude" section reads `GET /api/seret/generations` (signed-in, active admins only).
 
 ### Deploy order
-1. Apply 0058.
-2. Set `KIE_API_KEY` in Vercel (Production).
+1. ~~Apply 0058~~ — done 2026-10-27 (run by the owner in the Supabase SQL editor; verified: both tables with RLS and admin-only select policies, private `seret-media` bucket).
+2. Set `KIE_API_KEY` in Vercel (Production) — not verified from here.
 3. Deploy.
 
 ### Tests
 - `tests/seret-mcp.test.ts`: auth, initialize, tools list, list_models, errors.
 - `tests/seret-keys.test.ts`.
 - Verified live: kie.ai start-then-check with `noWait` (1K image in 19s).
-- Not verified end to end against a real database. That needs 0058 applied.
+- Not yet verified end to end against the real database (0058 is now applied; needs a key created on `/app/seret-api` and a real generation).
 
 ## 32. Call list "Next" stays in the list you're working (2026-10-26)
 - The Calls list carries its view + filters (niche, city, county, service, caller, …) in the URL (`lib/calls/context.ts`). Opening a prospect from the table/cards keeps them as query params; `/app/calls/[id]` and the log form (`list_context` hidden field) use them so **Next** and **Save & next** go to the next prospect in that same list (`nextProspectInContext` in `lib/data/prospects.ts`, same view/filter/sort as the list), not the caller's whole queue. With no narrowed list (plain "mine"), the old behaviour (`nextProspectIdFor`: due callbacks first) is kept. Test: `tests/calls-next-in-list.test.ts`.
 
-## 33. More texting customization (migration 0059, added 2026-10-27)
+## 33. More texting customization (migration 0059, added 2026-10-27; applied to production — its columns were confirmed present 2026-10-27)
 - **Opening text template** (`sms_settings.opening_template`; per contractor `contractors.texting_opening_template`): placeholders `{first_name}` (blank → "there"), `{sender}` (required, so the text always says who is texting) and `{project}`. `renderOpening`/`openingTemplateProblem` in `lib/sms/rules.ts`; an invalid template saved by hand falls back to `DEFAULT_OPENING_TEMPLATE`. A contractor's template beats the general one; house funnels use the general one.
 - **Per-contractor wording** on `/app/contractors/[id]`: `texting_sender_name` (else the funnel's business name), opening template, and `texting_extra_instructions` (appended to the general instructions as "For <name> specifically: …"; total capped by `MAX_EXTRA_TOTAL`).
 - **Timing** on `/app/texting`: `first_text_delay_minutes` (0–1440, pause before the first text; the texting window still applies afterwards) and `max_ai_turns` (2–40, replies before handing off; was fixed at 14). `loadSettings` / `loadContractorTexting` fall back to older columns until 0057/0059 are applied.
 
-## 34. Daily call goal, one-tap calling and stats (migration 0060, 2026-10-27, NOT yet applied)
+## 34. Daily call goal, one-tap calling and stats (migration 0060, 2026-10-27; applied to production 2026-10-27)
 Makes cold calling (`/app/calls`) and setters' homeowner calling (`/app/leads`) feel like a game you keep playing. Plan: `docs/calling-dopamine-plan.md`.
 
 **What counts as a call.** Rows in either log, filtered by user: `prospect_call_attempts.caller_id` and `lead_activities` with `type='contact_attempt'` by `actor_id`. Repeat logs on the same prospect/lead within 60s count once (`dedupeEvents`). Days, pace and streaks use the Los Angeles day, and pace measures against the 8:00–17:00 workday. All of this is pure, tested logic in `lib/calls/goals.ts` (`tests/calls-goals.test.ts`).
@@ -1207,7 +1207,7 @@ Charts are hand-written SVG/CSS (`components/calls/stats/charts.tsx`; no chart l
 - The setter sidebar stays at its five sections (`tests/setter-access.test.ts`, which now also pins `requireCallWorkspace()` on the new calls pages and the layout).
 - Attempts stay append-only (there is no undo).
 
-**Deploy order:** apply 0060, then deploy. Deploying first is safe because of the fallbacks.
+**Status:** merged in PR #38 and 0060 applied to production 2026-10-27 (run by the owner in the Supabase SQL editor). Verified: the `daily_call_goal` column (all profiles at 100), its 1–1000 check, the guard covering it, and the `call_workspace_settings` row (leaderboard off) with RLS and both policies. The fallbacks above remain for any environment without 0060.
 
 ## 35. Texting guards (migration 0061, added 2026-10-27)
 - **Echo guard** (`handleInbound`): an inbound text of ≥20 characters identical (case/spacing-insensitive) to one of our own outbound messages in that conversation in the last 30 minutes is ignored (`reason: 'echo'`, not stored, not answered). Stops loops when the Mac texts its own number. Shorter texts are exempt so a real "Sounds good" still counts.
