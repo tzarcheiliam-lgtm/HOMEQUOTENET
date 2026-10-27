@@ -62,7 +62,7 @@ export function RunList({
                 <TableHead>Source</TableHead>
                 <TableHead>Enrolled</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Active step</TableHead>
+                <TableHead>What happened last</TableHead>
                 <TableHead>Waiting until</TableHead>
                 <TableHead><span className="sr-only">Details</span></TableHead>
               </TableRow>
@@ -81,7 +81,9 @@ export function RunList({
                   <TableCell label="Source"><SourceBadge source={r.source} mode={r.mode} /></TableCell>
                   <TableCell label="Enrolled"><When iso={r.enrolledAt} /></TableCell>
                   <TableCell label="Status"><RunStatusBadge status={r.status} mode={r.mode} /></TableCell>
-                  <TableCell label="Active step">{ACTIVE.has(r.status) && r.currentStepKey ? humanize(r.currentStepKey) : '—'}</TableCell>
+                  <TableCell label="What happened last" className="max-w-xs whitespace-normal">
+                    {r.headline ? <span suppressHydrationWarning>{r.headline}</span> : ACTIVE.has(r.status) && r.currentStepKey ? humanize(r.currentStepKey) : '—'}
+                  </TableCell>
                   <TableCell label="Waiting until">{r.status === 'waiting' && r.resumeAt ? <When iso={r.resumeAt} /> : '—'}</TableCell>
                   <TableCell>
                     <Link href={`/app/workflows/runs/${r.id}`} className="text-sm font-medium text-primary hover:underline">View run</Link>

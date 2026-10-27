@@ -21,6 +21,8 @@ import {
   parseWorkflowGraph,
   sampleContext,
   semanticGraph,
+  templateFitsOwner,
+  templateGraphFor,
   triggerOf,
   validateGraph,
   type DryRunResult,
@@ -86,7 +88,10 @@ export async function createGraphWorkflowAction(input: z.input<typeof createSche
   if (!caps.edit(contractorId)) return fail('You do not have permission to create workflows here.');
   const template = d.templateKey ? getGraphTemplate(d.templateKey) : null;
   if (d.templateKey && !template) return fail('That template is no longer available.');
-  const graph: WorkflowGraph = template ? structuredClone(template.graph) : emptyGraph(d.triggerEvent ?? 'lead.assigned');
+  if (template && !templateFitsOwner(template, contractorId)) {
+    return fail(contractorId ? 'That template is for HomeQuote leads only. Choose "HomeQuote network" as the account.' : 'That template is for one contractor. Choose the contractor as the account.');
+  }
+  const graph: WorkflowGraph = template ? structuredClone(templateGraphFor(template, contractorId)) : emptyGraph(d.triggerEvent ?? 'lead.assigned');
   const trig = triggerOf(graph);
   const db = await createClient();
   const { data, error } = await db.rpc('wfg_create', {

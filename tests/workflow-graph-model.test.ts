@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   GRAPH_TEMPLATES, GRAPH_NODE_TYPES, NODE_TYPES, addNodeAfter, autoLayout, canonicalGraph, checkConnection, connect, createNode,
   duplicateNode, emptyGraph, findCycle, handlesFor, insertOnEdge, nextBusinessWindow, previewTemplate, removeNode, resolveCallOutcome,
-  sampleContext, semanticGraph, updateNode, validateGraph, buildCallBrief, setTriggerEvent,
+  sampleContext, semanticGraph, templateGraphFor, updateNode, validateGraph, buildCallBrief, setTriggerEvent,
   type WorkflowGraph,
 } from '@/lib/workflows/graph';
 
@@ -114,7 +114,7 @@ describe('structural validation', () => {
   });
   it('checks AI-call readiness only at publish and never lets a workflow bypass the contractor mode', () => {
     const g = addNodeAfter(emptyGraph('lead.assigned'), 'trigger', 'next', 'ai_call').graph;
-    const ready = { sms: false, calling: { contractorMode: 'workflow_only' as const, agentConfigured: true, phoneConfigured: true, globalEnabled: true, adminEnabled: true } };
+    const ready = { sms: true, calling: { contractorMode: 'workflow_only' as const, agentConfigured: true, phoneConfigured: true, globalEnabled: true, adminEnabled: true } };
     expect(errorsOf(g, { contractorId, mode: 'publish', integrations: ready })).toEqual([]);
     const manual = { ...ready, calling: { ...ready.calling, contractorMode: 'manual_only' as const } };
     expect(codes(g, { contractorId, mode: 'publish', integrations: manual })).toContain('calling_mode');
@@ -192,15 +192,17 @@ describe('editing operations', () => {
 });
 
 describe('starter templates', () => {
-  const ready = { sms: false, calling: { contractorMode: 'workflow_only' as const, agentConfigured: true, phoneConfigured: true, globalEnabled: true, adminEnabled: true } };
+  const ready = { sms: true, calling: { contractorMode: 'workflow_only' as const, agentConfigured: true, phoneConfigured: true, globalEnabled: true, adminEnabled: true } };
   it.each(GRAPH_TEMPLATES.map((t) => [t.key, t] as const))('%s is a valid, publishable graph', (_k, t) => {
-    const result = validateGraph(t.graph, { contractorId, mode: 'publish', integrations: ready });
+    // Contractor wording when the template has it (tests/workflow-graph-templates.test.ts covers network workflows).
+    const result = validateGraph(templateGraphFor(t, contractorId), { contractorId, mode: 'publish', integrations: ready });
     expect(result.issues.filter((i) => i.severity === 'error')).toEqual([]);
   });
-  it('there are four, none can enroll by itself, and each declares its stop conditions', () => {
-    expect(GRAPH_TEMPLATES).toHaveLength(4);
+  it('there are nine, none can enroll by itself, and each one that contacts the homeowner declares its stop conditions', () => {
+    expect(GRAPH_TEMPLATES).toHaveLength(9);
     for (const t of GRAPH_TEMPLATES) {
-      expect(t.graph.settings.exitEvents.length + t.graph.nodes.filter((n) => n.type === 'ai_call').length).toBeGreaterThan(0);
+      const contacts = t.graph.nodes.some((n) => NODE_TYPES[n.type].contactsHomeowner);
+      if (contacts) expect(t.graph.settings.exitEvents.length + t.graph.nodes.filter((n) => n.type === 'ai_call').length).toBeGreaterThan(0);
       expect(t.graph.nodes.every((n) => NODE_TYPES[n.type].availability === 'ready')).toBe(true);
     }
   });

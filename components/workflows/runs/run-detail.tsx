@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useMemo, useState, useSyncExternalStore, useTransition } from 'react';
-import { AlertTriangle, Ban, Info, Loader2, RotateCcw } from 'lucide-react';
+import { AlertTriangle, Ban, ChevronDown, Info, Loader2, RotateCcw } from 'lucide-react';
 import type { RunDetail } from '@/lib/data/workflow-graph';
 import { cancelGraphRunAction, retryGraphRunAction } from '@/lib/actions/workflow-graph';
 import { Badge } from '@/components/ui/badge';
@@ -17,7 +17,9 @@ import { buildRunOverlay, nodeById, nodeDisplayName, type GraphNode } from '@/li
 import { GraphCanvas } from '@/components/workflows/builder/graph-canvas';
 import { MobileSteps } from '@/components/workflows/builder/mobile-steps';
 import { NodeIcon } from '@/components/workflows/builder/node-icons';
+import { buildRunStory, HISTORY_TIME_ZONE } from '@/lib/workflows/graph/run-story';
 import { branchLabel, callOutcomeLabel, describeSkip, describeWait } from './run-explain';
+import { RunStory } from './run-story';
 import { RunStatusBadge, SourceBadge, STEP_STATUS_LABEL, STEP_STATUS_STYLE, When, humanize, triggerLabel } from './run-format';
 
 const subscribe = (cb: () => void) => {
@@ -77,6 +79,8 @@ export function RunDetailView({ detail, canManage, isAdmin }: { detail: RunDetai
     const el = document.getElementById(stepId(id));
     if (el) el.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
   }, []);
+
+  const story = useMemo(() => buildRunStory({ run, graph, steps }), [run, graph, steps]);
 
   const activeNode = run.currentStepKey ? nodeById(graph, run.currentStepKey) : undefined;
   const activeName = activeNode ? nodeDisplayName(activeNode) : run.currentStepKey ? humanize(run.currentStepKey) : null;
@@ -157,8 +161,15 @@ export function RunDetailView({ detail, canManage, isAdmin }: { detail: RunDetai
 
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
-          <CardHeader><CardTitle className="text-base">What happened, step by step</CardTitle></CardHeader>
-          <CardContent>
+          <CardHeader><CardTitle className="text-base">What happened</CardTitle></CardHeader>
+          <CardContent className="space-y-6">
+            <RunStory items={story} onSelectStep={select} selectedNodeId={selected} timeZoneLabel={HISTORY_TIME_ZONE === 'America/Los_Angeles' ? 'Pacific time' : HISTORY_TIME_ZONE} />
+            <details className="group rounded-xl border" data-testid="run-step-details">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-xl px-4 py-3 text-sm font-medium hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary [&::-webkit-details-marker]:hidden">
+                <span>Details <span className="font-normal text-muted-foreground">— every step, attempt and error code</span></span>
+                <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden />
+              </summary>
+              <div className="border-t p-4">
             {!steps.length ? (
               <p className="text-sm text-muted-foreground">This run has not started its first step.</p>
             ) : (
@@ -192,7 +203,7 @@ export function RunDetailView({ detail, canManage, isAdmin }: { detail: RunDetai
                       </p>
 
                       <div className="mt-2 space-y-2 text-sm">
-                        {s.skipReason && <p>{describeSkip(s.skipReason)}</p>}
+                        {s.skipReason && <p>{describeSkip(s.skipReason)}{s.textSkip ? `: ${s.textSkip}` : ''} <span className="font-mono text-xs text-muted-foreground">({s.skipReason})</span></p>}
 
                         {node?.type === 'ai_call' && (s.outcome || s.executionStatus) && (
                           <div className="rounded-lg border bg-muted/30 p-3">
@@ -226,6 +237,8 @@ export function RunDetailView({ detail, canManage, isAdmin }: { detail: RunDetai
                 })}
               </ol>
             )}
+              </div>
+            </details>
           </CardContent>
         </Card>
 
