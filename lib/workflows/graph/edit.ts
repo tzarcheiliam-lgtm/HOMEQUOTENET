@@ -31,7 +31,7 @@ export function defaultConfigFor(type: GraphNodeType): Record<string, unknown> {
     case 'send_email':
       return { to: { kind: 'lead' }, subject: 'Following up on your project', body: 'Hi {{lead.first_name}},\n\nWe are following up on your {{lead.project_type}} project.\n\n{{contractor.name}}', onError: 'fail_run' };
     case 'send_sms':
-      return { body: 'Hey {{lead.first_name}}, it\'s {{contractor.name}}. Just got your project request. Easier to hop on a quick call, or want to knock it out over text?', assistant: false, onError: 'fail_run' };
+      return { body: 'Hey {{lead.first_name}}, it\'s {{contractor.name}}. Just got your project request. Easier to hop on a quick call, or want to knock it out over text?', assistant: false, onlyIfNotTexted: false, onError: 'fail_run' };
     case 'ai_call':
       return { purpose: 'qualification', contextFields: ['project_type', 'city'], maxAttempts: 1, retryDelayMinutes: 60, resultTimeoutMinutes: 360, analysisGraceMinutes: 30 };
     case 'create_task':

@@ -699,6 +699,13 @@ describe('workflow texts through the Mac bridge', () => {
     expect(await q(`select 1 from public.workflow_events where lead_id=$1 and type='message.received'`, [leadId])).toHaveLength(1);
   });
 
+  it('"skip if already being texted" leaves a lead who got the automatic first text alone', async () => {
+    const { leadId } = await newLead();
+    expect((await startSmsForLead(sb, leadId, T)).started).toBe(true);
+    expect(await queueWorkflowText(sb, { leadId, body: 'Hi again', contractorId: null, stepRunId: step(), assistant: true, onlyIfNotTexted: true, now: T })).toEqual({ ok: false, reason: 'already_texting' });
+    expect(await messages(leadId)).toHaveLength(1);
+  });
+
   it('with "let the assistant answer" on, the texting assistant takes the replies', async () => {
     const leadId = await plainLead('(818) 555-0306');
     await queueWorkflowText(sb, { leadId, body: 'Hi Dana, want a free estimate visit?', contractorId: null, stepRunId: step(), assistant: true, now: T });

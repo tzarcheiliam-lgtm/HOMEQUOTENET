@@ -273,6 +273,7 @@ export const WORKFLOW_TEXT_SKIP_REASONS: Record<string, string> = {
   phone_in_use: 'This number is already in a text conversation with another lead.',
   daily_cap: 'The daily text limit was reached.',
   empty: 'The message was empty.',
+  already_texting: 'This lead is already in a text conversation (for example the automatic first text), and the step is set to skip in that case.',
   no_lead: 'The lead could not be found.',
 };
 
@@ -281,7 +282,7 @@ export const WORKFLOW_TEXT_SKIP_REASONS: Record<string, string> = {
  * (switches, opt-outs, texting hours, daily cap, one conversation per number). Idempotent per step run.
  * `assistant` = let the texting assistant answer replies; otherwise the workflow handles replies itself.
  */
-export async function queueWorkflowText(db: Db, input: { leadId: string; body: string; contractorId: string | null; stepRunId: string; assistant: boolean; now?: Date }): Promise<WorkflowTextResult> {
+export async function queueWorkflowText(db: Db, input: { leadId: string; body: string; contractorId: string | null; stepRunId: string; assistant: boolean; onlyIfNotTexted?: boolean; now?: Date }): Promise<WorkflowTextResult> {
   const now = input.now ?? new Date();
   try {
     const { data: already } = await db.from('sms_messages').select('id,conversation_id').eq('workflow_step_run_id', input.stepRunId).maybeSingle();
@@ -309,6 +310,7 @@ export async function queueWorkflowText(db: Db, input: { leadId: string; body: s
     let convo = existing as { id: string; lead_id: string; status: string; workflow_owned?: boolean } | null;
     if (convo) {
       if (convo.status === 'opted_out') return { ok: false, reason: 'opted_out' };
+      if (input.onlyIfNotTexted) return { ok: false, reason: 'already_texting' };
       if (convo.status !== 'active') return { ok: false, reason: 'person_took_over' };
       if (input.assistant && convo.workflow_owned) await db.from('sms_conversations').update({ workflow_owned: false }).eq('id', convo.id);
     } else {

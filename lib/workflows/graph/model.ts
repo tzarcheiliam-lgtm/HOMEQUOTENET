@@ -198,6 +198,8 @@ export const NODE_CONFIG_SCHEMAS = {
     body: templated(1600),
     /** Let the texting assistant answer the lead's replies to this text. Off = the workflow handles replies itself. */
     assistant: z.boolean().default(false),
+    /** Skip if this lead is already in a text conversation (e.g. the automatic first text already went out). */
+    onlyIfNotTexted: z.boolean().default(false),
     onError,
   }).strict(),
   ai_call: z

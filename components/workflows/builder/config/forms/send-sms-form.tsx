@@ -53,6 +53,21 @@ export function SendSmsForm({ config, onChange, readOnly, issues, lookups, ctx }
             </span>
           </span>
         </label>
+        <label className="flex cursor-pointer items-start gap-3 rounded-md border p-3 text-sm has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring">
+          <input
+            type="checkbox"
+            className="mt-0.5 size-4 accent-primary"
+            checked={config.onlyIfNotTexted === true}
+            disabled={readOnly}
+            onChange={(e) => onChange({ ...config, onlyIfNotTexted: e.target.checked })}
+          />
+          <span>
+            <span className="font-medium">Skip if they’re already being texted</span>
+            <span className="mt-0.5 block text-xs text-muted-foreground">
+              Use this for new-lead workflows so a lead who already got the automatic first text isn’t texted twice.
+            </span>
+          </span>
+        </label>
       </Section>
 
       <Callout>

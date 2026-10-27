@@ -72,7 +72,7 @@ export async function executeGraphAction(input: GraphActionInput): Promise<Workf
       if (test) return { outcome: 'skipped', reason: 'test_mode' };
       if (!run.leadId) return { outcome: 'skipped', reason: 'missing_lead' };
       const { queueWorkflowText, WORKFLOW_TEXT_SKIP_REASONS } = await import('@/lib/sms/service');
-      const r = await queueWorkflowText(db, { leadId: run.leadId, body: render(c.body, ctx), contractorId: run.contractorId, stepRunId: input.stepRun.id, assistant: c.assistant, now: input.now });
+      const r = await queueWorkflowText(db, { leadId: run.leadId, body: render(c.body, ctx), contractorId: run.contractorId, stepRunId: input.stepRun.id, assistant: c.assistant, onlyIfNotTexted: c.onlyIfNotTexted, now: input.now });
       if (r.ok) return { outcome: 'success', output: { queued: r.queued, conversationId: r.conversationId, assistant: c.assistant } };
       if (r.reason === 'error') return temporary('sms_queue_failed', 'Could not queue the text');
       // Same wording the lead page shows, so the run log and the lead agree.

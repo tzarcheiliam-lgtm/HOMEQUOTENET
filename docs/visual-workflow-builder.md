@@ -88,7 +88,7 @@ In one transaction it: (1) disables and pauses every graph workflow; (2) cancels
 
 
 ## 6. Known limitations
-- No SMS provider; no outbound-webhook node in the builder. SMS opt-out is not exercised end to end.
+- Texting goes through the owner's Mac (iMessage bridge, `lib/sms`), not an SMS provider; see HOMEQUOTE_CONTEXT "Workflows text through the Mac bridge". No outbound-webhook node in the builder.
 - Live test never dials, so it does **not** verify real phone calling (see §7).
 - Booking is confirmed only against `appointments` rows. Nothing in this repo lets the Fish agent write an appointment itself, so unless a human or another flow records the appointment, "booked" claims end in *Needs human review* after the grace period. That is intentional (no false "Booked").
 - A call already with the provider cannot be hung up (no end-call API).

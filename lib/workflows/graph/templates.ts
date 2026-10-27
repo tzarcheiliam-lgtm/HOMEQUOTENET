@@ -149,7 +149,7 @@ const estimateFollowUp = build(
 // the contractor wording uses {{contractor.name}}.
 type Sender = 'network' | 'contractor';
 const who = (s: Sender) => (s === 'network' ? 'the HomeQuote team' : '{{contractor.name}}');
-const sms = (id: string, name: string, body: string, assistant: boolean): N => ({ id, type: 'send_sms', name, config: { body, assistant, onError: 'continue' } });
+const sms = (id: string, name: string, body: string, assistant: boolean, onlyIfNotTexted = false): N => ({ id, type: 'send_sms', name, config: { body, assistant, onlyIfNotTexted, onError: 'continue' } });
 const notify = (s: Sender, id: string, name: string, title: string, body: string): N => ({
   id, type: 'send_notification', name, config: { audience: s === 'network' ? 'admins' : 'assigned_contractor', title, body, onError: 'continue' },
 });
@@ -163,7 +163,7 @@ const speedToLeadWebsite = (s: Sender) => build(
   [
     { id: 'trigger', type: 'trigger', config: { event: 'lead.created', filters: {}, entry: fromSource('website') } },
     { id: 'wait_2_min', type: 'wait_duration', name: 'Wait 2 minutes', config: { mode: 'duration', amount: 2, unit: 'minutes' } },
-    sms('first_text', 'Text the lead', `Hi {{lead.first_name}}, this is ${who(s)}. Thanks for your request on our website! Do you have a minute for a couple of quick questions about your project, or would a call be easier?`, true),
+    sms('first_text', 'Text the lead', `Hi {{lead.first_name}}, this is ${who(s)}. Thanks for your request on our website! Do you have a minute for a couple of quick questions about your project, or would a call be easier?`, true, true),
     end('end_texted', 'First text sent'),
   ],
   [['trigger', 'next', 'wait_2_min'], ['wait_2_min', 'next', 'first_text'], ['first_text', 'next', 'end_texted']],
@@ -175,7 +175,7 @@ const speedToLeadWebsite = (s: Sender) => build(
 const speedToLeadMeta = (s: Sender) => build(
   [
     { id: 'trigger', type: 'trigger', config: { event: 'lead.created', filters: {}, entry: fromSource('meta') } },
-    sms('first_text', 'Text the lead', `Hi {{lead.first_name}}, this is ${who(s)}. Thanks for filling out our form! Do you have a minute for a couple of quick questions about your project, or would a call be easier?`, true),
+    sms('first_text', 'Text the lead', `Hi {{lead.first_name}}, this is ${who(s)}. Thanks for filling out our form! Do you have a minute for a couple of quick questions about your project, or would a call be easier?`, true, true),
     end('end_texted', 'First text sent'),
   ],
   [['trigger', 'next', 'first_text'], ['first_text', 'next', 'end_texted']],
@@ -186,7 +186,7 @@ const speedToLeadMeta = (s: Sender) => build(
 const noReplyFollowUp = (s: Sender) => build(
   [
     { id: 'trigger', type: 'trigger', config: { event: 'lead.created', filters: {}, entry: { match: 'all', conditions: [consented] } } },
-    sms('text_1', 'First text', `Hi {{lead.first_name}}, this is ${who(s)} following up on your home project request. Is now a good time for a quick chat? Just reply here.`, false),
+    sms('text_1', 'First text', `Hi {{lead.first_name}}, this is ${who(s)} following up on your home project request. Is now a good time for a quick chat? Just reply here.`, false, true),
     { id: 'wait_reply_1', type: 'wait_event', name: 'Wait up to 1 day for a reply', config: { event: 'message.received', timeoutMinutes: 1440 } },
     sms('text_2', 'Second text', `Hi {{lead.first_name}}, just checking in one more time from ${who(s)}. If you're still planning your project, reply here and we'll help. No worries if the timing isn't right.`, false),
     { id: 'wait_reply_2', type: 'wait_event', name: 'Wait 1 more day for a reply', config: { event: 'message.received', timeoutMinutes: 1440 } },
@@ -298,7 +298,7 @@ export const GRAPH_TEMPLATES: readonly GraphTemplate[] = [
     icon: 'MessageSquare',
     name: 'Text new website leads in 2 minutes',
     summary: 'Two minutes after a website form comes in, send a friendly first text. The texting assistant answers replies.',
-    description: 'Starts for every new lead whose source is your website form and who gave consent. It waits two minutes, sends one text through your Mac, and lets the texting assistant take the conversation from there. Opt-outs, texting hours, the daily limit and one-conversation-per-number still apply; a lead that is not texted gets a "Workflow text not sent" note. Booking an appointment or winning/losing the deal stops it.',
+    description: 'Starts for every new lead whose source is your website form and who gave consent. It waits two minutes, sends one text through your Mac, and lets the texting assistant take the conversation from there. If the lead already got the automatic first text, this text is skipped so nobody is texted twice. Opt-outs, texting hours, the daily limit and one-conversation-per-number still apply; a lead that is not texted gets a "Workflow text not sent" note. Booking an appointment or winning/losing the deal stops it.',
     requires: [
       TEXTING_NEEDS,
       'Website leads already get the automatic first text the moment they submit when texting is on. Use this only if you want this wording or timing instead, or the lead gets two texts.',
@@ -313,7 +313,7 @@ export const GRAPH_TEMPLATES: readonly GraphTemplate[] = [
     icon: 'MessageSquare',
     name: 'Text new Meta form leads right away',
     summary: 'Send a first text as soon as a Facebook or Instagram form lead arrives. The texting assistant answers replies.',
-    description: 'Starts for every new lead whose source is Meta (Facebook/Instagram Instant Forms) and who gave consent on the form, texts them straight away (or as soon as texting hours open) and hands replies to the texting assistant. All texting rules still apply.',
+    description: 'Starts for every new lead whose source is Meta (Facebook/Instagram Instant Forms) and who gave consent on the form, texts them straight away (or as soon as texting hours open) and hands replies to the texting assistant. Skipped if the lead already got the automatic first text. All texting rules still apply.',
     requires: [
       TEXTING_NEEDS,
       'The Meta form records texting consent. Leads without it are not enrolled; edit the trigger’s conditions if your form’s wording already covers texting.',
@@ -329,7 +329,7 @@ export const GRAPH_TEMPLATES: readonly GraphTemplate[] = [
     icon: 'Hourglass',
     name: 'No reply follow-up',
     summary: 'Text, wait a day for a reply, text again, then mark it cold and tell the team. A reply at any point alerts you instead.',
-    description: 'Texts a new lead (replies come to the workflow, not the texting assistant), waits up to a day for them to text back, sends one more text if they don’t, and waits another day. If they reply at any point, your team gets "A lead replied" and the workflow ends. If not, it adds the note "No reply, marked cold" and alerts the team. Booking an appointment or winning/losing the deal stops it. You can also enroll a lead by hand.',
+    description: 'Texts a new lead (replies come to the workflow, not the texting assistant; the first text is skipped if the lead is already in a text conversation), waits up to a day for them to text back, sends one more text if they don’t, and waits another day. If they reply at any point, your team gets "A lead replied" and the workflow ends. If not, it adds the note "No reply, marked cold" and alerts the team. Booking an appointment or winning/losing the deal stops it. You can also enroll a lead by hand.',
     requires: [
       TEXTING_NEEDS,
       'Want the lead’s stage changed too? Add an "Update lead status" step (Lost) after the note.',
