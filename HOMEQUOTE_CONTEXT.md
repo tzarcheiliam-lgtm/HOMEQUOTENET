@@ -1217,7 +1217,7 @@ Charts are hand-written SVG/CSS (`components/calls/stats/charts.tsx`; no chart l
 - **"Why wasn't this lead texted" note** (`withSkipNote` / `SKIP_NOTES`): when a new lead isn't texted (off, contractor off, daily limit, bad phone, opted out, number in use, Meta test lead, error) a plain-language "Not texted: …" activity is written on the lead (`metadata.sms_skipped`).
 - **Daily assistant-reply cap**: `sms_settings.max_ai_replies_per_day` (default 150, editable on `/app/texting`); past it, conversations hand off to a person. This is separate from `daily_cap` (all texts). `loadSettings` falls back to older columns until 0061 is applied.
 
-## 36. Setter pay + money-first setter dashboard (migration 0062, 2026-10-27, NOT yet applied)
+## 36. Setter pay + money-first setter dashboard (migration 0062, 2026-10-27; applied to production 2026-10-27)
 **Pay rule (owner's decision, 2026-10-27):** setters are paid for each **contractor sales meeting** they booked (`prospect_sales_appointments.partner_id`) that the owner then **sells**. Booking alone pays nothing. A meeting that is held but not sold pays nothing. Homeowner appointments are not part of setter pay. Plan: `docs/setter-dashboard-plan.md` (written before this rule; see its status note).
 
 **Migration 0062 (`0062_setter_pay.sql`):**
@@ -1270,5 +1270,5 @@ Charts are hand-written SVG/CSS (`components/calls/stats/charts.tsx`; no chart l
 - **Actions** (`lib/actions/setter-pay.ts`): `setPartnerPay`, `recordSale` and `creditMeeting`. All are admin-only and audited (`user.setter_pay`, `sales_appointment.sale`, `sales_appointment.credit`, `calls.payouts_export`).
 - `tests/setter-access.test.ts` pins payouts as admin-only.
 
-**Deploy order:** apply 0062, then deploy. Deploying first is safe: the dashboard and payouts read with `select('*')`, so without 0062 they show no rates or sales. Recording a sale or setting pay returns "needs database migration 0062". The "Needs a sale decision" filter shows nothing.
+**Status:** 0062 was applied to production on 2026-10-27 by the owner in the Supabase SQL editor. Verified: both profile columns, all four sale columns, the four checks, the extended profile guard, the pay-guard trigger and the sold index. **Deploy order (other environments):** apply 0062, then deploy. Deploying first is safe: the dashboard and payouts read with `select('*')`, so without 0062 they show no rates or sales. Recording a sale or setting pay returns "needs database migration 0062". The "Needs a sale decision" filter shows nothing.
 
