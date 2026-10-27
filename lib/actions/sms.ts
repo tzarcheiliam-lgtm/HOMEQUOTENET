@@ -28,6 +28,7 @@ const settingsSchema = z.object({
   window_end_hour: z.coerce.number().int().min(1).max(24),
   daily_cap: z.coerce.number().int().min(1).max(5000),
   first_text_delay_minutes: z.coerce.number().int().min(0, 'The delay can’t be negative.').max(1440, 'Keep the delay under 24 hours (1440 minutes).'),
+  max_ai_replies_per_day: z.coerce.number().int().min(1, 'Allow at least 1 assistant reply a day.').max(5000, 'Keep it at 5000 or fewer.'),
   max_ai_turns: z.coerce.number().int().min(2, 'Allow at least 2 assistant replies.').max(40, 'Keep it at 40 replies or fewer.'),
 }).refine((v) => v.window_end_hour > v.window_start_hour, { message: 'The window must close after it opens.' });
 

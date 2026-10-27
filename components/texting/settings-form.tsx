@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { saveSmsSettings, type SmsActionState } from '@/lib/actions/sms';
 
-export function SmsSettingsForm({ settings }: { settings: { window_start_hour: number; window_end_hour: number; daily_cap: number; contractor_funnels_enabled: boolean; first_text_delay_minutes?: number; max_ai_turns?: number } }) {
+export function SmsSettingsForm({ settings }: { settings: { window_start_hour: number; window_end_hour: number; daily_cap: number; contractor_funnels_enabled: boolean; first_text_delay_minutes?: number; max_ai_turns?: number; max_ai_replies_per_day?: number } }) {
   const [state, action, pending] = useActionState<SmsActionState, FormData>(saveSmsSettings, undefined);
   const f = (name: string, label: string, v: number, hint: string) => (
     <div className="space-y-1.5"><Label htmlFor={name}>{label}</Label><Input id={name} name={name} type="number" inputMode="numeric" defaultValue={v} /><p className="text-xs text-muted-foreground">{hint}</p></div>
@@ -20,6 +20,7 @@ export function SmsSettingsForm({ settings }: { settings: { window_start_hour: n
       </div>
       <div className="grid gap-4 sm:grid-cols-3">
         {f('first_text_delay_minutes', 'Wait before the first text (minutes)', settings.first_text_delay_minutes ?? 0, '0 = right away. A short pause can feel less robotic.')}
+        {f('max_ai_replies_per_day', 'Assistant replies per 24 hours (all)', settings.max_ai_replies_per_day ?? 150, 'Caps AI spend. Past this, conversations go to you.')}
         {f('max_ai_turns', 'Assistant replies per lead (max)', settings.max_ai_turns ?? 14, 'After this many it hands the conversation to you.')}
       </div>
       <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="contractor_funnels_enabled" defaultChecked={settings.contractor_funnels_enabled} className="mt-1" />

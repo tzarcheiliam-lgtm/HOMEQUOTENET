@@ -199,6 +199,26 @@ describe('starting a conversation', () => {
     await setSettings(`opening_template=null, first_text_delay_minutes=0`);
   });
 
+  it('does not start a second conversation for a number that is already being texted, and says why on the lead', async () => {
+    const a = await newLead();
+    expect((await startSmsForLead(sb, a.leadId, T)).started).toBe(true);
+    const b = await newLead({ phone: a.phone });
+    expect(await startSmsForLead(sb, b.leadId, T)).toEqual({ started: false, reason: 'phone_in_use' });
+    expect((await q(`select body from public.lead_activities where lead_id=$1 and metadata->>'sms_skipped'='phone_in_use'`, [b.leadId]))[0].body).toMatch(/already in a text conversation/);
+  });
+
+  it('writes a plain-language note on the lead when it was not texted', async () => {
+    const off = await newLead({ house: false }); // contractor funnels are switched off
+    expect((await startSmsForLead(sb, off.leadId, T)).started).toBe(false);
+    expect((await q(`select body from public.lead_activities where lead_id=$1 and metadata->>'sms_skipped'='contractor_funnel_off'`, [off.leadId]))[0].body).toMatch(/^Not texted:/);
+    const bad = await newLead({ phone: '12345' });
+    await startSmsForLead(sb, bad.leadId, T);
+    expect((await q(`select body from public.lead_activities where lead_id=$1 and metadata->>'sms_skipped'='bad_phone'`, [bad.leadId]))).toHaveLength(1);
+    const ok = await newLead();
+    await startSmsForLead(sb, ok.leadId, T);
+    expect(await q(`select 1 from public.lead_activities where lead_id=$1 and metadata ? 'sms_skipped'`, [ok.leadId])).toHaveLength(0); // no note when it was texted
+  });
+
   it('never texts a number that opted out, and respects the daily cap', async () => {
     const a = await newLead();
     await q(`insert into public.sms_opt_outs(phone_e164, source) values ($1,'test')`, [e164(a.phone)]);
@@ -265,6 +285,29 @@ describe('replies from the lead', () => {
     const r = await handleInbound(sb, { phone: e164(x.phone), body: 'still there?', guid: `g-${randomUUID()}` }, { agent: again, now: () => T });
     expect(again).not.toHaveBeenCalled(); expect(r.reason).toMatch(/message limit/);
     await setSettings(`max_ai_turns=14, bot_extra_instructions=null`);
+  });
+
+  it('ignores a text that is just our own message coming back, instead of answering it in a loop', async () => {
+    const { leadId, from } = await started();
+    await q(`update public.sms_messages set status='sent' where lead_id=$1 and direction='out'`, [leadId]);
+    const opening = (await messages(leadId))[0].body as string;
+    const agent = agentOk();
+    const r = await handleInbound(sb, { phone: from, body: `  ${opening.toUpperCase()}  `, guid: `g-${randomUUID()}` }, { agent, now: () => T });
+    expect(r).toEqual({ handled: true, reason: 'echo' });
+    expect(agent).not.toHaveBeenCalled();
+    expect((await messages(leadId)).filter((m: any) => m.direction === 'in')).toHaveLength(0);
+    // a real reply still gets through, and so does a short one that happens to match
+    expect(await handleInbound(sb, { phone: from, body: 'yes a call works for me', guid: `g-${randomUUID()}` }, { agent, now: () => T })).toMatchObject({ handled: true, replied: true });
+  });
+
+  it('hands off to you once the assistant has used its daily replies', async () => {
+    const { leadId, from } = await started();
+    await setSettings(`max_ai_replies_per_day=1`);
+    await q(`insert into public.sms_messages(conversation_id, lead_id, direction, body, status, ai) select id, lead_id, 'out', 'earlier ai reply', 'sent', true from public.sms_conversations where lead_id=$1`, [leadId]);
+    const agent = agentOk();
+    const r = await handleInbound(sb, { phone: from, body: 'hello again', guid: `g-${randomUUID()}` }, { agent, now: () => T });
+    expect(agent).not.toHaveBeenCalled(); expect(r.reason).toMatch(/daily assistant reply limit/);
+    await setSettings(`max_ai_replies_per_day=150`);
   });
 
   it('answers with the assistant, queues the reply, and tracks the conversation', async () => {
@@ -511,6 +554,8 @@ describe('systemPromptFor (owner instructions)', () => {
 });
 
 describe('Meta Instant Form leads', () => {
+  // These tests share one phone number; start each from a clean slate (one conversation per number is a rule now).
+  beforeEach(async () => { await q(`delete from public.sms_messages`); await q(`delete from public.sms_conversations`); });
   const realAnswers = { 'do_you_own_this_home?': 'yes', 'what_kitchen_project_do_you_have_in_mind?': 'full_remodel' };
   async function metaLead(answers: Record<string, string> | null = realAnswers, phone: string | null = '(818) 555-0177') {
     const leadId = randomUUID();
@@ -563,10 +608,12 @@ describe('Meta Instant Form leads', () => {
 });
 
 describe('Meta Pages owned by a contractor', () => {
+  // These tests share one phone number; start each from a clean slate (one conversation per number is a rule now).
+  beforeEach(async () => { await q(`delete from public.sms_messages`); await q(`delete from public.sms_conversations`); });
   const answers = { 'what_pool_project_do_you_have_in_mind?': 'resurface' };
-  async function poolLead() {
+  async function poolLead(phone = '(818) 555-0177') {
     const leadId = randomUUID();
-    await q(`insert into public.leads(id, first_name, last_name, phone, state, status, source, answers) values ($1,'Sam','Lee','(818) 555-0177','CA','new','meta',$2)`, [leadId, JSON.stringify(answers)]);
+    await q(`insert into public.leads(id, first_name, last_name, phone, state, status, source, answers) values ($1,'Sam','Lee',$3,'CA','new','meta',$2)`, [leadId, JSON.stringify(answers), phone]);
     return leadId;
   }
   async function contractor(texting: boolean) {
@@ -598,7 +645,7 @@ describe('Meta Pages owned by a contractor', () => {
     const contractorId = await contractor(true); const leadId = await poolLead();
     await startSmsForMetaLead(sb, leadId, T, { contractorId, senderName: null });
     expect((await q(`select sender_name from public.sms_conversations where lead_id=$1`, [leadId]))[0].sender_name).toBe('HomeQuote');
-    const house = await poolLead();
+    const house = await poolLead('(818) 555-0188');
     await startSmsForMetaLead(sb, house, T);
     expect((await q(`select sender_name, contractor_id from public.sms_conversations where lead_id=$1`, [house]))[0]).toEqual({ sender_name: 'HomeQuote', contractor_id: null });
   });

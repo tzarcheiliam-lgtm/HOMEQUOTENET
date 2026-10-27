@@ -12,14 +12,14 @@ type Db = SupabaseClient;
 export interface SmsSettings {
   enabled: boolean; contractor_funnels_enabled: boolean; window_start_hour: number; window_end_hour: number; daily_cap: number; stopped_at: string | null;
   bot_extra_instructions?: string | null; house_sender_name?: string | null;
-  opening_template?: string | null; first_text_delay_minutes?: number; max_ai_turns?: number;
+  opening_template?: string | null; first_text_delay_minutes?: number; max_ai_turns?: number; max_ai_replies_per_day?: number;
 }
 export const DEFAULT_SETTINGS: SmsSettings = { enabled: false, contractor_funnels_enabled: false, window_start_hour: 8, window_end_hour: 21, daily_cap: 200, stopped_at: null };
 
 export async function loadSettings(db: Db): Promise<SmsSettings> {
   const core = 'enabled,contractor_funnels_enabled,window_start_hour,window_end_hour,daily_cap,stopped_at';
   // Newer columns arrive with migrations 0057 and 0059; until they are applied, fall back so texting keeps working.
-  for (const cols of [`${core},bot_extra_instructions,house_sender_name,opening_template,first_text_delay_minutes,max_ai_turns`, `${core},bot_extra_instructions,house_sender_name`, core]) {
+  for (const cols of [`${core},bot_extra_instructions,house_sender_name,opening_template,first_text_delay_minutes,max_ai_turns,max_ai_replies_per_day`, `${core},bot_extra_instructions,house_sender_name,opening_template,first_text_delay_minutes,max_ai_turns`, `${core},bot_extra_instructions,house_sender_name`, core]) {
     const { data, error } = await db.from('sms_settings').select(cols).eq('id', true).maybeSingle();
     if (!error) return { ...DEFAULT_SETTINGS, ...(data as Partial<SmsSettings> | null) };
   }
@@ -44,6 +44,36 @@ async function sentToday(db: Db): Promise<number> {
   const { count } = await db.from('sms_messages').select('id', { count: 'exact', head: true }).eq('direction', 'out').gte('created_at', since);
   return count ?? 0;
 }
+async function aiRepliesToday(db: Db): Promise<number> {
+  const since = new Date(Date.now() - 24 * 3600_000).toISOString();
+  const { count } = await db.from('sms_messages').select('id', { count: 'exact', head: true }).eq('direction', 'out').eq('ai', true).gte('created_at', since);
+  return count ?? 0;
+}
+/** One conversation per phone number: a number already texted in the last 14 days is not started again from a second lead. */
+async function phoneInUse(db: Db, phone: string, now: Date): Promise<boolean> {
+  const since = new Date(now.getTime() - 14 * 24 * 3600_000).toISOString();
+  const { data } = await db.from('sms_conversations').select('id').eq('phone_e164', phone).gte('created_at', since).limit(1);
+  return !!data?.length;
+}
+const normalizeBody = (t: string) => t.toLowerCase().replace(/\s+/g, ' ').trim();
+
+/** Plain-language reasons a new lead was not texted, written onto the lead so nobody has to ask why. */
+const SKIP_NOTES: Record<string, string> = {
+  off: 'Not texted: automatic texting is turned off.',
+  contractor_funnel_off: 'Not texted: automatic texting is off for this contractor (it needs the contractor-funnels switch on the Texting page and the switch on the contractor’s page).',
+  daily_cap: 'Not texted: the daily text limit was reached.',
+  bad_phone: 'Not texted: the phone number is not a valid US number.',
+  opted_out: 'Not texted: this number opted out of texts.',
+  phone_in_use: 'Not texted: this number is already in a text conversation (started in the last 14 days).',
+  test_lead: 'Not texted: this is a Meta test lead.',
+  error: 'Not texted: something went wrong. Check the Texting page.',
+};
+async function withSkipNote(db: Db, leadId: string, run: Promise<StartResult>): Promise<StartResult> {
+  const r = await run;
+  if (!r.started && SKIP_NOTES[r.reason]) { try { await note(db, leadId, SKIP_NOTES[r.reason], { sms_skipped: r.reason }); } catch { /* the note is a courtesy */ } }
+  return r;
+}
+
 async function queue(db: Db, c: { id: string; lead_id: string }, body: string, opts: { ai: boolean; sendAfter?: Date }) {
   const { data } = await db.from('sms_messages').insert({
     conversation_id: c.id, lead_id: c.lead_id, direction: 'out', body, status: 'queued', ai: opts.ai, send_after: (opts.sendAfter ?? new Date()).toISOString(),
@@ -70,7 +100,8 @@ function readAnswers(answers: Record<string, unknown>, snap: Snapshot): Record<s
 export type StartResult = { started: true; conversationId: string } | { started: false; reason: string };
 
 /** Called right after a real funnel lead is saved. Idempotent (one conversation per lead) and never throws. */
-export async function startSmsForLead(db: Db, leadId: string, now = new Date()): Promise<StartResult> {
+export const startSmsForLead = (db: Db, leadId: string, now = new Date()): Promise<StartResult> => withSkipNote(db, leadId, startSmsForLeadInner(db, leadId, now));
+async function startSmsForLeadInner(db: Db, leadId: string, now: Date): Promise<StartResult> {
   try {
     const settings = await loadSettings(db);
     if (!isLive(settings)) return { started: false, reason: 'off' };
@@ -82,6 +113,7 @@ export async function startSmsForLead(db: Db, leadId: string, now = new Date()):
     if (!phone) return { started: false, reason: 'bad_phone' };
     const { data: optOut } = await db.from('sms_opt_outs').select('phone_e164').eq('phone_e164', phone).maybeSingle();
     if (optOut) return { started: false, reason: 'opted_out' };
+    if (await phoneInUse(db, phone, now)) return { started: false, reason: 'phone_in_use' };
     const { data: session } = await db.from('funnel_sessions').select('funnel_id,answers,config_snapshot,qualified').eq('lead_id', leadId).order('created_at', { ascending: false }).limit(1).maybeSingle();
     const { data: funnel } = session?.funnel_id ? await db.from('funnels').select('contractor_id,is_demo').eq('id', session.funnel_id).maybeSingle() : { data: null };
     if (!session || !funnel || funnel.is_demo) return { started: false, reason: 'not_a_funnel_lead' };
@@ -122,7 +154,8 @@ export function metaProject(answers: Record<string, string>): string | null {
  * funnel leads. Sent as the house sender, or as the Page's sender name when the Page belongs to a contractor (which then
  * also needs the same switches as a contractor funnel: contractor_funnels_enabled and the contractor's texting_enabled). Idempotent (one conversation per lead) and never throws.
  */
-export async function startSmsForMetaLead(db: Db, leadId: string, now = new Date(), source: { contractorId?: string | null; senderName?: string | null } = {}): Promise<StartResult> {
+export const startSmsForMetaLead = (db: Db, leadId: string, now = new Date(), source: { contractorId?: string | null; senderName?: string | null } = {}): Promise<StartResult> => withSkipNote(db, leadId, startSmsForMetaLeadInner(db, leadId, now, source));
+async function startSmsForMetaLeadInner(db: Db, leadId: string, now: Date, source: { contractorId?: string | null; senderName?: string | null }): Promise<StartResult> {
   try {
     const settings = await loadSettings(db);
     if (!isLive(settings)) return { started: false, reason: 'off' };
@@ -143,6 +176,7 @@ export async function startSmsForMetaLead(db: Db, leadId: string, now = new Date
     if (!phone) return { started: false, reason: 'bad_phone' };
     const { data: optOut } = await db.from('sms_opt_outs').select('phone_e164').eq('phone_e164', phone).maybeSingle();
     if (optOut) return { started: false, reason: 'opted_out' };
+    if (await phoneInUse(db, phone, now)) return { started: false, reason: 'phone_in_use' };
     if ((await sentToday(db)) >= settings.daily_cap) return { started: false, reason: 'daily_cap' };
 
     const houseName = settings.house_sender_name?.trim().slice(0, 40) || SENDER_HOUSE;
@@ -176,6 +210,13 @@ export async function handleInbound(db: Db, input: InboundInput, deps: InboundDe
   // Texts from numbers we never contacted are not ours to handle (and are never stored or answered).
   if (!convo) return { handled: false, reason: 'unknown_number' };
   const now = (deps.now ?? (() => new Date()))();
+  // Echo guard: a text identical to one we just sent is our own message coming back (texting the Mac's own number, a
+  // forwarded copy), not a reply. Answering it would loop. Short messages are exempt so a real "Sounds good" still counts.
+  if (body.length >= 20) {
+    const { data: recentOut } = await db.from('sms_messages').select('body').eq('conversation_id', (convo as { id: string }).id).eq('direction', 'out')
+      .in('status', ['sent', 'sending', 'queued']).gte('created_at', new Date(now.getTime() - 30 * 60_000).toISOString()).order('created_at', { ascending: false }).limit(20);
+    if ((recentOut ?? []).some((m: { body: string }) => normalizeBody(m.body) === normalizeBody(body))) return { handled: true, reason: 'echo' };
+  }
   const c = convo as { id: string; lead_id: string; sender_name: string; status: string; ai_turns: number; mode?: string | null; call_time_preference?: string | null };
   await db.from('sms_messages').insert({ conversation_id: c.id, lead_id: c.lead_id, direction: 'in', body, status: 'received', external_guid: input.guid, sent_at: input.receivedAt ?? now.toISOString() });
   await db.from('sms_conversations').update({ last_inbound_at: now.toISOString(), updated_at: now.toISOString() }).eq('id', c.id);
@@ -214,6 +255,7 @@ async function replyWithAgent(db: Db, c: { id: string; lead_id: string; sender_n
   if (!isLive(settings)) return handoff('automatic texting is turned off');
   if (c.ai_turns >= (settings.max_ai_turns ?? MAX_AI_TURNS)) return handoff('the assistant reached its message limit');
   if ((await sentToday(db)) >= settings.daily_cap) return handoff('the daily text limit was reached');
+  if ((await aiRepliesToday(db)) >= (settings.max_ai_replies_per_day ?? 150)) return handoff('the daily assistant reply limit was reached');
   const aiOn = deps.aiConfigured ?? !!process.env.ANTHROPIC_API_KEY?.trim();
   if (!aiOn && !deps.agent) return handoff('the AI assistant is not configured');
 

@@ -1208,3 +1208,9 @@ Charts are hand-written SVG/CSS (`components/calls/stats/charts.tsx`; no chart l
 - Attempts stay append-only (there is no undo).
 
 **Deploy order:** apply 0060, then deploy. Deploying first is safe because of the fallbacks.
+
+## 35. Texting guards (migration 0061, added 2026-10-27)
+- **Echo guard** (`handleInbound`): an inbound text of ≥20 characters identical (case/spacing-insensitive) to one of our own outbound messages in that conversation in the last 30 minutes is ignored (`reason: 'echo'`, not stored, not answered). Stops loops when the Mac texts its own number. Shorter texts are exempt so a real "Sounds good" still counts.
+- **One conversation per phone** (`phoneInUse`): a number that already has a conversation created in the last 14 days is not started again from a second lead (`reason: 'phone_in_use'`), for funnel and Meta leads.
+- **"Why wasn't this lead texted" note** (`withSkipNote` / `SKIP_NOTES`): when a new lead isn't texted (off, contractor off, daily limit, bad phone, opted out, number in use, Meta test lead, error) a plain-language "Not texted: …" activity is written on the lead (`metadata.sms_skipped`).
+- **Daily assistant-reply cap**: `sms_settings.max_ai_replies_per_day` (default 150, editable on `/app/texting`); past it, conversations hand off to a person. This is separate from `daily_cap` (all texts). `loadSettings` falls back to older columns until 0061 is applied.
