@@ -1349,4 +1349,15 @@ Spaces out retries to contractor prospects we couldn't reach, and takes them out
 
 **Deploy order:** apply 0063, then deploy. The queue queries filter on the new generated columns, so deploying first breaks the call list and Next. **Production:** 0063 applied 2026-10-27 by the owner in the Supabase SQL editor. Verified: the six columns (two generated), the check, the index, and the backfill (streaks 0: 677, 1: 192, 2: 8, 3: 1, 4: 1; nobody rested or parked).
 
-**Not built yet** (rest of A1): automatic spreading of unassigned prospects across callers; skipping prospects that already match a signed contractor. The limits are code constants, not admin settings.
+**Spread unassigned (no migration):** admins get a **Spread unassigned (N)** button on `/app/calls` (`components/calls/spread-prospects-dialog.tsx`).
+- The admin picks people (any active admin / caller / setter, each shown with their open list), optionally one niche and a max per person, and sees a live preview of the split.
+- Who gets what: `planSpread` (`lib/calls/spread.ts`, pure, shared by the preview and the server) gives each prospect, oldest first, to whoever has the shortest open list (existing + given so far). Ties go to the person listed first. The cap leaves the rest unassigned.
+- `spreadUnassignedProspects` (`lib/actions/prospects.ts`, admin-only):
+  - reads unassigned, unarchived prospects in a queue disposition (so never DNC or final outcomes), paging past 1000 rows;
+  - writes in chunks of 100 with `.is('assigned_to', null)`, so a prospect assigned by hand in the meantime is never taken;
+  - audits one `prospect.spread` row with the counts.
+- "Open list" for the preview = in the queue and not parked (`getSpreadOverview` in `lib/data/prospects.ts`).
+- Admin-triggered only; nothing runs on a schedule.
+- Tests: `tests/calls-spread.test.ts` (pure) and `tests/calls-spread-db.test.ts` (PGlite: only callable prospects move, the shortest list fills first, niche and cap, refusals, the overview).
+
+**Not built yet** (rest of A1): skipping prospects that already match a signed contractor. The cadence limits are code constants, not admin settings.

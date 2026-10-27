@@ -621,3 +621,56 @@ export async function listSalesAppointments(
     };
   });
 }
+
+/* ---- Spreading unassigned prospects (admin) ------------------------------ */
+
+export interface SpreadOverview {
+  /** Unassigned prospects still worth calling, per niche ('' = no niche). */
+  unassignedByNiche: { niche: string; count: number }[];
+  unassignedTotal: number;
+  /** Each assignable person's open list: in the queue and not parked. */
+  loads: (CallerOption & { load: number })[];
+}
+
+/**
+ * What the "Spread unassigned" dialog needs. Admin pages only: RLS shows
+ * callers just their own rows, so a caller would see nothing unassigned.
+ */
+export async function getSpreadOverview(callers: CallerOption[]): Promise<SpreadOverview> {
+  const supabase = await createClient();
+  const byNiche = new Map<string, number>();
+  // Page past the API's 1000-row cap; only the niche column is read.
+  for (let from = 0; ; from += 1000) {
+    const { data } = await supabase
+      .from('contractor_prospects')
+      .select('niche')
+      .is('assigned_to', null)
+      .is('archived_at', null)
+      .in('disposition', QUEUE_DISPOSITIONS)
+      .order('id', { ascending: true })
+      .range(from, from + 999);
+    const rows = (data ?? []) as { niche: string | null }[];
+    for (const r of rows) byNiche.set(r.niche ?? '', (byNiche.get(r.niche ?? '') ?? 0) + 1);
+    if (rows.length < 1000) break;
+  }
+  const loads = await Promise.all(
+    callers.map(async (c) => {
+      const { count } = await supabase
+        .from('contractor_prospects')
+        .select('id', { count: 'exact', head: true })
+        .eq('assigned_to', c.id)
+        .is('archived_at', null)
+        .is('parked_at', null)
+        .in('disposition', QUEUE_DISPOSITIONS);
+      return { ...c, load: count ?? 0 };
+    })
+  );
+  const unassignedByNiche = [...byNiche]
+    .map(([niche, count]) => ({ niche, count }))
+    .sort((a, b) => b.count - a.count || a.niche.localeCompare(b.niche));
+  return {
+    unassignedByNiche,
+    unassignedTotal: unassignedByNiche.reduce((n, r) => n + r.count, 0),
+    loads,
+  };
+}

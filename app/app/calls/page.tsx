@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import { requireCallWorkspace } from '@/lib/auth';
 import {
   getCallerDashboard,
+  getSpreadOverview,
   listCallers,
   listProspectFilterOptions,
   listProspects,
@@ -20,6 +21,7 @@ import { ProspectFilters } from '@/components/calls/prospect-filters';
 import { ProspectsTable } from '@/components/calls/prospects-table';
 import { Pagination } from '@/components/calls/pagination';
 import { RefreshProspectsDialog } from '@/components/calls/refresh-prospects-dialog';
+import { SpreadProspectsDialog } from '@/components/calls/spread-prospects-dialog';
 import type { ProspectDisposition } from '@/lib/types';
 import { contextFrom, contextQuery } from '@/lib/calls/context';
 import { getGoalSnapshot, getTeamBoard, type BoardRow, type GoalSnapshot } from '@/lib/data/call-stats';
@@ -75,13 +77,14 @@ export default async function CallsPage({
   };
 
   const callers = await listCallers();
-  const [result, options, dashboard, snapshot, board] = await Promise.all([
+  const [result, options, dashboard, snapshot, board, spread] = await Promise.all([
     listProspects(filters, me, callers),
     listProspectFilterOptions(),
     isAdmin ? null : getCallerDashboard(me.id),
     // Shared with the layout's HUD (cached per request); never blocks the list.
     getGoalSnapshot(me.id).catch((): GoalSnapshot | null => null),
     isAdmin ? getTeamBoard().catch((): BoardRow[] => []) : Promise.resolve([] as BoardRow[]),
+    isAdmin ? getSpreadOverview(callers).catch(() => null) : null,
   ]);
 
   const done = first(sp.done) === '1';
@@ -103,6 +106,7 @@ export default async function CallsPage({
         {isAdmin ? (
           <>
             <RefreshProspectsDialog assignees={callers} />
+            {spread ? <SpreadProspectsDialog overview={spread} /> : null}
             <Link href="/app/calls/new" className={cn(buttonVariants(), 'max-lg:hidden')}>
               <Plus className="size-4" aria-hidden="true" /> Add prospect
             </Link>

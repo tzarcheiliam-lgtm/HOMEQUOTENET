@@ -3,11 +3,19 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { isCallAssigneeRole } from '@/lib/calls/callers';
+import { isCallAssigneeRole, type CallerOption } from '@/lib/calls/callers';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireCallWorkspace, requireRole } from '@/lib/auth';
-import { listCallers, nextProspectIdFor, nextProspectInContext, type ProspectFilters } from '@/lib/data/prospects';
+import {
+  getSpreadOverview,
+  listCallers,
+  nextProspectIdFor,
+  nextProspectInContext,
+  type ProspectFilters,
+} from '@/lib/data/prospects';
+import { NO_NICHE, planSpread } from '@/lib/calls/spread';
+import { QUEUE_DISPOSITIONS } from '@/lib/calls/constants';
 import { contextFrom, contextQuery, hasListContext, withContext } from '@/lib/calls/context';
 import { flushNotificationsSoon } from '@/lib/notifications/outbox';
 import { cadencePatchFor } from '@/lib/calls/cadence';
@@ -321,6 +329,92 @@ export async function assignProspects(fd: FormData): Promise<void> {
 
   revalidatePath('/app/calls');
   for (const id of parsed.data.ids) revalidatePath(`/app/calls/${id}`);
+}
+
+/* ---- Spread unassigned prospects (admin only) ----------------------------- */
+
+export type SpreadState =
+  | { ok: true; assigned: { name: string; count: number }[]; left: number }
+  | { ok: false; error: string }
+  | undefined;
+
+/**
+ * Hands out unassigned prospects across the people the admin picked, filling
+ * the shortest open list first (lib/calls/spread.ts). Each write only claims
+ * prospects that are still unassigned, so one assigned by hand in the
+ * meantime is never taken from its new owner.
+ */
+export async function spreadUnassignedProspects(_prev: SpreadState, fd: FormData): Promise<SpreadState> {
+  const me = await requireRole(['admin']);
+  const picked = [...new Set(fd.getAll('assignee').map(String).filter(Boolean))];
+  if (picked.length === 0) return { ok: false, error: 'Pick at least one person' };
+  const niche = str(fd, 'niche');
+  const maxRaw = str(fd, 'max_each');
+  const maxEach = maxRaw === '' ? null : Number(maxRaw);
+  if (maxEach !== null && (!Number.isInteger(maxEach) || maxEach < 1 || maxEach > 5000)) {
+    return { ok: false, error: 'Max per person must be a whole number from 1 to 5000' };
+  }
+
+  // Only active admins, callers and setters can hold a list; a stale id is refused.
+  const callers = await listCallers();
+  const people = picked.map((id) => callers.find((c) => c.id === id));
+  if (people.some((p) => !p)) return { ok: false, error: 'Someone you picked is no longer active. Refresh and try again.' };
+
+  const overview = await getSpreadOverview(people as CallerOption[]);
+  const supabase = await createClient();
+  const ids: string[] = [];
+  for (let from = 0; ; from += 1000) {
+    let q = supabase
+      .from('contractor_prospects')
+      .select('id')
+      .is('assigned_to', null)
+      .is('archived_at', null)
+      .in('disposition', QUEUE_DISPOSITIONS);
+    if (niche) q = niche === NO_NICHE ? q.is('niche', null) : q.eq('niche', niche);
+    const { data, error } = await q
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, from + 999);
+    if (error) return { ok: false, error: error.message };
+    ids.push(...((data ?? []) as { id: string }[]).map((r) => r.id));
+    if ((data ?? []).length < 1000) break;
+  }
+  if (ids.length === 0) return { ok: false, error: 'There are no unassigned prospects to spread' };
+
+  const plan = planSpread(ids, overview.loads, maxEach);
+  const now = new Date().toISOString();
+  const assigned: { id: string; name: string; count: number }[] = [];
+  for (const p of overview.loads) {
+    const mine = plan.get(p.id) ?? [];
+    let count = 0;
+    for (let i = 0; i < mine.length; i += 100) {
+      const { data, error } = await supabase
+        .from('contractor_prospects')
+        .update({ assigned_to: p.id, assigned_at: now, assigned_by: me.id, updated_by: me.id })
+        .in('id', mine.slice(i, i + 100))
+        .is('assigned_to', null)
+        .select('id');
+      if (error) return { ok: false, error: error.message };
+      count += (data ?? []).length;
+    }
+    assigned.push({ id: p.id, name: p.name, count });
+  }
+  const total = assigned.reduce((n, a) => n + a.count, 0);
+
+  await supabase.from('audit_logs').insert({
+    actor_id: me.id,
+    action: 'prospect.spread',
+    target_user_id: null,
+    metadata: {
+      niche: niche || null,
+      max_each: maxEach,
+      total,
+      counts: Object.fromEntries(assigned.map((a) => [a.id, a.count])),
+    },
+  });
+
+  revalidatePath('/app/calls');
+  return { ok: true, assigned: assigned.map(({ name, count }) => ({ name, count })), left: ids.length - total };
 }
 
 /* ---- Sales appointment status --------------------------------------------- */
