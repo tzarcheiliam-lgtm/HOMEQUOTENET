@@ -299,7 +299,7 @@ Lives at `/app/calls` (admin/caller/setter).
 - **Daily goal / gamification layer** (100 calls/day HUD, one-tap outcomes,
   power hour, stats page, leaderboard) sits on top of these logs — see §34.
 - **Call cadence** (rests prospects after missed calls, parks them after 6 in a
-  row) decides who is due to call — see §37.
+  row) decides who is due to call — see §38.
 - Views in the UI are just filters over one table: My list / Liam's / Nadav's
   / All / New / Callbacks due / Interested / Booked / Do not call.
 - `caller`/`admin` are the only assignable roles for prospects
@@ -1274,8 +1274,56 @@ Charts are hand-written SVG/CSS (`components/calls/stats/charts.tsx`; no chart l
 
 **Status:** 0062 was applied to production on 2026-10-27 by the owner in the Supabase SQL editor. Verified: both profile columns, all four sale columns, the four checks, the extended profile guard, the pay-guard trigger and the sold index. **Deploy order (other environments):** apply 0062, then deploy. Deploying first is safe: the dashboard and payouts read with `select('*')`, so without 0062 they show no rates or sales. Recording a sale or setting pay returns "needs database migration 0062". The "Needs a sale decision" filter shows nothing.
 
+## 37. One-tap follow-up emails from the call workspace (migration 0063, 2026-10-27; applied to production 2026-10-27)
+Plan: `docs/quick-email-plan.md`.
+- **Owner decisions:**
+  - The email sheet **pops up automatically** after a qualifying outcome.
+  - With no decision-maker email, follow-ups (voicemail included) go to the **company's general inbox**.
+- **Outcome → email** (`FOLLOW_UP_FOR` in `lib/emails/call-followups.ts`):
 
-## 37. Prospect call cadence (migration 0063, 2026-10-27; applied to production 2026-10-27, code not yet deployed)
+  | Outcome | Email |
+  |---|---|
+  | spoke_with_dm, interested, follow_up_required | "More info after our call" (existing builder) |
+  | appointment_booked | "Meeting confirmed", with an `.ics` invite for the next booked sales meeting (`lib/emails/meeting-invite.ts`) |
+  | callback_requested | "Talk soon" |
+  | left_voicemail | "Sorry I missed you" |
+  | gatekeeper | "For the owner" |
+  | anything else | none |
+
+  "If anything changes" is available but never auto-offered. `contractor_second_follow_up` ("hold your area") is never a quick action.
+- **Five new templates** (`CALL_FOLLOW_UP_SEEDS`, category **Cold Call Follow-Up**) are part of `EMAIL_TEMPLATE_LIBRARY`. `quickTemplates()` uses the database copy when present (admin-edited), else the built-in text. That means the sheet works before the rows are seeded; `scripts/seed-email-templates.ts` inserts them.
+- **New merge fields:** `sender.name`, `sender.phone`, `contractor.city`, `appointment.time_zone`, `appointment.how`. Prospect contexts also fill `lead.city`, fixing the blank city in older contractor templates.
+- **Log form:** a **Best email** field for those outcomes (`EMAIL_CAPTURE_OUTCOMES`, `decision_maker_email`, validated, saved even if nothing is sent).
+  - When the outcome has a follow-up and Gmail can send, "Save and open next" (and the one-tap outcome buttons) submit `intent=save_then_email`. `logCallOutcome` saves, returns `nextId` + `followUp`, and the form opens `QuickEmailSheet`.
+  - **Send & next** or **Skip** (Esc) moves on. `E` opens the sheet any time, alongside an Email button in the header and the phone action bar. The `openQuickEmail` event lives in `lib/calls/quick-email-events.ts`.
+  - Workspace shortcuts are ignored while the sheet (a modal) is open.
+- **One send path:** `sendProspectEmailCore` (`lib/emails/prospect-send.server.ts`) is used by the full composer (`sendProspectEmail`) and the sheet (`sendQuickEmail`). It refuses:
+  - do-not-call, an email opt-out, or a prospect not assigned to the sender;
+  - the same template to the same prospect within 7 days, unless the sender clicks "Send anyway" (`allow_repeat`);
+  - more than 100 sends per sender per Los Angeles day.
+
+  Logging is unchanged: pending → sent only with a Gmail id, else failed.
+- **Signature and compliance:**
+  - Emails are signed by the **sender** (name + phone from their profile), no longer always "Liam". The From name reads "Sam Setter · HomeQuote Network"; ASCII names are left unencoded.
+  - Every prospect email carries an opt-out line ("Reply 'stop'…") and, when `EMAIL_MAILING_ADDRESS` is set (server env), the postal address CAN-SPAM requires. Admins see a warning on `/app/calls/emails` until it's set.
+  - `buildRawGmailMessage` supports attachments (multipart/mixed) and a From name. Unsafe names and header injection are dropped.
+- **Opt-out (0063):**
+  - `contractor_prospects.email_opt_out_at`. "Asked to stop emails" on the prospect page (`setEmailOptOut`); only an admin can lift it, and `guard_prospect_email_opt_out()` enforces that in the database. Audited.
+  - Before 0063 the column is absent: sends still work, recording an opt-out says the migration is needed.
+- **Follow-through:**
+  - The setter money queue has a new **Emailed** row (emailed 3–10 days ago, no call or meeting since), ranked after Hot.
+  - The Stats page gained a **Follow-up emails** card: sent today and this week, and per template, how many led to a sales meeting within 7 days.
+  - Prospect History shows each email's template name.
+- **Tests:** `tests/call-followups.test.ts`, `tests/prospect-send-db.test.ts` (PGlite + mocked Gmail, including the 0063 guard), plus updated library counts (54 templates) in `tests/email-templates.test.ts`.
+- **Status:** 0063 was applied to production on 2026-10-27 by the owner. Verified: the column, the guard function and its trigger. `EMAIL_MAILING_ADDRESS` is not yet confirmed as set.
+- **Deploy (other environments):**
+  1. Apply 0063 (sending works without it).
+  2. Set `EMAIL_MAILING_ADDRESS` in Vercel.
+  3. Optionally seed the five templates so admins can edit them.
+
+
+
+## 38. Prospect call cadence (migration `0063_prospect_cadence.sql`, 2026-10-27; applied to production 2026-10-27, code not yet deployed)
 Spaces out retries to contractor prospects we couldn't reach, and takes them out of the queue after too many misses. It's the first piece of the outbound automation plan (A1); it sends nothing to anyone.
 
 **Rules** (`lib/calls/cadence.ts`, pure; constants in `CADENCE`):
@@ -1296,6 +1344,8 @@ Spaces out retries to contractor prospects we couldn't reach, and takes them out
 - UI: `components/calls/cadence-label.tsx` ("Next try …" / "Parked until …" / "Parked") in the table's Next column, on the phone cards and on the prospect page. The prospect page also shows "N of 6 missed in a row" and a **Return to call list** button (`returnProspectToQueue`: holder or admin; clears rest/park/streak; audited as `prospect.return_to_queue` through the service role, since `audit_logs` insert is admin-only under RLS).
 
 **Tests:** `tests/calls-cadence.test.ts` (pure rules, weekend and DST) and `tests/calls-cadence-db.test.ts` (PGlite, every real migration: generated columns, backfill, the queue queries, the real call-log action). The fake client's `or()` now understands `lt/lte/gt/gte`.
+
+**Two files share 0063** (`0063_prospect_cadence.sql` here and `0063_prospect_email_opt_out.sql` in §37), like the two 0027 and 0042 files: unrelated columns, both applied to production, either order works, a fresh database applies them in filename order. Never renumber an applied file.
 
 **Deploy order:** apply 0063, then deploy. The queue queries filter on the new generated columns, so deploying first breaks the call list and Next. **Production:** 0063 applied 2026-10-27 by the owner in the Supabase SQL editor. Verified: the six columns (two generated), the check, the index, and the backfill (streaks 0: 677, 1: 192, 2: 8, 3: 1, 4: 1; nobody rested or parked).
 

@@ -3,7 +3,7 @@
 import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, Check, Keyboard, Save, Zap } from 'lucide-react';
+import { ArrowRight, Check, Keyboard, Mail, Save, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -26,6 +26,8 @@ import type { ProspectDisposition } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { useOutcomePreset, useWorkspaceNav } from './call-workspace';
 import { useGoal } from './goal/goal-provider';
+import { FOLLOW_UP_FOR } from '@/lib/emails/call-followups';
+import { openQuickEmail } from '@/lib/calls/quick-email-events';
 
 /** The field to focus when a shortcut picks an outcome that needs details. */
 const FIRST_FIELD: Partial<Record<ProspectDisposition, string>> = {
@@ -59,22 +61,31 @@ function isTyping(el: EventTarget | null): boolean {
  * save and open the next prospect immediately. On a keyboard, 1–9/0 pick an
  * outcome, C dials, N skips, Enter saves and moves on, ? shows the keys.
  * Every save bumps the daily goal HUD the moment it is submitted.
+ *
+ * Outcomes that call for a follow-up email (FOLLOW_UP_FOR) save without
+ * leaving the prospect, then open the quick email sheet; Send & next or Skip
+ * moves on. E opens the sheet any time.
  */
 export function OutcomeForm({
   prospectId,
   disposition,
   decisionMakerName,
+  decisionMakerEmail = null,
   bestContactMethod,
   isDnc,
   contextQuery,
+  emailFollowUps = false,
 }: {
   prospectId: string;
   disposition: ProspectDisposition;
   decisionMakerName: string | null;
+  decisionMakerEmail?: string | null;
   bestContactMethod: string | null;
   isDnc: boolean;
   /** The list this prospect was opened from, so Save & next stays inside it. */
   contextQuery?: string;
+  /** Offer the follow-up email after saving (Gmail connected, prospect may be emailed). */
+  emailFollowUps?: boolean;
 }) {
   const [state, formAction, pending] = useActionState<ProspectActionState, FormData>(
     logCallOutcome,
@@ -103,6 +114,26 @@ export function OutcomeForm({
     }
   }, [state, goal]);
 
+  // Saved with "then email": open the follow-up sheet, pointed at the next prospect.
+  const opened = useRef<number | null>(null);
+  useEffect(() => {
+    if (!state || !state.ok || !state.followUp || opened.current === state.followUp.n) return;
+    opened.current = state.followUp.n;
+    const f = state.followUp;
+    const qs = contextQuery ?? '';
+    const nextUrl = state.nextId
+      ? `/app/calls/${state.nextId}${qs ? `?${qs}` : ''}`
+      : `/app/calls?${qs || 'view=mine'}&done=1`;
+    openQuickEmail({
+      outcome: f.outcome,
+      when: f.at ? { iso: f.at, timeZone: f.timeZone, type: f.type } : null,
+      nextHref: nextUrl,
+    });
+  }, [state, contextQuery]);
+
+  // The "next" button saves then emails when this outcome has a follow-up.
+  const withEmail = emailFollowUps && !!outcome && !!FOLLOW_UP_FOR[outcome];
+
   const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     const o = new FormData(e.currentTarget).get('outcome');
     if (o) bumpRef.current = goal?.bump({ key: prospectId, outcome: o as ProspectDisposition }) ?? null;
@@ -130,6 +161,8 @@ export function OutcomeForm({
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
       if (isTyping(e.target)) return;
+      // The quick email sheet (a modal) has its own keys.
+      if (document.querySelector('[aria-modal="true"]')) return;
       const k = e.key;
       const o = OUTCOME_KEYS[k];
       if (o) {
@@ -145,6 +178,9 @@ export function OutcomeForm({
       } else if (k === 'Enter' && outcome && !pending) {
         e.preventDefault();
         formRef.current?.requestSubmit(nextRef.current ?? undefined);
+      } else if (k === 'e' || k === 'E') {
+        e.preventDefault();
+        openQuickEmail({ outcome: outcome || undefined });
       } else if (k === '?') {
         e.preventDefault();
         setShowKeys((v) => !v);
@@ -232,7 +268,7 @@ export function OutcomeForm({
                     })}
                   </div>
                   <p className="mt-1.5 flex items-center gap-1 text-xs text-muted-foreground">
-                    <Zap className="size-3 text-primary" aria-hidden="true" /> saves and opens the next prospect in one tap
+                    <Zap className="size-3 text-primary" aria-hidden="true" /> one tap: saves, offers the follow-up email, opens the next prospect
                   </p>
                 </>
               )}
@@ -321,6 +357,20 @@ export function OutcomeForm({
                 defaultValue={decisionMakerName ?? ''}
                 autoComplete="off"
                 required={req('decision_maker_name')}
+              />
+            </Field>
+          ) : null}
+
+          {show('decision_maker_email') ? (
+            <Field label="Best email" htmlFor="decision_maker_email" error={errors.decision_maker_email}>
+              <Input
+                id="decision_maker_email"
+                name="decision_maker_email"
+                type="email"
+                inputMode="email"
+                defaultValue={decisionMakerEmail ?? ''}
+                placeholder="Ask: what's the best email for you?"
+                autoComplete="off"
               />
             </Field>
           ) : null}
@@ -476,13 +526,13 @@ export function OutcomeForm({
             <Button
               type="submit"
               name="intent"
-              value="save_and_next"
+              value={withEmail ? 'save_then_email' : 'save_and_next'}
               variant="outline"
               ref={nextRef}
               disabled={pending || !outcome}
             >
-              Save and open next
-              <ArrowRight className="size-4" aria-hidden="true" />
+              {withEmail ? 'Save, email & next' : 'Save and open next'}
+              {withEmail ? <Mail className="size-4" aria-hidden="true" /> : <ArrowRight className="size-4" aria-hidden="true" />}
             </Button>
           </div>
         </form>
@@ -498,6 +548,7 @@ function ShortcutSheet() {
         [k, `${DISPOSITIONS.find((d) => d.value === o)?.label}${QUICK_OUTCOMES.includes(o) ? ' — saves & next' : ''}`] as [string, string]
     ),
     ['C', 'Call this number'],
+    ['E', 'Email them (follow-up for this outcome)'],
     ['N / →', 'Skip to the next prospect'],
     ['Enter', 'Save and open next'],
     ['?', 'Show / hide this list'],

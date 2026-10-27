@@ -45,6 +45,8 @@ export const EMAIL_VARIABLE_GROUPS: { group: string; fields: EmailVariableDefini
       { field: 'appointment.date', label: 'Date', example: 'Thursday, Oct 2' },
       { field: 'appointment.time', label: 'Time', example: '2:00 PM' },
       { field: 'appointment.location', label: 'Location', example: '123 Main St, Austin, TX' },
+      { field: 'appointment.time_zone', label: 'Time zone', example: 'PDT' },
+      { field: 'appointment.how', label: 'Meeting type (phone call / video call / meeting)', example: 'phone call' },
     ],
   },
   {
@@ -54,6 +56,14 @@ export const EMAIL_VARIABLE_GROUPS: { group: string; fields: EmailVariableDefini
       { field: 'contractor.contact_name', label: 'Contact name', example: 'Mike Torres' },
       { field: 'contractor.phone', label: 'Phone', example: '(555) 987-6543' },
       { field: 'contractor.email', label: 'Email', example: 'mike@bluewavepools.com' },
+      { field: 'contractor.city', label: 'City', example: 'Pasadena' },
+    ],
+  },
+  {
+    group: 'Sender',
+    fields: [
+      { field: 'sender.name', label: 'Your name', example: 'Sam Setter' },
+      { field: 'sender.phone', label: 'Your phone', example: '(555) 222-3333' },
     ],
   },
   {
@@ -84,6 +94,8 @@ export interface EmailTemplateContext {
   lead?: Record<string, unknown> | null;
   appointment?: Record<string, unknown> | null;
   contractor?: Record<string, unknown> | null;
+  /** The team member sending (call follow-ups). */
+  sender?: Record<string, unknown> | null;
   homequote?: {
     phone?: string;
     siteUrl?: string;
@@ -116,7 +128,7 @@ function resolve(context: EmailTemplateContext, field: string): string {
   if (root === 'contractor' && key === 'full_name') {
     return String((context.contractor ?? {}).name ?? '');
   }
-  const source = context[root as 'lead' | 'appointment' | 'contractor'];
+  const source = context[root as 'lead' | 'appointment' | 'contractor' | 'sender'];
   if (source && typeof source === 'object' && key in source) {
     const value = (source as Record<string, unknown>)[key];
     return value == null ? '' : String(value);

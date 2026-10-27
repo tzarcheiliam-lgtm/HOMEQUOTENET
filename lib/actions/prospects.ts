@@ -30,7 +30,13 @@ import type { ProspectDisposition, SalesAppointmentStatus } from '@/lib/types';
  */
 
 export type ProspectActionState =
-  | { ok: true; message?: string; nextId?: string | null }
+  | {
+      ok: true;
+      message?: string;
+      nextId?: string | null;
+      /** Set by "save, then offer the follow-up email": what the email needs to know. */
+      followUp?: { outcome: ProspectDisposition; at: string | null; timeZone: string; type: string | null; n: number };
+    }
   | { ok: false; error: string; fieldErrors?: OutcomeValidation['errors'] }
   | undefined;
 
@@ -140,6 +146,7 @@ export async function logCallOutcome(
     appointment_type: opt(fd, 'appointment_type'),
     time_zone: timeZone,
     contact_info: opt(fd, 'contact_info'),
+    decision_maker_email: opt(fd, 'decision_maker_email'),
     confirm_do_not_call: fd.get('confirm_do_not_call') === 'on',
   };
 
@@ -212,7 +219,10 @@ export async function logCallOutcome(
   revalidatePath('/app/calls/logs');
   revalidatePath('/app/calls/appointments');
 
-  const wantsNext = fd.get('intent') === 'save_and_next';
+  const intent = fd.get('intent');
+  // "Save, then email": the follow-up sheet opens over this prospect and moves on after Send or Skip.
+  const thenEmail = intent === 'save_then_email';
+  const wantsNext = intent === 'save_and_next' || thenEmail;
   // Stay inside the list the caller is working (niche, city, view …), if they opened it from one.
   const rawCtx = new URLSearchParams(String(fd.get('list_context') ?? ''));
   const ctx = contextFrom((k) => (k === 'caller' && me.role !== 'admin' ? undefined : (rawCtx.get(k) ?? undefined)));
@@ -222,6 +232,20 @@ export async function logCallOutcome(
       ? await nextProspectInContext(me, prospectId, ctx as unknown as ProspectFilters, await listCallers())
       : await nextProspectIdFor(me, prospectId)
     : null;
+  if (thenEmail) {
+    return {
+      ok: true,
+      message: 'Outcome saved',
+      nextId,
+      followUp: {
+        outcome,
+        at: outcome === 'appointment_booked' ? input.appointment_at ?? null : outcome === 'callback_requested' ? input.callback_at ?? null : null,
+        timeZone,
+        type: input.appointment_type ?? null,
+        n: Date.now(),
+      },
+    };
+  }
   if (wantsNext) {
     redirect(nextId ? withContext(`/app/calls/${nextId}`, ctxQs) : withContext('/app/calls', `${ctxQs || 'view=mine'}&done=1`));
   }
@@ -466,4 +490,36 @@ export async function clearDoNotCall(fd: FormData): Promise<void> {
   });
   revalidatePath(`/app/calls/${id}`);
   revalidatePath('/app/calls');
+}
+
+/* ---- Email opt-out (migration 0063) ---------------------------------------- */
+
+/**
+ * "Asked to stop emails": whoever holds the prospect records it; only an
+ * administrator lifts it (the 0063 trigger enforces that too). While set,
+ * every prospect email path refuses.
+ */
+export async function setEmailOptOut(fd: FormData): Promise<void> {
+  const me = await requireCallWorkspace();
+  const id = str(fd, 'prospect_id');
+  const lift = str(fd, 'lift') === '1';
+  if (!id) throw new Error('Missing prospect');
+  if (lift && me.role !== 'admin') throw new Error('Only an administrator can lift an email opt-out');
+  await assertCallerOwns(id, me.id, me.role === 'admin');
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from('contractor_prospects')
+    .update({ email_opt_out_at: lift ? null : new Date().toISOString(), updated_by: me.id })
+    .eq('id', id);
+  if (error) {
+    throw new Error(/email_opt_out_at/.test(error.message) ? 'Email opt-outs need database migration 0063 — apply it, then try again.' : error.message);
+  }
+  await supabase.from('audit_logs').insert({
+    actor_id: me.id,
+    action: lift ? 'prospect.email_opt_out_lifted' : 'prospect.email_opt_out',
+    target_user_id: null,
+    metadata: { prospect_id: id },
+  });
+  revalidatePath(`/app/calls/${id}`);
+  revalidatePath('/app/calls/emails');
 }

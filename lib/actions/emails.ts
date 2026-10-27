@@ -1,27 +1,23 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { requireCallWorkspace } from '@/lib/auth';
-import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { buildProspectEmailHtml, emailLogoUrl } from '@/lib/emails/template';
-import { resolveGmailSender, sendGmailMessage } from '@/lib/emails/gmail';
+import { sendProspectEmailCore, type SendEmailState as CoreSendState } from '@/lib/emails/prospect-send.server';
+import { MEETING_CONFIRMED_KEY } from '@/lib/emails/call-followups';
+import { meetingInvite } from '@/lib/emails/meeting-invite';
 
-export type SendEmailState =
-  | { ok: true; message: string }
-  | { ok: false; error: string; contactSaved: boolean }
-  | undefined;
+// A 'use server' file may only export async functions and types declared here.
+export type SendEmailState = CoreSendState;
 
 const schema = z.object({
   // Empty when emailing someone who isn't a contractor prospect (e.g. a homeowner).
   prospect_id: z.union([z.literal(''), z.string().uuid('Choose a valid company')]),
   recipient_name: z.string().trim().min(1, 'Enter the recipient name').max(120),
   recipient_email: z.string().trim().email('Enter a valid recipient email').max(254),
-  // MORE_INFO_TEMPLATE_KEY's dynamic draft, or any email_templates.key from
-  // the library (Contractor Sales / Contractor Onboarding) -- both just land
-  // in prospect_email_logs.template_key as a label; the actual subject/body
-  // sent is whatever the composer put in the subject/message fields below.
+  // A dynamic draft key (e.g. more_info_after_call) or any email_templates.key --
+  // it lands in prospect_email_logs.template_key as a label; the subject/body
+  // sent is whatever the sender reviewed in the subject/message fields below.
   template_key: z.string().trim().min(1).max(100).regex(/^[a-z][a-z0-9_]*$/),
   subject: z
     .string()
@@ -31,6 +27,7 @@ const schema = z.object({
     .refine((value) => !/[\r\n]/.test(value), 'Subject must be one line'),
   message: z.string().trim().min(1, 'Enter a message').max(20_000),
   service_interests: z.string().trim().max(500),
+  allow_repeat: z.boolean(),
 });
 
 const field = (fd: FormData, name: string) => {
@@ -38,12 +35,8 @@ const field = (fd: FormData, name: string) => {
   return typeof value === 'string' ? value : '';
 };
 
-export async function sendProspectEmail(
-  _previous: SendEmailState,
-  formData: FormData
-): Promise<SendEmailState> {
-  const me = await requireCallWorkspace();
-  const parsed = schema.safeParse({
+function parse(formData: FormData) {
+  return schema.safeParse({
     prospect_id: field(formData, 'prospect_id'),
     recipient_name: field(formData, 'recipient_name'),
     recipient_email: field(formData, 'recipient_email'),
@@ -51,150 +44,88 @@ export async function sendProspectEmail(
     subject: field(formData, 'subject'),
     message: field(formData, 'message'),
     service_interests: field(formData, 'service_interests'),
+    allow_repeat: field(formData, 'allow_repeat') === '1',
   });
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.errors[0]?.message ?? 'Check the email fields', contactSaved: false };
-  }
-  const input = parsed.data;
-  const serviceInterests = Array.from(
+}
+
+function services(raw: string): string[] {
+  return Array.from(
     new Set(
-      input.service_interests
+      raw
         .split(',')
         .map((service) => service.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim())
         .filter(Boolean)
     )
   ).slice(0, 5);
-  if (!input.prospect_id) return sendWithoutProspect(input, me.id);
-  const supabase = await createClient();
-  const { data: prospect } = await supabase
-    .from('contractor_prospects')
-    .select('id, company_name, assigned_to, disposition')
-    .eq('id', input.prospect_id)
-    .maybeSingle();
-  if (!prospect || (me.role !== 'admin' && prospect.assigned_to !== me.id)) {
-    return { ok: false, error: 'Company not found or not assigned to you', contactSaved: false };
-  }
-  if (prospect.disposition === 'do_not_call') {
-    return { ok: false, error: 'This contractor is marked do not call; no email was sent', contactSaved: false };
-  }
-
-  const { error: contactError } = await supabase
-    .from('contractor_prospects')
-    .update({
-      decision_maker_name: input.recipient_name || null,
-      decision_maker_email: input.recipient_email.toLowerCase(),
-      email_service_interests: serviceInterests,
-      updated_by: me.id,
-    })
-    .eq('id', prospect.id);
-  if (contactError) {
-    return { ok: false, error: `Contact could not be saved: ${contactError.message}`, contactSaved: false };
-  }
-
-  // The member's own connected Gmail, else the shared automation sender.
-  let senderEmail: string;
-  try {
-    const sender = await resolveGmailSender(me.id);
-    if (!sender) throw new Error('No Gmail account is connected. Connect yours on the Emails page.');
-    senderEmail = sender.email;
-  } catch (error) {
-    return {
-      ok: false,
-      error: `Contact saved, but email was not sent: ${(error as Error).message}`,
-      contactSaved: true,
-    };
-  }
-
-  const admin = createAdminClient();
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
-  const html = buildProspectEmailHtml(input.message, emailLogoUrl(siteUrl));
-  const { data: activity, error: activityError } = await admin
-    .from('prospect_email_logs')
-    .insert({
-      prospect_id: prospect.id,
-      company_name: prospect.company_name,
-      sender_user_id: me.id,
-      sender_name: me.full_name || me.email,
-      sender_email: senderEmail,
-      recipient_name: input.recipient_name || null,
-      recipient_email: input.recipient_email.toLowerCase(),
-      template_key: input.template_key,
-      subject: input.subject,
-      message: input.message,
-      html_message: html,
-      status: 'pending',
-    })
-    .select('id')
-    .single();
-  if (activityError || !activity) {
-    return {
-      ok: false,
-      error: `Contact saved, but email was not sent because its activity record could not be created: ${activityError?.message ?? 'Unknown error'}`,
-      contactSaved: true,
-    };
-  }
-
-  try {
-    const sent = await sendGmailMessage({
-      toEmail: input.recipient_email.toLowerCase(),
-      subject: input.subject,
-      message: input.message,
-      html,
-      senderUserId: me.id,
-    });
-    const sentAt = new Date().toISOString();
-    const { error: finalizeError } = await admin
-      .from('prospect_email_logs')
-      .update({
-        status: 'sent',
-        provider_message_id: sent.id,
-        sent_at: sentAt,
-        error_message: null,
-      })
-      .eq('id', activity.id)
-      .eq('status', 'pending');
-    if (finalizeError) {
-      return {
-        ok: false,
-        error: `Gmail sent the message, but the activity log could not be finalized: ${finalizeError.message}`,
-        contactSaved: true,
-      };
-    }
-    revalidatePath('/app/calls/emails');
-    revalidatePath(`/app/calls/${prospect.id}`);
-    return { ok: true, message: `Email sent to ${input.recipient_email}` };
-  } catch (error) {
-    const message = (error as Error).message || 'Unknown Gmail error';
-    await admin
-      .from('prospect_email_logs')
-      .update({ status: 'failed', error_message: message, sent_at: null, provider_message_id: null })
-      .eq('id', activity.id)
-      .eq('status', 'pending');
-    revalidatePath(`/app/calls/${prospect.id}`);
-    return {
-      ok: false,
-      error: `Contact saved, but email was not sent: ${message}`,
-      contactSaved: true,
-    };
-  }
 }
 
-// Homeowner / non-prospect send. prospect_email_logs.prospect_id is NOT NULL, so
-// there is no per-company activity row to write; the message still goes out from
-// the sender's own Gmail (or the shared sender), which keeps its own Sent copy.
-async function sendWithoutProspect(input: z.infer<typeof schema>, senderUserId: string): Promise<SendEmailState> {
-  try {
-    const html = buildProspectEmailHtml(input.message, emailLogoUrl(process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'));
-    await sendGmailMessage({
-      toEmail: input.recipient_email.toLowerCase(),
-      subject: input.subject,
-      message: input.message,
-      html,
-      senderUserId,
-    });
-    revalidatePath('/app/calls/emails');
-    return { ok: true, message: `Email sent to ${input.recipient_email}` };
-  } catch (error) {
-    return { ok: false, error: `Email was not sent: ${(error as Error).message || 'Unknown Gmail error'}`, contactSaved: false };
+/** The full composer on /app/calls/emails. */
+export async function sendProspectEmail(_previous: SendEmailState, formData: FormData): Promise<SendEmailState> {
+  const me = await requireCallWorkspace();
+  const parsed = parse(formData);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.errors[0]?.message ?? 'Check the email fields', contactSaved: false };
   }
+  const input = parsed.data;
+  return sendProspectEmailCore(me, {
+    prospectId: input.prospect_id || null,
+    recipientName: input.recipient_name,
+    recipientEmail: input.recipient_email,
+    templateKey: input.template_key,
+    subject: input.subject,
+    message: input.message,
+    serviceInterests: services(input.service_interests),
+    allowRepeat: input.allow_repeat,
+  });
+}
+
+/**
+ * The quick sheet in the call workspace: always for one prospect. A "meeting
+ * confirmed" email carries a calendar invite for the prospect's next booked
+ * sales meeting with this sender.
+ */
+export async function sendQuickEmail(_previous: SendEmailState, formData: FormData): Promise<SendEmailState> {
+  const me = await requireCallWorkspace();
+  const parsed = parse(formData);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.errors[0]?.message ?? 'Check the email fields', contactSaved: false };
+  }
+  const input = parsed.data;
+  if (!input.prospect_id) return { ok: false, error: 'Choose a company', contactSaved: false };
+
+  let attachments;
+  if (input.template_key === MEETING_CONFIRMED_KEY) {
+    const { data } = await createAdminClient()
+      .from('prospect_sales_appointments')
+      .select('id, scheduled_at, time_zone, appointment_type, contact_info')
+      .eq('prospect_id', input.prospect_id)
+      .in('status', ['scheduled', 'confirmed', 'rescheduled'])
+      .gte('scheduled_at', new Date().toISOString())
+      .order('scheduled_at', { ascending: true })
+      .limit(1);
+    const m = (data ?? [])[0] as { id: string; scheduled_at: string; appointment_type: string | null; contact_info: string | null } | undefined;
+    if (m) {
+      attachments = [
+        meetingInvite({
+          id: m.id,
+          scheduledAt: m.scheduled_at,
+          appointmentType: m.appointment_type,
+          contactInfo: m.contact_info,
+          organizer: me.full_name || 'HomeQuote Network',
+        }),
+      ];
+    }
+  }
+
+  return sendProspectEmailCore(me, {
+    prospectId: input.prospect_id,
+    recipientName: input.recipient_name,
+    recipientEmail: input.recipient_email,
+    templateKey: input.template_key,
+    subject: input.subject,
+    message: input.message,
+    serviceInterests: services(input.service_interests),
+    attachments,
+    allowRepeat: input.allow_repeat,
+  });
 }

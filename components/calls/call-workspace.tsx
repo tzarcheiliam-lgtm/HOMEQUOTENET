@@ -2,11 +2,12 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CalendarPlus, ClipboardEdit, Phone, PhoneOff, SkipForward } from 'lucide-react';
+import { CalendarPlus, ClipboardEdit, Mail, Phone, PhoneOff, SkipForward } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ActionBarItem, MobileActionBar } from '@/components/mobile/mobile-action-bar';
 import type { ProspectDisposition } from '@/lib/types';
 import { useGoal } from './goal/goal-provider';
+import { openQuickEmail } from '@/lib/calls/quick-email-events';
 
 type Tab = 'info' | 'script' | 'log' | 'history';
 
@@ -61,6 +62,7 @@ export function CallWorkspace({
   tel,
   dnc,
   nextHref,
+  emailable = false,
 }: {
   info: React.ReactNode;
   log: React.ReactNode;
@@ -72,6 +74,8 @@ export function CallWorkspace({
   dnc: boolean;
   /** The next prospect in this caller's queue, or the list when none. */
   nextHref: string;
+  /** Show the Email button (not DNC, not opted out of email). */
+  emailable?: boolean;
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>('info');
@@ -187,6 +191,7 @@ export function CallWorkspace({
                 icon={CalendarPlus}
                 label="Appt"
               />
+              {emailable ? <ActionBarItem onClick={() => openQuickEmail()} icon={Mail} label="Email" /> : null}
             </>
           )}
           <ActionBarItem onClick={() => router.push(nextHref)} icon={SkipForward} label="Next" />
