@@ -23,6 +23,7 @@ import { DispositionBadge, SalesAppointmentBadge } from '@/components/calls/disp
 import { OutcomeForm } from '@/components/calls/outcome-form';
 import { CallWorkspace } from '@/components/calls/call-workspace';
 import { CallScript } from '@/components/calls/call-script';
+import { tradeFromNiche } from '@/lib/calls/script';
 import { ActivityTimeline } from '@/components/calls/activity-timeline';
 import { AssignControl } from '@/components/calls/assign-control';
 import {
@@ -348,7 +349,16 @@ export default async function ProspectPage({
             emailFollowUps={gmail.canSend && !dnc && !optedOut}
           />
         }
-        script={<CallScript />}
+        script={
+          <CallScript
+            vars={{
+              name: p.decision_maker_name,
+              company: p.company_name,
+              caller: me.full_name,
+              trade: tradeFromNiche(p.niche),
+            }}
+          />
+        }
         history={<ActivityTimeline attempts={attempts} emails={emails} />}
       />
 

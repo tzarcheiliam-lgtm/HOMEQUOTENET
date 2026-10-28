@@ -303,6 +303,14 @@ Lives at `/app/calls` (admin/caller/setter).
   `redirect.ts` (validated `?next=` handling for sign-in).
 - **Daily goal / gamification layer** (100 calls/day HUD, one-tap outcomes,
   power hour, stats page, leaderboard) sits on top of these logs — see §34.
+- **Call script panel** (beside every call on `/app/calls/[id]`, the "Script" tab on
+  phones): the owner's cold-call script plus a prospect Q&A, word for word, in
+  `lib/calls/script.ts` (`CALL_SCRIPT`), rendered by `components/calls/call-script.tsx`
+  as collapsible sections. `fillScript` fills `[Name]`, `[Owner Name]`, `[Company]`,
+  `[Your Name]`, `[trade]` from the prospect, the caller and the niche
+  (`tradeFromNiche`); any other `[bracket]` is a detail the owner hasn't decided and is
+  highlighted, never filled with a guess. No fixed price anywhere (the old pool-only
+  "$125 per appointment" framework was replaced 2026-10-28). Test: `tests/call-script.test.tsx`.
 - Views in the UI are just filters over one table: My list / Liam's / Nadav's
   / All / New / Callbacks due / Interested / Booked / Do not call.
 - `caller`/`admin` are the only assignable roles for prospects
