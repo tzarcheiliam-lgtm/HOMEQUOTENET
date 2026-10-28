@@ -119,11 +119,11 @@ export function shouldAutoRender(renderToken: string | undefined, alreadyStarted
 }
 
 /**
- * Pause before the automatic start: lets the price count up and the page
- * settle before the (CPU-heavy) snapshot of the design is taken. The
- * "developing" state shows straight away.
+ * Pause before the automatic start: lets the price count up and land before
+ * the (CPU-heavy) snapshot of the design is taken, so the roll never stutters.
+ * Kept after the result's PHOTO_PANEL_DELAY_MS-sized price reveal (about 1.2 s).
  */
-export const AUTO_RENDER_DELAY_MS = 900;
+export const AUTO_RENDER_DELAY_MS = 1600;
 
 /** True while the photo is on its way (the developing state shows). */
 export function renderWorking(phase: RenderPhase): boolean {

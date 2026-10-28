@@ -1,24 +1,53 @@
 'use client';
 
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { formatRange } from '@/lib/estimator/engine';
 import type { EstimatorLeadResponse } from '@/lib/estimator/lead-client';
 import type { ContractorEstimatorConfig, EstimatorTemplate } from '@/lib/estimator/types';
 import { cn } from '@/lib/utils';
 import { card, eyebrow, primaryButton } from '../ui';
 import { describeQuantity, safeHttpUrl } from '../use-estimator-flow';
-import { RevealStyles } from './reveal-styles';
+import { COUNT_DELAY_MS, COUNT_MS, RevealStyles } from './reveal-styles';
 
 export type LeadSuccess = Extract<EstimatorLeadResponse, { ok: true }>;
 
-/** The live builder's count-up: a short beat (the page scrolls to the result), then the roll. */
-const COUNT_DELAY_MS = 250;
-const COUNT_MS = 1400;
+/** The line-by-line breakdown; `rounded` (live builder) shows each line rounded like the total. */
+function lineList(lines: LeadSuccess['estimate']['lines'], rounded: boolean) {
+  return (
+    <dl className={cn('divide-y divide-[var(--hq-line)] text-sm', rounded ? 'border-t border-[var(--hq-line)]' : 'mt-5 border-y border-[var(--hq-line)]')}>
+      {lines.map((line) => {
+        const qty = describeQuantity(line.unit, line.quantity);
+        const [low, high] = rounded ? roundLine(line.low, line.high) : [line.low, line.high];
+        return (
+          <div key={`${line.questionId}.${line.optionId}`} className="flex items-baseline justify-between gap-4 py-2.5">
+            <dt className="text-[var(--hq-text)]">
+              {line.label}
+              {qty ? <span className="block text-xs text-[var(--hq-text-muted)]">{qty}</span> : null}
+            </dt>
+            <dd className="shrink-0 font-medium text-[var(--hq-text)] tabular-nums">{formatRange(low, high)}</dd>
+          </div>
+        );
+      })}
+    </dl>
+  );
+}
+
+
 /** Where the roll starts, as a share of the final figures (close enough that the digit count rarely changes). */
 const COUNT_FROM = 0.45;
 
 // Server markup has no layout effects; the browser runs the count-up before first paint.
 const useIsoLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
+
+/**
+ * A line of the breakdown, rounded outward to $100 (low down, high up) so it
+ * reads like the rounded total above it instead of an exact-looking figure.
+ * Display only: the server's figures are untouched.
+ */
+export function roundLine(low: number, high: number): [number, number] {
+  return [Math.floor(low / 100) * 100, Math.max(Math.ceil(high / 100) * 100, Math.floor(low / 100) * 100)];
+}
 
 /** Ease-out-quint: fast at first, then a long settle, so the last digits land gently. */
 function easeOutQuint(p: number): number {
@@ -160,20 +189,18 @@ export function ResultScreen({
         {builder ? <div className="mt-5">{booking}</div> : null}
 
         {estimate.lines.length ? (
-          <dl className="mt-5 divide-y divide-[var(--hq-line)] border-y border-[var(--hq-line)] text-sm">
-            {estimate.lines.map((line) => {
-              const qty = describeQuantity(line.unit, line.quantity);
-              return (
-                <div key={`${line.questionId}.${line.optionId}`} className="flex items-baseline justify-between gap-4 py-2.5">
-                  <dt className="text-[var(--hq-text)]">
-                    {line.label}
-                    {qty ? <span className="block text-xs text-[var(--hq-text-muted)]">{qty}</span> : null}
-                  </dt>
-                  <dd className="shrink-0 font-medium text-[var(--hq-text)]">{formatRange(line.low, line.high)}</dd>
-                </div>
-              );
-            })}
-          </dl>
+          builder ? (
+            // The live builder keeps the moment on the total: the breakdown is one tap away.
+            <details className="group mt-5 border-t border-[var(--hq-line)]">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 py-2 text-sm font-semibold text-[var(--hq-accent-bright)] hover:text-[var(--hq-text)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--hq-accent-bright)] [&::-webkit-details-marker]:hidden">
+                See what’s included ({estimate.lines.length} {estimate.lines.length === 1 ? 'item' : 'items'})
+                <ChevronDown aria-hidden="true" className="size-4 shrink-0 transition-transform duration-200 group-open:rotate-180 motion-reduce:transition-none" />
+              </summary>
+              {lineList(estimate.lines, true)}
+            </details>
+          ) : (
+            lineList(estimate.lines, false)
+          )
         ) : null}
       </section>
 
@@ -203,8 +230,15 @@ export function ResultScreen({
 
       <div className="space-y-2 text-xs leading-5 text-[var(--hq-text-dim)]">
         <p>{template.disclaimer}</p>
-        {contractor.financingNote ? <p>{contractor.financingNote}</p> : null}
-        {contractor.financingDisclosure ? <p>{contractor.financingDisclosure}</p> : null}
+        {builder && contractor.financingDisclosure ? (
+          // One paragraph: the disclosure already says who lends; the note only adds where to ask.
+          <p>{contractor.financingDisclosure}{contractor.financingNote ? ' Ask about financing at your free on-site estimate.' : ''}</p>
+        ) : (
+          <>
+            {contractor.financingNote ? <p>{contractor.financingNote}</p> : null}
+            {contractor.financingDisclosure ? <p>{contractor.financingDisclosure}</p> : null}
+          </>
+        )}
         <p>
           {contractor.contractorName} · {contractor.licenseLabel}
         </p>

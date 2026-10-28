@@ -145,13 +145,13 @@ export function unlockCopy(rendersEnabled: boolean): UnlockCopy {
         contactTitle: 'One last step to unlock your photo and price',
         promise: 'Your design is ready. Unlock your ballpark price now, and a realistic photo of your pool about a minute later.',
         submit: 'Unlock my photo and price',
-        submitting: 'Crunching your price…',
+        submitting: 'Crunching numbers…',
       }
     : {
         zipTitle: 'Unlock your price',
         contactTitle: 'One last step to unlock your price',
         promise: 'Your design is ready. Unlock your ballpark price range to see what it could cost.',
         submit: 'Unlock my price',
-        submitting: 'Crunching your price…',
+        submitting: 'Crunching numbers…',
       };
 }

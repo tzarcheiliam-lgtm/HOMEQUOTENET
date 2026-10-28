@@ -31,6 +31,22 @@ export const RENDER_TIMEOUT_MS = 4 * 60 * 1000;
 export const MAX_UPLOAD_DATA_URL_CHARS = 4_000_000;
 
 const OFFLINE = 'Could not reach the server. Check your connection and try again.';
+
+/**
+ * Per-request time limits: a request that hangs (a stalled phone network, a
+ * server that never answers) must end, or the result would show "developing"
+ * forever. The upload gets longer (up to ~4 MB from a phone).
+ */
+export const START_TIMEOUT_MS = 60_000;
+export const CHECK_TIMEOUT_MS = 15_000;
+
+/** An AbortSignal that fires after `ms` (AbortSignal.timeout is missing on older Safari). */
+function timeoutSignal(ms: number): AbortSignal | undefined {
+  if (typeof AbortController === 'undefined') return undefined;
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), ms);
+  return controller.signal;
+}
 const GENERIC = 'Something went wrong. Please try again.';
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -84,6 +100,7 @@ export async function startRender(slug: string, renderToken: string, pngDataUrl:
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ renderToken, image }),
+      signal: timeoutSignal(START_TIMEOUT_MS),
     });
     const data: unknown = await res.json().catch(() => null);
     if (isRenderStart(data)) return data;
@@ -103,7 +120,8 @@ export async function checkRender(slug: string, renderToken: string, taskId: str
     const res = await fetch(
       `/api/estimator/${encodeURIComponent(slug)}/render/${encodeURIComponent(taskId)}`,
       // A header, not ?token=: query strings end up in hosting and proxy access logs.
-      { cache: 'no-store', headers: { 'x-render-token': renderToken } },
+      // A check that times out reads as 'running' (below); the session's overall timeout still applies.
+      { cache: 'no-store', headers: { 'x-render-token': renderToken }, signal: timeoutSignal(CHECK_TIMEOUT_MS) },
     );
     const data: unknown = await res.json().catch(() => null);
     if (isRenderStatus(data)) return data;

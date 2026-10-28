@@ -10,7 +10,6 @@ import {
   optionPhrase,
   previewAnswers,
   renderProgress,
-  renderStage,
   renderStartProblem,
   RENDER_TYPICAL_MS,
   sceneChanges,
@@ -166,12 +165,6 @@ describe('photoreal render progress', () => {
     expect(Math.max(...steps)).toBeLessThanOrEqual(95);
   });
 
-  it('tells a little story while it works', () => {
-    expect(renderStage(0)).toBe('Reading your design');
-    expect(renderStage(15_000)).toBe('Filling the pool with water');
-    expect(renderStage(100_000)).toBe('Taking a little longer than usual');
-  });
-
   it('hides the button for good when renders are off or used up, and offers a retry otherwise', () => {
     expect(renderStartProblem({ ok: false, reason: 'disabled', message: '' }).retry).toBe(false);
     expect(renderStartProblem({ ok: false, reason: 'limit', message: '' }).retry).toBe(false);
@@ -256,9 +249,9 @@ describe('result design', () => {
     expect(html).toContain('Save my design');
     expect(html).toContain('Your design');
     expect(html).toContain('Outdoor kitchen');
-    expect(html).toContain('Here’s your pool');
+    expect(html).toMatch(/Here’s your (?:[\w-]+ )?pool/);
     expect(html).toContain('Book your free on-site consultation');
-    expect(html).not.toContain('Developing your realistic photo');
+    expect(html).not.toContain('data-developing=""');
     // Save has its own caption now (it used to describe the render).
     expect(html).toContain('Save a picture of your design to keep or share.');
     // The booking button comes right after the range, before the site-visit and exclusions blocks.
@@ -267,12 +260,14 @@ describe('result design', () => {
 
   it('starts developing the realistic photo by itself (no button) when the lead response carries a render token', () => {
     const html = flow({ ...result, renderToken: 'token-123' }, true);
-    expect(html).toContain('data-developing=""');
-    expect(html).toContain('Developing your realistic photo');
-    expect(html).not.toContain('See your backyard for real');
+    // The price has the first moment: the photo's progress appears once it has landed (PHOTO_PANEL_DELAY_MS),
+    // but the photo is already on its way (the tracker shows it, the day/night switch steps aside).
+    expect(html).not.toContain('data-developing=""');
+    expect(html).toContain('Realistic photo, in progress');
+    expect(html).not.toContain('aria-label="Lighting"');
+    expect(html).not.toContain('Make my realistic photo');
     // The status line has room for two lines in every state, so the estimate never jumps.
     expect(html).toMatch(/role="status" aria-live="polite" class="min-h-10/);
-    expect(html).toContain('It usually takes 20 to 60 seconds.');
     expect(html).not.toContain('token-123');
   });
 
@@ -296,20 +291,19 @@ describe('result design', () => {
     const developing = renderToStaticMarkup(
       <ResultScene template={T} answers={answers} night={false} onNightChange={() => {}} slug="pool-masters" renderToken="t" />,
     );
-    expect(developing).toContain('Developing your realistic photo');
     expect(developing).not.toContain('aria-label="Lighting"');
   });
 
-  it('shows the developing photo with a labelled progress bar, a story line and the elapsed time', () => {
-    const html = renderToStaticMarkup(<DevelopingPhoto preparing={false} elapsedMs={15_000} />);
-    expect(html).toContain('Developing your realistic photo');
-    expect(html).toContain('Filling the pool with water');
-    expect(html).toContain('0:15');
-    expect(html).toMatch(/role="progressbar" aria-label="Realistic photo progress"/);
-    expect(html).toMatch(/aria-valuenow="\d+"/);
-    // The bar moves with a transform (no layout work).
+  it('shows the developing photo as a compact chip with the elapsed time and a slim bar', () => {
+    const html = renderToStaticMarkup(<DevelopingPhoto preparing={false} since={Date.now() - 15_000} />);
+    // A compact chip and a slim bar: the design stays visible. Generic words (nothing claims the model's steps).
+    expect(html).toContain('Making your photo');
+    expect(html).not.toMatch(/Filling the pool|Laying the deck/);
+    expect(html).toMatch(/0:1[45]/);
+    // The status line under the picture announces progress; the bar is decorative (no noisy progressbar).
+    expect(html).not.toContain('role="progressbar"');
     expect(html).toMatch(/transform:translateX\(-\d+%\)/);
-    expect(renderToStaticMarkup(<DevelopingPhoto preparing elapsedMs={0} />)).toContain('Getting your design ready');
+    expect(renderToStaticMarkup(<DevelopingPhoto preparing since={Date.now()} />)).toContain('Getting your design ready');
   });
 
   it('lists nothing when there is nothing to list', () => {

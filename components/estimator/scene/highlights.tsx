@@ -8,7 +8,8 @@ import { deckPath } from './water';
  * The short "this is what changed" moment on the picture after a pick: a soft
  * band of light sweeping over new coping, tile or deck, rings spreading on the
  * water for a new finish, a glow around a resized pool, and a sparkle where a
- * feature or extra was added. Drawn inside the camera, so it lands on the spot
+ * feature or extra was added (with a ring that pings outward, so it reads
+ * even when the camera shows the whole yard). Drawn inside the camera, so it lands on the spot
  * at any zoom. Every piece starts invisible and animates opacity/transform
  * only; under reduced motion the whole layer is hidden (see pool-scene CSS),
  * and the panel removes it after HIGHLIGHT_MS anyway.
@@ -29,6 +30,8 @@ export const HIGHLIGHT_CSS = `
 @keyframes ps-hl-glow{0%{opacity:0;transform:scale(.3)}35%{opacity:.85}100%{opacity:0;transform:scale(1.25)}}
 .ps-hl-star{opacity:0;animation:ps-hl-star 480ms cubic-bezier(.22,.8,.24,1) both}
 @keyframes ps-hl-star{0%{opacity:0;transform:scale(0) rotate(0deg)}40%{opacity:1;transform:scale(1.1) rotate(25deg)}100%{opacity:0;transform:scale(.4) rotate(70deg)}}
+.ps-hl-ping{opacity:0;animation:ps-hl-ping 560ms cubic-bezier(.22,.8,.24,1) both}
+@keyframes ps-hl-ping{0%{opacity:0;transform:scale(.55)}20%{opacity:1}100%{opacity:0;transform:scale(1.5)}}
 @media (prefers-reduced-motion:reduce){.ps-hl{display:none}}
 `;
 
@@ -169,6 +172,17 @@ export function SceneHighlights({ uid, layout, items }: { uid: string; layout: S
                 {sparkleSpots(layout, h.target).map((p, j) => (
                   <g key={j} transform={`translate(${r1(p.x)} ${r1(p.y)})`}>
                     <circle className="ps-hl-glow" style={delay(at + j * 50)} r={60} fill={`url(#${uid}-hl-glow)`} />
+                    {/* A ring in screen pixels: still easy to spot when the camera is zoomed out to the whole yard. */}
+                    <circle
+                      className="ps-hl-ping"
+                      style={delay(at + j * 50)}
+                      r={46}
+                      fill="none"
+                      stroke="#fff"
+                      strokeOpacity={0.95}
+                      strokeWidth={3}
+                      vectorEffect="non-scaling-stroke"
+                    />
                     <path className="ps-hl-star" style={delay(at + j * 50 + 40)} d={starPath(30)} fill="#fff" />
                     {/* Two small glints beside the big one. */}
                     <g transform="translate(26 -22)">

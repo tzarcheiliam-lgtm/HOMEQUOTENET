@@ -18,13 +18,21 @@ export const GLIDE_MS = 900;
 /** The burst is removed after this. */
 export const BURST_MS = 1700;
 
+/**
+ * The price reveal on the result (ResultScreen's count-up): a short beat while
+ * the page settles, then the roll. The realistic photo's progress only appears
+ * PHOTO_PANEL_DELAY_MS after the result shows (the price has landed by then),
+ * so the price and the photo never compete for the same second.
+ */
+export const COUNT_DELAY_MS = 350;
+export const COUNT_MS = 800;
+export const PHOTO_PANEL_DELAY_MS = COUNT_DELAY_MS + COUNT_MS + 400;
+
 export const REVEAL_CSS = `
 .er-land{animation:er-land .5s ${OUT} both}
 @keyframes er-land{0%{transform:scale(1)}35%{transform:scale(1.035)}100%{transform:scale(1)}}
-.er-sweep{position:absolute;inset:0 -100%;background:linear-gradient(100deg,transparent 42%,rgba(255,255,255,.2) 50%,transparent 58%);animation:er-sweep 2.6s ${MOVE} infinite;will-change:transform}
+.er-sweep{position:absolute;inset:0 -100%;background:linear-gradient(100deg,transparent 42%,rgba(255,255,255,.22) 50%,transparent 58%);animation:er-sweep 3s ${MOVE} infinite;will-change:transform}
 @keyframes er-sweep{from{transform:translateX(-33%)}to{transform:translateX(33%)}}
-.er-veil{animation:er-breathe 3.4s ease-in-out infinite alternate}
-@keyframes er-breathe{from{opacity:.7}to{opacity:1}}
 .er-in{animation:er-in .4s ${OUT} both}
 @keyframes er-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .er-line{animation:er-line .35s ${OUT} both}
@@ -38,7 +46,7 @@ export const REVEAL_CSS = `
 @keyframes er-spark{0%{opacity:0;transform:rotate(var(--a)) translateY(0) scale(.3)}25%{opacity:1}100%{opacity:0;transform:rotate(var(--a)) translateY(var(--d)) scale(1)}}
 .er-glide .er-handle,.er-glide .er-before{transition:transform ${GLIDE_MS}ms ${MOVE},clip-path ${GLIDE_MS}ms ${MOVE}}
 @media (prefers-reduced-motion:reduce){
-.er-land,.er-sweep,.er-veil,.er-in,.er-line,.er-reveal{animation:none}
+.er-land,.er-sweep,.er-in,.er-line,.er-reveal{animation:none}
 .er-sweep{display:none}
 .er-bar,.er-glide .er-handle,.er-glide .er-before{transition:none}
 .er-burst{display:none}

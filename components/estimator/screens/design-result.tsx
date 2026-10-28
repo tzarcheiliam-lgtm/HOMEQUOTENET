@@ -6,7 +6,7 @@ import { checkRender, startRender } from '@/lib/estimator/render-client';
 import { rasterizeScene } from '@/lib/estimator/scene/rasterize';
 import type { Answers, EstimatorTemplate, PoolDimensions } from '@/lib/estimator/types';
 import { cn } from '@/lib/utils';
-import { renderProgress, renderStage, type DesignItem } from '../builder';
+import { renderProgress, type DesignItem } from '../builder';
 import type { PhotoProgress } from '../builder-progress';
 import {
   AUTO_RENDER_DELAY_MS,
@@ -19,7 +19,7 @@ import {
   type ShareEnv,
 } from '../builder-render';
 import { ScenePanel } from '../scene/scene-panel';
-import { BURST_MS, GLIDE_DELAY_MS, GLIDE_MS, RevealStyles } from './reveal-styles';
+import { BURST_MS, GLIDE_DELAY_MS, GLIDE_MS, PHOTO_PANEL_DELAY_MS, RevealStyles } from './reveal-styles';
 
 /** File name of the "Save my design" download. */
 export const DESIGN_FILE_NAME = 'my-pool-design.png';
@@ -32,6 +32,8 @@ const glowButton =
 /** Round icon button on the photo (close, open full size). 44px tap target around a 36px circle. */
 const photoButton =
   "relative inline-flex size-9 items-center justify-center rounded-full bg-[#06122b]/80 text-white transition-colors before:absolute before:-inset-1 before:content-[''] hover:bg-[#06122b] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-white";
+/** Under the picture while the photo shows: says what it is (an AI render of their design, not their yard). */
+export const PHOTO_CAPTION = 'AI-rendered photo of your design. Final details are confirmed at your free on-site visit.';
 /** File name of the shared realistic photo. */
 const PHOTO_FILE_NAME = 'my-pool-photo.jpg';
 
@@ -65,11 +67,24 @@ const autoStarted = new Set<string>();
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+/** How long the finished photo may take to download before the attempt counts as failed (a stalled phone network). */
+const PRELOAD_TIMEOUT_MS = 45_000;
+
 function preloadImage(url: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.onload = () => resolve();
-    img.onerror = () => reject(new Error('image could not be loaded'));
+    const timer = setTimeout(() => {
+      img.src = '';
+      reject(new Error('image took too long'));
+    }, PRELOAD_TIMEOUT_MS);
+    img.onload = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    img.onerror = () => {
+      clearTimeout(timer);
+      reject(new Error('image could not be loaded'));
+    };
     img.src = url;
   });
 }
@@ -80,15 +95,16 @@ function prefersReducedMotion(): boolean {
 
 /**
  * The realistic photo for this lead. When the lead response carried a
- * renderToken it starts by itself, once (the developing state shows straight
- * away; the snapshot waits AUTO_RENDER_DELAY_MS so the price reveal stays
- * smooth). `auto` is true while the current attempt is that automatic one:
+ * renderToken it starts by itself, once (the snapshot waits
+ * AUTO_RENDER_DELAY_MS so the price count-up stays smooth; the developing
+ * overlay waits for the price to land, see ResultScene). `auto` is true while the current attempt is that automatic one:
  * its failures stay quiet. `start` is the manual retry.
  */
 function useRealisticPhoto(slug: string, renderToken: string | undefined, capture: () => Promise<string>) {
   const [phase, setPhase] = useState<RenderPhase>(() => (shouldAutoRender(renderToken, autoStarted) ? { kind: 'preparing' } : { kind: 'idle' }));
   const [auto, setAuto] = useState(() => shouldAutoRender(renderToken, autoStarted));
-  const [clock, setClock] = useState({ since: 0, now: 0 });
+  // When this attempt started (the developing clock ticks inside DevelopingPhoto, not here).
+  const [since, setSince] = useState(0);
   const busy = useRef(false);
   const alive = useRef(true);
   useEffect(() => {
@@ -104,7 +120,7 @@ function useRealisticPhoto(slug: string, renderToken: string | undefined, captur
       busy.current = true;
       const t0 = Date.now();
       setAuto(automatic);
-      setClock({ since: t0, now: t0 });
+      setSince(t0);
       try {
         await runRenderSession(
           {
@@ -134,66 +150,43 @@ function useRealisticPhoto(slug: string, renderToken: string | undefined, captur
     void run(true);
   }, [renderToken, run]);
 
-  // The developing clock (elapsed time, progress and the story line).
-  const working = renderWorking(phase);
-  useEffect(() => {
-    if (!working) return;
-    const i = setInterval(() => setClock((c) => ({ ...c, now: Date.now() })), 500);
-    return () => clearInterval(i);
-  }, [working]);
-
-  return {
-    phase,
-    auto,
-    start: () => void run(false),
-    elapsed: working && clock.since ? Math.max(0, clock.now - clock.since) : 0,
-  };
+  return { phase, auto, start: () => void run(false), since };
 }
 
+/** The one line shown while the photo is made: generic on purpose (nothing here reports the model's real steps). */
+export const DEVELOPING_LINE = 'Making your realistic photo';
+
 /**
- * Shown over the design while the realistic photo is being made: the picture
- * dims and "develops" (a soft light sweep and a breathing veil), with a
- * friendly line that changes as it goes, the elapsed time and a progress bar
- * that never claims to be done early.
+ * Shown while the realistic photo is being made, without hiding the design
+ * they just finished: a soft light sweep crosses the picture, a compact chip
+ * in the corner says what is happening with the elapsed time, and a slim bar
+ * along the bottom edge fills (never claiming to be done early). The clock
+ * ticks here, so only this small overlay re-renders, not the whole scene.
+ * The bar and timer are decorative: the status line under the picture
+ * describes the progress for screen readers.
  */
-export function DevelopingPhoto({ preparing, elapsedMs }: { preparing: boolean; elapsedMs: number }) {
+export function DevelopingPhoto({ preparing, since }: { preparing: boolean; since: number }) {
+  // Only ever drawn on the client, after the result appears, so reading the clock here is safe.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const i = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(i);
+  }, []);
+  const elapsedMs = since ? Math.max(0, now - since) : 0;
   const percent = renderProgress(elapsedMs);
-  const line = preparing ? 'Getting your design ready' : renderStage(elapsedMs);
   return (
-    <div data-developing="" className="absolute inset-0 overflow-hidden">
-      <div
-        aria-hidden="true"
-        className="er-veil absolute inset-0 bg-[radial-gradient(120%_95%_at_50%_42%,rgba(6,18,43,0.12),rgba(6,18,43,0.62))]"
-      />
+    <div data-developing="" className="pointer-events-none absolute inset-0 overflow-hidden">
       <div aria-hidden="true" className="er-sweep" />
-      <div className="er-in absolute inset-x-0 bottom-0 m-2.5 rounded-xl bg-[#06122b]/90 p-3 text-white shadow-[0_12px_32px_-8px_rgba(0,0,0,0.7)] sm:m-4 sm:p-4">
-        <div className="flex items-baseline justify-between gap-3">
-          <p className="flex min-w-0 items-center gap-2 text-sm font-semibold">
-            <Sparkles className="size-4 shrink-0 text-[var(--es-aqua,#2ec5d3)]" aria-hidden="true" />
-            <span className="truncate">Developing your realistic photo</span>
-          </p>
-          <span aria-hidden="true" className="shrink-0 text-xs text-white/70 tabular-nums">
-            {formatElapsed(elapsedMs)}
-          </span>
-        </div>
-        {/* Re-keyed so each new line slides in; the footer's status line does the announcing. */}
-        <p key={line} aria-hidden="true" className="er-line mt-0.5 truncate text-xs text-white/80">
-          {line}…
-        </p>
+      <div aria-hidden="true" className="er-in absolute bottom-3.5 left-2.5 inline-flex h-8 max-w-[calc(100%-1.25rem)] items-center gap-2 rounded-full bg-[#06122b]/85 pr-3 pl-2.5 text-xs font-semibold text-white shadow-[0_8px_20px_-8px_rgba(0,0,0,0.6)] sm:bottom-4 sm:left-3">
+        <Sparkles className="size-3.5 shrink-0 text-[#ffd666]" />
+        <span className="truncate">{preparing ? 'Getting your design ready' : 'Making your photo'}…</span>
+        <span className="shrink-0 font-medium text-white/70 tabular-nums">{formatElapsed(elapsedMs)}</span>
+      </div>
+      <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-1 bg-[#06122b]/35">
         <div
-          role="progressbar"
-          aria-label="Realistic photo progress"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={percent}
-          className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-white/20"
-        >
-          <div
-            className="er-bar h-full w-full rounded-full bg-[linear-gradient(90deg,var(--es-aqua,#2ec5d3),#b9f6ff)]"
-            style={{ transform: `translateX(${percent - 100}%)` }}
-          />
-        </div>
-        <p className="mt-2 text-[11px] leading-4 text-white/70">Usually 20 to 60 seconds. Your price is ready now.</p>
+          className="er-bar h-full w-full bg-[linear-gradient(90deg,var(--es-aqua,#2ec5d3),#b9f6ff)]"
+          style={{ transform: `translateX(${percent - 100}%)` }}
+        />
       </div>
     </div>
   );
@@ -271,7 +264,7 @@ export function PhotoReveal({
     >
       {/* Plain img: the render is a remote image of unknown size, cropped to the frame. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={after} alt="Realistic photo of your pool design" className={cn('absolute inset-0 size-full object-cover', motion && 'er-reveal')} />
+      <img src={after} alt="AI-rendered realistic photo of your pool design" className={cn('absolute inset-0 size-full object-cover', motion && 'er-reveal')} />
       <div className="er-before absolute inset-0" style={{ clipPath: `inset(0 ${100 - pos}% 0 0)` }} aria-hidden="true">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={before} alt="" className="absolute inset-0 size-full object-cover" />
@@ -289,20 +282,14 @@ export function PhotoReveal({
         </span>
       </div>
 
-      <span className={cn(pillClass, 'top-2.5 left-2.5 sm:top-3 sm:left-3', motion && 'er-in')} style={motion ? { animationDelay: '700ms' } : undefined} aria-hidden="true">
-        <Sparkles className="size-3.5 text-[#ffd666]" />
-        Your realistic photo
+      {/* Two labels only, one at each end of the split. */}
+      <span className={cn(pillClass, 'bottom-2.5 left-2.5 transition-opacity duration-300', compare ? 'opacity-100' : 'opacity-0')} aria-hidden="true">
+        Your design
       </span>
-      {compare ? (
-        <>
-          <span className={cn(pillClass, 'bottom-2.5 left-2.5', gliding && 'er-in')} aria-hidden="true">
-            Your design
-          </span>
-          <span className={cn(pillClass, 'right-2.5 bottom-2.5', gliding && 'er-in')} aria-hidden="true">
-            Realistic photo
-          </span>
-        </>
-      ) : null}
+      <span className={cn(pillClass, 'right-2.5 bottom-2.5', motion && 'er-in')} style={motion ? { animationDelay: '700ms' } : undefined} aria-hidden="true">
+        <Sparkles className="size-3.5 text-[#ffd666]" />
+        Realistic photo
+      </span>
 
       <input
         type="range"
@@ -314,7 +301,7 @@ export function PhotoReveal({
           setGliding(false);
           setPos(Number(e.target.value));
         }}
-        aria-label="Compare your design with the realistic photo"
+        aria-label="Compare your design with its realistic photo"
         aria-valuetext={`${pos}% design, ${100 - pos}% realistic photo`}
         // pan-y: a vertical swipe that starts on the picture still scrolls the page (iOS).
         className="absolute inset-0 size-full cursor-ew-resize touch-pan-y opacity-0"
@@ -420,18 +407,30 @@ export function ResultScene({
   // Latest night value for the async snapshot (the prop changes under it once switched to day).
   const nightRef = useRef(night);
   nightRef.current = night;
-  // The render prompt asks for midday light, so a night snapshot would not match: switch to day first.
+  // The render prompt asks for midday light, so a night snapshot would not match: switch to day for the
+  // snapshot, then back to the night view they chose.
   const capture = useCallback(async () => {
-    if (nightRef.current) {
+    const wasNight = nightRef.current;
+    if (wasNight) {
       onNightChange(false);
       // Let React commit the day picture; the fading-out night layer is dropped from the snapshot.
       await sleep(120);
     }
-    const svg = getSvg();
-    if (!svg) throw new Error('scene not found');
-    return rasterizeScene(svg);
+    try {
+      const svg = getSvg();
+      if (!svg) throw new Error('scene not found');
+      return await rasterizeScene(svg);
+    } finally {
+      if (wasNight) onNightChange(true);
+    }
   }, [getSvg, onNightChange]);
-  const { phase, auto, start, elapsed } = useRealisticPhoto(slug, renderToken, capture);
+  const { phase, auto, start, since } = useRealisticPhoto(slug, renderToken, capture);
+  // The reveal is one moment at a time: the price counts up first, then the photo's progress appears.
+  const [priceSettled, setPriceSettled] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setPriceSettled(true), prefersReducedMotion() ? 0 : PHOTO_PANEL_DELAY_MS);
+    return () => clearTimeout(t);
+  }, []);
   const [showRender, setShowRender] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sharing, setSharing] = useState(false);
@@ -546,7 +545,7 @@ export function ResultScene({
   }, [done, showRender]);
 
   const overlay = working ? (
-    <DevelopingPhoto preparing={phase.kind === 'preparing'} elapsedMs={elapsed} />
+    priceSettled ? <DevelopingPhoto preparing={phase.kind === 'preparing'} since={since} /> : null
   ) : done && showRender ? (
     <PhotoReveal
       before={done.before}
@@ -569,8 +568,8 @@ export function ResultScene({
     ? note
     : loud && (phase.kind === 'failed' || phase.kind === 'off')
       ? { text: phase.message, tone: phase.kind === 'failed' ? 'warn' : 'muted' }
-      : working
-        ? { text: 'Developing your realistic photo. It usually takes 20 to 60 seconds.', tone: 'muted' }
+      : working && priceSettled
+        ? { text: `${DEVELOPING_LINE}. It usually takes 20 to 60 seconds, and your price is ready now.`, tone: 'muted' }
         : done
           ? { text: 'Your realistic photo is ready. Drag the handle to compare it with your design.', tone: 'muted' }
           : { text: 'Save a picture of your design to keep or share.', tone: 'dim' };
@@ -638,6 +637,7 @@ export function ResultScene({
       frameRef={frame}
       overlay={overlay}
       hideLighting={working || Boolean(done && showRender)}
+      caption={done && showRender ? PHOTO_CAPTION : undefined}
       footer={footer}
     />
   );

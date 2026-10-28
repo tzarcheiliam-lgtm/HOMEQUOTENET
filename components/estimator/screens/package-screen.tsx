@@ -4,7 +4,7 @@ import { useId } from 'react';
 import { picksFor } from '@/lib/estimator/engine';
 import { CUSTOM_PACKAGE_ID, type Answers, type EstimatorQuestion, type EstimatorTemplate } from '@/lib/estimator/types';
 import { cn } from '@/lib/utils';
-import { CheckBadge, linkButton, pressable, previewHandlers } from '../ui';
+import { CheckBadge, hiddenInput, linkButton, pressable, previewHandlers } from '../ui';
 
 const cardClass = cn(
   'group relative flex cursor-pointer flex-col gap-2 rounded-xl border border-[var(--hq-line)] bg-[var(--hq-bg)] p-4 text-sm hover:border-[var(--hq-line-strong)] has-[:checked]:border-[var(--hq-accent-bright)] has-[:checked]:bg-[var(--hq-accent-glow)] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[var(--hq-accent-bright)]',
@@ -51,7 +51,7 @@ export function PackageScreen({
             const preview = previewHandlers(onPreview ? (on) => onPreview(on ? o.id : null) : undefined);
             return (
               <label key={o.id} className={cn(cardClass, custom && '@xl:col-span-2')} {...preview.label}>
-                <span className="flex items-start gap-3">
+                <span className="flex items-start">
                   <input
                     type="radio"
                     name={`${uid}-package`}
@@ -61,7 +61,8 @@ export function PackageScreen({
                     {...preview.input}
                     aria-labelledby={labelId}
                     aria-describedby={descId}
-                    className="mt-1 size-4 shrink-0 accent-[var(--hq-accent)]"
+                    // The corner badge is the card's one selected mark.
+                    className={hiddenInput}
                   />
                   <span className="min-w-0 flex-1 pr-8">
                     <span className="flex flex-wrap items-center gap-2">

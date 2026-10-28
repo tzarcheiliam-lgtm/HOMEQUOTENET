@@ -1,7 +1,8 @@
 import { readFileSync, statSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { BeforeAfterStrip, HERO_IMAGES, stripCaption } from '@/components/estimator/shell/before-after-strip';
+import { EXAMPLE_LABELS, ExampleCompare, HERO_IMAGES } from '@/components/estimator/scene/example-compare';
+import { ScenePanel } from '@/components/estimator/scene/scene-panel';
 import { EstimatorFooter } from '@/components/estimator/shell/estimator-footer';
 import { EstimatorHeader } from '@/components/estimator/shell/estimator-header';
 import { EstimatorHero, heroCopy } from '@/components/estimator/shell/estimator-hero';
@@ -9,6 +10,7 @@ import { contractorFacts, telHref } from '@/components/estimator/shell/facts';
 import { newlyDone, RewardTracker, rewardState, rewardText, type RewardStep } from '@/components/estimator/shell/reward-tracker';
 import { StageStepper, stageStates, stageSummary } from '@/components/estimator/shell/stage-stepper';
 import { POOL_MASTERS_ESTIMATOR } from '@/content/estimators/pool-masters';
+import { POOL_TEMPLATE } from '@/lib/estimator/templates/pool';
 import EstimatorPage from '@/app/(estimator)/estimator/[slug]/page';
 
 vi.mock('server-only', () => ({}));
@@ -53,54 +55,63 @@ describe('EstimatorHeader / EstimatorFooter', () => {
     expect(text(html)).toContain('Pool Masters LA');
   });
 
-  it('footer links Privacy and Terms and says Powered by Rendoly', () => {
+  it('footer links Privacy and Terms and says Powered by Rendoly in plain text (no third logo)', () => {
     const html = renderToStaticMarkup(<EstimatorFooter contractor={POOL_MASTERS_ESTIMATOR} />);
     expect(html).toContain('href="/privacy"');
     expect(html).toContain('href="/terms"');
-    expect(html).toContain('/brand/rendoly/rendoly-mark.svg');
+    expect(html).not.toContain('/brand/rendoly/rendoly-mark.svg');
     expect(text(html)).toMatch(/Powered by Rendoly/);
     expect(text(html)).toContain(POOL_MASTERS_ESTIMATOR.serviceAreaLabel!);
   });
 });
 
-describe('hero and before/after strip', () => {
-  it('only promises a realistic photo when renders are on', () => {
-    expect(heroCopy(true).subline).toMatch(/realistic photo/);
-    expect(heroCopy(true).subline).toMatch(/ballpark price/);
-    expect(heroCopy(false).subline).not.toMatch(PHOTO_PROMISE);
-    expect(heroCopy(false).subline).toMatch(/ballpark price/);
-    expect(stripCaption(false)).not.toMatch(PHOTO_PROMISE);
-    expect(heroCopy(false).headline).toBe(heroCopy(true).headline);
+describe('hero and the example photo', () => {
+  it('leads with the outcome, and only promises a realistic photo when renders are on', () => {
+    expect(heroCopy(true).headline).toMatch(/realistic photo/);
+    expect(heroCopy(true).headline).toMatch(/ballpark price/);
+    expect(heroCopy(false).headline).toMatch(/ballpark price/);
+    expect(Object.values(heroCopy(false)).join(' ')).not.toMatch(PHOTO_PROMISE);
+    for (const on of [true, false]) expect(heroCopy(on).subline).toMatch(/2 minutes/);
   });
 
-  it('renders off: illustration plus a locked price card whose number is a placeholder', () => {
-    const html = renderToStaticMarkup(<EstimatorHero rendersEnabled={false} facts={contractorFacts('pool-masters')} />);
-    expect(html).toContain('<h1');
-    expect(text(html)).not.toMatch(PHOTO_PROMISE);
-    expect(html).not.toContain(encodeURIComponent(HERO_IMAGES.photo));
-    expect(html).not.toContain(HERO_IMAGES.photo);
-    expect(html).toContain('data-reward="price"');
-    // No digits anywhere near a dollar sign: the browser never gets a real price before the contact step.
-    expect(text(html)).not.toMatch(/\$\s*\d/);
-    expect(text(html)).toMatch(/unlocks at the end/i);
-    expect(text(html)).toContain('Serving SoCal since 2010');
+  it('the hero is words only: no pictures, no price placeholder that could go stale after the result', () => {
+    for (const on of [true, false]) {
+      const html = renderToStaticMarkup(<EstimatorHero rendersEnabled={on} facts={contractorFacts('pool-masters')} />);
+      expect(html).toContain('<h1');
+      expect(html).not.toContain('<img');
+      expect(html).not.toMatch(/data-reward|Unlocks at the end/);
+      expect(text(html)).not.toMatch(/\$\s*\d/);
+      expect(text(html)).toContain('Serving SoCal since 2010');
+    }
   });
 
-  it('renders on: the illustration next to the realistic photo of the same design', () => {
-    const html = renderToStaticMarkup(<BeforeAfterStrip rendersEnabled />);
-    expect(html).toContain('data-reward="photo"');
+  it('renders on: the builder frame opens on an example design beside its realistic photo, both labelled as an example', () => {
+    const html = renderToStaticMarkup(<ScenePanel template={POOL_TEMPLATE} answers={{}} examplePhoto />);
+    expect(html).toContain('data-example-compare');
     expect(html).toMatch(/pool-design-photo\.webp/);
     expect(html).toMatch(/pool-design-illustration\.webp/);
-    expect(text(html)).toContain('Realistic photo');
-    expect(html).not.toContain('data-reward="price"');
+    expect(text(html)).toContain(EXAMPLE_LABELS.design);
+    expect(text(html)).toContain(EXAMPLE_LABELS.photo);
+    expect(EXAMPLE_LABELS.design).toMatch(/example/i);
+    // A draggable split that works with a keyboard and screen readers.
+    expect(html).toMatch(/<input type="range"[^>]*aria-label="Compare an example design with its realistic photo"/);
+    // No day/night switch over a photo.
+    expect(html).not.toContain('aria-label="Lighting"');
   });
 
-  it('every hero animation stops under prefers-reduced-motion and moves only transform/opacity', () => {
-    const css = [true, false].map((on) => renderToStaticMarkup(<BeforeAfterStrip rendersEnabled={on} />)).join('');
-    expect(css).toContain('@media (prefers-reduced-motion:reduce){.es-wipe{display:none}.es-sheen{display:none}.es-live{animation:none}}');
-    const keyframes = [...css.matchAll(/@keyframes [\w-]+\{([^@]*?)\}\}/g)].map((m) => m[1]);
-    expect(keyframes.length).toBeGreaterThan(0);
-    for (const body of keyframes) expect(body).toMatch(/^(?:[\d%a-z]+\{(?:transform|opacity):[^}]+)+$/);
+  it('renders off: no photo anywhere in the frame; once they pick, their own design replaces the example', () => {
+    const off = renderToStaticMarkup(<ScenePanel template={POOL_TEMPLATE} answers={{}} />);
+    expect(off).not.toContain('data-example-compare');
+    expect(off).not.toContain(HERO_IMAGES.photo);
+    expect(text(off)).not.toMatch(PHOTO_PROMISE);
+    const picked = renderToStaticMarkup(<ScenePanel template={POOL_TEMPLATE} answers={{ shape: ['rectangle'] }} examplePhoto />);
+    expect(picked).not.toContain('data-example-compare');
+  });
+
+  it('the example sweep stops under prefers-reduced-motion and moves only transform/clip-path/opacity', () => {
+    const css = renderToStaticMarkup(<ExampleCompare />);
+    expect(css).toContain('@media (prefers-reduced-motion:reduce){.ec-glide .ec-before,.ec-glide .ec-handle{transition:none}.ec-leave{animation:none;opacity:0}}');
+    expect(css).not.toMatch(/transition:[^;}]*(width|left|height)/);
   });
 
   it('hero assets exist as small WebP files without metadata', () => {
@@ -148,6 +159,9 @@ describe('RewardTracker', () => {
     expect(newlyDone(steps, next)).toEqual(['Price']);
     expect(newlyDone(next, next)).toEqual([]);
     expect(newlyDone([], steps)).toEqual(['Design']);
+    // A step announced elsewhere (the photo's own status line) is left out: one announcement per event.
+    const photo = next.map((s) => (s.id === 'photo' ? { ...s, done: true } : s));
+    expect(newlyDone(next, photo, ['photo'])).toEqual([]);
   });
 });
 
@@ -176,7 +190,9 @@ describe('StageStepper', () => {
     expect(text(html)).toContain('Pool (done)');
     expect(text(html)).not.toMatch(/Step \d/);
     expect(html).toContain('motion-reduce:transition-none');
-    expect(html).toContain('scale-x-0');
+    expect(html).toContain('transform:scaleX(0)');
+    // The current stage fills part-way.
+    expect(renderToStaticMarkup(<StageStepper stages={stages} current="finishes" fraction={0.5} />)).toContain('transform:scaleX(0.5)');
     expect(html).not.toMatch(/transition-\[[^\]]*width/);
   });
 });
@@ -192,7 +208,7 @@ describe('/estimator/[slug] page', () => {
     delete process.env.KIE_API_KEY;
     const html = await page();
     expect(html).toContain('tel:+18186436888');
-    expect(html).toContain('Design your dream pool in 2 minutes');
+    expect(html).toContain('Design your pool');
     expect(html).toContain('Powered by');
     expect(html).toContain('id="main"');
     expect(text(html)).not.toMatch(/Partner login|Check Availability|How it works/);
@@ -200,9 +216,12 @@ describe('/estimator/[slug] page', () => {
 
   it('promises a realistic photo only when the server can make one', async () => {
     delete process.env.KIE_API_KEY;
-    expect(text(await page())).not.toMatch(/get a realistic photo/);
+    expect(text(await page())).not.toMatch(/realistic photo/i);
+    expect(await page()).not.toContain('data-example-compare');
     process.env.KIE_API_KEY = 'test-key';
     process.env.ESTIMATOR_RENDER_SECRET = 'test-secret';
-    expect(text(await page())).toMatch(/get a realistic photo/);
+    const on = await page();
+    expect(text(on)).toMatch(/Get a realistic photo/);
+    expect(on).toContain('data-example-compare');
   });
 });

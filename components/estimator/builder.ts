@@ -329,23 +329,6 @@ export function renderProgress(elapsedMs: number): number {
   return Math.max(3, Math.min(95, Math.round(p)));
 }
 
-const RENDER_STAGES: ReadonlyArray<{ at: number; text: string }> = [
-  { at: 0, text: 'Reading your design' },
-  { at: 6_000, text: 'Laying the deck and coping' },
-  { at: 14_000, text: 'Filling the pool with water' },
-  { at: 24_000, text: 'Adding California sunlight and shadows' },
-  { at: 36_000, text: 'Planting the yard' },
-  { at: 50_000, text: 'Final touches, almost there' },
-  { at: 80_000, text: 'Taking a little longer than usual' },
-];
-
-/** The progress line for an elapsed time ("Filling the pool with water"). */
-export function renderStage(elapsedMs: number): string {
-  let text = RENDER_STAGES[0].text;
-  for (const s of RENDER_STAGES) if (elapsedMs >= s.at) text = s.text;
-  return text;
-}
-
 /**
  * What to tell the homeowner when a render cannot start. `retry` false hides
  * the button for good (renders switched off or the limit reached).

@@ -37,9 +37,11 @@ const tile = cn(
 );
 
 /**
- * The selected mark: a round check that pops in (small overshoot) when the
- * tile's input is checked and fades out quickly when it is not. Lives inside a
- * `group` tile; decorative (the input carries the state).
+ * The one selected mark of a tile or card that has it (the native input is
+ * then visually hidden, still there for keyboards and screen readers): an
+ * empty ring while unpicked, filled with a check that pops in (small
+ * overshoot) when picked. Lives inside a `group` tile; decorative (the input
+ * carries the state).
  */
 export function CheckBadge({ className }: { className?: string }) {
   return (
@@ -47,14 +49,19 @@ export function CheckBadge({ className }: { className?: string }) {
       aria-hidden="true"
       data-check-badge=""
       className={cn(
-        'pointer-events-none grid size-7 place-items-center rounded-full bg-[var(--hq-accent-bright)] text-[var(--hq-bg)] opacity-0 shadow-[0_0_0_2px_var(--hq-bg),0_4px_12px_rgba(0,0,0,0.35)] [scale:.4] [transition:opacity_120ms_ease-out,scale_120ms_ease-out] group-has-[:checked]:opacity-100 group-has-[:checked]:[scale:1] group-has-[:checked]:[transition:opacity_140ms_ease-out,scale_420ms_cubic-bezier(.34,1.8,.64,1)] motion-reduce:transition-none!',
+        'pointer-events-none grid size-7 place-items-center rounded-full bg-[#06122b]/45 shadow-[inset_0_0_0_2px_rgba(255,255,255,0.75),0_2px_8px_rgba(0,0,0,0.3)]',
         className,
       )}
     >
-      <Check className="size-4" strokeWidth={3} />
+      <span className="grid size-7 place-items-center rounded-full bg-[var(--hq-accent-bright)] text-[var(--hq-bg)] opacity-0 shadow-[0_0_0_2px_var(--hq-bg),0_4px_12px_rgba(0,0,0,0.35)] [scale:.4] [transition:opacity_120ms_ease-out,scale_120ms_ease-out] group-has-[:checked]:opacity-100 group-has-[:checked]:[scale:1] group-has-[:checked]:[transition:opacity_140ms_ease-out,scale_420ms_cubic-bezier(.34,1.8,.64,1)] motion-reduce:transition-none!">
+        <Check className="size-4" strokeWidth={3} />
+      </span>
     </span>
   );
 }
+
+/** The native input of a tile whose CheckBadge shows the state: hidden from sight, kept for keyboard and screen readers. */
+export const hiddenInput = 'peer sr-only';
 
 /**
  * Hover / keyboard-focus handlers for a previewable option (the live builder
@@ -144,7 +151,7 @@ export function ChoiceTile({
           <CheckBadge className="absolute right-2 top-2" />
         </span>
       ) : null}
-      <span className="flex items-start gap-3">
+      <span className={cn('flex items-start', !visual && 'gap-3')}>
         <input
           type={type}
           name={name}
@@ -154,7 +161,8 @@ export function ChoiceTile({
           {...preview.input}
           aria-labelledby={`${uid}-l`}
           aria-describedby={describedBy}
-          className="mt-0.5 size-4 shrink-0 accent-[var(--hq-accent)]"
+          // With a picture the badge on it is the one selected mark; without one the native control is.
+          className={visual ? hiddenInput : 'mt-0.5 size-4 shrink-0 accent-[var(--hq-accent)]'}
         />
         <span className="min-w-0 flex-1">
           <span id={`${uid}-l`} className="block font-medium text-[var(--hq-text)]">

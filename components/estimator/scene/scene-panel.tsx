@@ -11,11 +11,14 @@ import type { Answers, EstimatorTemplate, PoolDimensions } from '@/lib/estimator
 import { cn } from '@/lib/utils';
 import { addedOptions, answerChanges, chipText, designSummary, optionLabeler, sceneChanges, sceneDescription } from '../builder';
 import { BuilderStyles, CHIP_MS } from '../motion';
+import { ExampleCompare } from './example-compare';
 import { PoolScene } from './pool-scene';
 
 export const SCENE_CAPTION = 'Illustration — your final design is confirmed at the on-site visit';
 /** Phones, where the pinned picture needs every line it can get. */
 const SCENE_CAPTION_SHORT = 'Illustration — final design confirmed on site';
+/** Under the example split (renders on): what the two pictures are. */
+export const EXAMPLE_PHOTO_CAPTION = 'Example: a design made here, and the realistic photo made from it';
 /** On the example design shown before the first answer, so it is never mistaken for their choice. */
 export const EXAMPLE_CAPTION = 'Example — your picks will change it';
 
@@ -50,6 +53,14 @@ export type ScenePanelProps = {
   hideLighting?: boolean;
   /** Below the caption (actions). */
   footer?: ReactNode;
+  /**
+   * Renders are on: before the first answer the frame shows an example design
+   * beside its realistic photo (ExampleCompare) instead of the example
+   * illustration, so the promise of a photo is shown, not just said.
+   */
+  examplePhoto?: boolean;
+  /** Replaces the illustration caption under the picture (e.g. while the realistic photo is shown). */
+  caption?: string;
   className?: string;
 };
 
@@ -89,6 +100,8 @@ export const ScenePanel = memo(function ScenePanel({
   overlay,
   hideLighting,
   footer,
+  examplePhoto = false,
+  caption,
   className,
 }: ScenePanelProps) {
   const uid = useId();
@@ -178,6 +191,8 @@ export const ScenePanel = memo(function ScenePanel({
   }, [flash]);
   // The frame glows only for picks the picture cannot point at (a plan item, "help me choose").
   const glow = chip && !chip.onPicture;
+  // The example split (renders on) covers the frame until the first answer or a hover preview.
+  const compare = examplePhoto && example && !ghost;
 
   return (
     <div className={cn('min-w-0', className)} data-scene-panel={variant}>
@@ -203,14 +218,19 @@ export const ScenePanel = memo(function ScenePanel({
         />
         {leaving !== null ? (
           // The example, fading out over their first picture (decorative; gone after LEAVE_MS).
-          <div key={leaving} className="pointer-events-none absolute inset-0" aria-hidden="true">
-            <PoolScene scene={EXAMPLE_SCENE} night={isNight} focus={focus} label="" className="ps-leave absolute inset-0 block size-full" />
-          </div>
+          examplePhoto ? (
+            <ExampleCompare key={leaving} leaving />
+          ) : (
+            <div key={leaving} className="pointer-events-none absolute inset-0" aria-hidden="true">
+              <PoolScene scene={EXAMPLE_SCENE} night={isNight} focus={focus} label="" className="ps-leave absolute inset-0 block size-full" />
+            </div>
+          )
         ) : null}
+        {compare ? <ExampleCompare /> : null}
         {/* Re-keyed on every chip so the frame glows once per visible change. */}
         {glow ? <div key={`glow-${chip.key}`} className="eb-glow pointer-events-none absolute inset-0 rounded-2xl" aria-hidden="true" /> : null}
 
-        {example && !ghost ? (
+        {example && !ghost && !compare ? (
           <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center px-3">
             <span data-example-caption="" className={cn(pill, 'h-8 max-w-full')}>
               <Sparkles className="size-3.5 shrink-0 text-[#ffd666]" aria-hidden="true" />
@@ -228,7 +248,7 @@ export const ScenePanel = memo(function ScenePanel({
           </div>
         ) : null}
 
-        {!hideLighting ? (
+        {!hideLighting && !compare ? (
           <div role="group" aria-label="Lighting" className="absolute left-2.5 top-2.5 flex rounded-full bg-[#06122b]/80 p-0.5 shadow-sm sm:left-3 sm:top-3">
             {([false, true] as const).map((value) => {
               const Icon = value ? Moon : Sun;
@@ -252,7 +272,8 @@ export const ScenePanel = memo(function ScenePanel({
         ) : null}
 
         {chip ? (
-          <div key={`chip-${chip.key}`} aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center px-3">
+          // Tablet and up: over the bottom of the picture. Phones show it under the picture instead (below).
+          <div key={`chip-${chip.key}`} aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center px-3 max-sm:hidden">
             <span
               className={cn(
                 'eb-chip inline-flex max-w-full items-center gap-1.5 rounded-full bg-white/95 py-1.5 pr-3.5 text-xs font-semibold text-[#06122b] shadow-lg sm:text-sm',
@@ -284,10 +305,12 @@ export const ScenePanel = memo(function ScenePanel({
         {chip?.text ?? ''}
       </p>
 
-      <div className="mt-1.5 flex min-h-8 items-center justify-between gap-3">
-        <p className="text-[11px] leading-4 text-[var(--hq-text-dim)] sm:text-xs">
+      <div className="relative mt-1.5 flex min-h-8 items-center justify-between gap-3">
+        <p className={cn('text-[11px] leading-4 text-[var(--hq-text-dim)] sm:text-xs', chip && !collapsed && 'max-sm:invisible')}>
           {collapsed ? (
             <span className="lg:hidden">Your pool picture is hidden.</span>
+          ) : caption || compare ? (
+            (caption ?? EXAMPLE_PHOTO_CAPTION)
           ) : (
             <>
               <span className={cn(variant === 'builder' && 'max-sm:hidden')}>{SCENE_CAPTION}</span>
@@ -296,6 +319,23 @@ export const ScenePanel = memo(function ScenePanel({
           )}
           {collapsed ? <span className="max-lg:hidden">{SCENE_CAPTION}</span> : null}
         </p>
+        {chip && !collapsed ? (
+          // Phones: the chip sits just under the picture, over the caption (same height, so nothing moves),
+          // and never covers the spot on the picture that just changed. It stops short of "Hide picture".
+          <div key={`chip-m-${chip.key}`} aria-hidden="true" className="pointer-events-none absolute inset-y-0 left-0 right-28 flex items-center sm:hidden">
+            <span className="eb-chip inline-flex h-8 max-w-full items-center gap-1.5 rounded-full bg-white/95 pr-3 pl-1 text-xs font-semibold text-[#06122b] shadow-md">
+              {chip.image ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={chip.image} alt="" className="size-6 shrink-0 rounded-full object-cover" />
+              ) : (
+                <span className="grid size-6 shrink-0 place-items-center">
+                  <Check className="size-4 text-emerald-600" aria-hidden="true" />
+                </span>
+              )}
+              <span className="truncate">{chip.text}</span>
+            </span>
+          </div>
+        ) : null}
         {variant === 'builder' ? (
           <button
             type="button"

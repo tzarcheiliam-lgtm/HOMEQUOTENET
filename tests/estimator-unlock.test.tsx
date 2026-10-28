@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { flowStages, rewardSteps, unlockCopy } from '@/components/estimator/builder-progress';
+import { flowStages, rewardSteps, stageFraction, unlockCopy } from '@/components/estimator/builder-progress';
 import {
   formatElapsed,
   RENDER_MESSAGES,
@@ -12,7 +12,8 @@ import {
 } from '@/components/estimator/builder-render';
 import { EstimatorFlow } from '@/components/estimator/estimator-flow';
 import { UnlockPreview } from '@/components/estimator/screens/unlock-preview';
-import { countUpRange, type LeadSuccess } from '@/components/estimator/screens/result-screen';
+import { countUpRange, roundLine, type LeadSuccess } from '@/components/estimator/screens/result-screen';
+import { COUNT_DELAY_MS, COUNT_MS, PHOTO_PANEL_DELAY_MS } from '@/components/estimator/screens/reveal-styles';
 import { flowScreens, type FlowState } from '@/components/estimator/use-estimator-flow';
 import { applyPackage, computeEstimate } from '@/lib/estimator/engine';
 import { estimatorConsentText } from '@/lib/estimator/lead-client';
@@ -43,19 +44,36 @@ describe('named stages', () => {
   const labels = (answers: Answers, customize = false, hasGallery = false) =>
     flowStages(flowScreens(T, answers, { customize, hasGallery })).stages.map((s) => s.label);
 
-  it('names the package path Pool, Style, Yard, Unlock (no finish screens to name)', () => {
-    expect(labels(PACKAGE_PATH)).toEqual(['Pool', 'Style', 'Yard', 'Unlock']);
+  it('names the package path Pool, Style, Details, Unlock', () => {
+    expect(labels(PACKAGE_PATH)).toEqual(['Pool', 'Style', 'Details', 'Unlock']);
   });
 
-  it('adds Finishes and Features when they build their own', () => {
-    expect(labels(CUSTOM_PATH)).toEqual(['Pool', 'Style', 'Finishes', 'Features', 'Yard', 'Unlock']);
+  it('keeps the same four stages when they build their own (finishes and features fill Style)', () => {
+    expect(labels(CUSTOM_PATH)).toEqual(['Pool', 'Style', 'Details', 'Unlock']);
+    expect(labels(CUSTOM_PATH, true, true)).toEqual(labels(PACKAGE_PATH, false, true));
+  });
+
+  it('fills the current stage part-way, screen by screen', () => {
+    const screens = flowScreens(T, CUSTOM_PATH, { customize: false, hasGallery: true });
+    const { stageOf } = flowStages(screens);
+    const style = screens.filter((s) => stageOf[s.id] === 'style');
+    expect(style.length).toBeGreaterThan(1);
+    const parts = style.map((s) => stageFraction(screens, stageOf, s.id));
+    for (let i = 1; i < parts.length; i++) expect(parts[i]).toBeGreaterThan(parts[i - 1]!);
+    expect(parts[parts.length - 1]).toBe(1);
+    expect(stageFraction(screens, stageOf, 'nope')).toBe(0);
+  });
+
+  it('marks Unlock as the prize stage', () => {
+    const { stages } = flowStages(flowScreens(T, PACKAGE_PATH, { customize: false, hasGallery: false }));
+    expect(stages.filter((s) => s.prize).map((s) => s.id)).toEqual(['unlock']);
   });
 
   it('keeps the looks gallery inside the stage before it, and maps every screen to a stage', () => {
     const screens = flowScreens(T, PACKAGE_PATH, { customize: false, hasGallery: true });
     const { stages, stageOf } = flowStages(screens);
-    expect(stages.map((s) => s.id)).toEqual(['pool', 'style', 'yard', 'unlock']);
-    expect(stageOf.looks).toBe('yard');
+    expect(stages.map((s) => s.id)).toEqual(['pool', 'style', 'details', 'unlock']);
+    expect(stageOf.looks).toBe('details');
     expect(stageOf.zip).toBe('unlock');
     expect(stageOf.contact).toBe('unlock');
     for (const screen of screens) expect(stageOf[screen.id], screen.id).toBeDefined();
@@ -88,7 +106,9 @@ describe('unlock step copy', () => {
     const off = unlockCopy(false);
     expect(off.zipTitle).toBe('Unlock your price');
     expect(off.submit).toBe('Unlock my price');
-    expect(off.promise).toContain('ballpark price and design');
+    expect(off.promise).toContain('ballpark price');
+    // The design is already theirs: never described as something to unlock.
+    for (const copy of [off, unlockCopy(true)]) expect(copy.promise).not.toMatch(/unlock[^.]*design|and design/i);
     expect(Object.values(off).join(' ')).not.toMatch(/photo/i);
 
     const on = unlockCopy(true);
@@ -108,8 +128,14 @@ describe('unlock step copy', () => {
     const zip = flow('zip', false);
     expect(zip).toContain('Unlock your price');
     expect(zip).toContain('data-unlock-preview');
-    expect(zip).toContain('Ballpark price<span class="sr-only">, locked</span>');
+    expect(zip).toContain('Ballpark price<span class="sr-only">, unlocks when you finish</span>');
+    expect(zip).toContain('Your design<span class="sr-only">, ready</span>');
     expect(zip).toContain('Design, done');
+    // The little picture of their design is shown as it is (no blur, no padlock over it) and holds still.
+    expect(zip).not.toMatch(/data-unlock-preview[\s\S]*blur\(5px\)/);
+    expect(zip).toMatch(/data-unlock-preview[\s\S]*data-paused=""/);
+    // One progress indicator at a time: the rewards here, not the stage bar as well.
+    expect(zip).not.toContain('aria-label="Your progress"');
     const contact = flow('contact', false);
     expect(contact).toContain('One last step to unlock your price');
     expect(contact).toMatch(/<button type="submit"[^>]*>Unlock my price<\/button>/);
@@ -119,8 +145,8 @@ describe('unlock step copy', () => {
   it('adds the realistic photo to the headings, the preview and the button when renders are on', () => {
     const zip = flow('zip', true);
     expect(zip).toContain('Unlock your realistic photo and price');
-    expect(zip).toContain('Realistic photo<span class="sr-only">, locked</span>');
-    expect(zip).toContain('ready in about a minute');
+    expect(zip).toContain('Ready about a minute after you unlock');
+    expect(textOf(zip)).toContain('Realistic photo');
     const contact = flow('contact', true);
     expect(contact).toContain('One last step to unlock your photo and price');
     expect(contact).toMatch(/<button type="submit"[^>]*>Unlock my photo and price<\/button>/);
@@ -155,10 +181,35 @@ describe('no price before the result', () => {
         for (const rendersEnabled of [false, true]) {
           const html = flow(screen.id, rendersEnabled, answers);
           expect(html, `${screen.id} renders=${rendersEnabled}`).not.toContain('$');
-          expect(html).toContain('Price, locked');
+          expect(html).toMatch(/Price, locked|Unlock<\/span>/);
         }
       }
     }
+  });
+
+  it('the page up to and including the contact step never carries the estimate figures, in any form', () => {
+    // Known template and answers: the figures the server will compute are known here, so look for them
+    // (bare, with thousands separators, or as a "$" amount) in the markup the browser would get.
+    let checked = 0;
+    for (const answers of [PACKAGE_PATH, CUSTOM_PATH]) {
+      const full: Answers = { ...answers, cracks: ['no'], access: ['no'], hillside: ['no'] };
+      const { low, high, lines } = computeEstimate(T, { answers: full });
+      const figures = [low, high, ...lines.flatMap((l) => [l.low, l.high])].filter((n): n is number => typeof n === 'number' && n >= 1000);
+      checked += figures.length;
+      for (const screenId of ['zip', 'contact']) {
+        for (const rendersEnabled of [false, true]) {
+          // Strip the SVG drawing first: its path coordinates are digits that can collide by chance.
+          const html = flow(screenId, rendersEnabled, full).replace(/<svg[\s\S]*?<\/svg>/g, '');
+          expect(html).not.toMatch(/\$\s*\d/);
+          for (const n of figures) {
+            for (const form of [String(Math.round(n)), Math.round(n).toLocaleString('en-US')]) {
+              expect(html, `${screenId} renders=${rendersEnabled} has ${form}`).not.toMatch(new RegExp(`(?<![\\d.,])${form}(?![\\d])`));
+            }
+          }
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
   });
 });
 
@@ -168,9 +219,11 @@ describe('the reveal', () => {
   const resultView = (r: LeadSuccess, rendersEnabled: boolean) =>
     renderToStaticMarkup(<EstimatorFlow template={T} contractor={FIXTURE_CONTRACTOR} rendersEnabled={rendersEnabled} seed={{ answers, result: r }} />);
 
-  it('with a render token the photo starts developing at once, and the tracker shows it on its way', () => {
+  it('with a render token the photo is on its way at once, but its progress waits for the price to land', () => {
     const html = resultView({ ...result, renderToken: 'tok' }, true);
-    expect(html).toContain('data-developing=""');
+    // One moment at a time: the price counts up first; the developing chip appears PHOTO_PANEL_DELAY_MS later.
+    expect(html).not.toContain('data-developing=""');
+    expect(PHOTO_PANEL_DELAY_MS).toBeGreaterThanOrEqual(COUNT_DELAY_MS + COUNT_MS);
     expect(html).toContain('Realistic photo, in progress');
     expect(html).toContain('Price, done');
     // The booking button is still the primary action, right after the range.
@@ -182,6 +235,13 @@ describe('the reveal', () => {
     expect(html).not.toContain('data-developing');
     expect(html).not.toContain('Realistic photo, ');
     expect(html).toContain('Price, done');
+  });
+
+  it('keeps the moment on the total: the breakdown is collapsed, with each line rounded to $100', () => {
+    const html = resultView(result, false);
+    expect(html).toMatch(/<details[^>]*>\s*<summary[^>]*>See what’s included \(\d+ items?\)/);
+    expect(roundLine(16_030, 21_755)).toEqual([16_000, 21_800]);
+    expect(roundLine(1_200, 1_200)).toEqual([1_200, 1_200]);
   });
 
   it('counts the price up in $500 steps from below, ending exactly on the server figures', () => {

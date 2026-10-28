@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { Estimator } from '@/components/estimator/estimator';
+import { HERO_IMAGES } from '@/components/estimator/scene/hero-images';
 import { EstimatorFooter } from '@/components/estimator/shell/estimator-footer';
 import { EstimatorHeader } from '@/components/estimator/shell/estimator-header';
 import { EstimatorHero } from '@/components/estimator/shell/estimator-hero';
@@ -34,7 +35,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     alternates: { canonical: `/estimator/${contractor.slug}` },
     // Example prices must not be indexed; the page opens up once the contractor confirms its prices.
     robots: template.pricesConfirmed ? { index: true, follow: true } : { index: false, follow: false },
-    openGraph: { type: 'website', title, description },
+    // Shared links preview as the contractor's builder, not the site-wide HomeQuote defaults.
+    openGraph: {
+      type: 'website',
+      title,
+      description,
+      ...(template.trade === 'pool' ? { images: [{ url: HERO_IMAGES.photo, width: 1200, height: 800, alt: 'A pool design from this builder as a realistic photo' }] } : {}),
+    },
+    twitter: { card: 'summary_large_image', title, description, ...(template.trade === 'pool' ? { images: [HERO_IMAGES.photo] } : {}) },
   };
 }
 

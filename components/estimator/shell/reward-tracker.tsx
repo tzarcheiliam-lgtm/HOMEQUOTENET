@@ -24,10 +24,13 @@ export function rewardText(step: RewardStep): string {
   return `${step.label}, ${state === 'done' ? 'done' : state === 'locked' ? 'locked' : 'in progress'}`;
 }
 
-/** Labels of steps that are done now but were not before (for the "unlocked" announcement). */
-export function newlyDone(previous: readonly RewardStep[], next: readonly RewardStep[]): string[] {
+/**
+ * Labels of steps that are done now but were not before (for the "unlocked"
+ * announcement), leaving out `quiet` ids that something else announces.
+ */
+export function newlyDone(previous: readonly RewardStep[], next: readonly RewardStep[], quiet: readonly string[] = []): string[] {
   const before = new Set(previous.filter((s) => s.done).map((s) => s.id));
-  return next.filter((s) => s.done && !before.has(s.id)).map((s) => s.label);
+  return next.filter((s) => s.done && !before.has(s.id) && !quiet.includes(s.id)).map((s) => s.label);
 }
 
 const CSS = `
@@ -42,17 +45,28 @@ const CSS = `
  * parent decides done/locked. When a step turns done its tick pops in and a
  * polite live region says "<label> unlocked" (not on first render).
  */
-export function RewardTracker({ steps, className, label = 'What you get' }: { steps: readonly RewardStep[]; className?: string; label?: string }) {
+export function RewardTracker({
+  steps,
+  className,
+  label = 'What you get',
+  quiet,
+}: {
+  steps: readonly RewardStep[];
+  className?: string;
+  label?: string;
+  /** Step ids whose unlocking is announced elsewhere (one announcement per event). */
+  quiet?: readonly string[];
+}) {
   const previous = useRef<readonly RewardStep[] | null>(null);
   const [announcement, setAnnouncement] = useState('');
 
   useEffect(() => {
     if (previous.current) {
-      const earned = newlyDone(previous.current, steps);
+      const earned = newlyDone(previous.current, steps, quiet);
       if (earned.length) setAnnouncement(`${earned.join(' and ')} unlocked`);
     }
     previous.current = steps;
-  }, [steps]);
+  }, [steps, quiet]);
 
   return (
     <div className={cn('min-w-0', className)}>

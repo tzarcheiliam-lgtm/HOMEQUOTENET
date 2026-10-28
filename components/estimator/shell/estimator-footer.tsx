@@ -8,9 +8,9 @@ const link =
 
 /**
  * Quiet footer for the branded estimator page: who the contractor is, the
- * Privacy and Terms the contact step's consent refers to, and a small
- * "Powered by Rendoly" (the estimator product's name; no link until
- * rendoly.com has a site).
+ * Privacy and Terms the contact step's consent refers to, and a quiet
+ * plain-text "Powered by Rendoly" (the estimator product's name; no logo on
+ * the contractor's page, no link until rendoly.com has a site).
  */
 export function EstimatorFooter({ contractor }: { contractor: FooterContractor }) {
   return (
@@ -31,14 +31,8 @@ export function EstimatorFooter({ contractor }: { contractor: FooterContractor }
               Terms
             </Link>
           </nav>
-          <p className="inline-flex items-center gap-2 text-xs">
-            Powered by
-            <span className="inline-flex items-center gap-1.5 font-semibold text-[var(--hq-text-muted)]">
-              {/* eslint-disable-next-line @next/next/no-img-element -- a 16 px SVG mark; nothing to optimize */}
-              <img src="/brand/rendoly/rendoly-mark.svg" alt="" width={16} height={16} className="size-4 rounded-[4px]" />
-              Rendoly
-            </span>
-          </p>
+          {/* Plain small text, no logo: the page is the contractor's, and the consent line already names a second company. */}
+          <p className="text-xs">Powered by Rendoly</p>
         </div>
       </div>
     </footer>

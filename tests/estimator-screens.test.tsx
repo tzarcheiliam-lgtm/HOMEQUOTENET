@@ -273,9 +273,9 @@ describe('estimator rendering', () => {
     expect(html).toMatch(/role="group" aria-label="Your progress"/);
     expect(html).toContain('Pool, stage 1 of');
     expect(html).toMatch(/aria-current="step"/);
-    expect(html).toContain('aria-label="What you get"');
-    expect(html).toContain('Design, in progress');
-    expect(html).toContain('Price, locked');
+    // One indicator while designing: the stage bar, whose last stage (Unlock) carries the prize.
+    expect(html).not.toContain('aria-label="What you get"');
+    expect(html).toMatch(/Unlock<\/span>/);
     expect(html).toMatch(/<fieldset/);
     expect(html).toMatch(/<legend/);
     expect(html).toMatch(/type="radio"/);
@@ -307,7 +307,8 @@ describe('estimator rendering', () => {
           />,
         );
         expect(html, `screen ${screen.id}`).not.toContain('$');
-        expect(html).toContain('Price, locked');
+        // Designing: the stage bar ends at Unlock; on the unlock screens the tracker says the price is locked.
+        expect(html).toMatch(/Price, locked|Unlock<\/span>/);
       }
     }
   });
@@ -473,7 +474,7 @@ describe('estimator result', () => {
     const html = renderToStaticMarkup(
       <EstimatorFlow template={TEMPLATE} contractor={contractor()} seed={{ answers, result, state: { contact: { ...initialFlowState().contact, firstName: 'Ana' } } }} />,
     );
-    expect(html).toContain('Ana, here’s your pool');
+    expect(html).toMatch(/Ana, here’s your (?:[\w-]+ )?pool/);
     expect(html).toContain('Your ballpark price');
     // Nothing is being made without a render token: no progress anywhere on the result.
     expect(html).not.toContain('role="progressbar"');

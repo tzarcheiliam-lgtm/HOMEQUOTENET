@@ -6,7 +6,8 @@ import { estimatorConsentText, submitEstimatorLead, type EstimatorLeadRequest } 
 import type { Answers, ContractorEstimatorConfig, EstimatorQuestion, EstimatorTemplate } from '@/lib/estimator/types';
 import { cn } from '@/lib/utils';
 import { designSummary, isVisualQuestion, optionLabeler, optionPhrase, previewAnswers, scrollDelta } from './builder';
-import { flowStages, rewardSteps, unlockCopy, type FlowPhase, type PhotoProgress } from './builder-progress';
+import { Loader2 } from 'lucide-react';
+import { flowStages, rewardSteps, stageFraction, unlockCopy, type FlowPhase, type PhotoProgress } from './builder-progress';
 import { BuilderStyles } from './motion';
 import { ScenePanel } from './scene/scene-panel';
 import { DesignList, ResultScene } from './screens/design-result';
@@ -65,8 +66,48 @@ function readTracking(measurement: boolean): EstimatorLeadRequest['tracking'] {
   }
 }
 
+/**
+ * Scroll the builder's top (the picture, with the result card under it) to
+ * just under the site header and resolve when the scroll has finished, or at
+ * once when it is already there or motion is reduced. Never waits long.
+ */
+function scrollToReveal(section: HTMLElement | null): Promise<void> {
+  if (!section || typeof window === 'undefined') return Promise.resolve();
+  const margin = parseFloat(getComputedStyle(section).scrollMarginTop) || 0;
+  const delta = section.getBoundingClientRect().top - margin;
+  if (Math.abs(delta) < 4) return Promise.resolve();
+  const smooth = !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      window.removeEventListener('scrollend', finish);
+      clearTimeout(timer);
+      resolve();
+    };
+    // scrollend where supported; a time cap everywhere else (a smooth scroll this long takes about half a second).
+    const timer = setTimeout(finish, smooth ? 650 : 0);
+    if (smooth) window.addEventListener('scrollend', finish, { once: true });
+    section.scrollIntoView({ block: 'start', behavior: smooth ? 'smooth' : 'auto' });
+  });
+}
+
 /** Questions whose choices are about the pool's edge and finish: the camera moves in close for them. */
 const CLOSE_UP_IDS = new Set(['surface', 'tile', 'coping']);
+
+/** The photo's arrival is announced by the picture's own status line; the tracker stays quiet about it. */
+const QUIET_REWARDS: readonly string[] = ['photo'];
+
+const SHAPE_WORD: Record<string, string> = { Rectangle: 'rectangular', 'L-shape': 'L-shaped', Freeform: 'freeform' };
+
+/** "Sam, here’s your freeform pool": names the outcome (their shape, from the design list) when it can. */
+export function resultHeading(firstName: string, items: readonly { label: string; value: string }[]): string {
+  const shape = SHAPE_WORD[items.find((i) => i.label === 'Pool')?.value.split(',')[0]?.trim() ?? ''];
+  const pool = shape ? `${shape} pool` : 'pool';
+  const name = firstName.trim();
+  return name ? `${name}, here’s your ${pool}` : `Here’s your ${pool}`;
+}
 
 /** Hover-intent delays: a quick sweep across tiles does not flicker the picture. */
 const PREVIEW_IN_MS = 70;
@@ -160,8 +201,12 @@ export function EstimatorFlow({
     heading.focus({ preventScroll: true });
     const smooth = !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     if (result) {
-      // The reveal: bring the finished design into view (scroll-margin clears the site header).
-      sectionRef.current?.scrollIntoView({ block: 'start', behavior: smooth ? 'smooth' : 'auto' });
+      // The reveal: submit() already scrolled here before showing the result; this only covers a result
+      // that appears some other way. Never a second smooth scroll (scroll-margin clears the site header).
+      const section = sectionRef.current;
+      if (section && Math.abs(section.getBoundingClientRect().top - (parseFloat(getComputedStyle(section).scrollMarginTop) || 0)) > 4) {
+        section.scrollIntoView({ block: 'start', behavior: 'auto' });
+      }
       return;
     }
     const form = formRef.current;
@@ -245,6 +290,9 @@ export function EstimatorFlow({
     setSubmitting(true);
     setErrors({});
     const res = await submitEstimatorLead(contractor.slug, buildLeadRequest(template, state, readTracking(state.measurement), estimatorConsentText(contractor.contractorName)));
+    // The live builder scrolls once, to where the reveal happens, BEFORE swapping the form for the result:
+    // the price then counts up in a page that is standing still, and nothing on screen jumps.
+    if (res.ok && builder) await scrollToReveal(sectionRef.current);
     submittingRef.current = false;
     setSubmitting(false);
     if (res.ok) {
@@ -312,6 +360,7 @@ export function EstimatorFlow({
   const percent = Math.min(100, progress.current.percent);
   // Live builder: named stages and the rewards being earned.
   const { stages, stageOf } = useMemo(() => flowStages(screens), [screens]);
+  const stagePart = stageFraction(screens, stageOf, current.id);
   const flowPhase: FlowPhase = result ? 'result' : current.kind === 'zip' || current.kind === 'contact' ? 'unlock' : 'design';
   const rewards = useMemo(() => rewardSteps(flowPhase, rendersEnabled, photo), [flowPhase, rendersEnabled, photo]);
   const examplePrices = !template.pricesConfirmed ? (
@@ -359,6 +408,9 @@ export function EstimatorFlow({
       className={cn(
         'hq text-[var(--hq-text)]',
         builder && !embedded && 'scroll-mt-20 sm:scroll-mt-24',
+        // The builder places the page itself (one scroll before the reveal); the browser's scroll anchoring
+        // would otherwise nudge it again when the form is swapped for the result.
+        builder && '[overflow-anchor:none]',
         embedded ? 'px-3 py-4 sm:px-5' : builder ? 'py-2 sm:py-4' : 'px-4 py-8 sm:py-12',
         showSummary && !embedded && 'pb-40 lg:pb-12',
       )}
@@ -399,17 +451,20 @@ export function EstimatorFlow({
                 onNightChange={setNight}
                 focus={focus}
                 stepKey={current.id}
+                examplePhoto={rendersEnabled}
               />
             )}
           </div>
         ) : null}
 
-        <div className={cn('min-w-0', builder && !result && 'pt-5 lg:pt-0')}>
+        {/* Re-keyed for the result: a new screen, not the form sliding down under a taller picture. */}
+        <div key={result ? 'result' : 'flow'} className={cn('min-w-0', builder && !result && 'pt-5 lg:pt-0')}>
           {builder ? (
-            unlocking || (!result && examplePrices) ? (
-              // Stays mounted from the first screen to the result, so Price (and the photo) tick over there.
+            (unlocking && flowPhase !== 'design') || (!result && examplePrices) ? (
+              // One progress indicator at a time: the stage bar while designing, then the rewards (Design done,
+              // Price and the photo to unlock) from the unlock screens to the result, where Price ticks over.
               <div ref={progressRef} className="mb-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-                {unlocking ? <RewardTracker steps={rewards} label="What you get" /> : null}
+                {unlocking && flowPhase !== 'design' ? <RewardTracker steps={rewards} label="What you get" quiet={QUIET_REWARDS} /> : null}
                 {result ? null : examplePrices}
               </div>
             ) : null
@@ -442,9 +497,10 @@ export function EstimatorFlow({
           {result ? (
             <div className={cn(card, builder && 'eb-rise')}>
               <h2 ref={headingRef} tabIndex={-1} className="mb-4 text-2xl font-semibold tracking-tight text-balance focus:outline-none">
-                {builder ? (state.contact.firstName.trim() ? `${state.contact.firstName.trim()}, here’s your pool` : 'Here’s your pool') : 'Your ballpark estimate'}
+                {builder ? resultHeading(state.contact.firstName, designItems) : 'Your ballpark estimate'}
               </h2>
-              {!template.pricesConfirmed ? (
+              {/* The builder says "Example prices" once, right under the figure (ResultScreen). */}
+              {!template.pricesConfirmed && !builder ? (
                 <p className="mb-4 inline-block rounded-full border border-[var(--hq-line-strong)] px-2.5 py-0.5 text-xs text-[var(--hq-text-muted)]">
                   Example prices
                 </p>
@@ -476,7 +532,9 @@ export function EstimatorFlow({
               // Focused fields scroll clear of the site header (and the pinned picture is off on these screens).
               className={cn(card, '@container overflow-hidden focus:outline-none [&_input]:scroll-mt-28 [&_textarea]:scroll-mt-28 [&_select]:scroll-mt-28')}
             >
-              {builder ? <StageStepper stages={stages} current={stageOf[current.id]} label="Your progress" className="mb-5" /> : null}
+              {builder && !(unlocking && flowPhase === 'unlock') ? (
+                <StageStepper stages={stages} current={stageOf[current.id]} fraction={stagePart} label="Your progress" className="mb-5" />
+              ) : null}
               <div key={current.id} className={builder ? slide.current.className : undefined}>
                 <h2 ref={headingRef} tabIndex={-1} className="mb-5 text-2xl font-semibold tracking-tight text-balance focus:outline-none">
                   {heading}
@@ -556,13 +614,24 @@ export function EstimatorFlow({
 
               <div className="mt-6 flex items-center justify-between gap-3">
                 {backId ? (
-                  <button type="button" onClick={() => goTo(backId)} className={secondaryButton}>
+                  <button type="button" onClick={() => goTo(backId)} className={cn(secondaryButton, 'shrink-0 max-sm:px-4')}>
                     Back
                   </button>
                 ) : (
                   <span />
                 )}
-                <button type="submit" disabled={!screenComplete(current, state) || submitting} className={primaryButton}>
+                <button
+                  type="submit"
+                  disabled={!screenComplete(current, state) || submitting}
+                  aria-busy={submitting || undefined}
+                  className={cn(
+                    primaryButton,
+                    'min-w-0 whitespace-nowrap max-sm:px-5',
+                    // Sending keeps the brand color (not the grey "not ready yet" look) and shows it is working.
+                    submitting && 'gap-2 disabled:cursor-wait disabled:bg-[var(--hq-cta)] disabled:text-[var(--hq-cta-ink)] disabled:hover:bg-[var(--hq-cta)]',
+                  )}
+                >
+                  {submitting ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : null}
                   {nextLabel}
                 </button>
               </div>

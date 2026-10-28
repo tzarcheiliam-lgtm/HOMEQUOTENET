@@ -32,6 +32,8 @@ export type PoolSceneProps = {
   intro?: boolean;
   /** What a committed pick just changed (sceneHighlights); re-key to replay. Off in the result and the PNG. */
   highlight?: { key: number; items: readonly SceneHighlight[] } | null;
+  /** A small still copy (e.g. the unlock preview): water and fire never move, so it costs nothing to keep on screen. */
+  still?: boolean;
   className?: string;
 };
 
@@ -78,10 +80,10 @@ const TYPING = 'input:not([type=radio]):not([type=checkbox]):not([type=range]),t
  * animations repaint the whole SVG, which costs battery and typing smoothness
  * on phones, where the picture is pinned on screen.
  */
-function usePausedWhenIdle(ref: RefObject<SVGSVGElement | null>) {
+function usePausedWhenIdle(ref: RefObject<SVGSVGElement | null>, enabled = true) {
   useEffect(() => {
     const el = ref.current;
-    if (!el) return;
+    if (!el || !enabled) return;
     let offscreen = false;
     const update = () => {
       const typing = document.activeElement instanceof Element && document.activeElement.matches(TYPING);
@@ -107,7 +109,7 @@ function usePausedWhenIdle(ref: RefObject<SVGSVGElement | null>) {
       document.removeEventListener('focusin', update);
       document.removeEventListener('focusout', update);
     };
-  }, [ref]);
+  }, [ref, enabled]);
 }
 
 /**
@@ -120,10 +122,10 @@ function usePausedWhenIdle(ref: RefObject<SVGSVGElement | null>) {
  * Optional moments: the first-look build-up (`intro`) and the short highlight
  * on whatever a pick changed (`highlight`).
  */
-export function PoolScene({ scene, night = false, label, focus = 'yard', intro = false, highlight, className }: PoolSceneProps) {
+export function PoolScene({ scene, night = false, label, focus = 'yard', intro = false, highlight, still = false, className }: PoolSceneProps) {
   const uid = `ps${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
   const ref = useRef<SVGSVGElement>(null);
-  usePausedWhenIdle(ref);
+  usePausedWhenIdle(ref, !still);
   const specKey = JSON.stringify(scene);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the spec's content, not its identity
   const layout = useMemo(() => layoutScene(scene), [specKey]);
@@ -142,6 +144,7 @@ export function PoolScene({ scene, night = false, label, focus = 'yard', intro =
       viewBox={`0 0 ${SCENE.width} ${SCENE.height}`}
       role="img"
       aria-label={label}
+      data-paused={still ? '' : undefined}
       className={['ps-root', intro ? 'ps-intro' : '', className ?? ''].filter(Boolean).join(' ')}
       xmlns="http://www.w3.org/2000/svg"
     >
