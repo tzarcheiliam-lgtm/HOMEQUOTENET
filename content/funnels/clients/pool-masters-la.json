@@ -4,8 +4,8 @@
   "clientLogo": "/images/brand/poolmasters-logo.png",
   "industry": "Pool construction & remodeling",
   "serviceArea": {
-    "label": "Los Angeles & Ventura County",
-    "zipPrefixes": ["900", "901", "902", "903", "904", "905", "906", "907", "908", "910", "911", "912", "913", "914", "915", "916", "917", "918", "930", "935"],
+    "label": "Los Angeles, Orange, Ventura, Riverside & San Bernardino counties",
+    "zipPrefixes": ["900", "901", "902", "903", "904", "905", "906", "907", "908", "910", "911", "912", "913", "914", "915", "916", "917", "918", "922", "923", "924", "925", "926", "927", "928", "930", "935"],
     "strictStates": ["CA"]
   },
   "questions": [

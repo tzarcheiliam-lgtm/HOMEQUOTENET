@@ -50,6 +50,8 @@ export async function updateSession(request: NextRequest) {
   // Avoid an unrelated Supabase Auth round trip on every quiz step and asset load.
   const publicPath = request.nextUrl.pathname;
   if (publicPath.startsWith('/estimate/') || publicPath.startsWith('/api/funnels/') || publicPath.startsWith('/api/stripe/')) return supabaseResponse;
+  // Instant estimator pages, the iframe embed and its lead route are anonymous and need no Auth refresh.
+  if (publicPath.startsWith('/estimator/') || publicPath.startsWith('/embed/estimator/') || publicPath.startsWith('/api/estimator/')) return supabaseResponse;
   // Public e-signing: signers have no HQN session; the token (never a cookie) is the credential.
   // Calendar subscribe feeds are fetched by Apple/Google Calendar with no session; the unguessable token is the credential.
   if (publicPath.startsWith('/api/calendar/feed/')) return supabaseResponse;
