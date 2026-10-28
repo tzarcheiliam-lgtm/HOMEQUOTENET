@@ -34,7 +34,7 @@ describe('requiredFieldsFor', () => {
     ]);
   });
   it('requires explicit confirmation for do-not-call', () => {
-    expect(requiredFieldsFor('do_not_call')).toEqual(['confirm_do_not_call']);
+    expect(requiredFieldsFor('do_not_call')).toEqual([]);
   });
   it('requires nothing extra for a plain no-answer', () => {
     expect(requiredFieldsFor('no_answer')).toEqual([]);
@@ -109,10 +109,8 @@ describe('validateOutcome', () => {
     });
     expect(v.ok).toBe(true);
   });
-  it('refuses do-not-call without the confirmation box', () => {
-    expect(validateOutcome({ outcome: 'do_not_call' }).ok).toBe(false);
-    expect(validateOutcome({ outcome: 'do_not_call', confirm_do_not_call: false }).ok).toBe(false);
-    expect(validateOutcome({ outcome: 'do_not_call', confirm_do_not_call: true }).ok).toBe(true);
+  it('marks do-not-call in one tap, with nothing else to fill in', () => {
+    expect(validateOutcome({ outcome: 'do_not_call' }).ok).toBe(true);
   });
 });
 

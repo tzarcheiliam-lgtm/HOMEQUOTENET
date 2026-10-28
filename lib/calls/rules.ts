@@ -20,8 +20,6 @@ export interface OutcomeInput {
   contact_info?: string | null;
   /** The best email for the follow-up, asked for on the call. Optional. */
   decision_maker_email?: string | null;
-  /** Explicit confirmation is required to mark a prospect do-not-call. */
-  confirm_do_not_call?: boolean;
 }
 
 export type OutcomeField =
@@ -34,8 +32,7 @@ export type OutcomeField =
   | 'appointment_type'
   | 'time_zone'
   | 'contact_info'
-  | 'decision_maker_email'
-  | 'confirm_do_not_call';
+  | 'decision_maker_email';
 
 /** Outcomes that come with a follow-up email, so the form asks for the best address. */
 export const EMAIL_CAPTURE_OUTCOMES: ProspectDisposition[] = [
@@ -65,8 +62,6 @@ export function requiredFieldsFor(outcome: ProspectDisposition): OutcomeField[] 
         'decision_maker_name',
         'contact_info',
       ];
-    case 'do_not_call':
-      return ['confirm_do_not_call'];
     default:
       return [];
   }
@@ -98,7 +93,6 @@ const FIELD_LABELS: Record<OutcomeField, string> = {
   time_zone: 'Time zone',
   contact_info: 'Confirmation phone or email',
   decision_maker_email: 'Best email',
-  confirm_do_not_call: 'Do-not-call confirmation',
 };
 
 export function outcomeFieldLabel(f: OutcomeField): string {
@@ -138,10 +132,7 @@ export function validateOutcome(input: OutcomeInput): OutcomeValidation {
   for (const field of requiredFieldsFor(outcome)) {
     const value = (input as unknown as Record<string, unknown>)[field];
     if (!present(value)) {
-      errors[field] =
-        field === 'confirm_do_not_call'
-          ? 'Confirm that this contractor asked not to be called again'
-          : `${FIELD_LABELS[field]} is required`;
+      errors[field] = `${FIELD_LABELS[field]} is required`;
     }
   }
 

@@ -73,6 +73,8 @@ export const QUICK_OUTCOMES: ProspectDisposition[] = [
   'spoke_with_dm',
   'not_interested',
   'wrong_number',
+  // One tap: blocks the number everywhere and moves on. Deliberately has no keyboard key.
+  'do_not_call',
 ];
 
 /** Short labels for the quick buttons. */
@@ -83,6 +85,7 @@ export const QUICK_LABELS: Partial<Record<ProspectDisposition, string>> = {
   spoke_with_dm: 'Spoke w/ DM',
   not_interested: 'Not interested',
   wrong_number: 'Wrong #',
+  do_not_call: 'Do not call',
 };
 
 /** Keyboard shortcuts in the calling workspace: digit → outcome. */
