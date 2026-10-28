@@ -1,7 +1,10 @@
 import Link from 'next/link';
 import { CalendarCheck } from 'lucide-react';
 import { requireCallWorkspace } from '@/lib/auth';
-import { listPartners, listSalesAppointments } from '@/lib/data/prospects';
+import { listCalendarAdds, listPartners, listSalesAppointments } from '@/lib/data/prospects';
+import { siteUrl } from '@/lib/calendar/config';
+import { googleCalendarUrl, googleDayUrl, salesMeetingEvent } from '@/lib/calls/calendar-links';
+import { AddToCalendar, type AddToCalendarProps } from '@/components/calls/add-to-calendar';
 import { SALES_APPOINTMENT_STATUSES } from '@/lib/calls/constants';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { MobileCard } from '@/components/mobile/mobile-card';
@@ -58,6 +61,37 @@ export default async function SalesAppointmentsPage({
     upcoming: when === 'upcoming',
     needsDecision,
   });
+  const adds = await listCalendarAdds(rows.map((r) => r.id));
+  const site = siteUrl();
+  const nowMs = Date.now();
+  const calendarOf = (a: (typeof rows)[number]): AddToCalendarProps => {
+    const added = adds.get(a.id) ?? { google: null, apple: null };
+    const event = salesMeetingEvent(
+      {
+        id: a.id,
+        prospectId: a.prospect_id,
+        companyName: a.company_name,
+        decisionMakerName: a.decision_maker_name,
+        phone: a.phone,
+        scheduledAt: a.scheduled_at,
+        timeZone: a.time_zone,
+        appointmentType: a.appointment_type,
+        contactInfo: a.contact_info,
+        notes: a.notes,
+      },
+      site
+    );
+    return {
+      id: a.id,
+      scheduledAt: a.scheduled_at,
+      cancelled: a.status === 'cancelled',
+      past: event.endMs < nowMs,
+      googleAddUrl: googleCalendarUrl(event, a.time_zone),
+      googleAddedDayUrl: added.google ? googleDayUrl(added.google, a.time_zone) : null,
+      icsUrl: `/api/calls/appointments/${a.id}/ics`,
+      added,
+    };
+  };
   const payOf = (a: (typeof rows)[number]) =>
     a.setter_pay_amount === null || a.setter_pay_amount === undefined ? null : Number(a.setter_pay_amount);
 
@@ -185,6 +219,7 @@ export default async function SalesAppointmentsPage({
                     ) : null}
                     <AppointmentStatusControl id={a.id} status={a.status} />
                   </div>
+                  <AddToCalendar {...calendarOf(a)} />
                   {isAdmin ? (
                     <div className="space-y-2 border-t pt-3">
                       <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Sale</p>
@@ -228,6 +263,9 @@ export default async function SalesAppointmentsPage({
                     <TableCell className="whitespace-nowrap tabular-nums">
                       {fmtDateTime(a.scheduled_at, a.time_zone)}
                       <span className="block text-xs text-muted-foreground">{a.time_zone}</span>
+                      <div className="mt-1.5 [&>div]:flex-col [&>div]:items-start [&_a]:h-7 [&_a]:px-2 [&_a]:text-xs">
+                        <AddToCalendar {...calendarOf(a)} />
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Link href={`/app/calls/${a.prospect_id}`} className="font-medium hover:underline">
