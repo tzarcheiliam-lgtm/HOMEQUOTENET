@@ -53,12 +53,16 @@ and the minimum job/rounding are stripped, so the range cannot be read from the 
 | `lib/estimator/lead-client.ts` | Browser side of lead capture: request/response types, `submitEstimatorLead`, `LEAD_TIMELINES`. |
 | `lib/estimator/lead.ts`, `app/api/estimator/[slug]/lead/route.ts` | Server side of lead capture. |
 | `components/estimator/*` | `Estimator` (entry), flow hook, screens, summary, `pool-shapes.tsx`, `swatches.tsx`. |
-| `app/(marketing)/estimator/[slug]/page.tsx` | Public page. |
+| `app/(estimator)/estimator/[slug]/page.tsx`, `app/(estimator)/layout.tsx` | Public, contractor-branded page (header, words-only hero, builder, footer); reads `rendersEnabled()` server-side. |
+| `components/estimator/shell/*` | Branded header/footer, hero copy (`heroCopy`), stage bar, reward tracker, contractor facts. |
+| `components/estimator/builder-progress.ts` | Stages (Pool, Style, Details, Unlock), rewards, unlock copy (photo only when `rendersEnabled`). |
+| `components/estimator/scene/example-compare.tsx`, `scene/hero-images.ts` | Renders on: the example design beside its real render in the builder frame before the first answer. |
+| `components/estimator/screens/unlock-preview.tsx`, `screens/reveal-styles.tsx` | Unlock step preview (no prices, placeholder bars) and the reveal timing/motion. |
 | `app/(estimator-embed)/` | Embed layout + `embed/estimator/[slug]/page.tsx`. |
 | `scripts/estimator-price-sheet.mjs` | Price sheet CSV for the contractor to fill in. |
 | `lib/estimator/scene/*` | Live builder: `types.ts` (SceneSpec contract), `scene.ts` (`buildScene`), `geometry.ts` (`layoutScene`, `sceneCamera`), `textures.ts` (asset manifest), `rasterize.ts` (scene to PNG). |
 | `components/estimator/scene/*`, `builder.ts`, `motion.tsx` | `PoolScene` renderer (yard, water, sprites, night), `ScenePanel`, chips/preview/summary helpers, builder motion. |
-| `components/estimator/screens/design-result.tsx` | Finished design on the result: save as PNG, photoreal render with before/after. |
+| `components/estimator/screens/design-result.tsx` | Finished design on the result: save as PNG, share, the automatic realistic photo (starts only when `rendersEnabled` and the lead response has a render token; its progress appears after the price lands) with before/after. |
 | `lib/estimator/render.ts`, `lib/estimator/render-client.ts`, `app/api/estimator/[slug]/render/**` | Photoreal render: tokens, limits, kie.ai calls; browser side. |
 | `scripts/generate-scene-textures.mjs`, `scripts/scene-assets.py` | One-off generation of the scene textures/sprites (kie.ai + seamless/cut-out post-processing). |
 | `tests/estimator-*.test.ts(x)` | Engine, geometry, template, config, screens and page/registry tests. |
@@ -153,7 +157,7 @@ and backyard sits beside the questions (pinned above them on phones) and redraws
   hidden tab, while a text field has focus, and under reduced motion; touch screens run one caustic layer.
 - **Photoreal render (optional).** On only when `KIE_API_KEY` is set. A saved lead's response carries `renderToken`
   (HMAC over slug, lead id and expiry; key derived from `ESTIMATOR_RENDER_SECRET`, falling back to the service-role key;
-  valid 2 hours). The result invites "See your backyard for real": the browser rasterizes the day scene and posts it;
+  valid 2 hours). On the result the photo starts by itself (only with `rendersEnabled`; a retry button only after a retryable failure): the browser rasterizes the day scene and posts it;
   the server uploads it to kie.ai (`https://kieai.redpandaai.co/api/file-stream-upload`) and starts an image-edit task
   (`nano-banana-pro`, or `nano-banana-2` via `ESTIMATOR_RENDER_MODEL`) that keeps the layout; the browser polls with the
   token in the `x-render-token` header and shows a before/after slider.

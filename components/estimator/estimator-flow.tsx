@@ -93,6 +93,21 @@ function scrollToReveal(section: HTMLElement | null): Promise<void> {
   });
 }
 
+/**
+ * Switch the browser's scroll anchoring off for the whole page for a moment:
+ * when the form is swapped for the (taller) result, anchoring would keep
+ * whatever it picked (often the footer) in place and nudge the page down
+ * for a frame. Restored shortly after.
+ */
+function holdScrollAnchoring() {
+  const root = document.documentElement;
+  const before = root.style.overflowAnchor;
+  root.style.overflowAnchor = 'none';
+  setTimeout(() => {
+    root.style.overflowAnchor = before;
+  }, 1500);
+}
+
 /** Questions whose choices are about the pool's edge and finish: the camera moves in close for them. */
 const CLOSE_UP_IDS = new Set(['surface', 'tile', 'coping']);
 
@@ -292,7 +307,10 @@ export function EstimatorFlow({
     const res = await submitEstimatorLead(contractor.slug, buildLeadRequest(template, state, readTracking(state.measurement), estimatorConsentText(contractor.contractorName)));
     // The live builder scrolls once, to where the reveal happens, BEFORE swapping the form for the result:
     // the price then counts up in a page that is standing still, and nothing on screen jumps.
-    if (res.ok && builder) await scrollToReveal(sectionRef.current);
+    if (res.ok && builder) {
+      await scrollToReveal(sectionRef.current);
+      holdScrollAnchoring();
+    }
     submittingRef.current = false;
     setSubmitting(false);
     if (res.ok) {
