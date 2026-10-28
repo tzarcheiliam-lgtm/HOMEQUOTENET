@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { CalendarCheck } from 'lucide-react';
+import { CalendarCheck, CalendarDays, List } from 'lucide-react';
 import { requireCallWorkspace } from '@/lib/auth';
 import { listCalendarAdds, listPartners, listSalesAppointments } from '@/lib/data/prospects';
 import { siteUrl } from '@/lib/calendar/config';
@@ -27,6 +27,9 @@ import { SalesAppointmentBadge } from '@/components/calls/disposition-badge';
 import { AppointmentStatusControl } from '@/components/calls/appointment-status-control';
 import { fmtDateTime, fmtPhone, telHref } from '@/components/calls/format';
 import { CreditControl, SaleBadge, SaleOutcomeControl } from '@/components/calls/sale-outcome-control';
+import { AppointmentsCalendar, type CalendarItem } from '@/components/calls/appointments-calendar';
+import { gridRange, monthFrom, monthGrid, shiftMonth } from '@/lib/calls/calendar-grid';
+import { dayKey } from '@/lib/calls/goals';
 import type { SalesAppointmentStatus } from '@/lib/types';
 
 export const metadata = { title: 'Sales appointments · HomeQuote Network' };
@@ -51,16 +54,27 @@ export default async function SalesAppointmentsPage({
   const partner = isAdmin ? first(sp.partner) : undefined;
   const status = first(sp.status) as SalesAppointmentStatus | undefined;
   const when = first(sp.when) ?? 'upcoming';
+  const calendar = first(sp.view) === 'calendar';
+  const month = monthFrom(first(sp.month));
+  const grid = calendar ? monthGrid(month) : [];
+  /** This page's URL with the current filters, changed as given (undefined drops a key). */
+  const hrefWith = (changes: Record<string, string | undefined>) => {
+    const q = new URLSearchParams();
+    const base: Record<string, string | undefined> = { partner, status, when: calendar ? undefined : first(sp.when), view: calendar ? 'calendar' : undefined, month: first(sp.month) };
+    for (const [k, v] of Object.entries({ ...base, ...changes })) if (v) q.set(k, v);
+    const qs = q.toString();
+    return `/app/calls/appointments${qs ? `?${qs}` : ''}`;
+  };
 
   const partners = await listPartners();
   const rateOf = new Map(partners.map((p) => [p.id, p.payPerSale]));
   const needsDecision = isAdmin && when === 'decide';
-  const rows = await listSalesAppointments(partners, {
-    partner,
-    status,
-    upcoming: when === 'upcoming',
-    needsDecision,
-  });
+  const rows = await listSalesAppointments(
+    partners,
+    calendar
+      ? { partner, status, ...gridRange(grid) }
+      : { partner, status, upcoming: when === 'upcoming', needsDecision }
+  );
   const adds = await listCalendarAdds(rows.map((r) => r.id));
   const site = siteUrl();
   const nowMs = Date.now();
@@ -92,6 +106,24 @@ export default async function SalesAppointmentsPage({
       added,
     };
   };
+  const calendarItems: CalendarItem[] = calendar
+    ? rows.map((a) => ({
+        id: a.id,
+        scheduled_at: a.scheduled_at,
+        timeZone: a.time_zone,
+        status: a.status,
+        company: a.company_name,
+        prospectHref: `/app/calls/${a.prospect_id}`,
+        decisionMaker: a.decision_maker_name,
+        type: a.appointment_type,
+        phone: a.phone,
+        tel: telHref(a.phone),
+        contactInfo: a.contact_info,
+        notes: a.notes,
+        partnerName: a.partner_name,
+        calendar: calendarOf(a),
+      }))
+    : [];
   const payOf = (a: (typeof rows)[number]) =>
     a.setter_pay_amount === null || a.setter_pay_amount === undefined ? null : Number(a.setter_pay_amount);
 
@@ -105,6 +137,26 @@ export default async function SalesAppointmentsPage({
             : 'Calls booked with contractor prospects. Confirm them the day before; mark the result afterwards. You earn when one sells.'
         }
       >
+        {/* List | Calendar */}
+        <div role="group" aria-label="View" className="inline-flex rounded-lg border bg-muted/50 p-0.5">
+          {[
+            { key: 'list', label: 'List', icon: List, href: hrefWith({ view: undefined, month: undefined }), on: !calendar },
+            { key: 'calendar', label: 'Calendar', icon: CalendarDays, href: hrefWith({ view: 'calendar', when: undefined }), on: calendar },
+          ].map((v) => (
+            <Link
+              key={v.key}
+              href={v.href}
+              aria-current={v.on ? 'page' : undefined}
+              className={cn(
+                'inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm font-medium transition-colors',
+                v.on ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              <v.icon className="size-4" aria-hidden="true" />
+              {v.label}
+            </Link>
+          ))}
+        </div>
         {isAdmin ? (
           <Link href="/app/calls/payouts" className={buttonVariants({ variant: 'outline' })}>
             Payouts
@@ -133,18 +185,35 @@ export default async function SalesAppointmentsPage({
               </option>
             ))}
           </Select>
-          <Select name="when" defaultValue={when} aria-label="When" className="sm:w-auto">
-            <option value="upcoming">Upcoming</option>
-            <option value="all">All dates</option>
-            {isAdmin ? <option value="decide">Needs a sale decision</option> : null}
-          </Select>
+          {calendar ? (
+            <>
+              <input type="hidden" name="view" value="calendar" />
+              <input type="hidden" name="month" value={month} />
+            </>
+          ) : (
+            <Select name="when" defaultValue={when} aria-label="When" className="sm:w-auto">
+              <option value="upcoming">Upcoming</option>
+              <option value="all">All dates</option>
+              {isAdmin ? <option value="decide">Needs a sale decision</option> : null}
+            </Select>
+          )}
           <Button type="submit" size="sm" className="col-span-2 sm:col-span-1">
             Apply
           </Button>
         </form>
       </Card>
 
-      {rows.length === 0 ? (
+      {calendar ? (
+        <AppointmentsCalendar
+          month={month}
+          todayKey={dayKey(new Date())}
+          prevHref={hrefWith({ month: shiftMonth(month, -1) })}
+          nextHref={hrefWith({ month: shiftMonth(month, 1) })}
+          todayHref={hrefWith({ month: undefined })}
+          items={calendarItems}
+          showPartner={isAdmin}
+        />
+      ) : rows.length === 0 ? (
         <EmptyState
           icon={CalendarCheck}
           title="No sales appointments"

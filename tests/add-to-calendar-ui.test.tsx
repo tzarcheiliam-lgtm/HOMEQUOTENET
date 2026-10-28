@@ -46,3 +46,12 @@ describe('AddToCalendar', () => {
     expect(html({ cancelled: true, added: { google: at, apple: null } })).toContain('Cancelled: remove from Google');
   });
 });
+
+describe('AddToCalendar compact', () => {
+  it('uses short labels but keeps the full name for screen readers', () => {
+    const h = renderToStaticMarkup(<AddToCalendar {...base} compact />);
+    expect(h).toContain('Google</a>');
+    expect(h).toContain('aria-label="Add to Google Calendar"');
+    expect(h).toContain('aria-label="Add to Apple Calendar"');
+  });
+});
