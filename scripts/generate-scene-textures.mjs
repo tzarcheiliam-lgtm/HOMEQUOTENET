@@ -103,33 +103,35 @@ const JOBS = [
   {
     id: 'tile_porcelain', kind: 'texture', aspect: '1:1',
     prompt: 'Swimming-pool waterline tile: 6 x 6 inch glazed porcelain tiles in a deep blue-teal with subtle tonal variation, thin light gray grout lines, perfectly straight square grid. The frame covers exactly 3 x 3 ft, so exactly 6 x 6 tiles.',
-    post: { target: '#2f6478', flatten: 0.6 },
+    // Crops below are whole numbers of tiles between grout-line centres (measured on the
+    // raw image), so the grid repeats without a doubled joint at the tile edge.
+    post: { target: '#2f6478', flatten: 0.6, crop: '167,169,686,686' },
   },
   {
     id: 'tile_glass', kind: 'texture', aspect: '1:1',
     prompt: '1 x 1 inch glass mosaic pool tile: iridescent blend of aqua, turquoise, cobalt blue and a few silver-white pieces, glossy, thin white grout, perfectly straight square grid. The frame covers exactly 2 x 2 ft, so exactly 24 x 24 tiles.',
-    post: { target: '#3f8fae', flatten: 0.6 },
+    post: { target: '#3f8fae', flatten: 0.6, crop: '66,64,891,891' },
   },
   {
     id: 'tile_stone', kind: 'texture', aspect: '1:1',
     prompt: 'Natural stone waterline tile: honed charcoal and gray slate tiles, 6 x 6 inch, natural cleft texture and gentle colour variation, thin grout, perfectly straight square grid. The frame covers exactly 3 x 3 ft, so exactly 6 x 6 tiles.',
-    post: { target: '#5d605f', flatten: 0.6 },
+    post: { target: '#5d605f', flatten: 0.6, crop: '205,202,818,818' },
   },
   // Coping (square pieces so the pattern reads the same along every side of the pool).
   {
     id: 'coping_concrete', kind: 'texture', aspect: '1:1',
     prompt: 'Pool coping made of smooth bright white precast concrete pieces, 16 x 16 inch squares, very fine sandblasted texture, thin tight joints, perfectly straight square grid. The frame covers exactly 4 x 4 ft, so exactly 3 x 3 pieces.',
-    post: { target: '#e6e4de', flatten: 0.9 },
+    post: { target: '#e6e4de', flatten: 0.9, crop: '338,337,686,686' },
   },
   {
     id: 'coping_travertine', kind: 'texture', aspect: '1:1',
     prompt: 'Pool coping in bright ivory and cream honed travertine, 16 x 16 inch square pieces with natural travertine pits, soft veining and gentle tone variation, thin tight joints, perfectly straight square grid. The frame covers exactly 4 x 4 ft, so exactly 3 x 3 pieces.',
-    post: { target: '#e6dac4', flatten: 0.9 },
+    post: { target: '#e6dac4', flatten: 0.9, crop: '340,338,686,686' },
   },
   {
     id: 'coping_stone', kind: 'texture', aspect: '1:1',
     prompt: 'Pool coping in natural gray-buff limestone, 16 x 16 inch square pieces, lightly cleft natural surface, subtle colour variation, thin joints, perfectly straight square grid. The frame covers exactly 4 x 4 ft, so exactly 3 x 3 pieces.',
-    post: { target: '#c2bbad', flatten: 0.9 },
+    post: { target: '#c2bbad', flatten: 0.9, crop: '340,339,686,686' },
   },
   // Deck.
   {
@@ -155,14 +157,14 @@ const JOBS = [
   // Yard and extras.
   {
     id: 'lawn_grass', kind: 'texture', aspect: '1:1',
-    prompt: 'Healthy natural lawn seen from straight above: freshly mowed fescue grass, lush medium green with gentle natural variation, very uniform, no bare patches. The frame covers 10 x 10 ft.',
+    prompt: 'Healthy natural lawn seen from straight above: short, freshly mowed fescue grass with the blade tips pointing up at the camera, lush medium green with gentle natural variation, perfectly even with no mowing stripes, no light or dark bands and no bare patches. The frame covers 10 x 10 ft.',
     // Small lighting blur: the raw image has mowing stripes that would repeat as bands.
     post: { target: '#6e9a48', flatten: 1, flattenSigma: 0.06 },
   },
   {
     id: 'lawn_turf', kind: 'texture', aspect: '1:1', ref: 'turf',
     prompt: 'Premium artificial turf seen from straight above: dense uniform bright green blades with a little olive and tan thatch, very even. The frame covers 8 x 8 ft.',
-    post: { target: '#62a03f', flatten: 1, flattenSigma: 0.06 },
+    post: { target: '#62a03f', flatten: 1, flattenSigma: 0.035 },
   },
   {
     id: 'planting_bed', kind: 'texture', aspect: '1:1',

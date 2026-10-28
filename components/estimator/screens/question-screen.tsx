@@ -31,12 +31,15 @@ export function QuestionScreen({
   answers,
   onPick,
   showPrices,
+  onPreview,
 }: {
   screen: FlowScreen;
   answers: Answers;
   onPick: (q: EstimatorQuestion, optionId: string) => void;
   /** revealRange "immediately": option tiles carry a small price note. */
   showPrices: boolean;
+  /** Live builder: hover / keyboard focus on an option (null when it ends). */
+  onPreview?: (q: EstimatorQuestion, optionId: string | null) => void;
 }) {
   const uid = useId();
   const single = screen.questions.length === 1;
@@ -45,11 +48,13 @@ export function QuestionScreen({
       {screen.questions.map((q) => {
         const picks = picksFor(q, answers);
         const hasVisual = q.role === 'shape' || q.options.some((o) => o.swatch || o.image);
+        // Container queries (the form card is an @container), so tiles fit both the full-width
+        // card and the narrower question column beside the live picture.
         const columns = hasVisual
-          ? 'grid-cols-2 sm:grid-cols-3'
+          ? 'grid-cols-2 @md:grid-cols-3'
           : q.role === 'project' || q.options.length <= 3
-            ? 'sm:grid-cols-2'
-            : 'grid-cols-1 sm:grid-cols-2';
+            ? '@md:grid-cols-2'
+            : 'grid-cols-1 @md:grid-cols-2';
         return (
           <QuestionFieldset
             key={q.id}
@@ -57,7 +62,7 @@ export function QuestionScreen({
             help={q.help ?? (q.kind === 'multi' ? 'Pick all that apply.' : undefined)}
             hideLegend={single && q.label === screen.title}
           >
-            <div className={cn('grid gap-3', columns, q.role === 'shape' && 'sm:grid-cols-4')}>
+            <div className={cn('grid gap-3', columns, q.role === 'shape' && '@md:grid-cols-4')}>
               {q.options.map((o) => (
                 <ChoiceTile
                   key={o.id}
@@ -70,6 +75,7 @@ export function QuestionScreen({
                   note={o.note}
                   hint={showPrices ? optionPriceHint(o.price, formatRange) : undefined}
                   visual={visualFor(q, o)}
+                  onPreview={onPreview ? (on) => onPreview(q, on ? o.id : null) : undefined}
                 />
               ))}
             </div>

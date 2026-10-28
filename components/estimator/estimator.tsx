@@ -12,7 +12,8 @@ export type EstimatorProps = {
 };
 
 /**
- * The homeowner estimator: one screen at a time, then the ballpark range and a
+ * The homeowner estimator: one screen at a time (with the live top-down pool
+ * picture beside it for pool templates), then the ballpark range and a
  * booking button. Screen order and rules live in use-estimator-flow.ts.
  */
 export function Estimator({ template, contractor, embedded }: EstimatorProps) {

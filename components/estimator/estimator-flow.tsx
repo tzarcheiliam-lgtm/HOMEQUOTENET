@@ -1,9 +1,14 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { buildScene } from '@/lib/estimator/scene/scene';
 import { estimatorConsentText, submitEstimatorLead, type EstimatorLeadRequest } from '@/lib/estimator/lead-client';
 import type { Answers, ContractorEstimatorConfig, EstimatorQuestion, EstimatorTemplate } from '@/lib/estimator/types';
 import { cn } from '@/lib/utils';
+import { designSummary, isVisualQuestion, optionLabeler, optionPhrase, previewAnswers, scrollDelta } from './builder';
+import { BuilderStyles } from './motion';
+import { ScenePanel } from './scene/scene-panel';
+import { DesignList, ResultScene } from './screens/design-result';
 import { LooksScreen } from './screens/looks-screen';
 import { ContactScreen, ZipScreen } from './screens/lead-screens';
 import { PackageScreen } from './screens/package-screen';
@@ -56,6 +61,17 @@ function readTracking(measurement: boolean): EstimatorLeadRequest['tracking'] {
   }
 }
 
+/** Hover-intent delays: a quick sweep across tiles does not flicker the picture. */
+const PREVIEW_IN_MS = 70;
+const PREVIEW_OUT_MS = 140;
+
+/**
+ * The homeowner estimator, one screen at a time. For a pool template it is a
+ * live builder: the top-down picture of the pool (ScenePanel) sits beside the
+ * questions on desktop and pinned above them on phones, redraws on every pick,
+ * previews an option on hover or keyboard focus, and becomes the finished
+ * design on the result (save as PNG, optional photoreal render).
+ */
 export function EstimatorFlow({
   template,
   contractor,
@@ -70,6 +86,7 @@ export function EstimatorFlow({
   const gallery = contractor.gallery?.filter((g) => g.src) ?? [];
   const hasGallery = gallery.length > 0;
   const immediate = contractor.revealRange === 'immediately';
+  const builder = template.trade === 'pool';
 
   const [state, setState] = useState<FlowState>(() => ({
     ...initialFlowState(seed?.answers, contractor.adMeasurement === 'opt_out'),
@@ -79,9 +96,14 @@ export function EstimatorFlow({
   const [result, setResult] = useState<LeadSuccess | null>(seed?.result ?? null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [night, setNight] = useState(false);
+  const [preview, setPreview] = useState<{ q: EstimatorQuestion; optionId: string } | null>(null);
+  const previewTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const submittingRef = useRef(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  const sectionRef = useRef<HTMLElement>(null);
+  const pinRef = useRef<HTMLDivElement>(null);
   const mounted = useRef(false);
   const [focusErrorTick, setFocusErrorTick] = useState(0);
 
@@ -95,21 +117,69 @@ export function EstimatorFlow({
     () => parseDimensions(template, state.dimensions, state.knowDimensions),
     [template, state.dimensions, state.knowDimensions],
   );
+  const labeler = useMemo(() => optionLabeler(template), [template]);
 
-  // Move focus to the new heading when the screen changes (not on first paint).
+  // Move focus to the new heading when the screen changes (not on first paint). With the live
+  // builder the browser's own focus scroll would tuck the heading under the pinned picture, so
+  // scroll the new screen (or, for the result, the finished design) just below whatever is pinned.
   useEffect(() => {
     if (!mounted.current) {
       mounted.current = true;
       return;
     }
-    headingRef.current?.focus();
-  }, [current.id, result]);
+    const heading = headingRef.current;
+    if (!heading) return;
+    if (!builder) {
+      heading.focus();
+      return;
+    }
+    heading.focus({ preventScroll: true });
+    const smooth = !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (result) {
+      // The reveal: bring the finished design into view (scroll-margin clears the site header).
+      sectionRef.current?.scrollIntoView({ block: 'start', behavior: smooth ? 'smooth' : 'auto' });
+      return;
+    }
+    const target = formRef.current;
+    const pin = pinRef.current;
+    if (!target) return;
+    const targetBox = target.getBoundingClientRect();
+    let offset = 0;
+    if (pin) {
+      const pinBox = pin.getBoundingClientRect();
+      const stacked = pinBox.right > targetBox.left && pinBox.left < targetBox.right;
+      // Stacked (phones): clear the whole pinned picture. Side by side: clear only its sticky top (the site header).
+      offset = stacked ? pinBox.bottom : parseFloat(getComputedStyle(pin).top) || 0;
+    }
+    const delta = scrollDelta(targetBox.top, window.innerHeight, offset + 12);
+    if (delta !== null) window.scrollBy({ top: delta, behavior: smooth ? 'smooth' : 'auto' });
+  }, [current.id, result, builder]);
 
   // After a failed submit, focus the first invalid field.
   useEffect(() => {
     if (focusErrorTick === 0) return;
     formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
   }, [focusErrorTick]);
+
+  useEffect(() => () => clearTimeout(previewTimer.current), []);
+
+  /* ---- Live preview (hover / keyboard focus) ---- */
+  const endPreview = () => {
+    clearTimeout(previewTimer.current);
+    setPreview(null);
+  };
+  const requestPreview = (q: EstimatorQuestion, optionId: string | null) => {
+    if (!builder || !isVisualQuestion(q)) return;
+    clearTimeout(previewTimer.current);
+    previewTimer.current = setTimeout(() => setPreview(optionId ? { q, optionId } : null), optionId ? PREVIEW_IN_MS : PREVIEW_OUT_MS);
+  };
+  const ghost = useMemo(() => {
+    if (!preview) return null;
+    const answers = previewAnswers(template, state.answers, preview.q, preview.optionId);
+    if (!answers) return null;
+    const label = optionPhrase(preview.q.role === 'package' ? 'package' : preview.q.id, preview.optionId, labeler);
+    return { answers, label };
+  }, [preview, template, state.answers, labeler]);
 
   const update = (patch: Partial<FlowState>, clear: string[] = []) => {
     setState((s) => ({ ...s, ...patch }));
@@ -122,9 +192,14 @@ export function EstimatorFlow({
     }
   };
 
-  const onPick = (q: EstimatorQuestion, optionId: string) => setState((s) => pickOption(template, s, q, optionId));
+  const onPick = (q: EstimatorQuestion, optionId: string) => {
+    // The pick is now the real answer: drop the ghost so the change chip shows it.
+    endPreview();
+    setState((s) => pickOption(template, s, q, optionId));
+  };
   const goTo = (id: string | undefined) => {
     if (!id) return;
+    endPreview();
     setErrors({});
     setScreenId(id);
   };
@@ -196,15 +271,74 @@ export function EstimatorFlow({
     progress.current = { index, percent: index > progress.current.index ? Math.max(progress.current.percent, rawPercent) : rawPercent };
   }
   const percent = Math.min(100, progress.current.percent);
+  // Slide direction of the screen change, fixed when the index changes (so a re-render never replays it).
+  const slide = useRef({ index, className: 'eb-fwd' });
+  if (slide.current.index !== index) slide.current = { index, className: index > slide.current.index ? 'eb-fwd' : 'eb-back' };
+
+  const designItems = useMemo(
+    () => (builder && result ? designSummary(buildScene(template, { answers: state.answers, dimensions: dims.dimensions }), labeler) : []),
+    [builder, result, template, state.answers, dims.dimensions, labeler],
+  );
+
+  /* ---- Layout ---- */
+  const container = builder
+    ? 'max-w-7xl lg:grid lg:grid-cols-[minmax(0,57fr)_minmax(0,43fr)] lg:items-start lg:gap-8 xl:gap-10'
+    : showSummary && !embedded
+      ? 'max-w-5xl lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-8'
+      : 'max-w-2xl';
+  // Phones: the picture is pinned under the site header (top of the frame when embedded), full
+  // bleed, capped at ~42% of the screen height. Desktop: sticky in the left column.
+  const scenePin = embedded
+    ? 'sticky top-0 z-30 -mx-3 px-3 sm:-mx-5 sm:px-5 [--eb-max-h:36svh] lg:top-3'
+    : 'sticky top-16 z-30 -mx-5 px-5 sm:top-20 sm:-mx-8 sm:px-8 [--eb-max-h:42svh] lg:top-24';
+  const sceneColumn = result
+    ? 'mb-6 lg:mb-0'
+    : cn(
+        scenePin,
+        'border-b border-[var(--hq-line)] bg-[var(--hq-bg)] pt-2 pb-1 lg:mx-0 lg:border-0 lg:bg-transparent lg:p-0 lg:[--eb-max-h:4000px]',
+      );
 
   return (
     <section
+      ref={sectionRef}
       aria-label={template.title}
       data-estimator={template.trade}
-      className={cn('hq text-[var(--hq-text)]', embedded ? 'px-3 py-4 sm:px-5' : 'px-4 py-8 sm:py-12', showSummary && !embedded && 'pb-40 lg:pb-12')}
+      className={cn(
+        'hq text-[var(--hq-text)]',
+        builder && !embedded && 'scroll-mt-20 sm:scroll-mt-24',
+        embedded ? 'px-3 py-4 sm:px-5' : builder ? 'py-2 sm:py-4' : 'px-4 py-8 sm:py-12',
+        showSummary && !embedded && 'pb-40 lg:pb-12',
+      )}
     >
-      <div className={cn('mx-auto', showSummary && !embedded ? 'max-w-5xl lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-8' : 'max-w-2xl')}>
-        <div className="min-w-0">
+      {builder ? <BuilderStyles /> : null}
+      <div className={cn('mx-auto', container)}>
+        {builder ? (
+          <div ref={pinRef} className={sceneColumn}>
+            {result ? (
+              <ResultScene
+                template={template}
+                answers={state.answers}
+                dimensions={dims.dimensions}
+                night={night}
+                onNightChange={setNight}
+                slug={contractor.slug}
+                renderToken={result.renderToken}
+                designItems={designItems}
+              />
+            ) : (
+              <ScenePanel
+                template={template}
+                answers={state.answers}
+                dimensions={dims.dimensions}
+                preview={ghost}
+                night={night}
+                onNightChange={setNight}
+              />
+            )}
+          </div>
+        ) : null}
+
+        <div className={cn('min-w-0', builder && !result && 'pt-5 lg:pt-0')}>
           {result ? null : (
             <div className="mb-5">
               <div className="flex items-center justify-between gap-3 text-xs text-[var(--hq-text-muted)]">
@@ -232,7 +366,7 @@ export function EstimatorFlow({
           )}
 
           {result ? (
-            <div className={card}>
+            <div className={cn(card, builder && 'eb-rise')}>
               <h2 ref={headingRef} tabIndex={-1} className="mb-4 text-2xl font-semibold tracking-tight focus:outline-none">
                 Your ballpark estimate
               </h2>
@@ -247,65 +381,82 @@ export function EstimatorFlow({
                 result={result}
                 firstName={state.contact.firstName.trim() || undefined}
                 embedded={embedded}
+                design={
+                  designItems.length ? (
+                    // Desktop shows the list under the picture instead (ResultScene).
+                    <div className="lg:hidden">
+                      <DesignList items={designItems} />
+                    </div>
+                  ) : undefined
+                }
               />
             </div>
           ) : (
-            <form ref={formRef} onSubmit={onSubmit} noValidate className={card}>
-              <h2 ref={headingRef} tabIndex={-1} className="mb-5 text-2xl font-semibold tracking-tight focus:outline-none">
-                {current.title}
-              </h2>
+            <form ref={formRef} onSubmit={onSubmit} noValidate className={cn(card, '@container overflow-hidden')}>
+              <div key={current.id} className={builder ? slide.current.className : undefined}>
+                <h2 ref={headingRef} tabIndex={-1} className="mb-5 text-2xl font-semibold tracking-tight focus:outline-none">
+                  {current.title}
+                </h2>
 
-              {current.kind === 'questions' && current.group === 'package' && packageQ ? (
-                <PackageScreen
-                  template={template}
-                  question={current.questions.find((q) => q.role === 'package') ?? packageQ}
-                  answers={state.answers}
-                  onPick={(id) => onPick(packageQ, id)}
-                  canCustomize={readyPackage}
-                  onCustomize={customize}
-                />
-              ) : current.kind === 'questions' ? (
-                <>
-                  <QuestionScreen screen={current} answers={state.answers} onPick={onPick} showPrices={immediate} />
-                  {current.questions.some((q) => q.role === 'size') ? (
-                    <SizeDimensions
-                      template={template}
-                      enabled={state.knowDimensions}
-                      onToggle={(on) => update({ knowDimensions: on })}
-                      value={state.dimensions}
-                      onChange={(dimensions) => update({ dimensions })}
-                      hint={dims.hint}
+                {current.kind === 'questions' && current.group === 'package' && packageQ ? (
+                  <PackageScreen
+                    template={template}
+                    question={current.questions.find((q) => q.role === 'package') ?? packageQ}
+                    answers={state.answers}
+                    onPick={(id) => onPick(packageQ, id)}
+                    canCustomize={readyPackage}
+                    onCustomize={customize}
+                    onPreview={builder ? (id) => requestPreview(packageQ, id) : undefined}
+                  />
+                ) : current.kind === 'questions' ? (
+                  <>
+                    <QuestionScreen
+                      screen={current}
+                      answers={state.answers}
+                      onPick={onPick}
+                      showPrices={immediate}
+                      onPreview={builder ? requestPreview : undefined}
                     />
-                  ) : null}
-                </>
-              ) : current.kind === 'looks' ? (
-                <LooksScreen
-                  gallery={gallery}
-                  liked={state.likedLooks}
-                  onToggle={(src) =>
-                    update({ likedLooks: state.likedLooks.includes(src) ? state.likedLooks.filter((x) => x !== src) : [...state.likedLooks, src] })
-                  }
-                />
-              ) : current.kind === 'zip' ? (
-                <ZipScreen state={state} errors={errors} onChange={(patch) => update(patch, Object.keys(patch))} />
-              ) : (
-                <ContactScreen
-                  contractor={contractor}
-                  contact={state.contact}
-                  errors={errors}
-                  onChange={(patch) => update({ contact: { ...state.contact, ...patch } }, Object.keys(patch))}
-                  measurement={state.measurement}
-                  onMeasurementChange={(measurement) => update({ measurement })}
-                />
-              )}
+                    {current.questions.some((q) => q.role === 'size') ? (
+                      <SizeDimensions
+                        template={template}
+                        enabled={state.knowDimensions}
+                        onToggle={(on) => update({ knowDimensions: on })}
+                        value={state.dimensions}
+                        onChange={(dimensions) => update({ dimensions })}
+                        hint={dims.hint}
+                      />
+                    ) : null}
+                  </>
+                ) : current.kind === 'looks' ? (
+                  <LooksScreen
+                    gallery={gallery}
+                    liked={state.likedLooks}
+                    onToggle={(src) =>
+                      update({ likedLooks: state.likedLooks.includes(src) ? state.likedLooks.filter((x) => x !== src) : [...state.likedLooks, src] })
+                    }
+                  />
+                ) : current.kind === 'zip' ? (
+                  <ZipScreen state={state} errors={errors} onChange={(patch) => update(patch, Object.keys(patch))} />
+                ) : (
+                  <ContactScreen
+                    contractor={contractor}
+                    contact={state.contact}
+                    errors={errors}
+                    onChange={(patch) => update({ contact: { ...state.contact, ...patch } }, Object.keys(patch))}
+                    measurement={state.measurement}
+                    onMeasurementChange={(measurement) => update({ measurement })}
+                  />
+                )}
 
-              {readyPackage && current.kind === 'questions' && current.group === 'other' ? (
-                <p className="mt-4">
-                  <button type="button" onClick={customize} className={linkButton}>
-                    Customize this package
-                  </button>
-                </p>
-              ) : null}
+                {readyPackage && current.kind === 'questions' && current.group === 'other' ? (
+                  <p className="mt-4">
+                    <button type="button" onClick={customize} className={linkButton}>
+                      Customize this package
+                    </button>
+                  </p>
+                ) : null}
+              </div>
 
               <div role="alert" aria-live="assertive" className="empty:hidden">
                 {fieldErrorCount > 0 && current.kind === 'contact' ? (
@@ -332,9 +483,19 @@ export function EstimatorFlow({
               </div>
             </form>
           )}
+
+          {builder && showSummary ? (
+            <LiveSummary
+              template={template}
+              answers={state.answers}
+              dimensions={dims.dimensions}
+              embedded={embedded}
+              className="lg:static lg:mt-6"
+            />
+          ) : null}
         </div>
 
-        {showSummary ? <LiveSummary template={template} answers={state.answers} dimensions={dims.dimensions} embedded={embedded} /> : null}
+        {!builder && showSummary ? <LiveSummary template={template} answers={state.answers} dimensions={dims.dimensions} embedded={embedded} /> : null}
       </div>
     </section>
   );

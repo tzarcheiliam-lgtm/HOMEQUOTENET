@@ -1,6 +1,6 @@
 'use client';
 
-import { useId } from 'react';
+import { useId, type ReactNode } from 'react';
 import { formatRange } from '@/lib/estimator/engine';
 import type { EstimatorLeadResponse } from '@/lib/estimator/lead-client';
 import type { ContractorEstimatorConfig, EstimatorTemplate } from '@/lib/estimator/types';
@@ -11,9 +11,10 @@ export type LeadSuccess = Extract<EstimatorLeadResponse, { ok: true }>;
 
 /**
  * The result: the SERVER's estimate (never recomputed here), laid out as a
- * ballpark range, a line-by-line breakdown, what needs a site visit, what is
- * not included, the disclaimer and license, financing words (no payment
- * amounts) and the booking button.
+ * ballpark range with a line-by-line breakdown, the booking button right under
+ * it, the homeowner's design (when the live builder is on), what needs a site
+ * visit, what is not included, the disclaimer and license and financing words
+ * (no payment amounts).
  */
 export function ResultScreen({
   template,
@@ -21,12 +22,15 @@ export function ResultScreen({
   result,
   firstName,
   embedded,
+  design,
 }: {
   template: EstimatorTemplate;
   contractor: ContractorEstimatorConfig;
   result: LeadSuccess;
   firstName?: string;
   embedded?: boolean;
+  /** The "Your design" list (live builder), shown right after the booking button. */
+  design?: ReactNode;
 }) {
   const rangeId = useId();
   const { estimate, qualified } = result;
@@ -68,6 +72,29 @@ export function ResultScreen({
         ) : null}
       </section>
 
+      {qualified ? (
+        bookingUrl ? (
+          <a
+            href={bookingUrl}
+            target={embedded ? '_top' : undefined}
+            rel="noopener"
+            className={`${primaryButton} w-full sm:w-auto`}
+          >
+            Book your free on-site consultation
+          </a>
+        ) : (
+          <p role="status" className="text-sm text-[var(--hq-text)]">
+            {contractor.contractorName} will contact you to set up your free on-site consultation.
+          </p>
+        )
+      ) : (
+        <p role="status" className="rounded-xl border border-[var(--hq-line-strong)] p-4 text-sm leading-6 text-[var(--hq-text)]">
+          Thank you. Our team will review your details and reach out to you directly.
+        </p>
+      )}
+
+      {design}
+
       {estimate.siteVisitItems.length ? (
         <section className="rounded-xl border border-[var(--hq-warn)]/60 bg-[var(--hq-warn)]/10 p-4 text-sm leading-6">
           <h3 className="font-semibold text-[var(--hq-text)]">We will confirm these on site</h3>
@@ -89,27 +116,6 @@ export function ResultScreen({
           </ul>
         </section>
       ) : null}
-
-      {qualified ? (
-        bookingUrl ? (
-          <a
-            href={bookingUrl}
-            target={embedded ? '_top' : undefined}
-            rel="noopener"
-            className={`${primaryButton} w-full sm:w-auto`}
-          >
-            Book your free on-site consultation
-          </a>
-        ) : (
-          <p role="status" className="text-sm text-[var(--hq-text)]">
-            {contractor.contractorName} will contact you to set up your free on-site consultation.
-          </p>
-        )
-      ) : (
-        <p role="status" className="rounded-xl border border-[var(--hq-line-strong)] p-4 text-sm leading-6 text-[var(--hq-text)]">
-          Thank you. Our team will review your details and reach out to you directly.
-        </p>
-      )}
 
       <div className="space-y-2 text-xs leading-5 text-[var(--hq-text-dim)]">
         <p>{template.disclaimer}</p>

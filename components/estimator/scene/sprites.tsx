@@ -41,19 +41,22 @@ export function SpriteImage({ id, w, h, rotate = 0, filter }: { id: SpriteId; w:
 
 /* ------------------------------ loungers ------------------------------ */
 
-/** Deck chaise, head (raised back) at the top. */
-export function Lounger({ w, h, tone = 'white' }: { w: number; h: number; tone?: 'white' | 'teak' }) {
-  const frame = tone === 'teak' ? '#a7774c' : '#d8d3ca';
-  const cushion = tone === 'teak' ? '#efe9dd' : '#fbfaf7';
+/** Deck chaise (woven frame, thick cushion), head (raised back) at the top. */
+export function Lounger({ w, h }: { w: number; h: number }) {
   const back = h * 0.36;
+  const weave: string[] = [];
+  for (let y = 3; y < h - 2; y += 2.2) weave.push(`M1 ${r1(y)}h${r1(w - 2)}`);
   return (
     <g>
-      <rect width={w} height={h} rx={3.5} fill={frame} />
-      <rect x={2.2} y={2.2} width={w - 4.4} height={back - 3} rx={3} fill="#ffffff" />
-      <rect x={2.2} y={back + 1} width={w - 4.4} height={h - back - 3.2} rx={3} fill={cushion} />
-      <path d={`M2.2 ${r1(back - 0.6)}H${r1(w - 2.2)}`} stroke="#000" strokeOpacity={0.14} strokeWidth={1.4} />
-      <path d={`M${r1(w / 2)} ${r1(back + 6)}V${r1(h - 6)}`} stroke="#000" strokeOpacity={0.05} strokeWidth={1} />
-      <rect x={2.2} y={2.2} width={w - 4.4} height={back * 0.45} rx={3} fill="#fff" opacity={0.6} />
+      <rect width={w} height={h} rx={3.5} fill="#b89a74" />
+      <path d={weave.join('')} stroke="#8f7352" strokeOpacity={0.35} strokeWidth={0.6} />
+      <rect x={2.4} y={2.6} width={w - 4.8} height={back - 3.4} rx={3} fill="#f6f2ea" />
+      <rect x={2.4} y={back + 0.8} width={w - 4.8} height={h - back - 3.4} rx={3} fill="#ece6da" />
+      <rect x={2.4} y={2.6} width={w - 4.8} height={back * 0.4} rx={3} fill="#ffffff" opacity={0.7} />
+      <path d={`M2.4 ${r1(back - 0.4)}H${r1(w - 2.4)}`} stroke="#5a4630" strokeOpacity={0.35} strokeWidth={1.3} />
+      <path d={`M${r1(w * 0.33)} ${r1(back + 4)}V${r1(h - 5)}M${r1(w * 0.67)} ${r1(back + 4)}V${r1(h - 5)}`} stroke="#000" strokeOpacity={0.05} strokeWidth={0.8} />
+      <rect x={3.5} y={h * 0.6} width={w - 7} height={h * 0.17} rx={1.5} fill="#3f6f9a" opacity={0.85} />
+      <path d={`M3.5 ${r1(h * 0.63)}h${r1(w - 7)}M3.5 ${r1(h * 0.74)}h${r1(w - 7)}`} stroke="#fff" strokeOpacity={0.6} strokeWidth={0.8} />
     </g>
   );
 }
@@ -169,47 +172,62 @@ export function Bed({ x, y, w, h, kind, seed, bedFill }: { x: number; y: number;
   const thick = vertical ? w : h;
   const at = (t: number, across: number) => (vertical ? { x: x + across, y: y + t } : { x: x + t, y: y + across });
   const rand = rng(seed);
+  const shrubSrc = SPRITES.shrub.src;
   if (kind === 'hedge') {
+    // A clipped hedge: overlapping shrubs on a dark base, casting a short shadow.
+    const sh = cast(5);
     const base: string[] = [];
-    const mid: string[] = [];
-    const hi: string[] = [];
-    for (let t = thick * 0.4; t < len - thick * 0.3; t += thick * 0.32) {
-      const p = at(t, thick * (0.45 + (rand() - 0.5) * 0.15));
-      const r = thick * (0.5 + rand() * 0.12);
-      base.push(circlePath(p.x, p.y, r));
-      mid.push(circlePath(p.x - r * 0.15, p.y - r * 0.15, r * 0.7));
-      hi.push(circlePath(p.x - r * 0.35, p.y - r * 0.35, r * 0.32));
+    const tops: { x: number; y: number; r: number }[] = [];
+    for (let t = thick * 0.35; t < len - thick * 0.25; t += thick * 0.5) {
+      const p = at(t, thick * (0.48 + (rand() - 0.5) * 0.12));
+      const r = thick * (0.56 + rand() * 0.1);
+      base.push(circlePath(p.x, p.y, r * 0.92));
+      tops.push({ x: p.x, y: p.y, r });
     }
+    const shadow = vertical ? { x: x + sh.dx * 0.6, y, w, h } : { x, y: y + sh.dy * 0.6, w, h };
     return (
       <g>
-        <path d={base.join('')} fill="#3f6b2d" />
-        <path d={mid.join('')} fill="#4f7f37" />
-        <path d={hi.join('')} fill="#6f9c4c" opacity={0.85} />
+        <rect x={shadow.x} y={shadow.y} width={shadow.w} height={shadow.h} fill="#0b1c22" opacity={0.22} />
+        <path d={base.join('')} fill="#35592a" />
+        {shrubSrc ? (
+          <g opacity={0.88}>
+            {tops.map((p, i) => (
+              <image key={i} href={shrubSrc} x={r1(p.x - p.r)} y={r1(p.y - p.r)} width={r1(2 * p.r)} height={r1(2 * p.r)} />
+            ))}
+          </g>
+        ) : (
+          <>
+            <path d={tops.map((p) => circlePath(p.x - p.r * 0.15, p.y - p.r * 0.15, p.r * 0.7)).join('')} fill="#4f7f37" />
+            <path d={tops.map((p) => circlePath(p.x - p.r * 0.35, p.y - p.r * 0.35, p.r * 0.32)).join('')} fill="#6f9c4c" opacity={0.85} />
+          </>
+        )}
       </g>
     );
   }
   const grasses: string[] = [];
-  const shrubs: string[] = [];
-  const shrubHi: string[] = [];
+  const shrubs: { x: number; y: number; r: number }[] = [];
   const step = FT * 2.3;
   let i = 0;
   for (let t = step * 0.6; t < len - step * 0.4; t += step, i++) {
     const p = at(t + (rand() - 0.5) * 6, thick * (0.5 + (rand() - 0.5) * 0.25));
-    if (i % 3 === 1) {
-      const r = thick * 0.34;
-      shrubs.push(circlePath(p.x, p.y, r));
-      shrubHi.push(circlePath(p.x - r * 0.3, p.y - r * 0.3, r * 0.5));
-    } else {
-      grasses.push(grassPath(p.x, p.y, thick * 0.42, seed + i));
-    }
+    if (i % 3 === 1) shrubs.push({ x: p.x, y: p.y, r: thick * (0.38 + rand() * 0.08) });
+    else grasses.push(grassPath(p.x, p.y, thick * 0.4, seed + i));
   }
+  const sh = cast(2.5);
   return (
     <g>
       <rect x={x} y={y} width={w} height={h} fill={bedFill} />
-      <path d={grasses.join('')} stroke="#b8c49a" strokeWidth={1.3} strokeLinecap="round" />
-      <path d={grasses.join('')} stroke="#7f9a72" strokeWidth={0.7} strokeLinecap="round" transform="translate(0.8 0.8)" />
-      <path d={shrubs.join('')} fill="#4d7a3a" />
-      <path d={shrubHi.join('')} fill="#77a157" />
+      <path d={shrubs.map((p) => circlePath(p.x + sh.dx, p.y + sh.dy, p.r * 0.9)).join('')} fill="#0b1c22" opacity={0.25} />
+      <path d={grasses.join('')} stroke="#5f7a68" strokeWidth={1.4} strokeLinecap="round" transform="translate(1 1)" opacity={0.6} />
+      <path d={grasses.join('')} stroke="#a9bfae" strokeWidth={1.1} strokeLinecap="round" />
+      {shrubSrc ? (
+        shrubs.map((p, j) => <image key={j} href={shrubSrc} x={r1(p.x - p.r)} y={r1(p.y - p.r)} width={r1(2 * p.r)} height={r1(2 * p.r)} />)
+      ) : (
+        <>
+          <path d={shrubs.map((p) => circlePath(p.x, p.y, p.r)).join('')} fill="#4d7a3a" />
+          <path d={shrubs.map((p) => circlePath(p.x - p.r * 0.3, p.y - p.r * 0.3, p.r * 0.5)).join('')} fill="#77a157" />
+        </>
+      )}
     </g>
   );
 }
@@ -275,8 +293,7 @@ export function PatioCover({ w, h, padFill, night }: { w: number; h: number; pad
     <g>
       <rect width={w} height={h} fill={padFill} />
       <PatioSet w={w} h={h} />
-      {night ? null : <g opacity={0.95}>{slats}</g>}
-      {night ? <g opacity={0.55}>{slats}</g> : null}
+      <g opacity={night ? 0.6 : 0.95}>{slats}</g>
       <rect x={beam / 2} y={0} width={w - beam} height={h - beam / 2} fill="none" stroke="#e7e5e0" strokeWidth={beam} />
       <rect x={beam / 2} y={0} width={w - beam} height={h - beam / 2} fill="none" stroke="#000" strokeOpacity={0.12} strokeWidth={1} />
       {[

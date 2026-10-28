@@ -3,7 +3,7 @@ import { poolOutlinePath } from '@/lib/estimator/scene/geometry';
 import { TEXTURES } from '@/lib/estimator/scene/textures';
 import { SCENE, type SceneSpec, type TextureId } from '@/lib/estimator/scene/types';
 import { Crossfade } from './crossfade';
-import { copingTexture, deckTexture, tileTexture, waterLook, type WaterLook } from './materials';
+import { copingTexture, tileTexture, waterLook, type WaterLook } from './materials';
 import { FireBowl, ShelfLounger, WaterBowl, cast } from './sprites';
 import { rng, TexturePattern, tileSize } from './textures';
 
@@ -395,4 +395,3 @@ function Bowls({ layout }: { layout: SceneLayout }) {
   );
 }
 
-export { deckTexture };

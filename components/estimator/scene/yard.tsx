@@ -14,7 +14,7 @@ import {
   circlePath,
   treeShadowPath,
 } from './sprites';
-import { TexturePattern } from './textures';
+import { rng, TexturePattern } from './textures';
 
 /**
  * The yard around the pool: neighbours' ground, lawn or turf, landscape strips,
@@ -42,6 +42,7 @@ export function Ground({ uid, layout, scene, groundKey }: Props) {
       <Crossfade k={groundKey}>
         {(k) => <rect x={YARD.x} y={YARD.y} width={YARD.w} height={YARD.h} fill={`url(#${uid}-${k === 'turf' ? 'turf' : 'grass'})`} />}
       </Crossfade>
+      <LawnVariation uid={uid} stripes={!turf} />
       {layout.beds.map((b, i) => (
         <Bed key={`${i}-${turf}`} x={b.x} y={b.y} w={b.w} h={b.h} kind={turf ? 'planted' : 'hedge'} seed={i * 31 + 7} bedFill={`url(#${uid}-bed)`} />
       ))}
@@ -74,11 +75,46 @@ export function Ground({ uid, layout, scene, groundKey }: Props) {
   );
 }
 
+/**
+ * Breaks up the tiled lawn: a few big soft light and dark patches, plus
+ * mowing stripes on real grass (turf is uniform).
+ */
+function LawnVariation({ uid, stripes }: { uid: string; stripes: boolean }) {
+  const rand = rng(91);
+  const patches = Array.from({ length: 12 }, () => ({
+    x: YARD.x + rand() * YARD.w,
+    y: YARD.y + rand() * YARD.h,
+    rx: 60 + rand() * 140,
+    ry: 40 + rand() * 90,
+    dark: rand() > 0.5,
+  }));
+  const bands: string[] = [];
+  for (let x = YARD.x; x < right; x += 12 * FT) bands.push(`M${x} ${YARD.y}h${6 * FT}V${bottom}h${-6 * FT}Z`);
+  return (
+    <g pointerEvents="none">
+      <defs>
+        <radialGradient id={`${uid}-lawn-dark`}>
+          <stop offset="0" stopColor="#1f3a12" stopOpacity={0.16} />
+          <stop offset="1" stopColor="#1f3a12" stopOpacity={0} />
+        </radialGradient>
+        <radialGradient id={`${uid}-lawn-light`}>
+          <stop offset="0" stopColor="#e8f0b0" stopOpacity={0.12} />
+          <stop offset="1" stopColor="#e8f0b0" stopOpacity={0} />
+        </radialGradient>
+      </defs>
+      {patches.map((p, i) => (
+        <ellipse key={i} cx={r1(p.x)} cy={r1(p.y)} rx={r1(p.rx)} ry={r1(p.ry)} fill={`url(#${uid}-lawn-${p.dark ? 'dark' : 'light'})`} />
+      ))}
+      {stripes ? <path d={bands.join('')} fill="#f4ffd8" opacity={0.05} /> : null}
+    </g>
+  );
+}
+
 /** Ground textures shared by every layer (one set per scene instance). */
 export function GroundDefs({ uid, scene }: { uid: string; scene: SceneSpec }) {
   return (
     <>
-      <TexturePattern id={`${uid}-grass`} texture="lawn_grass" />
+      <TexturePattern id={`${uid}-grass`} texture="lawn_grass" tone={{ color: '#8f9c62', opacity: 0.2 }} />
       <TexturePattern id={`${uid}-turf`} texture="lawn_turf" />
       <TexturePattern id={`${uid}-bed`} texture="planting_bed" />
       <TexturePattern id={`${uid}-gravel`} texture="gravel_dg" />
@@ -87,7 +123,7 @@ export function GroundDefs({ uid, scene }: { uid: string; scene: SceneSpec }) {
       <TexturePattern id={`${uid}-roof`} texture="roof_shingle" />
       <TexturePattern id={`${uid}-counter`} texture="counter_stone" />
       <TexturePattern id={`${uid}-firestone`} texture="firepit_stone" />
-      <TexturePattern id={`${uid}-neighbour`} texture="lawn_grass" tone={{ color: '#b9ae8a', opacity: 0.55 }} />
+      <TexturePattern id={`${uid}-neighbour`} texture="lawn_grass" tone={{ color: '#a9a07f', opacity: 0.7 }} />
       <TexturePattern id={`${uid}-pad`} texture={scene.deck === 'pavers' ? 'deck_pavers' : 'deck_porcelain'} />
     </>
   );
@@ -233,13 +269,27 @@ export function House({ uid }: { uid: string }) {
   const y = FRAME.roofH;
   const facet = { l: 360, r: 840, top: 46 };
   const panels: string[] = [];
-  for (let i = 0; i < 6; i++) for (let j = 0; j < 2; j++) panels.push(`M${872 + i * 42} ${14 + j * 34}h39v31h-39Z`);
+  const cells: string[] = [];
+  for (let i = 0; i < 6; i++) {
+    for (let j = 0; j < 2; j++) {
+      const px = 872 + i * 42;
+      const py = 14 + j * 34;
+      panels.push(`M${px} ${py}h39v31h-39Z`);
+      for (let c = 1; c < 4; c++) cells.push(`M${px + c * 9.75} ${py}v31`);
+      for (let c = 1; c < 6; c++) cells.push(`M${px} ${r1(py + c * 5.17)}h39`);
+    }
+  }
   return (
     <g>
       <defs>
         <linearGradient id={`${uid}-roofshade`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stopColor="#ffffff" stopOpacity={0.1} />
           <stop offset="1" stopColor="#000000" stopOpacity={0.14} />
+        </linearGradient>
+        <linearGradient id={`${uid}-panelsky`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#c9dcf0" stopOpacity={0.28} />
+          <stop offset="0.5" stopColor="#c9dcf0" stopOpacity={0.04} />
+          <stop offset="1" stopColor="#c9dcf0" stopOpacity={0.14} />
         </linearGradient>
       </defs>
       {/* Eave shadow on the walk (sun upper left) */}
@@ -253,8 +303,8 @@ export function House({ uid }: { uid: string }) {
       <path d={`M0 ${facet.top}H${facet.l + 60}M${facet.r - 60} ${facet.top}H${W}`} stroke="#d9dadc" strokeOpacity={0.22} strokeWidth={2} />
       {/* Solar panels and vents */}
       <path d={panels.join('')} fill="#1d2a3d" stroke="#8fa2b8" strokeOpacity={0.55} strokeWidth={0.8} />
-      <path d={panels.join('')} fill="url(#none)" />
-      <rect x={872} y={14} width={249} height={65} fill="#ffffff" opacity={0.06} />
+      <path d={cells.join('')} stroke="#8fa2b8" strokeOpacity={0.28} strokeWidth={0.6} />
+      <rect x={872} y={14} width={249} height={65} fill={`url(#${uid}-panelsky)`} />
       <circle cx={220} cy={70} r={5} fill="#7d8187" stroke="#2f3236" strokeWidth={1} />
       <circle cx={640} cy={28} r={4} fill="#7d8187" stroke="#2f3236" strokeWidth={1} />
       <rect x={150} y={22} width={30} height={22} rx={2} fill="#aab8c2" stroke="#e6e8ea" strokeWidth={2} />

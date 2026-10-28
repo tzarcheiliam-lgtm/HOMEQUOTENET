@@ -40,7 +40,8 @@ export default async function EstimatorPage({ params }: Props) {
   return (
     <section className="relative isolate overflow-x-clip hq-grid">
       <div className="hq-glow" aria-hidden="true" />
-      <Container className="relative pb-28 pt-14 sm:pt-20 lg:pb-20">
+      {/* Wider than the default container: the live pool builder puts the picture beside the questions on desktop. */}
+      <Container className="relative max-w-7xl pb-28 pt-14 sm:pt-20 lg:pb-20">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--hq-accent-bright)]">
           {contractor.contractorName} · {contractor.licenseLabel}
         </p>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, type ReactNode } from 'react';
+import { useId, type FocusEvent, type PointerEvent, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
 /**
@@ -26,9 +26,41 @@ const tile =
   'flex cursor-pointer flex-col gap-3 rounded-xl border border-[var(--hq-line)] bg-[var(--hq-bg)] p-3.5 text-sm transition-colors hover:border-[var(--hq-line-strong)] has-[:checked]:border-[var(--hq-accent-bright)] has-[:checked]:bg-[var(--hq-accent-glow)] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[var(--hq-accent-bright)]';
 
 /**
+ * Hover / keyboard-focus handlers for a previewable option (the live builder
+ * draws it as a ghost). Touch is ignored: a tap picks the option anyway, and a
+ * mouse click's focus is not :focus-visible, so only real keyboard focus previews.
+ */
+export function previewHandlers(onPreview: ((on: boolean) => void) | undefined) {
+  if (!onPreview) return { label: {}, input: {} };
+  return {
+    label: {
+      onPointerEnter: (e: PointerEvent) => {
+        if (e.pointerType !== 'touch') onPreview(true);
+      },
+      onPointerLeave: (e: PointerEvent) => {
+        if (e.pointerType !== 'touch') onPreview(false);
+      },
+    },
+    input: {
+      onFocus: (e: FocusEvent<HTMLInputElement>) => {
+        let keyboard = false;
+        try {
+          keyboard = e.currentTarget.matches(':focus-visible');
+        } catch {
+          // Very old browsers: no :focus-visible, no focus preview.
+        }
+        if (keyboard) onPreview(true);
+      },
+      onBlur: () => onPreview(false),
+    },
+  };
+}
+
+/**
  * One selectable option: a native radio (single) or checkbox (multi) with the
  * label as its accessible name and the note/price as its description. `visual`
- * is a shape drawing, swatch or photo shown above the label.
+ * is a shape drawing, swatch or photo shown above the label. `onPreview` (live
+ * builder) reports hover and keyboard focus so the picture can preview it.
  */
 export function ChoiceTile({
   type,
@@ -40,6 +72,7 @@ export function ChoiceTile({
   note,
   hint,
   visual,
+  onPreview,
   className,
   children,
 }: {
@@ -53,13 +86,15 @@ export function ChoiceTile({
   /** Price note, only passed when the range is revealed immediately. */
   hint?: string;
   visual?: ReactNode;
+  onPreview?: (on: boolean) => void;
   className?: string;
   children?: ReactNode;
 }) {
   const uid = useId();
   const describedBy = note || hint ? `${uid}-d` : undefined;
+  const preview = previewHandlers(onPreview);
   return (
-    <label className={cn(tile, className)}>
+    <label className={cn(tile, className)} {...preview.label}>
       {visual ? <span className="block h-24 overflow-hidden rounded-lg sm:h-28 [&>*]:block [&>*]:h-full [&>*]:w-full [&>img]:object-cover">{visual}</span> : null}
       <span className="flex items-start gap-3">
         <input
@@ -68,6 +103,7 @@ export function ChoiceTile({
           value={value}
           checked={checked}
           onChange={onChange}
+          {...preview.input}
           aria-labelledby={`${uid}-l`}
           aria-describedby={describedBy}
           className="mt-0.5 size-4 shrink-0 accent-[var(--hq-accent)]"

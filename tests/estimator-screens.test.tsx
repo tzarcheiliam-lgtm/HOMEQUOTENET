@@ -393,6 +393,27 @@ describe('estimator rendering', () => {
     expect(render('shape', {}, {}, BASE)).not.toMatch(/<button[^>]*disabled=""[^>]*>Next<\/button>/);
   });
 
+  it('puts the live pool picture beside the questions: pinned under the site header, or the frame top when embedded', () => {
+    const page = render('shape');
+    expect(page).toContain('data-scene-panel="builder"');
+    expect(page).toContain('class="ps-root');
+    expect(page).toMatch(/lg:grid-cols-\[minmax\(0,57fr\)_minmax\(0,43fr\)\]/);
+    expect(page).toMatch(/class="sticky top-16 [^"]*sm:top-20[^"]*lg:top-24/);
+    expect(page).toContain('Illustration — your final design is confirmed at the on-site visit');
+    // The picture comes before the question card, so phones see it first.
+    expect(page.indexOf('data-scene-panel')).toBeLessThan(page.indexOf('What shape is your pool?'));
+    const embedded = render('shape', {}, {}, BASE, true);
+    expect(embedded).toMatch(/class="sticky top-0 [^"]*lg:top-3/);
+    expect(embedded).not.toContain('top-16');
+  });
+
+  it('keeps a template for another trade picture-free', () => {
+    const other = renderToStaticMarkup(<EstimatorFlow template={{ ...TEMPLATE, trade: 'roofing' }} contractor={contractor()} seed={{ screenId: 'shape', answers: BASE }} />);
+    expect(other).not.toContain('data-scene-panel');
+    expect(other).not.toContain('ps-root');
+    expect(other).toContain('What shape is your pool?');
+  });
+
   it('shows no Back button on the first screen and one on the others', () => {
     expect(render(undefined)).not.toContain('>Back<');
     expect(render('shape')).toContain('>Back<');
