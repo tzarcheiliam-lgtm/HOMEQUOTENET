@@ -19,7 +19,7 @@ import {
 } from '@/components/estimator/builder';
 import { EstimatorFlow } from '@/components/estimator/estimator-flow';
 import { ScenePanel, SCENE_CAPTION } from '@/components/estimator/scene/scene-panel';
-import { DesignList, RenderProgress, ResultScene } from '@/components/estimator/screens/design-result';
+import { DesignList, DevelopingPhoto, ResultScene } from '@/components/estimator/screens/design-result';
 import type { LeadSuccess } from '@/components/estimator/screens/result-screen';
 import { applyPackage, computeEstimate } from '@/lib/estimator/engine';
 import { buildScene } from '@/lib/estimator/scene/scene';
@@ -256,39 +256,52 @@ describe('result design', () => {
     expect(html).toContain('Save my design');
     expect(html).toContain('Your design');
     expect(html).toContain('Outdoor kitchen');
-    expect(html).toContain('Your ballpark estimate');
+    expect(html).toContain('Here’s your pool');
     expect(html).toContain('Book your free on-site consultation');
-    expect(html).not.toContain('See your backyard for real');
+    expect(html).not.toContain('Developing your realistic photo');
+    // Save has its own caption now (it used to describe the render).
+    expect(html).toContain('Save a picture of your design to keep or share.');
     // The booking button comes right after the range, before the site-visit and exclusions blocks.
     expect(html.indexOf('Book your free on-site consultation')).toBeLessThan(html.indexOf('Not included'));
   });
 
-  it('offers "See your backyard for real" over the picture only when the lead response carries a render token', () => {
+  it('starts developing the realistic photo by itself (no button) when the lead response carries a render token', () => {
     const html = flow({ ...result, renderToken: 'token-123' });
-    expect(html).toContain('See your backyard for real');
+    expect(html).toContain('data-developing=""');
+    expect(html).toContain('Developing your realistic photo');
+    expect(html).not.toContain('See your backyard for real');
     // The status line has room for two lines in every state, so the estimate never jumps.
     expect(html).toMatch(/role="status" aria-live="polite" class="min-h-10/);
-    expect(html).toContain('realistic aerial photo');
+    expect(html).toContain('It usually takes 20 to 60 seconds.');
     expect(html).not.toContain('token-123');
   });
 
   it('renders the scene, actions and day/night switch on its own', () => {
     const html = renderToStaticMarkup(
-      <ResultScene template={T} answers={answers} night={false} onNightChange={() => {}} slug="pool-masters" renderToken="t" designItems={designSummary(scene(answers), label)} />,
+      <ResultScene template={T} answers={answers} night={false} onNightChange={() => {}} slug="pool-masters" designItems={designSummary(scene(answers), label)} />,
     );
     expect(html).toContain('class="ps-root');
     expect(html).toContain('aria-label="Lighting"');
     expect(html).toContain('Save my design');
-    expect(html).toContain('See your backyard for real');
     expect(html).toContain('Pavers, medium');
+    // With a render token the photo develops over the picture, and the day/night switch steps aside meanwhile.
+    const developing = renderToStaticMarkup(
+      <ResultScene template={T} answers={answers} night={false} onNightChange={() => {}} slug="pool-masters" renderToken="t" />,
+    );
+    expect(developing).toContain('Developing your realistic photo');
+    expect(developing).not.toContain('aria-label="Lighting"');
   });
 
-  it('shows the render progress as a labelled progress bar with a story line', () => {
-    const html = renderToStaticMarkup(<RenderProgress preparing={false} elapsedMs={15_000} />);
-    expect(html).toContain('Creating your realistic preview');
+  it('shows the developing photo with a labelled progress bar, a story line and the elapsed time', () => {
+    const html = renderToStaticMarkup(<DevelopingPhoto preparing={false} elapsedMs={15_000} />);
+    expect(html).toContain('Developing your realistic photo');
     expect(html).toContain('Filling the pool with water');
-    expect(html).toMatch(/role="progressbar" aria-label="Realistic preview progress"/);
+    expect(html).toContain('0:15');
+    expect(html).toMatch(/role="progressbar" aria-label="Realistic photo progress"/);
     expect(html).toMatch(/aria-valuenow="\d+"/);
+    // The bar moves with a transform (no layout work).
+    expect(html).toMatch(/transform:translateX\(-\d+%\)/);
+    expect(renderToStaticMarkup(<DevelopingPhoto preparing elapsedMs={0} />)).toContain('Getting your design ready');
   });
 
   it('lists nothing when there is nothing to list', () => {

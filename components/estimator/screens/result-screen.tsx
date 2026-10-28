@@ -1,42 +1,70 @@
 'use client';
 
-import { useEffect, useId, useState, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { formatRange } from '@/lib/estimator/engine';
 import type { EstimatorLeadResponse } from '@/lib/estimator/lead-client';
 import type { ContractorEstimatorConfig, EstimatorTemplate } from '@/lib/estimator/types';
+import { cn } from '@/lib/utils';
 import { card, eyebrow, primaryButton } from '../ui';
 import { describeQuantity, safeHttpUrl } from '../use-estimator-flow';
+import { RevealStyles } from './reveal-styles';
 
 export type LeadSuccess = Extract<EstimatorLeadResponse, { ok: true }>;
 
-/** How long the live builder's range takes to count up to its value. */
-const COUNT_MS = 1100;
+/** The live builder's count-up: a short beat (the page scrolls to the result), then the roll. */
+const COUNT_DELAY_MS = 250;
+const COUNT_MS = 1400;
+/** Where the roll starts, as a share of the final figures (close enough that the digit count rarely changes). */
+const COUNT_FROM = 0.45;
+
+// Server markup has no layout effects; the browser runs the count-up before first paint.
+const useIsoLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
+
+/** Ease-out-quint: fast at first, then a long settle, so the last digits land gently. */
+function easeOutQuint(p: number): number {
+  return 1 - (1 - p) ** 5;
+}
+
+/** The range part-way through the roll, in $500 steps so the digits roll rather than flicker. */
+export function countUpRange(low: number, high: number, t: number): [number, number] {
+  if (t >= 1) return [low, high];
+  const k = COUNT_FROM + (1 - COUNT_FROM) * easeOutQuint(Math.max(0, t));
+  const at = (v: number) => Math.round((v * k) / 500) * 500;
+  return [at(low), at(high)];
+}
 
 /**
- * Counts from 60% of the value up to it (ease-out) once, for the builder's
- * reveal; the real value at once under reduced motion or when off. Rounded to
- * $500 steps on the way so the digits roll rather than flicker.
+ * The builder's reveal: rolls the range up to its value once by writing the
+ * text straight into `ref` (no React render per frame), then reports `landed`
+ * so the figure can settle with a small pop. The server markup and reduced
+ * motion show the real value at once.
  */
-function useCountUp(low: number, high: number, enabled: boolean): [number, number] {
-  const [t, setT] = useState(enabled ? 0 : 1);
-  useEffect(() => {
-    if (!enabled || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-      setT(1);
-      return;
-    }
+function useCountUp(ref: RefObject<HTMLSpanElement | null>, low: number, high: number, enabled: boolean): boolean {
+  const [landed, setLanded] = useState(false);
+  useIsoLayoutEffect(() => {
+    const el = ref.current;
+    if (!enabled || !el || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    const show = (t: number) => {
+      const [a, b] = countUpRange(low, high, t);
+      el.textContent = formatRange(a, b);
+    };
+    show(0);
     let frame = 0;
-    const start = performance.now();
+    let start = 0;
     const tick = (now: number) => {
-      const p = Math.min(1, (now - start) / COUNT_MS);
-      setT(1 - (1 - p) ** 3);
+      if (!start) start = now + COUNT_DELAY_MS;
+      const p = Math.min(1, Math.max(0, (now - start) / COUNT_MS));
+      show(p);
       if (p < 1) frame = requestAnimationFrame(tick);
+      else setLanded(true);
     };
     frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [enabled]);
-  if (t >= 1) return [low, high];
-  const at = (v: number) => Math.round((v * (0.6 + 0.4 * t)) / 500) * 500;
-  return [at(low), at(high)];
+    return () => {
+      cancelAnimationFrame(frame);
+      show(1);
+    };
+  }, [ref, enabled, low, high]);
+  return landed;
 }
 
 /**
@@ -71,7 +99,8 @@ export function ResultScreen({
   const { estimate, qualified } = result;
   const hasRange = estimate.low !== null && estimate.high !== null;
   const bookingUrl = safeHttpUrl(result.calendarUrl ?? contractor.calendarUrl);
-  const [low, high] = useCountUp(estimate.low ?? 0, estimate.high ?? 0, Boolean(builder && hasRange));
+  const rollRef = useRef<HTMLSpanElement>(null);
+  const landed = useCountUp(rollRef, estimate.low ?? 0, estimate.high ?? 0, Boolean(builder && hasRange));
   const booking = qualified ? (
     bookingUrl ? (
       <a
@@ -94,13 +123,28 @@ export function ResultScreen({
   );
   return (
     <div className="space-y-5">
+      {builder ? <RevealStyles /> : null}
       <section className={card} aria-labelledby={rangeId}>
-        <p className={eyebrow}>{firstName ? `${firstName}, your ballpark range` : 'Your ballpark range'}</p>
+        <p className={eyebrow}>
+          {builder ? 'Your ballpark price' : firstName ? `${firstName}, your ballpark range` : 'Your ballpark range'}
+        </p>
         {hasRange ? (
-          <p id={rangeId} className="mt-3 text-4xl font-semibold tracking-tight text-[var(--hq-text)] tabular-nums sm:text-5xl">
+          <p
+            id={rangeId}
+            className={cn(
+              'mt-3 grid origin-left text-4xl font-semibold tracking-tight text-[var(--hq-text)] tabular-nums sm:text-5xl',
+              landed && 'er-land',
+            )}
+          >
             {/* Screen readers get the final figure once; the rolling digits are decoration. */}
             <span className="sr-only">{formatRange(estimate.low!, estimate.high!)}</span>
-            <span aria-hidden="true">{formatRange(low, high)}</span>
+            {/* The final figure reserves the space (invisible), so the roll never moves anything around it. */}
+            <span aria-hidden="true" className="invisible col-start-1 row-start-1">
+              {formatRange(estimate.low!, estimate.high!)}
+            </span>
+            <span ref={rollRef} aria-hidden="true" className="col-start-1 row-start-1">
+              {formatRange(estimate.low!, estimate.high!)}
+            </span>
           </p>
         ) : (
           <p id={rangeId} className="mt-3 text-2xl font-semibold text-[var(--hq-text)]">

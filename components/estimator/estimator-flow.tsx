@@ -6,6 +6,7 @@ import { estimatorConsentText, submitEstimatorLead, type EstimatorLeadRequest } 
 import type { Answers, ContractorEstimatorConfig, EstimatorQuestion, EstimatorTemplate } from '@/lib/estimator/types';
 import { cn } from '@/lib/utils';
 import { designSummary, isVisualQuestion, optionLabeler, optionPhrase, previewAnswers, scrollDelta } from './builder';
+import { flowStages, rewardSteps, unlockCopy, type FlowPhase, type PhotoProgress } from './builder-progress';
 import { BuilderStyles } from './motion';
 import { ScenePanel } from './scene/scene-panel';
 import { DesignList, ResultScene } from './screens/design-result';
@@ -15,6 +16,9 @@ import { PackageScreen } from './screens/package-screen';
 import { QuestionScreen } from './screens/question-screen';
 import { ResultScreen, type LeadSuccess } from './screens/result-screen';
 import { SizeDimensions } from './screens/size-dimensions';
+import { UnlockPreview } from './screens/unlock-preview';
+import { RewardTracker } from './shell/reward-tracker';
+import { StageStepper } from './shell/stage-stepper';
 import { LiveSummary } from './summary';
 import { card, linkButton, primaryButton, secondaryButton } from './ui';
 import {
@@ -73,7 +77,13 @@ const PREVIEW_OUT_MS = 140;
  * live builder: the top-down picture of the pool (ScenePanel) sits beside the
  * questions on desktop and pinned above them on phones, redraws on every pick,
  * previews an option on hover or keyboard focus, and becomes the finished
- * design on the result (save as PNG, optional photoreal render).
+ * design on the result (save as PNG, share, and the realistic photo, which
+ * starts by itself when the lead response carries a render token).
+ * Progress reads as named stages (StageStepper) and as rewards being earned
+ * (RewardTracker: Design, then Price and, with renders on, the realistic
+ * photo); the ZIP and contact screens are the "unlock" step, with a locked
+ * preview of what they get. Prices never reach this screen before the lead
+ * is sent: the server's estimate comes back with the lead response.
  */
 export function EstimatorFlow({
   template,
@@ -89,7 +99,6 @@ export function EstimatorFlow({
   rendersEnabled?: boolean;
   seed?: EstimatorSeed;
 }) {
-  void rendersEnabled;
   const gallery = contractor.gallery?.filter((g) => g.src) ?? [];
   const hasGallery = gallery.length > 0;
   const immediate = contractor.revealRange === 'immediately';
@@ -104,6 +113,8 @@ export function EstimatorFlow({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [night, setNight] = useState(false);
+  // How the realistic photo is doing on the result (reported by ResultScene, for the reward tracker).
+  const [photo, setPhoto] = useState<PhotoProgress>(() => (seed?.result?.renderToken ? 'pending' : 'none'));
   const [preview, setPreview] = useState<{ q: EstimatorQuestion; optionId: string } | null>(null);
   const previewTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const submittingRef = useRef(false);
@@ -159,8 +170,9 @@ export function EstimatorFlow({
     const formBox = form.getBoundingClientRect();
     const pinBox = pin?.getBoundingClientRect();
     const stacked = pinBox ? pinBox.right > formBox.left && pinBox.left < formBox.right : false;
-    // Side by side (desktop) the step line above the form stays in view too; phones spend that room on the question.
-    const targetBox = !stacked && progressRef.current ? progressRef.current.getBoundingClientRect() : formBox;
+    // Side by side (desktop) the progress above the form stays in view too. Phones spend that room on the
+    // question, except on the unlock screens (nothing pinned), where seeing "Design done" is the point.
+    const targetBox = (!stacked || !pinned) && progressRef.current ? progressRef.current.getBoundingClientRect() : formBox;
     // The site header (top-16 / sm:top-20 below; none in the embed).
     let offset = embedded ? 0 : window.matchMedia?.('(min-width: 640px)').matches ? 80 : 64;
     if (pin && pinBox && pinned) {
@@ -269,14 +281,24 @@ export function EstimatorFlow({
   const fieldErrorCount = Object.keys(errors).filter((k) => FIELD_KEYS.has(k)).length;
 
   const backId = prevScreenId(screens, current.id);
+  // The live builder keeps the price for the end and makes the lead screens the "unlock" step
+  // (with revealRange "immediately" the range is live all along, so there is nothing to unlock).
+  const unlocking = builder && !immediate;
+  const unlock = unlockCopy(rendersEnabled);
   const nextLabel =
     current.kind === 'contact'
-      ? submitting
-        ? 'Sending…'
-        : 'See my estimate'
+      ? unlocking
+        ? submitting
+          ? unlock.submitting
+          : unlock.submit
+        : submitting
+          ? 'Sending…'
+          : 'See my estimate'
       : current.kind === 'looks' && state.likedLooks.length === 0
         ? 'Skip'
         : 'Next';
+  // The live builder names the unlock step for what it gives them.
+  const heading = unlocking && current.kind === 'zip' ? unlock.zipTitle : unlocking && current.kind === 'contact' ? unlock.contactTitle : current.title;
 
   const showSummary = immediate && !result;
   // The screen count grows as answers reveal detail screens, so show the step without a
@@ -288,6 +310,13 @@ export function EstimatorFlow({
     progress.current = { index, percent: index > progress.current.index ? Math.max(progress.current.percent, rawPercent) : rawPercent };
   }
   const percent = Math.min(100, progress.current.percent);
+  // Live builder: named stages and the rewards being earned.
+  const { stages, stageOf } = useMemo(() => flowStages(screens), [screens]);
+  const flowPhase: FlowPhase = result ? 'result' : current.kind === 'zip' || current.kind === 'contact' ? 'unlock' : 'design';
+  const rewards = useMemo(() => rewardSteps(flowPhase, rendersEnabled, photo), [flowPhase, rendersEnabled, photo]);
+  const examplePrices = !template.pricesConfirmed ? (
+    <span className="shrink-0 rounded-full border border-[var(--hq-line-strong)] px-2.5 py-0.5 text-xs text-[var(--hq-text-muted)]">Example prices</span>
+  ) : null;
   // Slide direction of the screen change, fixed when the index changes (so a re-render never replays it).
   const slide = useRef({ index, className: 'eb-fwd' });
   if (slide.current.index !== index) slide.current = { index, className: index > slide.current.index ? 'eb-fwd' : 'eb-back' };
@@ -296,6 +325,10 @@ export function EstimatorFlow({
     () => (builder && result ? designSummary(buildScene(template, { answers: state.answers, dimensions: dims.dimensions }), labeler) : []),
     [builder, result, template, state.answers, dims.dimensions, labeler],
   );
+
+  const unlockPreview = unlocking ? (
+    <UnlockPreview template={template} answers={state.answers} dimensions={dims.dimensions} rendersEnabled={rendersEnabled} promise={unlock.promise} />
+  ) : undefined;
 
   /* ---- Layout ---- */
   const container = builder
@@ -353,6 +386,7 @@ export function EstimatorFlow({
                 slug={contractor.slug}
                 renderToken={result.renderToken}
                 designItems={designItems}
+                onPhotoProgress={setPhoto}
               />
             ) : (
               <ScenePanel
@@ -370,7 +404,15 @@ export function EstimatorFlow({
         ) : null}
 
         <div className={cn('min-w-0', builder && !result && 'pt-5 lg:pt-0')}>
-          {result ? null : (
+          {builder ? (
+            unlocking || (!result && examplePrices) ? (
+              // Stays mounted from the first screen to the result, so Price (and the photo) tick over there.
+              <div ref={progressRef} className="mb-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                {unlocking ? <RewardTracker steps={rewards} label="What you get" /> : null}
+                {result ? null : examplePrices}
+              </div>
+            ) : null
+          ) : result ? null : (
             <div ref={progressRef} className="mb-5">
               <div className="flex items-center justify-between gap-3 text-xs text-[var(--hq-text-muted)]">
                 <span>{stepText}</span>
@@ -398,8 +440,8 @@ export function EstimatorFlow({
 
           {result ? (
             <div className={cn(card, builder && 'eb-rise')}>
-              <h2 ref={headingRef} tabIndex={-1} className="mb-4 text-2xl font-semibold tracking-tight focus:outline-none">
-                Your ballpark estimate
+              <h2 ref={headingRef} tabIndex={-1} className="mb-4 text-2xl font-semibold tracking-tight text-balance focus:outline-none">
+                {builder ? (state.contact.firstName.trim() ? `${state.contact.firstName.trim()}, here’s your pool` : 'Here’s your pool') : 'Your ballpark estimate'}
               </h2>
               {!template.pricesConfirmed ? (
                 <p className="mb-4 inline-block rounded-full border border-[var(--hq-line-strong)] px-2.5 py-0.5 text-xs text-[var(--hq-text-muted)]">
@@ -433,9 +475,10 @@ export function EstimatorFlow({
               // Focused fields scroll clear of the site header (and the pinned picture is off on these screens).
               className={cn(card, '@container overflow-hidden focus:outline-none [&_input]:scroll-mt-28 [&_textarea]:scroll-mt-28 [&_select]:scroll-mt-28')}
             >
+              {builder ? <StageStepper stages={stages} current={stageOf[current.id]} label="Your progress" className="mb-5" /> : null}
               <div key={current.id} className={builder ? slide.current.className : undefined}>
-                <h2 ref={headingRef} tabIndex={-1} className="mb-5 text-2xl font-semibold tracking-tight focus:outline-none">
-                  {current.title}
+                <h2 ref={headingRef} tabIndex={-1} className="mb-5 text-2xl font-semibold tracking-tight text-balance focus:outline-none">
+                  {heading}
                 </h2>
 
                 {current.kind === 'questions' && current.group === 'package' && packageQ ? (
@@ -477,9 +520,10 @@ export function EstimatorFlow({
                     }
                   />
                 ) : current.kind === 'zip' ? (
-                  <ZipScreen state={state} errors={errors} onChange={(patch) => update(patch, Object.keys(patch))} />
+                  <ZipScreen state={state} errors={errors} onChange={(patch) => update(patch, Object.keys(patch))} preview={unlockPreview} />
                 ) : (
                   <ContactScreen
+                    preview={unlockPreview}
                     contractor={contractor}
                     contact={state.contact}
                     errors={errors}
