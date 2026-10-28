@@ -9,6 +9,11 @@ import { fakeSupabase } from './helpers/pglite-supabase';
 const h = vi.hoisted(() => ({ client: null as any }));
 vi.mock('server-only', () => ({}));
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => h.client }));
+const push = vi.hoisted(() => ({ calls: [] as any[], adminId: '' }));
+vi.mock('@/lib/notifications/service', () => ({ sendPushNotification: async (i: any) => { push.calls.push(i); return {}; } }));
+vi.mock('@/lib/notifications/outbox', () => ({ flushNotificationsSoon: () => undefined, enqueueNotificationEvent: async () => true }));
+vi.mock('next/cache', () => ({ revalidatePath: () => undefined }));
+vi.mock('@/lib/auth', () => ({ requireRole: async () => ({ id: push.adminId, role: 'admin', full_name: 'Liam', email: 'admin@hq.test' }) }));
 
 const { POST, GET } = await import('@/app/api/mcp/route');
 const { newMcpKey } = await import('@/lib/mcp/keys');
@@ -17,6 +22,7 @@ const { hashToken } = await import('@/lib/signing/tokens');
 let db: PGlite;
 const q = async (sql: string, p?: unknown[]) => (await db.query<any>(sql, p)).rows;
 const admin = randomUUID(); const setter = randomUUID();
+push.adminId = admin;
 const keys: Record<string, string> = {};
 let leadId = '';
 
@@ -50,6 +56,7 @@ beforeAll(async () => {
   await makeKey('texter', ['read', 'text']);
   await makeKey('revoked', ['read', 'write', 'text'], admin, true);
   await makeKey('setter', ['read'], setter);
+  await makeKey('assigner', ['read', 'assign']);
 }, 180_000);
 afterAll(async () => { await db?.close(); });
 
@@ -153,5 +160,50 @@ describe('HomeQuote MCP: texting', () => {
     for (let i = 0; i < 30; i++) await q(`insert into public.mcp_tool_calls(key_id, tool, ok) values ($1,'send_text',true)`, [k]);
     const r = await call(keys.texter, 'send_text', { lead_id: leadId, message: 'again' });
     expect(r.isError).toBe(true); expect(r.text).toMatch(/30 texts/);
+  });
+});
+
+describe('HomeQuote MCP: assigning leads needs the admin to approve in HomeQuote', () => {
+  const fd = (o: Record<string, string>) => { const f = new FormData(); for (const [k, v] of Object.entries(o)) f.set(k, v); return f; };
+  let co1 = ''; let co2 = '';
+  beforeAll(async () => {
+    co1 = randomUUID(); co2 = randomUUID();
+    await q(`insert into public.contractors(id, name) values ($1,'Acme Remodel'),($2,'Best Baths')`, [co1, co2]);
+  });
+
+  it('a key without the assign permission cannot even propose', async () => {
+    expect((await call(keys.writer, 'propose_lead_assignment', { lead_id: leadId, contractor_ids: [co1] })).error?.message).toMatch(/Unknown tool/);
+  });
+
+  it('proposing assigns nothing, notifies the admin, and approving in HomeQuote does the assignment once', async () => {
+    const r = await call(keys.assigner, 'propose_lead_assignment', { lead_id: leadId, contractor_ids: [co1, co2], reason: 'They cover Encino' });
+    expect(r.data).toMatchObject({ status: 'waiting for your approval' });
+    expect(r.data.request).toBe('Assign Ada Lee (Encino) to Acme Remodel, Best Baths');
+    expect(await q(`select 1 from public.lead_assignments where lead_id=$1`, [leadId])).toHaveLength(0); // nothing assigned yet
+    expect(push.calls.at(-1)).toMatchObject({ userIds: [admin], title: 'Claude needs your OK', url: '/app/claude-connector#approvals' });
+    expect((await call(keys.assigner, 'list_pending_approvals')).data[0]).toMatchObject({ status: 'pending' });
+
+    const { decideMcpAction: decide } = await import('@/lib/actions/claude-connector');
+    await decide(fd({ id: r.data.request_id, decision: 'approve' }));
+    await decide(fd({ id: r.data.request_id, decision: 'approve' })); // a second click does nothing
+    const rows = await q(`select contractor_id, assigned_by from public.lead_assignments where lead_id=$1 order by contractor_id`, [leadId]);
+    expect(rows).toHaveLength(2); expect(rows.every((x: any) => x.assigned_by === admin)).toBe(true);
+    expect((await q(`select status, result from public.mcp_pending_actions where id=$1`, [r.data.request_id]))[0]).toMatchObject({ status: 'approved', result: 'Done: 2 new assignment(s).' });
+    expect((await q(`select body from public.lead_activities where lead_id=$1 and type='assignment'`, [leadId]))[0].body).toMatch(/proposed by Claude, approved by Liam. Reason: They cover Encino/);
+    expect((await call(keys.assigner, 'propose_lead_assignment', { lead_id: leadId, contractor_ids: [co1] })).text).toMatch(/already assigned/);
+  });
+
+  it('declining, or letting it expire, assigns nothing', async () => {
+    const other = randomUUID();
+    await q(`insert into public.leads(id,first_name,last_name,status,source) values ($1,'Bo','Ray','new','meta')`, [other]);
+    const { decideMcpAction: decide } = await import('@/lib/actions/claude-connector');
+    const a = await call(keys.assigner, 'propose_lead_assignment', { lead_id: other, contractor_ids: [co1] });
+    await decide(fd({ id: a.data.request_id, decision: 'decline' }));
+    const b = await call(keys.assigner, 'propose_lead_assignment', { lead_id: other, contractor_ids: [co2] });
+    await q(`update public.mcp_pending_actions set expires_at = now() - interval '1 minute' where id=$1`, [b.data.request_id]);
+    await decide(fd({ id: b.data.request_id, decision: 'approve' }));
+    expect(await q(`select 1 from public.lead_assignments where lead_id=$1`, [other])).toHaveLength(0);
+    expect((await q(`select status from public.mcp_pending_actions where id=$1`, [a.data.request_id]))[0].status).toBe('declined');
+    expect((await q(`select status from public.mcp_pending_actions where id=$1`, [b.data.request_id]))[0].status).toBe('pending'); // expired: never acted on
   });
 });

@@ -7,7 +7,7 @@ import { hashToken } from '@/lib/signing/tokens';
  * HomeQuote MCP keys: `hq_` + 256 random bits (base64url). Only the SHA-256 hash is stored (mcp_api_keys);
  * the plaintext is shown to the admin once. Revoking sets revoked_at, which blocks the key immediately.
  */
-export const MCP_SCOPES = ['read', 'write', 'text'] as const;
+export const MCP_SCOPES = ['read', 'write', 'text', 'assign'] as const;
 export type McpScope = (typeof MCP_SCOPES)[number];
 const KEY_RE = /^hq_[A-Za-z0-9_-]{43}$/;
 

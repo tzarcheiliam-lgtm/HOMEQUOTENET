@@ -2,7 +2,8 @@ import { Trash2 } from 'lucide-react';
 import { requireRole } from '@/lib/auth';
 import { publicSiteUrl } from '@/lib/auth/site-url';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { revokeMcpKey } from '@/lib/actions/claude-connector';
+import { decideMcpAction, revokeMcpKey } from '@/lib/actions/claude-connector';
+import { Button } from '@/components/ui/button';
 import { TOOLS } from '@/lib/mcp/tools';
 import { CreateMcpKeyForm } from '@/components/claude-connector/create-key-form';
 import { PageHeader } from '@/components/ui/page-header';
@@ -14,19 +15,20 @@ export const metadata = { title: 'Claude connector · HomeQuote Network' };
 export const dynamic = 'force-dynamic';
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
-const SCOPE_LABEL: Record<string, string> = { read: 'Look things up', write: 'Make changes', text: 'Text homeowners' };
+const SCOPE_LABEL: Record<string, string> = { read: 'Look things up', write: 'Make changes', text: 'Text homeowners', assign: 'Propose assignments' };
 
 export default async function ClaudeConnectorPage() {
   await requireRole(['admin']);
   const mcpUrl = `${publicSiteUrl()}/api/mcp`;
   const db = createAdminClient();
-  const [{ data: keys, error }, { data: calls }] = await Promise.all([
+  const [{ data: keys, error }, { data: calls }, { data: pending }] = await Promise.all([
     db.from('mcp_api_keys').select('id, name, key_prefix, scopes, created_at, last_used_at, revoked_at').order('created_at', { ascending: false }),
     db.from('mcp_tool_calls').select('id, key_id, tool, summary, ok, created_at').order('created_at', { ascending: false }).limit(25),
+    db.from('mcp_pending_actions').select('id, key_id, summary, payload, created_at, expires_at').eq('status', 'pending').gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }).limit(20),
   ]);
   const keyName = new Map((keys ?? []).map((k) => [k.id, k.name]));
   const toolTitle = new Map(TOOLS.map((t) => [t.name, t.title]));
-  const groups = (['read', 'write', 'text'] as const).map((s) => ({ scope: s, tools: TOOLS.filter((t) => t.scope === s) }));
+  const groups = (['read', 'write', 'text', 'assign'] as const).map((s) => ({ scope: s, tools: TOOLS.filter((t) => t.scope === s) }));
 
   return (
     <div className="space-y-6">
@@ -36,6 +38,34 @@ export default async function ClaudeConnectorPage() {
         <Card className="border-amber-500/40 bg-amber-50/60 dark:bg-amber-950/20">
           <CardContent className="py-4 text-sm">
             <p className="font-semibold">One setup step left: run the database update <code className="rounded bg-muted px-1">0067_homequote_mcp.sql</code>.</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {(pending ?? []).length > 0 && (
+        <Card id="approvals" className="border-primary/40">
+          <CardHeader>
+            <CardTitle>Waiting for your approval</CardTitle>
+            <CardDescription>Claude asked to do these. Nothing happens until you approve; requests expire after 24 hours.</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <ul className="divide-y">
+              {(pending ?? []).map((p) => {
+                const reason = (p.payload as { reason?: string | null })?.reason;
+                return (
+                  <li key={p.id} className="flex flex-wrap items-center justify-between gap-3 px-6 py-3">
+                    <div className="min-w-0">
+                      <p className="font-medium">{p.summary}</p>
+                      <p className="text-xs text-muted-foreground">{reason ? `“${reason}” · ` : ''}asked by {keyName.get(p.key_id ?? '') ?? 'Claude'} · {when(p.created_at)}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <form action={decideMcpAction}><input type="hidden" name="id" value={p.id} /><input type="hidden" name="decision" value="decline" /><Button type="submit" variant="outline" size="sm">Decline</Button></form>
+                      <form action={decideMcpAction}><input type="hidden" name="id" value={p.id} /><input type="hidden" name="decision" value="approve" /><Button type="submit" size="sm">Approve</Button></form>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
           </CardContent>
         </Card>
       )}
@@ -56,14 +86,14 @@ export default async function ClaudeConnectorPage() {
 
       <Card>
         <CardHeader><CardTitle className="text-base">What Claude can do</CardTitle></CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-3">
+        <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {groups.map((g) => (
             <div key={g.scope} className="space-y-2">
               <p className="text-sm font-semibold">{SCOPE_LABEL[g.scope]}</p>
               <ul className="space-y-1 text-sm text-muted-foreground">{g.tools.map((t) => <li key={t.name}>{t.title}</li>)}</ul>
             </div>
           ))}
-          <p className="text-xs text-muted-foreground sm:col-span-3">It can’t publish workflows, delete anything, assign leads to contractors, place calls or touch billing.</p>
+          <p className="text-xs text-muted-foreground sm:col-span-2 lg:col-span-4">It can’t publish workflows, delete anything, place calls or touch billing, and it can only <em>ask</em> to assign a lead: you approve each one here.</p>
         </CardContent>
       </Card>
 

@@ -9,6 +9,7 @@ import { buildCatalogue } from '@/lib/workflows/ai-builder/catalogue';
 import { assembleGraph, checkGraph } from '@/lib/workflows/ai-builder/check';
 import { explainGraphText } from '@/lib/workflows/ai-builder/explain';
 import { parseWorkflowGraph, triggerOf } from '@/lib/workflows/graph';
+import { sendPushNotification } from '@/lib/notifications/service';
 import type { McpKey, McpScope } from './keys';
 
 /**
@@ -17,7 +18,8 @@ import type { McpKey, McpScope } from './keys';
  *   read  - look up leads, appointments, texting, workflows and the business summary
  *   write - add a lead note, change a lead's pipeline status, save a workflow as an UNPUBLISHED draft
  *   text  - text a homeowner through the Mac bridge (every texting rule still applies)
- * Nothing here publishes a workflow, deletes anything, assigns leads to contractors, places calls or touches billing.
+ *   assign - PROPOSE assigning a lead to contractors; it only happens when the admin taps Approve in HomeQuote
+ * Nothing here publishes a workflow, deletes anything, assigns a lead without the admin's approval, places calls or touches billing.
  */
 export type Db = SupabaseClient;
 type Json = Record<string, unknown>;
@@ -379,6 +381,61 @@ export const TOOLS: ToolDef[] = [
       const r = await queueWorkflowText(db, { leadId: id, body: message, contractorId: null, stepRunId: randomUUID(), assistant: args.let_assistant_reply !== false, label: 'Text from Claude' });
       if (!r.ok) fail(`Not sent: ${WORKFLOW_TEXT_SKIP_REASONS[r.reason] ?? (r.reason === 'error' ? 'something went wrong; try again.' : r.reason)}`);
       return { queued: true, note: 'The Mac sends it within about a minute (or when texting hours open).', link: link(`/app/leads/${id}`) };
+    },
+  },
+  {
+    name: 'propose_lead_assignment',
+    title: 'Propose assigning a lead',
+    description: 'Ask the admin to approve assigning a lead to one or more contractors. Only use this when the admin asked for it in this conversation. Nothing is assigned by this call: the admin gets a notification and approves or declines it in HomeQuote. Check the outcome with list_pending_approvals.',
+    scope: 'assign',
+    inputSchema: {
+      type: 'object', required: ['lead_id', 'contractor_ids'],
+      properties: {
+        lead_id: { type: 'string' },
+        contractor_ids: { type: 'array', items: { type: 'string' }, description: 'Contractor ids from list_contractors (1-5).' },
+        exclusive: { type: 'boolean', description: 'Exclusive lead (default false).' },
+        reason: { type: 'string', description: 'Why, in a sentence, shown to the admin with the request.' },
+      },
+    },
+    summarize: (a) => `lead=${String(a.lead_id ?? '').slice(0, 36)} contractors=${Array.isArray(a.contractor_ids) ? a.contractor_ids.length : 0}`,
+    run: async (db, args, key) => {
+      const leadId = uuid(args.lead_id, 'lead_id');
+      const ids = Array.isArray(args.contractor_ids) ? [...new Set(args.contractor_ids.map((c) => uuid(c, 'Each contractor id')))] : [];
+      if (!ids.length || ids.length > 5) fail('Give 1 to 5 contractor ids from list_contractors.');
+      const { data: lead } = await db.from('leads').select('id,first_name,last_name,city').eq('id', leadId).maybeSingle();
+      if (!lead) fail('No lead with that id.');
+      const { data: cos } = await db.from('contractors').select('id,name,status').in('id', ids);
+      if ((cos ?? []).length !== ids.length) fail('One of the contractor ids does not exist. Use ids from list_contractors.');
+      const { data: existing } = await db.from('lead_assignments').select('contractor_id').eq('lead_id', leadId);
+      const already = new Set((existing ?? []).map((r: any) => r.contractor_id));
+      const fresh = (cos ?? []).filter((c: any) => !already.has(c.id));
+      if (!fresh.length) fail('The lead is already assigned to every one of those contractors.');
+      const { count } = await db.from('mcp_pending_actions').select('id', { count: 'exact', head: true }).eq('key_id', key.id).eq('status', 'pending');
+      if ((count ?? 0) >= 20) fail('There are already 20 requests waiting for approval. Ask the admin to review them first.');
+      const exclusive = args.exclusive === true;
+      const leadName = name(lead as any);
+      const summary = `Assign ${leadName}${(lead as any).city ? ` (${(lead as any).city})` : ''} to ${fresh.map((c: any) => c.name).join(', ')}${exclusive ? ' as an exclusive lead' : ''}`.slice(0, 500);
+      const reason = str(args.reason, 300) ?? null;
+      const { data: row, error } = await db.from('mcp_pending_actions').insert({
+        key_id: key.id, requested_for: key.actorId, kind: 'assign_lead', summary,
+        payload: { leadId, contractorIds: fresh.map((c: any) => c.id), exclusive, reason },
+      }).select('id').single();
+      if (error || !row) fail('Could not create the approval request.');
+      if (key.actorId) await sendPushNotification({ userIds: [key.actorId], type: 'workflow_alert', title: 'Claude needs your OK', body: `${summary}. Tap to approve or decline.`, url: '/app/claude-connector#approvals', db }).catch(() => undefined);
+      return { status: 'waiting for your approval', request_id: (row as any).id, request: summary, ...(already.size ? { already_assigned_to: [...already].length } : {}), approve_at: link('/app/claude-connector#approvals'), note: 'Nothing has been assigned yet. The admin approves or declines this in HomeQuote; it expires in 24 hours.' };
+    },
+  },
+  {
+    name: 'list_pending_approvals',
+    title: 'Check approval requests',
+    description: 'Assignment requests made through this connector and whether the admin approved, declined or has not decided yet (newest first).',
+    scope: 'assign',
+    inputSchema: { type: 'object', properties: {} },
+    annotations: readOnly,
+    run: async (db) => {
+      const { data } = await db.from('mcp_pending_actions').select('id,summary,status,result,created_at,expires_at,decided_at').order('created_at', { ascending: false }).limit(20);
+      const now = Date.now();
+      return (data ?? []).map((r: any) => ({ id: r.id, request: r.summary, status: r.status === 'pending' && new Date(r.expires_at).getTime() < now ? 'expired' : r.status, result: r.result, asked_at: r.created_at, decided_at: r.decided_at }));
     },
   },
 ];
