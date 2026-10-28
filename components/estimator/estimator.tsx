@@ -9,6 +9,11 @@ export type EstimatorProps = {
   contractor: ContractorEstimatorConfig;
   /** Compact layout for the iframe embed: no page-level spacing or sticky bars. */
   embedded?: boolean;
+  /**
+   * The photoreal "see it for real" render is switched on (server has KIE_API_KEY).
+   * Copy that promises a realistic photo must only show when true.
+   */
+  rendersEnabled?: boolean;
 };
 
 /**
@@ -16,6 +21,6 @@ export type EstimatorProps = {
  * picture beside it for pool templates), then the ballpark range and a
  * booking button. Screen order and rules live in use-estimator-flow.ts.
  */
-export function Estimator({ template, contractor, embedded }: EstimatorProps) {
-  return <EstimatorFlow template={template} contractor={contractor} embedded={embedded} />;
+export function Estimator({ template, contractor, embedded, rendersEnabled = false }: EstimatorProps) {
+  return <EstimatorFlow template={template} contractor={contractor} embedded={embedded} rendersEnabled={rendersEnabled} />;
 }

@@ -79,13 +79,17 @@ export function EstimatorFlow({
   template,
   contractor,
   embedded = false,
+  rendersEnabled = false,
   seed,
 }: {
   template: EstimatorTemplate;
   contractor: ContractorEstimatorConfig;
   embedded?: boolean;
+  /** See EstimatorProps.rendersEnabled. */
+  rendersEnabled?: boolean;
   seed?: EstimatorSeed;
 }) {
+  void rendersEnabled;
   const gallery = contractor.gallery?.filter((g) => g.src) ?? [];
   const hasGallery = gallery.length > 0;
   const immediate = contractor.revealRange === 'immediately';
