@@ -268,8 +268,14 @@ describe('estimator rendering', () => {
     const html = renderToStaticMarkup(<Estimator template={FIXTURE_TEMPLATE} contractor={FIXTURE_CONTRACTOR} />);
     expect(html).toContain('What are you planning?');
     expect(html).toContain('Remodel my pool');
-    expect(html).toContain('Step 1');
-    expect(html).toMatch(/role="progressbar"/);
+    // Named stages instead of "Step 1", and the rewards being worked toward.
+    expect(html).not.toContain('Step 1');
+    expect(html).toMatch(/role="group" aria-label="Your progress"/);
+    expect(html).toContain('Pool, stage 1 of');
+    expect(html).toMatch(/aria-current="step"/);
+    // One indicator while designing: the stage bar, whose last stage (Unlock) carries the prize.
+    expect(html).not.toContain('aria-label="What you get"');
+    expect(html).toMatch(/Unlock<\/span>/);
     expect(html).toMatch(/<fieldset/);
     expect(html).toMatch(/<legend/);
     expect(html).toMatch(/type="radio"/);
@@ -301,7 +307,8 @@ describe('estimator rendering', () => {
           />,
         );
         expect(html, `screen ${screen.id}`).not.toContain('$');
-        expect(html).toContain('Your price range appears at the end.');
+        // Designing: the stage bar ends at Unlock; on the unlock screens the tracker says the price is locked.
+        expect(html).toMatch(/Price, locked|Unlock<\/span>/);
       }
     }
   });
@@ -385,7 +392,7 @@ describe('estimator rendering', () => {
     expect(html).toMatch(/<div hidden="" inert=""[^>]*><label>[^<]*<input[^>]*tabindex="-1"[^>]*name="contact_url_2"/);
     expect(html).toMatch(/maxLength="1000"|maxlength="1000"/);
     expect(html).toContain('Anything else we should know?');
-    expect(html).toContain('See my estimate');
+    expect(html).toMatch(/<button type="submit"[^>]*>Unlock my price<\/button>/);
   });
 
   it('disables Next until the screen is answered', () => {
@@ -467,8 +474,10 @@ describe('estimator result', () => {
     const html = renderToStaticMarkup(
       <EstimatorFlow template={TEMPLATE} contractor={contractor()} seed={{ answers, result, state: { contact: { ...initialFlowState().contact, firstName: 'Ana' } } }} />,
     );
-    expect(html).toContain('Your ballpark estimate');
-    expect(html).toContain('Ana, your ballpark range');
+    expect(html).toMatch(/Ana, here’s your (?:[\w-]+ )?pool/);
+    expect(html).toContain('Your ballpark price');
+    // Nothing is being made without a render token: no progress anywhere on the result.
     expect(html).not.toContain('role="progressbar"');
+    expect(html).toContain('Price, done');
   });
 });

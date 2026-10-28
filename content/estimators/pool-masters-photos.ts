@@ -46,7 +46,7 @@ export const POOL_MASTERS_GALLERY: GalleryImage[] = [
     src: `${DIR}night-led-pool-spa.webp`,
     thumb: `${THUMBS}night-led-pool-spa.webp`,
     alt: 'Pool and spa glowing purple and blue with LED lights at dusk, with uplit planting behind',
-    caption: 'Colour LED lighting at night',
+    caption: 'Color LED lighting at night',
   },
   {
     src: `${DIR}covered-outdoor-kitchen-bar.webp`,
@@ -62,12 +62,15 @@ export const POOL_MASTERS_GALLERY: GalleryImage[] = [
   },
 ];
 
-/** Photo for an option (tile-sized copy), keyed by "questionId.optionId". Only where the photo shows that option. */
+/**
+ * Photo for an option (tile-sized copy), keyed by "questionId.optionId". Only where the photo shows that option.
+ * Water and fire bowls are two different crops of the same job photo, so the two tiles never look like a placeholder pair.
+ */
 export const POOL_MASTERS_OPTION_IMAGES: Record<string, string> = {
   'features.baja': `${THUMBS}baja-shelf-loungers-blue-umbrellas.webp`,
   'features.spa': `${THUMBS}raised-dark-tile-spa-long-pool.webp`,
-  'features.water': `${THUMBS}fire-water-bowls-closeup.webp`,
-  'features.fire': `${THUMBS}fire-water-bowls-closeup.webp`,
+  'features.water': `${THUMBS}water-bowl-spill-closeup.webp`,
+  'features.fire': `${THUMBS}fire-bowl-flame-closeup.webp`,
   'features.lighting': `${THUMBS}night-led-pool-spa.webp`,
   'extras.kitchen': `${THUMBS}covered-outdoor-kitchen-bar.webp`,
   'extras.patio_cover': `${THUMBS}covered-lounge-pool-dusk.webp`,

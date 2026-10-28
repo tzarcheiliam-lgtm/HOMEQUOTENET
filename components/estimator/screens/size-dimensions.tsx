@@ -2,6 +2,7 @@
 
 import { useId } from 'react';
 import type { EstimatorTemplate } from '@/lib/estimator/types';
+import { cn } from '@/lib/utils';
 import { Field, inputClass } from '../ui';
 import type { DimensionsInput } from '../use-estimator-flow';
 
@@ -27,6 +28,8 @@ export function SizeDimensions({
 }) {
   const uid = useId();
   const lim = template.geometry.limits;
+  // Tabular figures: the digits do not jiggle as the picture resizes with each keystroke.
+  const numberInput = cn(inputClass, 'tabular-nums');
   const set = (key: keyof DimensionsInput) => (e: { target: { value: string } }) => onChange({ ...value, [key]: e.target.value });
   return (
     <div className="mt-6 border-t border-[var(--hq-line)] pt-4">
@@ -46,17 +49,17 @@ export function SizeDimensions({
             <div className="mt-2 grid grid-cols-3 gap-3">
               <Field label="Length (ft)">
                 {(p) => (
-                  <input {...p} type="number" inputMode="decimal" min={lim.minFt} max={lim.maxLengthFt} step="any" value={value.length} onChange={set('length')} className={inputClass} />
+                  <input {...p} type="number" inputMode="decimal" min={lim.minFt} max={lim.maxLengthFt} step="any" value={value.length} onChange={set('length')} className={numberInput} />
                 )}
               </Field>
               <Field label="Width (ft)">
                 {(p) => (
-                  <input {...p} type="number" inputMode="decimal" min={lim.minFt} max={lim.maxWidthFt} step="any" value={value.width} onChange={set('width')} className={inputClass} />
+                  <input {...p} type="number" inputMode="decimal" min={lim.minFt} max={lim.maxWidthFt} step="any" value={value.width} onChange={set('width')} className={numberInput} />
                 )}
               </Field>
               <Field label="Avg depth (ft)" hint="Optional">
                 {(p) => (
-                  <input {...p} type="number" inputMode="decimal" min={lim.minDepthFt} max={lim.maxDepthFt} step="any" value={value.depth} onChange={set('depth')} className={inputClass} />
+                  <input {...p} type="number" inputMode="decimal" min={lim.minDepthFt} max={lim.maxDepthFt} step="any" value={value.depth} onChange={set('depth')} className={numberInput} />
                 )}
               </Field>
             </div>

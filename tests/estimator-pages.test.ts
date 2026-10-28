@@ -1,10 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { existsSync } from 'node:fs';
 import { validateTemplate } from '@/lib/estimator/engine';
 import { ESTIMATOR_SLUGS, getEstimator } from '@/lib/estimator/registry';
 import { POOL_MASTERS_ESTIMATOR } from '@/content/estimators/pool-masters';
-import { generateMetadata as publicMetadata, generateStaticParams } from '@/app/(marketing)/estimator/[slug]/page';
+import { generateMetadata as publicMetadata, generateStaticParams } from '@/app/(estimator)/estimator/[slug]/page';
 import { generateMetadata as embedMetadata } from '@/app/(estimator-embed)/embed/estimator/[slug]/page';
+
+// The pages read rendersEnabled() from lib/estimator/render.ts, which is server-only.
+vi.mock('server-only', () => ({}));
 
 const params = (slug: string) => ({ params: Promise.resolve({ slug }) });
 
@@ -76,6 +79,11 @@ describe('estimator pages', () => {
   it('public page metadata for an unknown slug is noindex', async () => {
     const meta = await publicMetadata(params('nope'));
     expect(meta.robots).toEqual({ index: false, follow: false });
+  });
+
+  it('public page lives in its own route group, not the marketing one (no HomeQuote site chrome)', () => {
+    expect(existsSync('app/(estimator)/estimator/[slug]/page.tsx')).toBe(true);
+    expect(existsSync('app/(marketing)/estimator/[slug]/page.tsx')).toBe(false);
   });
 
   it('embed page is always noindex', async () => {
