@@ -1,6 +1,6 @@
 # Rendoly logo
 
-Rendoly is the planned self-serve instant-estimator product for contractors. Chosen mark: the **roofline r** — a roof
+Rendoly (one L; domain: rendoly.com) is the planned self-serve instant-estimator product for contractors. Chosen mark: the **roofline r** — a roof
 over a lowercase "r". The wordmark is Plus Jakarta Sans ExtraBold (800), tracked −0.035 em, converted to outlines, so
 the SVGs need no font.
 
