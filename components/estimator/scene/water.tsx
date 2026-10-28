@@ -68,133 +68,139 @@ export function PoolLayer({ uid, layout, scene, keys, night }: Props) {
         </pattern>
       </defs>
 
-      {/* Deck (a new one also paves the walk along the house: one continuous patio) */}
-      <Crossfade k={keys.deck}>
-        {(k) => {
-          const existing = k === 'existing';
-          const tex: TextureId = existing ? 'deck_concrete' : (k as TextureId);
-          const id = `${uid}-deck-${k}`;
-          return (
-            <>
-              <defs>
-                <TexturePattern
-                  id={id}
-                  texture={tex}
-                  transform={`translate(${r1(deck.box.x)} ${r1(deck.box.y)})`}
-                  tone={existing ? { color: '#8f8676', opacity: 0.34 } : undefined}
-                />
-              </defs>
-              {existing ? null : <rect x={YARD.x} y={FRAME.roofH} width={YARD.w} height={FRAME.walkH} fill={`url(#${id})`} />}
-              <path className="ps-morph" d={deckD} fill={`url(#${id})`} />
-              {tex === 'deck_concrete' ? (
-                <path className="ps-morph" d={deckD} fill={`url(#${uid}-sawcut)`} opacity={existing ? 0.6 : 1} />
-              ) : null}
-              {existing ? <ExistingWear deck={deck.box} seed={Math.round(deck.box.w)} clip={`${uid}-deck`} /> : null}
-            </>
-          );
-        }}
-      </Crossfade>
-      {deck.turfBands.length ? (
-        <g clipPath={`url(#${uid}-deck)`}>
-          {deck.turfBands.map((b, i) => (
-            <g key={i}>
-              <rect x={b.x} y={b.y} width={b.w} height={b.h} fill={`url(#${uid}-turf)`} />
-              <rect x={b.x + b.w - 0.8} y={b.y} width={0.8} height={b.h} fill="#000" opacity={0.15} />
-            </g>
-          ))}
-        </g>
-      ) : null}
-      <path className="ps-morph" d={deckPath(deck.box, deck.rx, true)} fill="none" stroke="#3a3328" strokeOpacity={0.2} strokeWidth={1.6} />
-
-      {/* Coping: square-cornered slabs around rectangle and L pools; a band following the curve on freeform */}
-      {pool.copingPath ? (
-        <>
-          <path className="ps-morph" d={pool.copingPath} fill="#0e1c20" opacity={0.16} transform="translate(2.2 2.6)" />
-          <path className="ps-morph" d={pool.copingPath} fill="none" stroke="#1d2a2c" strokeOpacity={0.3} strokeWidth={2.4} strokeLinejoin="miter" />
-        </>
-      ) : (
-        <path className="ps-morph" d={pool.path} fill="none" stroke="#1d2a2c" strokeOpacity={0.28} strokeWidth={2 * c + 3} strokeLinejoin="round" />
-      )}
-      <Crossfade k={keys.coping}>
-        {(k) => {
-          const id = `${uid}-coping-${k}`;
-          return (
-            <>
-              <defs>
-                <TexturePattern id={id} texture={k as TextureId} />
-              </defs>
-              {pool.copingPath ? (
-                <path className="ps-morph" d={pool.copingPath} fill={`url(#${id})`} />
-              ) : (
-                <path className="ps-morph" d={pool.path} fill="none" stroke={`url(#${id})`} strokeWidth={2 * c} strokeLinejoin="round" />
-              )}
-            </>
-          );
-        }}
-      </Crossfade>
-      {pool.copingJoints ? (
-        <path className="ps-morph" d={pool.copingJoints} fill="none" stroke="#5d584f" strokeOpacity={0.4} strokeWidth={0.9} />
-      ) : (
-        <path
-          className="ps-morph"
-          d={pool.path}
-          fill="none"
-          stroke="#5d584f"
-          strokeOpacity={0.35}
-          strokeWidth={2 * c}
-          strokeDasharray={`0.9 ${r1(2 * FT - 0.9)}`}
-          strokeLinejoin="round"
-        />
-      )}
-      {/* Sunlit outer arris of the coping */}
-      {pool.copingPath ? <path className="ps-morph" d={pool.copingPath} fill="none" stroke="#ffffff" strokeOpacity={0.35} strokeWidth={1} /> : null}
-
-      {/* Water */}
-      <g clipPath={`url(#${waterClip})`}>
-        <Crossfade k={keys.water}>
+      {/* Deck (a new one also paves the walk along the house: one continuous patio). Own group: the intro fades it in last. */}
+      <g className="ps-deck">
+        <Crossfade k={keys.deck}>
           {(k) => {
-            const look = waterLook(k === 'default' ? null : k);
-            return <Water uid={uid} k={k} look={look} fillBox={fillBox} box={box} />;
+            const existing = k === 'existing';
+            const tex: TextureId = existing ? 'deck_concrete' : (k as TextureId);
+            const id = `${uid}-deck-${k}`;
+            return (
+              <>
+                <defs>
+                  <TexturePattern
+                    id={id}
+                    texture={tex}
+                    transform={`translate(${r1(deck.box.x)} ${r1(deck.box.y)})`}
+                    tone={existing ? { color: '#8f8676', opacity: 0.34 } : undefined}
+                  />
+                </defs>
+                {existing ? null : <rect x={YARD.x} y={FRAME.roofH} width={YARD.w} height={FRAME.walkH} fill={`url(#${id})`} />}
+                <path className="ps-morph" d={deckD} fill={`url(#${id})`} />
+                {tex === 'deck_concrete' ? (
+                  <path className="ps-morph" d={deckD} fill={`url(#${uid}-sawcut)`} opacity={existing ? 0.6 : 1} />
+                ) : null}
+                {existing ? <ExistingWear deck={deck.box} seed={Math.round(deck.box.w)} clip={`${uid}-deck`} /> : null}
+              </>
+            );
           }}
         </Crossfade>
-        {/* Shadow of the wall on the sun side, and darker water along every wall */}
-        <path className="ps-morph" d={`${pool.path}${shadowShift}`} fillRule="evenodd" fill="#04374a" opacity={0.26} />
-        <path className="ps-morph" d={pool.path} fill="none" stroke="#06485e" strokeOpacity={0.12} strokeWidth={30} />
-        <path className="ps-morph" d={pool.path} fill="none" stroke="#06485e" strokeOpacity={0.14} strokeWidth={12} />
-        {layout.baja ? <BajaShelf uid={uid} layout={layout} /> : null}
-        <Caustics uid={uid} box={box} night={night} />
-        {night ? null : <Surface uid={uid} box={box} />}
+        {deck.turfBands.length ? (
+          <g clipPath={`url(#${uid}-deck)`}>
+            {deck.turfBands.map((b, i) => (
+              <g key={i}>
+                <rect x={b.x} y={b.y} width={b.w} height={b.h} fill={`url(#${uid}-turf)`} />
+                <rect x={b.x + b.w - 0.8} y={b.y} width={0.8} height={b.h} fill="#000" opacity={0.15} />
+              </g>
+            ))}
+          </g>
+        ) : null}
+        <path className="ps-morph" d={deckPath(deck.box, deck.rx, true)} fill="none" stroke="#3a3328" strokeOpacity={0.2} strokeWidth={1.6} />
       </g>
 
-      {/* Waterline tile band, inside the edge */}
-      <g clipPath={`url(#${waterClip})`}>
-        <path className="ps-morph" d={pool.path} fill="none" stroke="#062c38" strokeOpacity={0.35} strokeWidth={2 * pool.tile + 3.5} />
-        <Crossfade k={keys.tile}>
+      {/* Pool: coping, water, tile, spa, lights and bowls (the intro's second beat). */}
+      <g className="ps-pool">
+
+        {/* Coping: square-cornered slabs around rectangle and L pools; a band following the curve on freeform */}
+        {pool.copingPath ? (
+          <>
+            <path className="ps-morph" d={pool.copingPath} fill="#0e1c20" opacity={0.16} transform="translate(2.2 2.6)" />
+            <path className="ps-morph" d={pool.copingPath} fill="none" stroke="#1d2a2c" strokeOpacity={0.3} strokeWidth={2.4} strokeLinejoin="miter" />
+          </>
+        ) : (
+          <path className="ps-morph" d={pool.path} fill="none" stroke="#1d2a2c" strokeOpacity={0.28} strokeWidth={2 * c + 3} strokeLinejoin="round" />
+        )}
+        <Crossfade k={keys.coping}>
           {(k) => {
-            const id = `${uid}-tile-${k}`;
+            const id = `${uid}-coping-${k}`;
             return (
               <>
                 <defs>
                   <TexturePattern id={id} texture={k as TextureId} />
                 </defs>
-                <path className="ps-morph" d={pool.path} fill="none" stroke={`url(#${id})`} strokeWidth={2 * pool.tile} />
+                {pool.copingPath ? (
+                  <path className="ps-morph" d={pool.copingPath} fill={`url(#${id})`} />
+                ) : (
+                  <path className="ps-morph" d={pool.path} fill="none" stroke={`url(#${id})`} strokeWidth={2 * c} strokeLinejoin="round" />
+                )}
               </>
             );
           }}
         </Crossfade>
-      </g>
-      <path className="ps-morph" d={pool.path} fill="none" stroke="#ffffff" strokeOpacity={0.55} strokeWidth={1.2} />
+        {pool.copingJoints ? (
+          <path className="ps-morph" d={pool.copingJoints} fill="none" stroke="#5d584f" strokeOpacity={0.4} strokeWidth={0.9} />
+        ) : (
+          <path
+            className="ps-morph"
+            d={pool.path}
+            fill="none"
+            stroke="#5d584f"
+            strokeOpacity={0.35}
+            strokeWidth={2 * c}
+            strokeDasharray={`0.9 ${r1(2 * FT - 0.9)}`}
+            strokeLinejoin="round"
+          />
+        )}
+        {/* Sunlit outer arris of the coping */}
+        {pool.copingPath ? <path className="ps-morph" d={pool.copingPath} fill="none" stroke="#ffffff" strokeOpacity={0.35} strokeWidth={1} /> : null}
 
-      {layout.spa ? <Spa uid={uid} spa={layout.spa} scene={scene} night={night} /> : null}
-
-      {layout.lights.map((p, i) => (
-        <g key={i}>
-          <circle cx={p.x} cy={p.y} r={3.6} fill="#e9f3f4" stroke="#7d9aa1" strokeWidth={1} />
-          <circle cx={p.x} cy={p.y} r={1.8} fill={night ? '#ffffff' : '#c6e4ea'} />
+        {/* Water */}
+        <g clipPath={`url(#${waterClip})`}>
+          <Crossfade k={keys.water}>
+            {(k) => {
+              const look = waterLook(k === 'default' ? null : k);
+              return <Water uid={uid} k={k} look={look} fillBox={fillBox} box={box} />;
+            }}
+          </Crossfade>
+          {/* Shadow of the wall on the sun side, and darker water along every wall */}
+          <path className="ps-morph" d={`${pool.path}${shadowShift}`} fillRule="evenodd" fill="#04374a" opacity={0.26} />
+          <path className="ps-morph" d={pool.path} fill="none" stroke="#06485e" strokeOpacity={0.12} strokeWidth={30} />
+          <path className="ps-morph" d={pool.path} fill="none" stroke="#06485e" strokeOpacity={0.14} strokeWidth={12} />
+          {layout.baja ? <BajaShelf uid={uid} layout={layout} /> : null}
+          <Caustics uid={uid} box={box} night={night} />
+          {night ? null : <Surface uid={uid} box={box} />}
         </g>
-      ))}
 
-      <Bowls uid={uid} layout={layout} />
+        {/* Waterline tile band, inside the edge */}
+        <g clipPath={`url(#${waterClip})`}>
+          <path className="ps-morph" d={pool.path} fill="none" stroke="#062c38" strokeOpacity={0.35} strokeWidth={2 * pool.tile + 3.5} />
+          <Crossfade k={keys.tile}>
+            {(k) => {
+              const id = `${uid}-tile-${k}`;
+              return (
+                <>
+                  <defs>
+                    <TexturePattern id={id} texture={k as TextureId} />
+                  </defs>
+                  <path className="ps-morph" d={pool.path} fill="none" stroke={`url(#${id})`} strokeWidth={2 * pool.tile} />
+                </>
+              );
+            }}
+          </Crossfade>
+        </g>
+        <path className="ps-morph" d={pool.path} fill="none" stroke="#ffffff" strokeOpacity={0.55} strokeWidth={1.2} />
+
+        {layout.spa ? <Spa uid={uid} spa={layout.spa} scene={scene} night={night} /> : null}
+
+        {layout.lights.map((p, i) => (
+          <g key={i}>
+            <circle cx={p.x} cy={p.y} r={3.6} fill="#e9f3f4" stroke="#7d9aa1" strokeWidth={1} />
+            <circle cx={p.x} cy={p.y} r={1.8} fill={night ? '#ffffff' : '#c6e4ea'} />
+          </g>
+        ))}
+
+        <Bowls uid={uid} layout={layout} />
+      </g>
     </g>
   );
 }

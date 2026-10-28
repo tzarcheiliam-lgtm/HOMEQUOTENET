@@ -1,6 +1,7 @@
 'use client';
 
 import { useId, type FocusEvent, type PointerEvent, type ReactNode } from 'react';
+import { Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /**
@@ -22,8 +23,38 @@ export const secondaryButton =
 export const linkButton =
   'inline-flex min-h-11 items-center text-sm font-medium text-[var(--hq-accent-bright)] underline underline-offset-4 hover:text-[var(--hq-text)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--hq-accent-bright)]';
 
-const tile =
-  'flex cursor-pointer flex-col gap-3 rounded-xl border border-[var(--hq-line)] bg-[var(--hq-bg)] p-3.5 text-sm transition-colors hover:border-[var(--hq-line-strong)] has-[:checked]:border-[var(--hq-accent-bright)] has-[:checked]:bg-[var(--hq-accent-glow)] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[var(--hq-accent-bright)]';
+/**
+ * Press feel shared by option tiles and package cards: a quick squeeze to 97%
+ * while pressed, then a small spring back on release (scale only, so nothing
+ * around it moves). Colours keep a plain 150 ms ease. Nothing moves under reduced motion.
+ */
+export const pressable =
+  'touch-manipulation [transition:scale_380ms_cubic-bezier(.34,1.56,.64,1),border-color_150ms_ease,background-color_150ms_ease] active:scale-[.97] active:[transition:scale_90ms_ease-out,border-color_150ms_ease,background-color_150ms_ease] motion-reduce:transition-none! motion-reduce:scale-100!';
+
+const tile = cn(
+  'group relative flex cursor-pointer flex-col gap-3 rounded-xl border border-[var(--hq-line)] bg-[var(--hq-bg)] p-3.5 text-sm hover:border-[var(--hq-line-strong)] has-[:checked]:border-[var(--hq-accent-bright)] has-[:checked]:bg-[var(--hq-accent-glow)] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[var(--hq-accent-bright)]',
+  pressable,
+);
+
+/**
+ * The selected mark: a round check that pops in (small overshoot) when the
+ * tile's input is checked and fades out quickly when it is not. Lives inside a
+ * `group` tile; decorative (the input carries the state).
+ */
+export function CheckBadge({ className }: { className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      data-check-badge=""
+      className={cn(
+        'pointer-events-none grid size-7 place-items-center rounded-full bg-[var(--hq-accent-bright)] text-[var(--hq-bg)] opacity-0 shadow-[0_0_0_2px_var(--hq-bg),0_4px_12px_rgba(0,0,0,0.35)] [scale:.4] [transition:opacity_120ms_ease-out,scale_120ms_ease-out] group-has-[:checked]:opacity-100 group-has-[:checked]:[scale:1] group-has-[:checked]:[transition:opacity_140ms_ease-out,scale_420ms_cubic-bezier(.34,1.8,.64,1)] motion-reduce:transition-none!',
+        className,
+      )}
+    >
+      <Check className="size-4" strokeWidth={3} />
+    </span>
+  );
+}
 
 /**
  * Hover / keyboard-focus handlers for a previewable option (the live builder
@@ -104,7 +135,15 @@ export function ChoiceTile({
   const preview = previewHandlers(onPreview);
   return (
     <label className={cn(tile, className)} {...preview.label}>
-      {visual ? <span className="block h-24 overflow-hidden rounded-lg sm:h-28 [&>*]:block [&>*]:h-full [&>*]:w-full [&>img]:object-cover">{visual}</span> : null}
+      {visual ? (
+        <span className="relative block">
+          {/* A hairline inside the picture keeps light materials (plaster, concrete) from melting into the card. */}
+          <span className="relative block h-24 overflow-hidden rounded-lg after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.1)] sm:h-28 [&>*]:block [&>*]:h-full [&>*]:w-full [&>img]:object-cover">
+            {visual}
+          </span>
+          <CheckBadge className="absolute right-2 top-2" />
+        </span>
+      ) : null}
       <span className="flex items-start gap-3">
         <input
           type={type}

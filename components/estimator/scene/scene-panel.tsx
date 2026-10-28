@@ -1,9 +1,11 @@
 'use client';
 
 import { memo, useEffect, useId, useMemo, useRef, useState, type ReactNode, type Ref } from 'react';
-import { Check, ChevronDown, ChevronUp, Eye, Moon, Sun } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Eye, Moon, Sparkles, Sun } from 'lucide-react';
 import { picksFor } from '@/lib/estimator/engine';
+import { EXAMPLE_SCENE, hasAnyPick } from '@/lib/estimator/scene/example';
 import type { CameraFocus } from '@/lib/estimator/scene/geometry';
+import { HIGHLIGHT_MS, sceneHighlights, type SceneHighlight } from '@/lib/estimator/scene/highlights';
 import { buildScene } from '@/lib/estimator/scene/scene';
 import type { Answers, EstimatorTemplate, PoolDimensions } from '@/lib/estimator/types';
 import { cn } from '@/lib/utils';
@@ -14,6 +16,15 @@ import { PoolScene } from './pool-scene';
 export const SCENE_CAPTION = 'Illustration — your final design is confirmed at the on-site visit';
 /** Phones, where the pinned picture needs every line it can get. */
 const SCENE_CAPTION_SHORT = 'Illustration — final design confirmed on site';
+/** On the example design shown before the first answer, so it is never mistaken for their choice. */
+export const EXAMPLE_CAPTION = 'Example — your picks will change it';
+
+/** How long the first-look build-up runs (keep in sync with the ps-intro CSS in pool-scene). */
+const INTRO_MS = 1200;
+/** The example fades out over the homeowner's own picture for this long after their first answer. */
+const LEAVE_MS = 400;
+/** The build-up plays once per page visit, even if the builder remounts (client-side navigation). */
+let introPlayed = false;
 
 export type ScenePanelProps = {
   template: EstimatorTemplate;
@@ -56,6 +67,9 @@ const MATERIAL_IDS = ['surface', 'tile', 'coping', 'deck'];
  * ("Baja shelf added", with a photo of a real job when the option has one;
  * "Signature package applied"; "Equipment upgrade added to your plan"),
  * announced politely to screen readers.
+ * Before the first answer it shows an example design captioned as one
+ * (EXAMPLE_CAPTION); the first look builds up in three quick beats, and each
+ * committed pick briefly highlights the spot it changed on the picture.
  * On phones the builder variant can be collapsed so long screens stay usable.
  * The frame's width is capped by --eb-max-h (set by the parent) so the
  * picture never takes over a short screen. Memoized: typing in the contact
@@ -88,7 +102,9 @@ export const ScenePanel = memo(function ScenePanel({
     const next = buildScene(template, { answers: previewAnswers, dimensions });
     return JSON.stringify(next) === JSON.stringify(scene) ? null : next;
   }, [template, previewAnswers, dimensions, scene]);
-  const shown = ghost ?? scene;
+  // Nothing answered yet: an example design (captioned as one) instead of a bare pool on a lawn.
+  const example = variant === 'builder' && !hasAnyPick(answers, Boolean(dimensions));
+  const shown = ghost ?? (example ? EXAMPLE_SCENE : scene);
   // The committed design as pills under the picture on desktop (fills the column and grows as they build).
   const items = useMemo(() => (variant === 'builder' ? designSummary(scene, labeler) : []), [variant, scene, labeler]);
 
@@ -97,8 +113,33 @@ export const ScenePanel = memo(function ScenePanel({
   const setNight = (value: boolean) => (onNightChange ? onNightChange(value) : setOwnNight(value));
   const [collapsed, setCollapsed] = useState(false);
 
+  // First look: build the picture up once (state, so server and first client render agree), then switch it off.
+  const [intro, setIntro] = useState(() => variant === 'builder' && !introPlayed);
+  useEffect(() => {
+    if (!intro) return;
+    introPlayed = true;
+    const t = setTimeout(() => setIntro(false), INTRO_MS + 150);
+    return () => clearTimeout(t);
+  }, [intro]);
+
+  // The first answer: the example fades away over their own picture instead of vanishing.
+  const [leaving, setLeaving] = useState<number | null>(null);
+  const wasExample = useRef(example);
+  useEffect(() => {
+    if (wasExample.current && !example) setLeaving(Date.now());
+    wasExample.current = example;
+  }, [example]);
+  useEffect(() => {
+    if (leaving === null) return;
+    const t = setTimeout(() => setLeaving(null), LEAVE_MS + 50);
+    return () => clearTimeout(t);
+  }, [leaving]);
+
   // Change chip: diff the committed answers and scene against the last ones (previews never chip).
-  const [chip, setChip] = useState<{ key: number; text: string; image?: string } | null>(null);
+  // `onPicture`: the picture also highlights the spot itself, so the frame does not glow as well.
+  const [chip, setChip] = useState<{ key: number; text: string; image?: string; onPicture?: boolean } | null>(null);
+  // ...and the spot on the picture that changed (a shimmer, ripple or sparkle), for under HIGHLIGHT_MS.
+  const [flash, setFlash] = useState<{ key: number; items: SceneHighlight[] } | null>(null);
   // A new screen starts clean: a chip about the last screen's pick would read as wrong.
   useEffect(() => setChip(null), [stepKey]);
   const last = useRef({ scene, answers });
@@ -106,6 +147,8 @@ export const ScenePanel = memo(function ScenePanel({
     const prev = last.current;
     last.current = { scene, answers };
     if (variant !== 'builder' || (prev.scene === scene && prev.answers === answers)) return;
+    const highlights = sceneHighlights(prev.scene, scene);
+    if (highlights.length) setFlash({ key: Date.now(), items: highlights });
     const fromAnswers = answerChanges(template, prev.answers, answers, labeler);
     const unsure = new Set(
       MATERIAL_IDS.filter((id) => {
@@ -121,13 +164,20 @@ export const ScenePanel = memo(function ScenePanel({
       : addedOptions(prev.scene, scene)
           .map(({ questionId, optionId }) => template.questions.find((q) => q.id === questionId)?.options.find((o) => o.id === optionId)?.image)
           .find(Boolean);
-    setChip({ key: Date.now(), text, image });
+    setChip({ key: Date.now(), text, image, onPicture: highlights.length > 0 });
   }, [scene, answers, template, labeler, variant]);
   useEffect(() => {
     if (!chip) return;
     const t = setTimeout(() => setChip(null), CHIP_MS);
     return () => clearTimeout(t);
   }, [chip]);
+  useEffect(() => {
+    if (!flash) return;
+    const t = setTimeout(() => setFlash(null), HIGHLIGHT_MS + 100);
+    return () => clearTimeout(t);
+  }, [flash]);
+  // The frame glows only for picks the picture cannot point at (a plan item, "help me choose").
+  const glow = chip && !chip.onPicture;
 
   return (
     <div className={cn('min-w-0', className)} data-scene-panel={variant}>
@@ -142,9 +192,32 @@ export const ScenePanel = memo(function ScenePanel({
         )}
         style={{ aspectRatio: '3 / 2', width: 'min(100%, calc(var(--eb-max-h, 4000px) * 1.5))' }}
       >
-        <PoolScene scene={shown} night={isNight} focus={focus} label={sceneDescription(shown, labeler)} className="absolute inset-0 block size-full" />
+        <PoolScene
+          scene={shown}
+          night={isNight}
+          focus={focus}
+          intro={intro}
+          highlight={flash}
+          label={example && !ghost ? `Example design, not your picks yet. ${sceneDescription(shown, labeler)}` : sceneDescription(shown, labeler)}
+          className="absolute inset-0 block size-full"
+        />
+        {leaving !== null ? (
+          // The example, fading out over their first picture (decorative; gone after LEAVE_MS).
+          <div key={leaving} className="pointer-events-none absolute inset-0" aria-hidden="true">
+            <PoolScene scene={EXAMPLE_SCENE} night={isNight} focus={focus} label="" className="ps-leave absolute inset-0 block size-full" />
+          </div>
+        ) : null}
         {/* Re-keyed on every chip so the frame glows once per visible change. */}
-        {chip ? <div key={`glow-${chip.key}`} className="eb-glow pointer-events-none absolute inset-0 rounded-2xl" aria-hidden="true" /> : null}
+        {glow ? <div key={`glow-${chip.key}`} className="eb-glow pointer-events-none absolute inset-0 rounded-2xl" aria-hidden="true" /> : null}
+
+        {example && !ghost ? (
+          <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center px-3">
+            <span data-example-caption="" className={cn(pill, 'h-8 max-w-full')}>
+              <Sparkles className="size-3.5 shrink-0 text-[#ffd666]" aria-hidden="true" />
+              <span className="truncate">{EXAMPLE_CAPTION}</span>
+            </span>
+          </div>
+        ) : null}
 
         {ghost ? (
           <div className="pointer-events-none absolute inset-0 rounded-2xl ring-2 ring-inset ring-white/75" aria-hidden="true">

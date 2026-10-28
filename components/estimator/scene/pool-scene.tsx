@@ -2,9 +2,11 @@
 
 import { useEffect, useId, useMemo, useRef, type RefObject } from 'react';
 import { layoutScene, sceneCamera, type CameraFocus } from '@/lib/estimator/scene/geometry';
+import type { SceneHighlight } from '@/lib/estimator/scene/highlights';
 import type { SceneSpec } from '@/lib/estimator/scene/types';
 import { SCENE } from '@/lib/estimator/scene/types';
 import { FADE_MS, useFadeKeys } from './crossfade';
+import { HIGHLIGHT_CSS, SceneHighlights } from './highlights';
 import { materialKeys } from './materials';
 import { NightLayer } from './night';
 import { CAUSTICS, PoolLayer } from './water';
@@ -21,6 +23,15 @@ export type PoolSceneProps = {
    * pool while finish, tile and coping are chosen. The camera glides between them.
    */
   focus?: CameraFocus;
+  /**
+   * First look: the picture builds up in three quick beats (the yard, then the
+   * pool and water, then the deck and furniture) under a slight drone settle,
+   * about 1.2 s. Static under reduced motion. The caller turns it off again
+   * once played so it never replays (e.g. after the picture is un-hidden).
+   */
+  intro?: boolean;
+  /** What a committed pick just changed (sceneHighlights); re-key to replay. Off in the result and the PNG. */
+  highlight?: { key: number; items: readonly SceneHighlight[] } | null;
   className?: string;
 };
 
@@ -45,8 +56,17 @@ const CSS = `
 .ps-flicker{transform-box:fill-box;transform-origin:center;animation:ps-flicker 1.7s ease-in-out infinite alternate}
 @keyframes ps-flicker{0%{opacity:.86;transform:scale(.93)}55%{opacity:1;transform:scale(1.05)}100%{opacity:.92;transform:scale(.97)}}
 @media (pointer:coarse){.ps-caustic-b{animation:none}}
-.ps-root[data-paused] *{animation-play-state:paused!important}
+.ps-intro .ps-drone{animation:ps-drone 1.2s cubic-bezier(.22,.8,.24,1) both;transform-origin:${SCENE.width / 2}px ${SCENE.height / 2}px}
+@keyframes ps-drone{from{transform:scale(1.06)}to{transform:none}}
+.ps-intro .ps-yard{animation:ps-fade .4s ease-out both}
+.ps-intro .ps-pool{animation:ps-pool .5s ${EASE} .28s both;transform-box:fill-box;transform-origin:center}
+@keyframes ps-pool{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:none}}
+.ps-intro .ps-deck,.ps-intro .ps-things{animation:ps-fade .45s ease-out .68s both}
+.ps-leave{animation:ps-fade .4s ease-out reverse both}
+${HIGHLIGHT_CSS}
+.ps-root[data-paused] :not(.ps-hl,.ps-hl *){animation-play-state:paused!important}
 @media (prefers-reduced-motion:reduce){.ps-root *{animation:none!important;transition:none!important}}
+@media (prefers-reduced-motion:reduce){.ps-leave{animation:none;opacity:0}}
 `;
 
 /** Text fields: while one has focus (the phone keyboard is up) the water stops moving. */
@@ -97,8 +117,10 @@ function usePausedWhenIdle(ref: RefObject<SVGSVGElement | null>) {
  * frames the design, then a light pass. Pure function of the SceneSpec and
  * focus; materials crossfade, objects glide to new spots, the camera glides,
  * and the pool outline tweens between sizes where the browser supports it.
+ * Optional moments: the first-look build-up (`intro`) and the short highlight
+ * on whatever a pick changed (`highlight`).
  */
-export function PoolScene({ scene, night = false, label, focus = 'yard', className }: PoolSceneProps) {
+export function PoolScene({ scene, night = false, label, focus = 'yard', intro = false, highlight, className }: PoolSceneProps) {
   const uid = `ps${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
   const ref = useRef<SVGSVGElement>(null);
   usePausedWhenIdle(ref);
@@ -120,25 +142,34 @@ export function PoolScene({ scene, night = false, label, focus = 'yard', classNa
       viewBox={`0 0 ${SCENE.width} ${SCENE.height}`}
       role="img"
       aria-label={label}
-      className={className ? `ps-root ${className}` : 'ps-root'}
+      className={['ps-root', intro ? 'ps-intro' : '', className ?? ''].filter(Boolean).join(' ')}
       xmlns="http://www.w3.org/2000/svg"
     >
       <style>{CSS}</style>
       <g aria-hidden="true">
-        <g className="ps-cam" transform={`matrix(${matrix.join(' ')})`} style={{ transform: `matrix(${matrix.join(',')})` }}>
-          <defs>
-            <GroundDefs uid={uid} scene={scene} />
-          </defs>
-          <Ground uid={uid} layout={layout} scene={scene} groundKey={keys.ground} />
-          <PoolLayer uid={uid} layout={layout} scene={scene} keys={keys} night={night} />
-          <Shadows layout={layout} />
-          <Objects uid={uid} layout={layout} night={night} />
-          <House uid={uid} />
-          {showNight ? (
-            <g className={nightClass}>
-              <NightLayer uid={uid} layout={layout} scene={scene} />
+        <g className="ps-drone">
+          <g className="ps-cam" transform={`matrix(${matrix.join(' ')})`} style={{ transform: `matrix(${matrix.join(',')})` }}>
+            <defs>
+              <GroundDefs uid={uid} scene={scene} />
+            </defs>
+            <g className="ps-yard">
+              <Ground uid={uid} layout={layout} scene={scene} groundKey={keys.ground} />
             </g>
-          ) : null}
+            <PoolLayer uid={uid} layout={layout} scene={scene} keys={keys} night={night} />
+            <g className="ps-things">
+              <Shadows layout={layout} />
+              <Objects uid={uid} layout={layout} night={night} />
+            </g>
+            <g className="ps-yard">
+              <House uid={uid} />
+            </g>
+            {showNight ? (
+              <g className={nightClass}>
+                <NightLayer uid={uid} layout={layout} scene={scene} />
+              </g>
+            ) : null}
+            {highlight?.items.length ? <SceneHighlights key={highlight.key} uid={uid} layout={layout} items={highlight.items} /> : null}
+          </g>
         </g>
         {/* Lens light pass: in frame space, so it stays put while the camera moves. */}
         <DaylightPass uid={uid} />

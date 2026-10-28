@@ -4,15 +4,18 @@ import { useId } from 'react';
 import { picksFor } from '@/lib/estimator/engine';
 import { CUSTOM_PACKAGE_ID, type Answers, type EstimatorQuestion, type EstimatorTemplate } from '@/lib/estimator/types';
 import { cn } from '@/lib/utils';
-import { linkButton, previewHandlers } from '../ui';
+import { CheckBadge, linkButton, pressable, previewHandlers } from '../ui';
 
-const cardClass =
-  'relative flex cursor-pointer flex-col gap-2 rounded-xl border border-[var(--hq-line)] bg-[var(--hq-bg)] p-4 text-sm transition-colors hover:border-[var(--hq-line-strong)] has-[:checked]:border-[var(--hq-accent-bright)] has-[:checked]:bg-[var(--hq-accent-glow)] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[var(--hq-accent-bright)]';
+const cardClass = cn(
+  'group relative flex cursor-pointer flex-col gap-2 rounded-xl border border-[var(--hq-line)] bg-[var(--hq-bg)] p-4 text-sm hover:border-[var(--hq-line-strong)] has-[:checked]:border-[var(--hq-accent-bright)] has-[:checked]:bg-[var(--hq-accent-glow)] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[var(--hq-accent-bright)]',
+  pressable,
+);
 
 /**
  * The starting-point screen: a card per package (label, description, what is
  * included, "Most popular") plus "Build my own". Picking a package skips the
- * scope and detail screens; the link underneath brings them back.
+ * scope and detail screens; the link underneath brings them back. Cards
+ * squeeze slightly when pressed and pop a check when picked.
  */
 export function PackageScreen({
   template,
@@ -60,7 +63,7 @@ export function PackageScreen({
                     aria-describedby={descId}
                     className="mt-1 size-4 shrink-0 accent-[var(--hq-accent)]"
                   />
-                  <span className="min-w-0 flex-1">
+                  <span className="min-w-0 flex-1 pr-8">
                     <span className="flex flex-wrap items-center gap-2">
                       <span id={labelId} className="text-base font-semibold text-[var(--hq-text)]">
                         {pkg?.label ?? o.label}
@@ -88,6 +91,7 @@ export function PackageScreen({
                     ) : null}
                   </span>
                 </span>
+                <CheckBadge className="absolute right-3 top-3" />
               </label>
             );
           })}

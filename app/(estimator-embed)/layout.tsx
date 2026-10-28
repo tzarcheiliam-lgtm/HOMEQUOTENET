@@ -12,11 +12,12 @@ export const metadata: Metadata = {
  * Framing: the app sets no X-Frame-Options or CSP frame-ancestors header
  * anywhere (checked in next.config.ts and middleware), so a contractor's site
  * can already iframe this route. If a site-wide frame header is ever added,
- * exempt /embed/estimator/* from it.
+ * exempt /embed/estimator/* from it. --es-aqua is the shell components' "earned" accent
+ * (same value as app/(estimator)/layout.tsx).
  */
 export default function EstimatorEmbedLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="hq min-h-[100dvh]">
+    <div className="hq min-h-[100dvh] [--es-aqua:#2ec5d3]">
       <main id="main">{children}</main>
     </div>
   );

@@ -1,4 +1,6 @@
-import { useId } from 'react';
+import { useId, type CSSProperties } from 'react';
+import { TEXTURES } from '@/lib/estimator/scene/textures';
+import { optionMaterial } from './scene/materials';
 
 /** Material swatch ids. Template options reference these via `option.swatch`. */
 export const SWATCH_IDS = [
@@ -240,5 +242,77 @@ export function Swatch({ id, className }: { id: string; className?: string }) {
       </g>
       <rect x="0.5" y="0.5" width={SIZE - 1} height={SIZE - 1} rx="7.5" fill="none" stroke="#ffffff" strokeOpacity="0.28" />
     </svg>
+  );
+}
+
+const pct = (n: number) => `${Math.round(n * 1000) / 10}%`;
+
+/**
+ * An option tile's picture of a material: a crop of the same texture image the
+ * live scene paints when the option is picked, at a believable real-world
+ * scale (see optionMaterial). Pool finishes are shown under a water tint with
+ * light caustics, so plaster, quartz and pebble look the way they will in the
+ * water. Options without a scene texture fall back to the drawn Swatch (or
+ * nothing). Decorative: the tile's label names the material.
+ */
+export function MaterialSample({
+  questionId,
+  optionId,
+  swatch,
+  className,
+}: {
+  questionId: string;
+  optionId: string;
+  /** The option's swatch id: the fallback, and kept as data-swatch for consistency. */
+  swatch?: string;
+  className?: string;
+}) {
+  const material = optionMaterial(questionId, optionId);
+  if (!material) return swatch ? <Swatch id={swatch} className={className} /> : null;
+  const tex = TEXTURES[material.texture];
+  const tile = (texture: typeof tex, viewFt: number): CSSProperties =>
+    texture.src ? { backgroundImage: `url(${texture.src})`, backgroundSize: `${pct(texture.realFt / viewFt)} auto`, backgroundPosition: 'center' } : {};
+  const water = material.water;
+  const caustics = TEXTURES.water_caustics;
+  return (
+    <span
+      aria-hidden="true"
+      data-material={material.texture}
+      data-swatch={swatch}
+      className={`relative block overflow-hidden ${className ?? ''}`}
+      style={{ backgroundColor: tex.fallback, ...tile(tex, material.viewFt) }}
+    >
+      {water ? (
+        <>
+          {/* The finish under clear water: tint, deeper water toward one corner, drifting light, a sun glint. */}
+          <span className="absolute inset-0" style={{ backgroundColor: water.tint, opacity: water.tintOpacity * 0.72 }} />
+          <span className="absolute inset-0" style={{ backgroundImage: `linear-gradient(160deg, rgba(255,255,255,.22) 0%, transparent 38%, transparent 55%, ${water.deep} 130%)` }} />
+          {caustics.src ? <span className="absolute inset-0 opacity-35" style={tile(caustics, material.viewFt * 1.6)} /> : null}
+          <span className="absolute inset-0" style={{ backgroundImage: 'radial-gradient(22% 16% at 74% 26%, rgba(255,255,255,.55), transparent)' }} />
+        </>
+      ) : (
+        // Low sun from the top left, as in the scene.
+        <span className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(135deg, rgba(255,255,255,.16), transparent 42%, rgba(0,0,0,.14))' }} />
+      )}
+    </span>
+  );
+}
+
+/**
+ * "Help me choose" on a material question: thin slices of every option's
+ * material side by side, so the tile reads as "any of these" and the row of
+ * pictures stays even. Null when fewer than two options have a scene texture.
+ */
+export function MaterialSampler({ questionId, optionIds, className }: { questionId: string; optionIds: readonly string[]; className?: string }) {
+  const ids = optionIds.filter((id) => optionMaterial(questionId, id));
+  if (ids.length < 2) return null;
+  return (
+    <span aria-hidden="true" data-material-sampler="" className={`block ${className ?? ''}`}>
+      <span className="flex size-full gap-0.5 bg-[var(--hq-bg)]">
+        {ids.map((id) => (
+          <MaterialSample key={id} questionId={questionId} optionId={id} className="h-full min-w-0 flex-1" />
+        ))}
+      </span>
+    </span>
   );
 }

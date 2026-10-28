@@ -1,16 +1,20 @@
 'use client';
 
 import { useId } from 'react';
-import { formatRange } from '@/lib/estimator/engine';
-import { picksFor } from '@/lib/estimator/engine';
+import { formatRange, picksFor } from '@/lib/estimator/engine';
 import type { Answers, EstimatorOption, EstimatorQuestion, PoolShape } from '@/lib/estimator/types';
 import { PoolShapeIcon } from '../pool-shapes';
-import { Swatch } from '../swatches';
+import { optionMaterial } from '../scene/materials';
+import { MaterialSample, MaterialSampler, Swatch } from '../swatches';
 import { ChoiceTile, QuestionFieldset } from '../ui';
 import { optionPriceHint, type FlowScreen } from '../use-estimator-flow';
 import { cn } from '@/lib/utils';
 
-/** What an option shows above its label: a shape drawing, a swatch or a photo. */
+/**
+ * What an option shows above its label: a shape drawing, a photo of a real
+ * job, a crop of the real material (the texture the live picture paints, a
+ * finish shown under water), or the drawn swatch for anything else.
+ */
 function visualFor(q: EstimatorQuestion, o: EstimatorOption) {
   if (q.role === 'shape') return <PoolShapeIcon shape={o.id as PoolShape} className="h-full w-full" />;
   if (o.image) {
@@ -18,7 +22,13 @@ function visualFor(q: EstimatorQuestion, o: EstimatorOption) {
     // eslint-disable-next-line @next/next/no-img-element
     return <img src={o.image} alt="" loading="lazy" className="h-full w-full object-cover" />;
   }
+  if (optionMaterial(q.id, o.id)) return <MaterialSample questionId={q.id} optionId={o.id} swatch={o.swatch} className="h-full w-full" />;
   if (o.swatch) return <Swatch id={o.swatch} className="h-full w-full" />;
+  if (o.id === 'unsure') {
+    // "Help me choose": a strip of every material on offer, so the row of pictures stays even.
+    const others = q.options.map((x) => x.id).filter((id) => id !== o.id);
+    if (others.filter((id) => optionMaterial(q.id, id)).length >= 2) return <MaterialSampler questionId={q.id} optionIds={others} className="h-full w-full" />;
+  }
   return undefined;
 }
 
@@ -47,7 +57,7 @@ export function QuestionScreen({
     <div className="space-y-7">
       {screen.questions.map((q) => {
         const picks = picksFor(q, answers);
-        const hasVisual = q.role === 'shape' || q.options.some((o) => o.swatch || o.image);
+        const hasVisual = q.role === 'shape' || q.options.some((o) => o.swatch || o.image || optionMaterial(q.id, o.id));
         // Container queries (the form card is an @container), so tiles fit both the full-width
         // card and the narrower question column beside the live picture (~500 px: two across,
         // so labels like "Resurface existing" never break mid-word).
