@@ -1,62 +1,66 @@
 import type { GalleryImage } from '@/lib/estimator/types';
 
 /*
- * Pool Masters LA project photos for the estimator (from the owner's brochure,
- * used with permission). Files live in public/estimator/pool-masters/.
+ * Pool Masters LA job photos for the estimator (the owner's own project and
+ * drone photos, used with permission). Files live in
+ * public/estimator/pool-masters/; re-export them with
+ * `node scripts/generate-scene-textures.mjs photos <dir>` (metadata stripped).
  */
 const DIR = '/estimator/pool-masters/';
 
 /** "Which look do you like?" photos. Not priced. */
 export const POOL_MASTERS_GALLERY: GalleryImage[] = [
   {
-    src: `${DIR}hero-night-pool-lit-pavers.webp`,
-    alt: 'Backyard pool glowing at night, with lit stepping pavers set in dark lawn and potted plants',
-    caption: 'Lit pavers and pool at night',
+    src: `${DIR}pool-umbrella-spa-baja-shelf.webp`,
+    alt: 'Sunny hilltop pool and spa with a white umbrella and in-water loungers on the Baja shelf, and pavers set in turf',
+    caption: 'Baja shelf and spa with a view',
   },
   {
-    src: `${DIR}raised-spa-dark-tile-turf-bands.webp`,
-    alt: 'Raised, angular spa with a dark tile face beside pale pavers separated by turf bands',
-    caption: 'Raised spa with a dark tile face',
+    src: `${DIR}overhead-pool-turf-bands-pavers.webp`,
+    alt: 'Drone view of a long pool with a spa, a dark wood deck, blue umbrellas and large pavers separated by turf bands',
+    caption: 'Pavers with turf bands, from above',
   },
   {
-    src: `${DIR}family-pool-baja-shelf-loungers.webp`,
-    alt: 'Long family pool with a full-width shallow shelf holding two in-water loungers',
-    caption: 'Family pool with a full-width baja shelf',
+    src: `${DIR}baja-shelf-loungers-blue-umbrellas.webp`,
+    alt: 'Wide shallow Baja shelf holding two white loungers in clear turquoise water, with blue umbrellas on the deck',
+    caption: 'Baja shelf with in-water loungers',
   },
   {
-    src: `${DIR}zero-edge-pool-porcelain-pavers.webp`,
-    alt: 'Curved, irregular-shaped pool with a zero edge, surrounded by pale porcelain pavers',
-    caption: 'Zero-edge pool with porcelain pavers',
+    src: `${DIR}raised-dark-tile-spa-long-pool.webp`,
+    alt: 'Angular raised spa faced in dark tile at the end of a long pool, beside pale pavers and turf bands',
+    caption: 'Raised spa in dark tile',
   },
   {
-    src: `${DIR}pool-spa-hardwood-deck-pavers.webp`,
-    alt: 'Pool and spa beside a hardwood deck and a paver terrace, with drought-tolerant planting',
-    caption: 'Pool and spa with hardwood deck and pavers',
+    src: `${DIR}fire-water-bowls-closeup.webp`,
+    alt: 'Two black bowls on pedestals with fire burning on top and water spilling into the pool',
+    caption: 'Fire and water bowls',
   },
   {
-    src: `${DIR}raised-spa-glass-tile-spillway.webp`,
-    alt: 'Raised spa with glass mosaic tile spilling into a light blue pool',
-    caption: 'Raised spa with glass tile and spillway',
+    src: `${DIR}night-led-pool-spa.webp`,
+    alt: 'Pool and spa glowing purple and blue with LED lights at dusk, with uplit planting behind',
+    caption: 'Colour LED lighting at night',
   },
   {
-    src: `${DIR}color-led-pool-spa-lighting.webp`,
-    alt: 'Pool and spa lit in purple and blue at dusk, with uplit planting behind',
-    caption: 'Colour LED pool and spa lighting',
+    src: `${DIR}covered-outdoor-kitchen-bar.webp`,
+    alt: 'Outdoor kitchen with a stone bar counter and stools under a slatted shade cover, with desert planting',
+    caption: 'Covered outdoor kitchen and bar',
   },
   {
-    src: `${DIR}herringbone-pavers-turf-bands.webp`,
-    alt: 'Herringbone pavers with turf bands and a black sphere water feature in the lawn',
-    caption: 'Herringbone pavers with turf bands',
+    src: `${DIR}modern-pool-ipe-deck-overhead.webp`,
+    alt: 'Straight-down view of a compact modern pool and spa with a warm ipe wood deck, loungers and turf',
+    caption: 'Modern pool with an ipe deck',
   },
 ];
 
 /** Photo for an option, keyed by "questionId.optionId". Only where the photo shows that option. */
 export const POOL_MASTERS_OPTION_IMAGES: Record<string, string> = {
-  'features.baja': `${DIR}family-pool-baja-shelf-loungers.webp`,
-  'features.spa': `${DIR}raised-spa-dark-tile-turf-bands.webp`,
-  'features.water': `${DIR}fire-water-bowls-spilling-into-pool.webp`,
-  'features.fire': `${DIR}fire-water-bowls-spilling-into-pool.webp`,
-  'features.lighting': `${DIR}color-led-pool-spa-lighting.webp`,
-  'extras.kitchen': `${DIR}outdoor-kitchen-slab-counter.webp`,
-  'extras.fire_pit': `${DIR}fire-pit-seating-wall.webp`,
+  'features.baja': `${DIR}baja-shelf-loungers-blue-umbrellas.webp`,
+  'features.spa': `${DIR}raised-dark-tile-spa-long-pool.webp`,
+  'features.water': `${DIR}fire-water-bowls-closeup.webp`,
+  'features.fire': `${DIR}fire-water-bowls-closeup.webp`,
+  'features.lighting': `${DIR}night-led-pool-spa.webp`,
+  'extras.kitchen': `${DIR}covered-outdoor-kitchen-bar.webp`,
+  'extras.patio_cover': `${DIR}covered-lounge-pool-dusk.webp`,
+  'extras.fire_pit': `${DIR}fire-pit-stone-wall-seating.webp`,
+  'extras.turf_planting': `${DIR}pool-turf-planting-overhead.webp`,
 };
