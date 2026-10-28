@@ -47,6 +47,7 @@ describe('estimator visuals', () => {
       expect(img.src.startsWith('/estimator/pool-masters/')).toBe(true);
       expect(img.alt.length).toBeGreaterThan(10);
       expect(existsSync(publicPath(img.src)), img.src).toBe(true);
+      if (img.thumb) expect(existsSync(publicPath(img.thumb)), img.thumb).toBe(true);
     }
     for (const [key, src] of Object.entries(POOL_MASTERS_OPTION_IMAGES)) {
       expect(key).toMatch(/^[a-zA-Z]+\.[a-z_]+$/);
@@ -58,5 +59,13 @@ describe('estimator visuals', () => {
   it('keeps each photo reasonably small', () => {
     const all = new Set([...POOL_MASTERS_GALLERY.map((g) => g.src), ...Object.values(POOL_MASTERS_OPTION_IMAGES)]);
     for (const src of all) expect(statSync(publicPath(src)).size, src).toBeLessThan(300 * 1024);
+  });
+
+  it('serves small copies to the tiles (a phone loads ~9 option photos on one screen)', () => {
+    for (const img of POOL_MASTERS_GALLERY) expect(img.thumb, img.src).toMatch(/^\/estimator\/pool-masters\/thumbs\//);
+    for (const src of Object.values(POOL_MASTERS_OPTION_IMAGES)) {
+      expect(src).toMatch(/^\/estimator\/pool-masters\/thumbs\//);
+      expect(statSync(publicPath(src)).size, src).toBeLessThan(80 * 1024);
+    }
   });
 });

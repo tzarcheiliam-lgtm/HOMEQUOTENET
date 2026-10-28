@@ -16,11 +16,14 @@ export function LiveSummary({
   answers,
   dimensions,
   embedded,
+  className,
 }: {
   template: EstimatorTemplate;
   answers: Answers;
   dimensions?: PoolDimensions;
   embedded?: boolean;
+  /** Placement overrides (the live builder puts it under the questions on desktop). */
+  className?: string;
 }) {
   const estimate = useMemo(
     () => computeEstimate(template, { answers: visibleAnswers(template, answers), dimensions }),
@@ -35,6 +38,7 @@ export function LiveSummary({
         embedded
           ? 'mt-6 rounded-xl border'
           : 'fixed inset-x-0 bottom-0 z-20 border-t shadow-[0_-8px_24px_rgba(0,0,0,0.35)] lg:static lg:top-6 lg:mt-0 lg:self-start lg:rounded-2xl lg:border lg:shadow-none lg:sticky',
+        className,
       )}
     >
       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--hq-accent-bright)]">Your ballpark so far</p>

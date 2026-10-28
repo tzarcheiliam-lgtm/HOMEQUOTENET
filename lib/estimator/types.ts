@@ -232,7 +232,8 @@ export type OptionOverride = {
   image?: string;
 };
 
-export type GalleryImage = { src: string; alt: string; caption?: string };
+/** A look photo; `thumb` is an optional smaller copy the picker tiles load instead of `src`. */
+export type GalleryImage = { src: string; alt: string; caption?: string; thumb?: string };
 
 export type ContractorEstimatorConfig = {
   /** URL segment, e.g. "pool-masters". */

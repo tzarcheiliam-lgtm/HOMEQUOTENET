@@ -16,6 +16,7 @@ import { computeEstimate } from '@/lib/estimator/engine';
 import { getEstimator } from '@/lib/estimator/registry';
 import { bookingUrl, buildLeadPayload, isHoneypot, parseLeadRequest, pickLikedLooks, sanitizeEstimatorAnswers } from '@/lib/estimator/lead';
 import type { EstimatorLeadResponse } from '@/lib/estimator/lead-client';
+import { signRenderToken } from '@/lib/estimator/render';
 
 /**
  * Instant estimator lead capture. One request = one finished estimate + contact.
@@ -45,7 +46,8 @@ function deviceOf(userAgent: string | null): 'mobile' | 'tablet' | 'desktop' {
 
 export async function POST(request: Request, context: Context) {
   if (!sameOrigin(request)) return fail('Invalid origin', 403);
-  const registered = getEstimator((await context.params).slug);
+  const slug = (await context.params).slug;
+  const registered = getEstimator(slug);
   if (!registered) return fail('This estimator is not available.', 404);
   const { template, contractor } = registered;
 
@@ -150,9 +152,12 @@ export async function POST(request: Request, context: Context) {
       }
     }
 
+    // Optional photoreal render of their design: only for a lead that was really saved (null when renders are off).
+    const renderToken = leadId ? signRenderToken(slug, leadId) ?? undefined : undefined;
     return reply({
       ok: true, estimate, qualified: payload.qualified,
       calendarUrl: payload.qualified ? bookingUrl(contractor.calendarUrl ?? funnel.config.calendarUrl, payload.contact, attribution) : undefined,
+      renderToken,
     });
   } catch (error) {
     console.error('[estimator-lead] Save failed', error instanceof Error ? error.name : (error as { code?: string })?.code ?? 'unknown');

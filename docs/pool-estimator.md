@@ -28,6 +28,8 @@ Limits: at most 4 options on a single question and 5 on a multi (`DEFAULT_LIMITS
 | `/estimator/[slug]` | Public page in the marketing group: heading, intro with contractor name and license, the estimator. `noindex` while `pricesConfirmed` is false. Not in the sitemap. |
 | `/embed/estimator/[slug]` | Bare page for iframes (no site header/footer, same `.hq` theme), compact layout, always `noindex`. |
 | `POST /api/estimator/[slug]/lead` | Lead capture (see Lead path). |
+| `POST /api/estimator/[slug]/render` | Optional photoreal render of the finished design (see Live pool builder). Off without `KIE_API_KEY`. |
+| `GET /api/estimator/[slug]/render/[taskId]` | Poll one render; the renderToken goes in the `x-render-token` header. |
 
 Both pages and the lead route are public: `lib/supabase/middleware.ts` only guards `/app` (and `/studio`) and returns
 early for `/estimator/`, `/embed/estimator/` and `/api/estimator/` (no Auth refresh). Unknown slugs return 404.
@@ -54,6 +56,11 @@ and the minimum job/rounding are stripped, so the range cannot be read from the 
 | `app/(marketing)/estimator/[slug]/page.tsx` | Public page. |
 | `app/(estimator-embed)/` | Embed layout + `embed/estimator/[slug]/page.tsx`. |
 | `scripts/estimator-price-sheet.mjs` | Price sheet CSV for the contractor to fill in. |
+| `lib/estimator/scene/*` | Live builder: `types.ts` (SceneSpec contract), `scene.ts` (`buildScene`), `geometry.ts` (`layoutScene`, `sceneCamera`), `textures.ts` (asset manifest), `rasterize.ts` (scene to PNG). |
+| `components/estimator/scene/*`, `builder.ts`, `motion.tsx` | `PoolScene` renderer (yard, water, sprites, night), `ScenePanel`, chips/preview/summary helpers, builder motion. |
+| `components/estimator/screens/design-result.tsx` | Finished design on the result: save as PNG, photoreal render with before/after. |
+| `lib/estimator/render.ts`, `lib/estimator/render-client.ts`, `app/api/estimator/[slug]/render/**` | Photoreal render: tokens, limits, kie.ai calls; browser side. |
+| `scripts/generate-scene-textures.mjs`, `scripts/scene-assets.py` | One-off generation of the scene textures/sprites (kie.ai + seamless/cut-out post-processing). |
 | `tests/estimator-*.test.ts(x)` | Engine, geometry, template, config, screens and page/registry tests. |
 
 ## How prices work
@@ -126,6 +133,36 @@ rate limiting, internal alerts and delivery are the same as a funnel lead.
 - **Attribution.** The full page URL (with UTMs and click ids) is recorded, as on funnel leads. Self-serve estimator leads for
 other contractors must never enter the network `leads` pipeline.
 
+## Live pool builder and photoreal render
+
+For pool templates the flow is a live builder, Buildoly style: a straight-down drone-view picture of the homeowner's pool
+and backyard sits beside the questions (pinned above them on phones) and redraws instantly on every pick.
+
+- **Pipeline.** Answers + typed dimensions → `buildScene` (visible questions only, so stale answers never show) →
+  `SceneSpec` → `layoutScene` (pure, fuzz-tested: nothing overlaps or leaves the canvas, every extra finds a place) →
+  `<PoolScene>` (one inline SVG). The deck runs into the walk along the house, rectangle and L pools get square,
+  wide coping, the kitchen and patio cover stand against the house, and `sceneCamera` frames it like a drone shot: tight
+  on a simple pool, pulled back for a full backyard, and close on the pool while surface, tile and coping are chosen.
+- **Feedback.** Hover (after a real pointer move) or keyboard focus previews an option as a ghost; every pick shows a chip
+  ("Fire pit added" with a photo of a real job, "Signature package applied", "Equipment added to your plan",
+  "We'll help you pick a finish"); the chip clears on a new screen. Phones do not pin the picture on the ZIP and contact
+  screens, so the keyboard never covers a field.
+- **Assets.** Textures and sprites in `public/estimator/scene/` were generated once (kie.ai nano-banana-2, then made
+  seamless / cut out) and exported at about twice their on-screen size (256–512 px, ~0.9 MB total). Nothing is generated
+  while a visitor clicks. Caustics are white light in the alpha channel (no blend mode). Animations pause off screen, in a
+  hidden tab, while a text field has focus, and under reduced motion; touch screens run one caustic layer.
+- **Photoreal render (optional).** On only when `KIE_API_KEY` is set. A saved lead's response carries `renderToken`
+  (HMAC over slug, lead id and expiry; key derived from `ESTIMATOR_RENDER_SECRET`, falling back to the service-role key;
+  valid 2 hours). The result invites "See your backyard for real": the browser rasterizes the day scene and posts it;
+  the server uploads it to kie.ai (`https://kieai.redpandaai.co/api/file-stream-upload`) and starts an image-edit task
+  (`nano-banana-pro`, or `nano-banana-2` via `ESTIMATOR_RENDER_MODEL`) that keeps the layout; the browser polls with the
+  token in the `x-render-token` header and shows a before/after slider.
+- **Limits and records.** Each render is a `lead_activities` row (`type 'system'`, `metadata.kind 'estimator_render'`,
+  status, task id, image URL, a hashed per-visitor `rate_key`), internal visibility (staff see it on the lead timeline).
+  The row is inserted before counting and removed again over a limit, so parallel requests cannot exceed 3 renders per
+  lead, 6 per visitor per hour or `ESTIMATOR_RENDER_DAILY_CAP` (default 100) per 24 hours. Polls hit kie.ai at most once
+  per task every 2 seconds per server instance.
+
 ## Compliance checklist
 
 - Range only, labeled "ballpark, not a quote", with the template disclaimer and the "not included" list
@@ -136,6 +173,9 @@ other contractors must never enter the network `leads` pipeline.
 - Optional advertising measurement checkbox; no Meta event without it
 - No prices in the page source before the contact step (`publicTemplate`)
 - Pool Masters photos are used with the owner's permission (from the brochure)
+- The live picture and the photoreal render show no prices; the caption "Illustration — your final design is confirmed at
+  the on-site visit" stays under the picture
+- The builder's result keeps "Ballpark, not a quote" directly above the booking button; other trades keep the button last
 
 ## Open items
 
@@ -149,3 +189,8 @@ other contractors must never enter the network `leads` pipeline.
   second estimator timeline entry.
 - **`unqualifiedAction: 'stop'` copy.** For such a funnel nothing is saved, but the result still says the team will reach
   out. Dormant: Pool Masters uses `review`.
+- **Photoreal render follow-ups.** Confirm the kie.ai upload host with one real call on a staging key before setting
+  `KIE_API_KEY` in production. The stored `image_url` is kie.ai's temporary link (about 14 days): copy finished renders to
+  Supabase Storage if they should last. A render abandoned mid-way stays `running` on the lead. The daily-cap count has no
+  supporting index (needs a migration: partial index on `lead_activities (created_at)` where
+  `metadata->>'kind' = 'estimator_render'`). Renders are staff-only on the timeline; decide whether contractors should see them.

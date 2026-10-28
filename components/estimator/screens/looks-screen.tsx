@@ -21,7 +21,7 @@ export function LooksScreen({
       help="Pick any you like, or skip this. It helps us understand your taste and does not change your price."
       hideLegend
     >
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 @md:grid-cols-3">
         {gallery.map((img) => (
           <ChoiceTile
             key={img.src}
@@ -33,7 +33,7 @@ export function LooksScreen({
             label={img.caption ?? img.alt}
             visual={
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={img.src} alt="" loading="lazy" className="h-full w-full object-cover" />
+              <img src={img.thumb ?? img.src} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
             }
           />
         ))}
