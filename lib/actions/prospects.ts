@@ -141,7 +141,6 @@ export async function logCallOutcome(
     time_zone: timeZone,
     contact_info: opt(fd, 'contact_info'),
     decision_maker_email: opt(fd, 'decision_maker_email'),
-    confirm_do_not_call: fd.get('confirm_do_not_call') === 'on',
   };
 
   const v = validateOutcome(input);
