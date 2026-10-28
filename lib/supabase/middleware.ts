@@ -58,6 +58,8 @@ export async function updateSession(request: NextRequest) {
   if (publicPath === '/sign' || publicPath.startsWith('/api/signing/')) return supabaseResponse;
   // Seret API (MCP): authenticated by its own API key, never a session.
   if (publicPath === '/api/seret/mcp') return supabaseResponse;
+  // HomeQuote MCP for Claude: authenticated by its own hq_ key, never a session.
+  if (publicPath === '/api/mcp') return supabaseResponse;
   // The service worker and manifest are fetched by the browser itself (often in the
   // background): they need no session and must not trigger a token refresh.
   if (publicPath === '/sw.js' || publicPath === '/manifest.webmanifest' || publicPath === '/offline.html') return supabaseResponse;

@@ -64,6 +64,7 @@ class Builder {
           const [col, op, ...rest] = term.split('.'); const v = rest.join('.');
           if (op === 'is') return `${ident(col)} is ${v}`;
           if (op === 'not' && rest[0] === 'is') return `${ident(col)} is not ${rest.slice(1).join('.')}`; // col.not.is.null
+          if (op === 'ilike') { params.push(v.replace(/\*/g, '%')); return `${ident(col)} ilike $${params.length}`; } // col.ilike.%term%
           params.push(v);
           return `${ident(col)} ${op === 'neq' ? 'is distinct from' : '='} $${params.length}`;
         });

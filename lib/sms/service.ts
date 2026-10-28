@@ -282,7 +282,7 @@ export const WORKFLOW_TEXT_SKIP_REASONS: Record<string, string> = {
  * (switches, opt-outs, texting hours, daily cap, one conversation per number). Idempotent per step run.
  * `assistant` = let the texting assistant answer replies; otherwise the workflow handles replies itself.
  */
-export async function queueWorkflowText(db: Db, input: { leadId: string; body: string; contractorId: string | null; stepRunId: string; assistant: boolean; onlyIfNotTexted?: boolean; now?: Date }): Promise<WorkflowTextResult> {
+export async function queueWorkflowText(db: Db, input: { leadId: string; body: string; contractorId: string | null; stepRunId: string; assistant: boolean; onlyIfNotTexted?: boolean; now?: Date; label?: string }): Promise<WorkflowTextResult> {
   const now = input.now ?? new Date();
   try {
     const { data: already } = await db.from('sms_messages').select('id,conversation_id').eq('workflow_step_run_id', input.stepRunId).maybeSingle();
@@ -325,7 +325,7 @@ export async function queueWorkflowText(db: Db, input: { leadId: string; body: s
     const zones = resolveZones({ state: lead.state as string | null, zip: lead.zip as string | null }) ?? DEFAULT_ZONES;
     const when = nextEligible(now, zones, { startHour: settings.window_start_hour, endHour: settings.window_end_hour }) ?? now;
     await queue(db, convo, body, { ai: false, sendAfter: when, workflowStepRunId: input.stepRunId });
-    await note(db, input.leadId, `Workflow text queued${when > now ? ` for ${when.toISOString()} (outside texting hours)` : ''}.`, { workflow: true });
+    await note(db, input.leadId, `${input.label ?? 'Workflow text'} queued${when > now ? ` for ${when.toISOString()} (outside texting hours)` : ''}.`, { workflow: true });
     return { ok: true, queued: true, conversationId: convo.id };
   } catch {
     return { ok: false, reason: 'error' };
