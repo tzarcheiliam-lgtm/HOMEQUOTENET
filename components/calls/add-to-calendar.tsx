@@ -19,6 +19,8 @@ export interface AddToCalendarProps {
   icsUrl: string;
   /** The meeting time each calendar was last added for, or null. */
   added: { google: string | null; apple: string | null };
+  /** Short labels ("Google", "Apple") for tight spaces such as the calendar agenda. */
+  compact?: boolean;
 }
 
 /**
@@ -36,6 +38,7 @@ export function AddToCalendar(p: AddToCalendarProps) {
     void markSalesAppointmentAdded(p.id, provider);
   };
 
+  const say = (long: string, short: string) => (p.compact ? short : long);
   const btn = (strong: boolean) => cn(buttonVariants({ variant: strong ? 'outline' : 'ghost', size: 'sm' }), 'gap-1.5', !strong && 'text-muted-foreground');
 
   // Nothing to add for a cancelled or finished meeting that was never added.
@@ -47,12 +50,12 @@ export function AddToCalendar(p: AddToCalendarProps) {
     <div className="flex flex-wrap items-center gap-1.5">
       {showGoogle ? (
         google === 'none' ? (
-          <a href={p.googleAddUrl} target="_blank" rel="noopener noreferrer" onClick={() => mark('google')} className={btn(true)}>
-            <CalendarPlus aria-hidden="true" /> Add to Google Calendar
+          <a href={p.googleAddUrl} target="_blank" rel="noopener noreferrer" onClick={() => mark('google')} className={btn(true)} aria-label={p.compact ? 'Add to Google Calendar' : undefined}>
+            <CalendarPlus aria-hidden="true" /> {say('Add to Google Calendar', 'Google')}
           </a>
         ) : p.cancelled ? (
           <a href={p.googleAddedDayUrl ?? p.googleAddUrl} target="_blank" rel="noopener noreferrer" className={btn(true)} title="Opens that day in Google Calendar so you can delete the event">
-            <CalendarX aria-hidden="true" /> Cancelled: remove from Google
+            <CalendarX aria-hidden="true" /> {say('Cancelled: remove from Google', 'Remove from Google')}
           </a>
         ) : google === 'moved' ? (
           <a
@@ -63,11 +66,11 @@ export function AddToCalendar(p: AddToCalendarProps) {
             className={btn(true)}
             title="Opens the old day in Google Calendar. Drag the event to the new time instead of adding it again."
           >
-            <RefreshCw aria-hidden="true" /> Time changed: move it in Google
+            <RefreshCw aria-hidden="true" /> {say('Time changed: move it in Google', 'Move in Google')}
           </a>
         ) : (
           <a href={p.googleAddedDayUrl ?? p.googleAddUrl} target="_blank" rel="noopener noreferrer" className={btn(false)} title="Already added. Opens that day in Google Calendar.">
-            <CalendarCheck aria-hidden="true" /> In Google Calendar
+            <CalendarCheck aria-hidden="true" /> {say('In Google Calendar', 'In Google')}
           </a>
         )
       ) : null}
@@ -76,24 +79,25 @@ export function AddToCalendar(p: AddToCalendarProps) {
         <a
           href={p.icsUrl}
           onClick={() => mark('apple')}
+          aria-label={p.compact && apple === 'none' && !p.cancelled ? 'Add to Apple Calendar' : undefined}
           className={btn(apple !== 'added' || p.cancelled)}
           title={apple === 'added' && !p.cancelled ? 'Already added. Opening it again updates the same event.' : undefined}
         >
           {p.cancelled ? (
             <>
-              <CalendarX aria-hidden="true" /> Cancelled: update Apple Calendar
+              <CalendarX aria-hidden="true" /> {say('Cancelled: update Apple Calendar', 'Update Apple')}
             </>
           ) : apple === 'moved' ? (
             <>
-              <RefreshCw aria-hidden="true" /> Time changed: update Apple Calendar
+              <RefreshCw aria-hidden="true" /> {say('Time changed: update Apple Calendar', 'Update Apple')}
             </>
           ) : apple === 'added' ? (
             <>
-              <CalendarCheck aria-hidden="true" /> In Apple Calendar
+              <CalendarCheck aria-hidden="true" /> {say('In Apple Calendar', 'In Apple')}
             </>
           ) : (
             <>
-              <CalendarPlus aria-hidden="true" /> Add to Apple Calendar
+              <CalendarPlus aria-hidden="true" /> {say('Add to Apple Calendar', 'Apple')}
             </>
           )}
         </a>
