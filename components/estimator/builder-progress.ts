@@ -1,8 +1,8 @@
 /**
  * Pure helpers for the live pool builder's sense of progress: the named
- * stages above the questions (Pool, Style, Finishes, Features, Yard, Unlock),
- * the rewards being earned (Design, Price, Realistic photo) and the wording of
- * the unlock step. No React and no DOM, so they are unit-tested directly
+ * stages above the questions (Pool, Style, Details, Unlock), the rewards being
+ * earned (Design, Price, Realistic photo) and the wording of the unlock step.
+ * No React and no DOM, so they are unit-tested directly
  * (tests/estimator-unlock.test.tsx).
  *
  * Honesty rules: the realistic photo is only named when renders are switched
@@ -17,57 +17,71 @@ import type { FlowScreen } from './use-estimator-flow';
 /* Stages                                                              */
 /* ------------------------------------------------------------------ */
 
-export type StageId = 'pool' | 'style' | 'finishes' | 'features' | 'yard' | 'unlock';
+export type StageId = 'pool' | 'style' | 'details' | 'unlock';
 
+/** Short enough that four fit side by side on a 390 px phone. */
 const STAGE_LABEL: Record<StageId, string> = {
   pool: 'Pool',
   style: 'Style',
-  finishes: 'Finishes',
-  features: 'Features',
-  yard: 'Yard',
+  details: 'Details',
   unlock: 'Unlock',
 };
 
+const ORDER: readonly StageId[] = ['pool', 'style', 'details', 'unlock'];
+
 const POOL_ROLES = new Set(['project', 'shape', 'size']);
-const FINISH_IDS = new Set(['surface', 'tile', 'coping', 'deck', 'deckSize']);
-const FEATURE_IDS = new Set(['features', 'equipment']);
-const YARD_IDS = new Set(['extras', 'cracks', 'access', 'hillside']);
+/** Finishes and features are part of the look, so "Build my own" adds screens to Style instead of new stages. */
+const STYLE_IDS = new Set(['surface', 'tile', 'coping', 'deck', 'deckSize', 'features', 'equipment']);
+const DETAIL_IDS = new Set(['extras', 'cracks', 'access', 'hillside']);
 
 /** The stage a screen belongs to on its own merits, or undefined (it then joins the stage before it). */
 function ownStage(screen: FlowScreen): StageId | undefined {
   if (screen.kind === 'zip' || screen.kind === 'contact') return 'unlock';
+  // "Which look do you like?" is inspiration for the style, wherever it sits in the path.
+  if (screen.kind === 'looks') return 'style';
   if (screen.kind !== 'questions') return undefined;
   if (screen.group === 'package' || screen.group === 'scope') return 'style';
   const has = (set: Set<string>) => screen.questions.some((q) => set.has(q.id) || (q.role !== undefined && set.has(q.role)));
   if (has(POOL_ROLES)) return 'pool';
-  if (has(FINISH_IDS)) return 'finishes';
-  if (has(FEATURE_IDS)) return 'features';
-  if (has(YARD_IDS) || screen.id === 'property') return 'yard';
+  if (has(STYLE_IDS)) return 'style';
+  if (has(DETAIL_IDS) || screen.id === 'property') return 'details';
   return undefined;
 }
 
 /**
- * The named stages for the screens the homeowner will actually see, in order,
- * and the stage of each screen. A screen with no stage of its own (the looks
- * gallery, an unknown question) stays in the stage before it, and a stage
- * never comes back after a later one started, so the bar only moves forward.
- * Stages the path skips (Finishes and Features on the package path) are left out.
+ * The named stages for the screens the homeowner will see, in order, and the
+ * stage of each screen. A screen with no stage of its own stays in the stage
+ * before it, and a stage never comes back after a later one started (a looks
+ * gallery placed after the property questions stays in Details), so the bar
+ * only moves forward. Opening "Build my own" adds screens inside Style rather
+ * than adding stages, so the number of stages does not jump mid-way.
  */
 export function flowStages(screens: readonly FlowScreen[]): { stages: Stage[]; stageOf: Record<string, StageId> } {
-  const order: StageId[] = ['pool', 'style', 'finishes', 'features', 'yard', 'unlock'];
   const stages: Stage[] = [];
   const stageOf: Record<string, StageId> = {};
   let current: StageId | undefined;
   for (const screen of screens) {
     const own = ownStage(screen);
-    const next = own && (!current || order.indexOf(own) > order.indexOf(current)) ? own : (current ?? own ?? 'pool');
+    const next = own && (!current || ORDER.indexOf(own) > ORDER.indexOf(current)) ? own : (current ?? own ?? 'pool');
     if (next !== current) {
       current = next;
-      stages.push({ id: next, label: STAGE_LABEL[next] });
+      stages.push(next === 'unlock' ? { id: next, label: STAGE_LABEL[next], prize: true } : { id: next, label: STAGE_LABEL[next] });
     }
     stageOf[screen.id] = current;
   }
   return { stages, stageOf };
+}
+
+/**
+ * How far through its stage a screen is, as a share of that stage (0 to 1):
+ * the current segment of the stage bar fills in steps instead of all at once.
+ */
+export function stageFraction(screens: readonly FlowScreen[], stageOf: Record<string, StageId>, screenId: string): number {
+  const stage = stageOf[screenId];
+  if (!stage) return 0;
+  const inStage = screens.filter((s) => stageOf[s.id] === stage);
+  const at = inStage.findIndex((s) => s.id === screenId);
+  return at < 0 ? 0 : (at + 1) / inStage.length;
 }
 
 /* ------------------------------------------------------------------ */
@@ -120,23 +134,24 @@ export type UnlockCopy = {
 
 /**
  * Words for the unlock step (ZIP and contact screens). Only promises the
- * realistic photo when renders are on, and never says anything will be sent
- * to them: the price, design and photo appear on the page.
+ * realistic photo when renders are on, never says anything will be sent to
+ * them (the price and photo appear on the page), and never calls the design
+ * locked: they can already see it.
  */
 export function unlockCopy(rendersEnabled: boolean): UnlockCopy {
   return rendersEnabled
     ? {
         zipTitle: 'Unlock your realistic photo and price',
         contactTitle: 'One last step to unlock your photo and price',
-        promise: 'See your ballpark price and design as soon as you finish, plus a realistic photo of your new pool, ready in about a minute.',
+        promise: 'Your design is ready. Unlock your ballpark price now, and a realistic photo of your pool about a minute later.',
         submit: 'Unlock my photo and price',
-        submitting: 'Unlocking…',
+        submitting: 'Crunching your price…',
       }
     : {
         zipTitle: 'Unlock your price',
         contactTitle: 'One last step to unlock your price',
-        promise: 'See your ballpark price and design as soon as you finish.',
+        promise: 'Your design is ready. Unlock your ballpark price range to see what it could cost.',
         submit: 'Unlock my price',
-        submitting: 'Unlocking…',
+        submitting: 'Crunching your price…',
       };
 }

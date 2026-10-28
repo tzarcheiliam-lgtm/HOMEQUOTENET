@@ -247,8 +247,8 @@ describe('result design', () => {
   const answers: Answers = { ...withPackage('transformation', { ...BASE, project: ['backyard'] }), extras: ['kitchen'], cracks: ['no'], access: ['no'], hillside: ['no'] };
   const estimate = computeEstimate(T, { answers });
   const result: LeadSuccess = { ok: true, estimate, qualified: true, calendarUrl: 'https://example.com/book' };
-  const flow = (r: LeadSuccess) =>
-    renderToStaticMarkup(<EstimatorFlow template={T} contractor={FIXTURE_CONTRACTOR} seed={{ answers, result: r }} />);
+  const flow = (r: LeadSuccess, rendersEnabled = false) =>
+    renderToStaticMarkup(<EstimatorFlow template={T} contractor={FIXTURE_CONTRACTOR} seed={{ answers, result: r }} rendersEnabled={rendersEnabled} />);
 
   it('shows the finished scene, Save my design, the design list, the range and the booking button', () => {
     const html = flow(result);
@@ -266,7 +266,7 @@ describe('result design', () => {
   });
 
   it('starts developing the realistic photo by itself (no button) when the lead response carries a render token', () => {
-    const html = flow({ ...result, renderToken: 'token-123' });
+    const html = flow({ ...result, renderToken: 'token-123' }, true);
     expect(html).toContain('data-developing=""');
     expect(html).toContain('Developing your realistic photo');
     expect(html).not.toContain('See your backyard for real');
@@ -274,6 +274,14 @@ describe('result design', () => {
     expect(html).toMatch(/role="status" aria-live="polite" class="min-h-10/);
     expect(html).toContain('It usually takes 20 to 60 seconds.');
     expect(html).not.toContain('token-123');
+  });
+
+  it('never starts a photo when this page did not promise one (renders off), even with a render token', () => {
+    const html = flow({ ...result, renderToken: 'token-123' });
+    expect(html).not.toContain('data-developing=""');
+    expect(html).not.toContain('Developing your realistic photo');
+    expect(html).not.toContain('Make my realistic photo');
+    expect(html).not.toMatch(/realistic photo/i);
   });
 
   it('renders the scene, actions and day/night switch on its own', () => {
