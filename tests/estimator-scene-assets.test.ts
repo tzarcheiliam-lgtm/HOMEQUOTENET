@@ -57,10 +57,11 @@ describe('live pool scene assets', () => {
       expect(src, id).toBe(`/estimator/scene/textures/${id}.webp`);
       const file = publicPath(src);
       expect(existsSync(file), src).toBe(true);
-      expect(statSync(file).size, src).toBeLessThan(220 * 1024);
+      // Exported near their on-screen size: tiny tiles must not cost a 1024 px decode on phones.
+      expect(statSync(file).size, src).toBeLessThan(110 * 1024);
       const info = imageInfo(readFileSync(file));
       expect(info.width, src).toBe(info.height);
-      expect([768, 1024], src).toContain(info.width);
+      expect([256, 384, 512], src).toContain(info.width);
     }
   });
 
@@ -73,7 +74,7 @@ describe('live pool scene assets', () => {
       expect(src, id).toMatch(new RegExp(`^/estimator/scene/sprites/${id}\\.(webp|png)$`));
       const file = publicPath(src);
       expect(existsSync(file), src).toBe(true);
-      expect(statSync(file).size, src).toBeLessThan(150 * 1024);
+      expect(statSync(file).size, src).toBeLessThan(64 * 1024);
       const info = imageInfo(readFileSync(file));
       expect(info.alpha, src).toBe(true);
       // The drawn footprint keeps the cut-out's proportions (within 6%).

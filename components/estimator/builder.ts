@@ -7,9 +7,9 @@
  */
 
 import { applyPackage, picksFor } from '@/lib/estimator/engine';
-import type { RenderStart } from '@/lib/estimator/render-client';
+import { RENDER_POLL_MS, RENDER_TIMEOUT_MS, type RenderStart } from '@/lib/estimator/render-client';
 import type { SceneSpec } from '@/lib/estimator/scene/types';
-import type { Answers, EstimatorQuestion, EstimatorTemplate } from '@/lib/estimator/types';
+import { CUSTOM_PACKAGE_ID, type Answers, type EstimatorQuestion, type EstimatorTemplate } from '@/lib/estimator/types';
 
 /* ------------------------------------------------------------------ */
 /* Option labels                                                       */
@@ -73,11 +73,30 @@ export function formatFeet(lengthFt: number, widthFt: number): string {
   return `${n(lengthFt)} × ${n(widthFt)} ft`;
 }
 
+/** "Not sure / help me choose" picks, said plainly ("Preview: Not sure pool" reads broken). */
+const UNSURE_PHRASE: Record<string, string> = {
+  shape: 'Simple rectangle for now',
+  size: 'Typical-size pool',
+  surface: 'Finish to pick together',
+  tile: 'Tile to pick together',
+  coping: 'Coping to pick together',
+  deck: 'Deck to pick together',
+};
+
+/** What an undecided material is called in "We'll help you pick a finish". */
+const MATERIAL_NOUN: Record<'surface' | 'tile' | 'coping' | 'deck', string> = {
+  surface: 'finish',
+  tile: 'waterline tile',
+  coping: 'coping',
+  deck: 'deck',
+};
+
 /**
  * Short phrase for one picked option, used by the change chip and the preview
  * badge: "Travertine coping", "Glass waterline tile", "Large pool", "Spa".
  */
 export function optionPhrase(questionId: string, optionId: string, label: OptionLabeler): string {
+  if (optionId === 'unsure' && UNSURE_PHRASE[questionId]) return UNSURE_PHRASE[questionId];
   const name = label(questionId, optionId) ?? humanize(optionId);
   switch (questionId) {
     case 'shape':
@@ -136,10 +155,17 @@ export function previewAnswers(template: EstimatorTemplate, answers: Answers, q:
 /**
  * What became visibly different between two scenes, as short chip messages,
  * most exciting first: added/removed features and extras, then materials, then
- * shape and size. A material that goes back to "not decided" says nothing
- * (the picture just shows the default look).
+ * shape and size. A material that goes back to "not decided" says "We'll help
+ * you pick a finish" when the homeowner chose "help me choose" (`unsure`: the
+ * question ids answered that way), and nothing otherwise (e.g. the question
+ * was hidden by a scope change; the picture just shows the default look).
  */
-export function sceneChanges(prev: SceneSpec, next: SceneSpec, label: OptionLabeler = () => undefined): string[] {
+export function sceneChanges(
+  prev: SceneSpec,
+  next: SceneSpec,
+  label: OptionLabeler = () => undefined,
+  unsure: ReadonlySet<string> = new Set(),
+): string[] {
   const added: string[] = [];
   const removed: string[] = [];
   for (const f of FEATURES) {
@@ -157,6 +183,7 @@ export function sceneChanges(prev: SceneSpec, next: SceneSpec, label: OptionLabe
   for (const id of ['surface', 'tile', 'coping', 'deck'] as const) {
     const value = next[id];
     if (value && value !== prev[id]) materials.push(optionPhrase(id, value, label));
+    else if (!value && prev[id] && unsure.has(id)) materials.push(`We’ll help you pick a ${MATERIAL_NOUN[id]}`);
   }
   if (next.deckSize !== 'none' && next.deckSize !== prev.deckSize && !(next.deck && next.deck !== prev.deck)) {
     materials.push(optionPhrase('deckSize', next.deckSize, label));
@@ -168,6 +195,43 @@ export function sceneChanges(prev: SceneSpec, next: SceneSpec, label: OptionLabe
     form.push(`${formatFeet(next.lengthFt, next.widthFt)} pool`);
   }
   return [...added, ...materials, ...form, ...removed];
+}
+
+/**
+ * Chip messages for picks the picture does not show on its own: a package
+ * ("Signature package applied", which stands in for its many material
+ * changes) and newly ticked options of non-visual multi-choice questions
+ * ("Equipment upgrade added to your plan"), so every pick still answers back.
+ * `package` is null unless a package was just applied.
+ */
+export function answerChanges(
+  template: EstimatorTemplate,
+  prev: Answers,
+  next: Answers,
+  label: OptionLabeler = () => undefined,
+): { package: string | null; added: string[] } {
+  let pkg: string | null = null;
+  const added: string[] = [];
+  for (const q of template.questions) {
+    const before = picksFor(q, prev);
+    const after = picksFor(q, next);
+    if (q.role === 'package') {
+      const id = after[0];
+      if (id && id !== before[0] && id !== CUSTOM_PACKAGE_ID) pkg = `${optionPhrase('package', id, label)} applied`;
+      continue;
+    }
+    if (q.kind !== 'multi' || isVisualQuestion(q)) continue;
+    for (const id of after) if (!before.includes(id)) added.push(`${label(q.id, id) ?? humanize(id)} added to your plan`);
+  }
+  return { package: pkg, added };
+}
+
+/** Features and extras switched on between two scenes, as template option refs (for the chip's job photo). */
+export function addedOptions(prev: SceneSpec, next: SceneSpec): { questionId: 'features' | 'extras'; optionId: string }[] {
+  return [
+    ...FEATURES.filter((f) => next.features[f.key] && !prev.features[f.key]).map((f) => ({ questionId: 'features' as const, optionId: f.optionId })),
+    ...EXTRAS.filter((x) => next.extras[x.key] && !prev.extras[x.key]).map((x) => ({ questionId: 'extras' as const, optionId: x.optionId })),
+  ];
 }
 
 /** One chip line: "Baja shelf added", "Spa added · Fire bowls added", or "Pebble finish · Glass waterline tile +2 more". */
@@ -255,9 +319,8 @@ export function scrollDelta(targetTop: number, viewportHeight: number, topOffset
 
 /** Typical render time; the bar eases toward 95% around it and never claims 100% early. */
 export const RENDER_TYPICAL_MS = 40_000;
-/** Stop polling after this long and explain instead of spinning forever. */
-export const RENDER_TIMEOUT_MS = 180_000;
-export const RENDER_POLL_MS = 4_000;
+/** Polling cadence and give-up time live in render-client.ts (one copy); re-exported for the screens. */
+export { RENDER_POLL_MS, RENDER_TIMEOUT_MS };
 
 /** 0..95 percent for an elapsed time: fast at first, then slowing, so a slow render still feels alive. */
 export function renderProgress(elapsedMs: number): number {
@@ -293,6 +356,14 @@ export function renderStartProblem(result: Extract<RenderStart, { ok: false }>):
       return { message: 'Realistic previews are not available right now. Your designer will walk you through the look at the free on-site visit.', retry: false };
     case 'limit':
       return { message: 'You have reached the number of realistic previews for now. Your designer can show you more at the free on-site visit.', retry: false };
+    case 'invalid':
+      // Expired session (401), a picture too big (413) or unreadable (422): clicking again cannot fix these.
+      return {
+        message: result.message
+          ? `${result.message.replace(/\s+$/, '')} Your designer will walk you through the look at the free on-site visit.`
+          : 'This design session has ended. Your designer will walk you through the look at the free on-site visit.',
+        retry: false,
+      };
     default:
       return { message: 'We could not create the realistic preview just now. Please try again.', retry: true };
   }

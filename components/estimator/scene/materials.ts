@@ -17,14 +17,15 @@ export type WaterLook = {
 };
 
 const WATER: Record<'plaster' | 'quartz' | 'pebble' | 'colored' | 'default', WaterLook> = {
-  // Bright white plaster under clear water: the classic bright turquoise.
-  plaster: { floor: 'floor_plaster', tint: '#3fd3e3', deep: '#1aa6c8', tintOpacity: 0.66 },
-  // Quartz: a touch more aqua-blue.
-  quartz: { floor: 'floor_quartz', tint: '#2cb9db', deep: '#1590bd', tintOpacity: 0.7 },
-  // Pebble: deeper blue-teal, the floor texture reads through.
-  pebble: { floor: 'floor_pebble', tint: '#1f9cb4', deep: '#0f6f8f', tintOpacity: 0.62 },
+  // Bright white plaster under clear water: the classic bright turquoise (drive/031).
+  plaster: { floor: 'floor_plaster', tint: '#5fd0e0', deep: '#1fa3c4', tintOpacity: 0.68 },
+  // Quartz: a clear azure blue.
+  quartz: { floor: 'floor_quartz', tint: '#3aa6d0', deep: '#16729f', tintOpacity: 0.72 },
+  // Pebble: deep teal-grey, the stones read through (drive/024).
+  pebble: { floor: 'floor_pebble', tint: '#2f7f95', deep: '#174f60', tintOpacity: 0.6 },
   colored: { floor: 'floor_quartz', tint: '#2a8fbf', deep: '#155f8f', tintOpacity: 0.76 },
-  default: { floor: 'floor_plaster', tint: '#38c6de', deep: '#179cc2', tintOpacity: 0.68 },
+  // Not chosen yet: an existing plaster pool, a little less bright than new plaster.
+  default: { floor: 'floor_plaster', tint: '#4cc4d8', deep: '#1a98ba', tintOpacity: 0.7 },
 };
 
 export function waterLook(surface: string | null): WaterLook {

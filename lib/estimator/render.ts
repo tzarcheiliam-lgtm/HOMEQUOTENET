@@ -12,10 +12,12 @@ import type { RenderStatus } from './render-client.ts';
  *   never leaves the server. Render task ids handed to the browser are signed
  *   the same way against the lead, so a token can only poll its own renders.
  * - Limits. Each render is a lead_activities row on that lead (metadata.kind
- *   'estimator_render'), which is both the timeline entry the contractor sees
- *   and the durable counter: at most RENDERS_PER_LEAD per lead and
- *   ESTIMATOR_RENDER_DAILY_CAP (default 100) across all estimators per 24 h.
- * - kie.ai. The PNG is uploaded (file-stream-upload), then an image-edit
+ *   'estimator_render'; internal visibility, so staff see it on the lead
+ *   timeline), which is also the durable counter: at most RENDERS_PER_LEAD per
+ *   lead, RENDERS_PER_IP_HOUR per visitor per hour and ESTIMATOR_RENDER_DAILY_CAP
+ *   (default 100) across all estimators per 24 h. The row is inserted BEFORE
+ *   counting, so parallel requests always see each other (see the POST route).
+ * - kie.ai. The PNG is uploaded (file-stream-upload on kie.ai's upload host), then an image-edit
  *   task (nano-banana-pro, image_input) turns it into a drone photo that keeps
  *   the layout. Renders are on only when env KIE_API_KEY is set.
  *
@@ -24,6 +26,10 @@ import type { RenderStatus } from './render-client.ts';
 
 export const RENDER_TOKEN_TTL_MS = 2 * 60 * 60 * 1000;
 export const RENDERS_PER_LEAD = 3;
+/** Render starts per visitor (hashed IP + day, never the raw address) per hour, across leads. */
+export const RENDERS_PER_IP_HOUR = 6;
+/** Header the browser sends the renderToken in (never the query string, which lands in access logs). */
+export const RENDER_TOKEN_HEADER = 'x-render-token';
 export const DEFAULT_DAILY_RENDER_CAP = 100;
 /** Decoded image limit. Vercel caps request bodies at 4.5 MB, so the client re-encodes big PNGs as JPEG. */
 export const MAX_RENDER_IMAGE_BYTES = 6 * 1024 * 1024;
@@ -33,6 +39,8 @@ export const MAX_RENDER_BODY_BYTES = Math.ceil((MAX_RENDER_IMAGE_BYTES * 4) / 3)
 export const RENDER_ACTIVITY_KIND = 'estimator_render';
 
 const KIE_BASE = 'https://api.kie.ai';
+/** kie.ai serves file uploads from a separate host, with no /v1 (same as scripts/generate-scene-textures.mjs). */
+const KIE_UPLOAD_BASE = 'https://kieai.redpandaai.co';
 const MODELS = ['nano-banana-pro', 'nano-banana-2'] as const;
 type RenderModel = (typeof MODELS)[number];
 
@@ -167,7 +175,7 @@ export async function uploadRenderImage(image: RenderImage, name: string): Promi
   form.append('file', new Blob([new Uint8Array(image.bytes)], { type: image.mime }), `${name}.${image.ext}`);
   form.append('uploadPath', 'estimator-renders');
   form.append('fileName', `${name}.${image.ext}`);
-  const res = await fetch(`${KIE_BASE}/api/v1/file-stream-upload`, {
+  const res = await fetch(`${KIE_UPLOAD_BASE}/api/file-stream-upload`, {
     method: 'POST', headers: { Authorization: `Bearer ${kieKey()}` }, body: form, signal: AbortSignal.timeout(30_000),
   });
   const data = (await kieJson(res, 'upload')).data ?? {};

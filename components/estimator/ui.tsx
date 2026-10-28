@@ -16,7 +16,7 @@ export const inputClass =
   'h-11 w-full rounded-lg border border-[var(--hq-line-strong)] bg-[var(--hq-bg)] px-3 text-base text-[var(--hq-text)] placeholder:text-[var(--hq-text-dim)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--hq-accent-bright)] aria-[invalid=true]:border-[var(--hq-bad)]';
 export const textareaClass = cn(inputClass, 'h-auto min-h-24 py-2.5 leading-6');
 export const primaryButton =
-  'inline-flex h-12 items-center justify-center rounded-full bg-[var(--hq-cta)] px-7 text-sm font-semibold text-[var(--hq-cta-ink)] transition-colors hover:bg-[var(--hq-cta-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--hq-accent-bright)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-[var(--hq-cta)]';
+  'inline-flex h-12 items-center justify-center rounded-full bg-[var(--hq-cta)] px-7 text-sm font-semibold text-[var(--hq-cta-ink)] transition-colors hover:bg-[var(--hq-cta-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--hq-accent-bright)] disabled:cursor-not-allowed disabled:bg-[var(--hq-surface-2)] disabled:text-[var(--hq-text-dim)] disabled:hover:bg-[var(--hq-surface-2)]';
 export const secondaryButton =
   'inline-flex h-12 items-center justify-center rounded-full border border-[var(--hq-line-strong)] px-6 text-sm font-semibold text-[var(--hq-text)] transition-colors hover:border-[var(--hq-accent-bright)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--hq-accent-bright)]';
 export const linkButton =
@@ -27,18 +27,27 @@ const tile =
 
 /**
  * Hover / keyboard-focus handlers for a previewable option (the live builder
- * draws it as a ghost). Touch is ignored: a tap picks the option anyway, and a
- * mouse click's focus is not :focus-visible, so only real keyboard focus previews.
+ * draws it as a ghost). Hover starts on the first real pointer MOVE over the
+ * tile, not on enter: after "Next" the new screen slides in under a resting
+ * cursor, and that must not preview an option nobody pointed at. Touch is
+ * ignored: a tap picks the option anyway, and a mouse click's focus is not
+ * :focus-visible, so only real keyboard focus previews.
  */
 export function previewHandlers(onPreview: ((on: boolean) => void) | undefined) {
   if (!onPreview) return { label: {}, input: {} };
   return {
     label: {
-      onPointerEnter: (e: PointerEvent) => {
-        if (e.pointerType !== 'touch') onPreview(true);
+      onPointerMove: (e: PointerEvent<HTMLElement>) => {
+        if (e.pointerType === 'touch' || e.currentTarget.dataset.preview === 'on') return;
+        // Layout shifts under a still cursor can produce moves of zero distance.
+        if (e.movementX === 0 && e.movementY === 0) return;
+        e.currentTarget.dataset.preview = 'on';
+        onPreview(true);
       },
-      onPointerLeave: (e: PointerEvent) => {
-        if (e.pointerType !== 'touch') onPreview(false);
+      onPointerLeave: (e: PointerEvent<HTMLElement>) => {
+        if (e.pointerType === 'touch' || e.currentTarget.dataset.preview !== 'on') return;
+        delete e.currentTarget.dataset.preview;
+        onPreview(false);
       },
     },
     input: {

@@ -17,7 +17,10 @@ export type RenderStatus =
   | { status: 'done'; imageUrl: string }
   | { status: 'failed'; message: string };
 
-/** How often the screen should call checkRender, and when to give up (renders take ~20-90 s). */
+/**
+ * How often the screen calls checkRender, and when it gives up (renders take
+ * ~20-90 s). The single source for these: the result screen imports them.
+ */
 export const RENDER_POLL_MS = 4000;
 export const RENDER_TIMEOUT_MS = 4 * 60 * 1000;
 
@@ -98,8 +101,9 @@ export async function startRender(slug: string, renderToken: string, pngDataUrl:
 export async function checkRender(slug: string, renderToken: string, taskId: string): Promise<RenderStatus> {
   try {
     const res = await fetch(
-      `/api/estimator/${encodeURIComponent(slug)}/render/${encodeURIComponent(taskId)}?token=${encodeURIComponent(renderToken)}`,
-      { cache: 'no-store' },
+      `/api/estimator/${encodeURIComponent(slug)}/render/${encodeURIComponent(taskId)}`,
+      // A header, not ?token=: query strings end up in hosting and proxy access logs.
+      { cache: 'no-store', headers: { 'x-render-token': renderToken } },
     );
     const data: unknown = await res.json().catch(() => null);
     if (isRenderStatus(data)) return data;

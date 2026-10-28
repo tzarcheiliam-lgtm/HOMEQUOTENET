@@ -4,14 +4,16 @@ import { SCENE, type SceneDeckSize, type SceneShape, type SceneSpec } from './ty
  * Yard layout for the live pool scene (pure, unit-tested).
  *
  * The picture is a straight-down drone view on the 1200 x 800 SCENE canvas at
- * 13 units per foot: the house roof along the top edge with a concrete walk
- * under the eave, a block wall around the other three sides with a landscape
- * strip (beds or hedges) inside it, and the pool with its coping and deck in
- * the lower middle. Everything else (spa, Baja shelf, bowls, lights, kitchen,
- * patio cover, fire pit, loungers, trees) is placed around that so nothing
- * overlaps the pool or each other. A typed pool too big to draw at true scale
+ * 13 units per foot: the house roof along the top edge with a walk under the
+ * eave, a block wall around the other three sides with a landscape strip
+ * (beds or hedges) inside it, and the pool with its coping and deck right
+ * off the house (the deck runs into the walk, like the Pool Masters jobs).
+ * Everything else (spa, Baja shelf, bowls, lights, kitchen and patio cover
+ * against the house, fire pit, loungers, trees) is placed close around that,
+ * so nothing overlaps the pool or each other and the yard reads dense, not
+ * like a pool floating in a field. A typed pool too big to draw at true scale
  * is scaled down uniformly (pool.scale < 1) so the largest pool plus a large
- * deck always fits.
+ * deck always fits. sceneCamera frames the result like a drone shot.
  */
 
 const FT = SCENE.pxPerFt;
@@ -44,8 +46,10 @@ const OPEN: Rect = { x: YARD.x + FRAME.strip, y: WALK_BOTTOM, w: YARD.w - 2 * FR
 
 /** Largest pool drawn at true scale (feet); bigger typed pools are scaled down to fit. */
 export const MAX_DRAWN_FT = { length: 40, width: 20 } as const;
-export const COPING_FT = 1.5;
-export const TILE_FT = 0.5;
+/** Wide, bright coping band (the white frame of the drone photos). */
+export const COPING_FT = 1.8;
+/** Waterline tile band, drawn wider than true so glass, porcelain and stone read at phone size. */
+export const TILE_FT = 0.85;
 /** Paved area (sq ft) around the pool for each deck size; 'none' is a narrow existing band. */
 export const DECK_SQFT: Record<Exclude<SceneDeckSize, 'none'>, number> = { small: 300, medium: 600, large: 1000 };
 
@@ -61,6 +65,12 @@ export type PoolLayout = {
   radius: number;
   /** Closed outline path of the water edge. */
   path: string;
+  /**
+   * Outer edge of the coping for rectangle and L pools: the water outline
+   * pushed out by the coping width with square corners, like modern coping.
+   * Null for freeform (its coping follows the curve).
+   */
+  copingPath: string | null;
   /** Sampled outline, for hit tests and placing things along the edge. */
   outline: Pt[];
   /** Coping ring width and waterline tile band width (units). */
@@ -112,6 +122,7 @@ export type SceneObject = {
 
 export type DeckLayout = {
   box: Rect;
+  /** Corner radius of the deck's corners away from the house (0 for rectangle and L pools). */
   rx: number;
   /** Paved area excluding the pool and spa footprint, sq ft. */
   areaSqft: number;
@@ -199,21 +210,26 @@ function edgeYAt(outline: Pt[], x: number, which: 'top' | 'bottom'): number {
 
 /* --------------------------- pool outlines --------------------------- */
 
-/** Freeform kidney control points (unit box, the bite on the house side). */
+/**
+ * Freeform control points (unit box): an organic lagoon with one soft, wide
+ * bay on the house side (no cusp: the bay's curve is many feet across), and
+ * a fuller deep end on the right. Matches the shape tile's soft outline.
+ */
 const KIDNEY: [number, number][] = [
-  [0.0, 0.52],
-  [0.05, 0.17],
-  [0.22, 0.02],
-  [0.4, 0.07],
-  [0.55, 0.27],
-  [0.7, 0.1],
-  [0.87, 0.02],
-  [1.0, 0.3],
-  [0.98, 0.72],
-  [0.83, 0.96],
-  [0.56, 1.0],
-  [0.28, 0.97],
-  [0.07, 0.86],
+  [0.0, 0.5],
+  [0.04, 0.2],
+  [0.17, 0.04],
+  [0.34, 0.03],
+  [0.5, 0.13],
+  [0.66, 0.06],
+  [0.84, 0.02],
+  [0.97, 0.18],
+  [1.0, 0.5],
+  [0.95, 0.8],
+  [0.8, 0.97],
+  [0.55, 1.0],
+  [0.3, 0.97],
+  [0.1, 0.86],
 ];
 
 /** Closed Catmull-Rom spline through the points as cubic segments [p1, c1, c2, p2]. */
@@ -276,6 +292,32 @@ function roundedPolygonPath(pts: Pt[], r: number, dx: number, dy: number): strin
 }
 
 /**
+ * An orthogonal polygon (rectangle, L) pushed out by `by` on every side, with
+ * square corners: each vertex moves along both of its edges' outward normals.
+ */
+export function offsetOrthogonal(pts: Pt[], by: number): Pt[] {
+  const n = pts.length;
+  // Signed area: positive = clockwise in screen coordinates (y down).
+  let area = 0;
+  for (let i = 0; i < n; i++) area += pts[i].x * pts[(i + 1) % n].y - pts[(i + 1) % n].x * pts[i].y;
+  const sign = area > 0 ? 1 : -1;
+  const normal = (a: Pt, b: Pt) => {
+    const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    // Outward normal of edge a->b for a clockwise (screen) polygon.
+    return { x: (sign * (b.y - a.y)) / len, y: (sign * -(b.x - a.x)) / len };
+  };
+  return pts.map((p, i) => {
+    const n1 = normal(pts[(i - 1 + n) % n], p);
+    const n2 = normal(p, pts[(i + 1) % n]);
+    return { x: p.x + by * (n1.x + n2.x), y: p.y + by * (n1.y + n2.y) };
+  });
+}
+
+function polygonPath(pts: Pt[]): string {
+  return pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${r2(p.x)} ${r2(p.y)}`).join('') + 'Z';
+}
+
+/**
  * Closed path of the pool's water edge, optionally shifted by (dx, dy) (used
  * for the wall shadow). The command structure depends only on the shape, so a
  * CSS `d` transition can tween between sizes.
@@ -304,7 +346,8 @@ function buildPool(spec: SceneSpec, x: number, y: number): LocalPool {
   const L = size.lengthFt * FT;
   const W = size.widthFt * FT;
   const box: Rect = { x, y, w: L, h: W };
-  const radius = Math.min(0.8 * FT, W / 6);
+  // Modern pools: nearly square water corners (the coping outside them is square).
+  const radius = spec.shape === 'freeform' ? 0 : Math.min(0.35 * FT, W / 10);
   const coping = COPING_FT * FT;
   const tile = TILE_FT * FT;
 
@@ -358,14 +401,15 @@ function buildPool(spec: SceneSpec, x: number, y: number): LocalPool {
 
   const base = { shape: spec.shape, points, radius };
   const outline = spec.shape === 'freeform' ? sampleSpline(points, 12) : points;
-  const pool: PoolLayout = { ...base, box, scale: size.scale, path: poolOutlinePath(base), outline, coping, tile, notch };
+  const copingPath = spec.shape === 'freeform' ? null : polygonPath(offsetOrthogonal(points, coping));
+  const pool: PoolLayout = { ...base, box, scale: size.scale, path: poolOutlinePath(base), copingPath, outline, coping, tile, notch };
 
   if (spec.shape === 'freeform' && spec.features.spa) {
-    // Round spa nested in the kidney's bite, overlapping the water a little.
-    const cx = x + L * 0.55;
+    // Round raised spa set into the lagoon's bay, standing mostly in the water.
+    const cx = x + L * 0.5;
     const biteY = edgeYAt(outline, cx, 'top');
     const r = s / 2;
-    const cy = biteY - r * 0.4;
+    const cy = biteY + r * 0.2;
     spa = {
       shape: 'round',
       box: { x: cx - r, y: cy - r, w: s, h: s },
@@ -445,16 +489,16 @@ export function layoutScene(spec: SceneSpec): SceneLayout {
   let coreLocal = grow(probe.pool.box, coping);
   if (probe.spa) coreLocal = union(coreLocal, grow(probe.spa.box, spec.shape === 'freeform' ? FT * 0.5 : 0));
 
-  // 2. Deck around the core, centred across the yard, lower middle.
+  // 2. Deck around the core, centred across the yard, against the house.
   const m = deckMargins(coreLocal, spec.deckSize);
   const deckW = coreLocal.w + 2 * m.s;
   const deckH = coreLocal.h + m.t + m.b;
   const minX = OPEN.x + FT;
   const maxX = right(OPEN) - FT - deckW;
   const deckX = Math.min(Math.max(SCENE.width / 2 - deckW / 2, minX), Math.max(minX, maxX));
-  const free = bottom(OPEN) - FT - WALK_BOTTOM - deckH;
-  const joinsWalk = free * 0.5 < 4 * FT;
-  const deckY = joinsWalk ? WALK_BOTTOM : WALK_BOTTOM + free * 0.5;
+  // Right off the house: the deck runs into the walk under the eave, like every reference job.
+  const joinsWalk = true;
+  const deckY = WALK_BOTTOM;
   const deckBox: Rect = { x: deckX, y: deckY, w: deckW, h: deckH };
 
   // 3. The real pool, offset so its core sits inside the deck margins.
@@ -530,21 +574,25 @@ export function layoutScene(spec: SceneSpec): SceneLayout {
   const taken = (): Rect[] => [poolZone, ...bowlBoxes, ...objects.map((o) => o.box)];
   const yardRegion: Rect = { x: YARD.x, y: FRAME.roofH, w: YARD.w, h: YARD.h - FRAME.strip };
 
-  if (spec.extras.kitchen) {
-    const depth = 3 * FT;
-    const reach = 2.4 * FT; // bar stools in front of the counter
-    const len = Math.min(12 * FT, OPEN.h * 0.45);
-    const ys = spread(WALK_BOTTOM + 0.5 * FT, bottom(OPEN) - len, FT);
-    const cands = [
-      ...ys.map((y) => ({ box: { x: YARD_RIGHT - depth - reach, y, w: depth + reach, h: len }, region: yardRegion, variant: 'right' })),
-      ...ys.map((y) => ({ box: { x: YARD.x, y, w: depth + reach, h: len }, region: yardRegion, variant: 'left' })),
-    ];
-    const hit = firstFit(cands, taken(), FT);
-    if (hit) objects.push({ kind: 'kitchen', box: hit.box, variant: hit.variant });
-  }
+  // Kitchen and patio cover stand against the house (like the reference jobs), as near the
+  // deck as they fit: candidates slide along the house wall, closest to the deck first. The side
+  // walls are the fallback when the house side is full.
+  const deckLeft = deckX;
+  const deckRight = right(deckBox);
+  const alongHouse = (w: number, h: number, prefer: 'left' | 'right') => {
+    const y = FRAME.roofH + 0.25 * FT;
+    const xs = spread(YARD.x + 0.25 * FT, YARD_RIGHT - 0.25 * FT - w, FT / 2);
+    // Preferred side first: centred on that deck edge, sliding outward; then the other side.
+    const score = (x: number) => {
+      const cx = x + w / 2;
+      const left = Math.abs(cx - deckLeft) + (prefer === 'left' ? 0 : 0.5 * YARD.w);
+      const rightScore = Math.abs(cx - deckRight) + (prefer === 'right' ? 0 : 0.5 * YARD.w);
+      return Math.min(left, rightScore);
+    };
+    return xs.sort((a, b) => score(a) - score(b)).map((x) => ({ box: { x, y, w, h }, region: yardRegion, variant: 'house' }));
+  };
 
   if (spec.extras.patioCover) {
-    const kitchenSide = objects.find((o) => o.kind === 'kitchen')?.variant;
     const sizes: [number, number][] = [
       [16, 12],
       [14, 11],
@@ -553,12 +601,33 @@ export function layoutScene(spec: SceneSpec): SceneLayout {
     const cands = sizes.flatMap(([w, h]) => {
       const bw = w * FT;
       const bh = h * FT;
-      const leftC = { box: { x: YARD.x, y: FRAME.roofH, w: bw, h: bh }, region: yardRegion, variant: 'left' };
-      const rightC = { box: { x: YARD_RIGHT - bw, y: FRAME.roofH, w: bw, h: bh }, region: yardRegion, variant: 'right' };
-      return kitchenSide === 'left' ? [rightC, leftC] : [leftC, rightC];
+      return [
+        ...alongHouse(bw, bh, 'left').map((c) => ({ ...c, variant: c.box.x + bw / 2 < SCENE.width / 2 ? 'left' : 'right' })),
+        { box: { x: YARD.x, y: FRAME.roofH, w: bw, h: bh }, region: yardRegion, variant: 'left' },
+        { box: { x: YARD_RIGHT - bw, y: FRAME.roofH, w: bw, h: bh }, region: yardRegion, variant: 'right' },
+      ];
     });
     const hit = firstFit(cands, taken(), FT);
     if (hit) objects.push({ kind: 'patio_cover', box: hit.box, variant: hit.variant });
+  }
+
+  if (spec.extras.kitchen) {
+    // Against the house: a 12 ft counter (grill, sink) with bar stools on the yard side.
+    const kw = 12 * FT;
+    const kh = 4.2 * FT + 2.4 * FT;
+    const house = alongHouse(kw, kh, 'right');
+    // Fallback: along a side wall, stools facing the yard.
+    const depth = 3 * FT;
+    const reach = 2.4 * FT;
+    const len = Math.min(12 * FT, OPEN.h * 0.45);
+    const ys = spread(WALK_BOTTOM + 0.5 * FT, bottom(OPEN) - len, FT);
+    const cands = [
+      ...house,
+      ...ys.map((y) => ({ box: { x: YARD_RIGHT - depth - reach, y, w: depth + reach, h: len }, region: yardRegion, variant: 'right' })),
+      ...ys.map((y) => ({ box: { x: YARD.x, y, w: depth + reach, h: len }, region: yardRegion, variant: 'left' })),
+    ];
+    const hit = firstFit(cands, taken(), FT);
+    if (hit) objects.push({ kind: 'kitchen', box: hit.box, variant: hit.variant });
   }
 
   const lawnBlock = grow(deckBox, FT);
@@ -572,14 +641,19 @@ export function layoutScene(spec: SceneSpec): SceneLayout {
       const lowY = bottom(OPEN) - g - d;
       const midY = deckBox.y + deckBox.h / 2 - d / 2;
       const belowY = bottom(deckBox) + 2 * g;
+      // Close to the deck first (a compact yard frames better), then out to the corners.
+      const besideRight = right(deckBox) + 2 * g;
+      const besideLeft = deckBox.x - 2 * g - d;
       const anchors: [number, number][] = [
+        [right(deckBox) - d, belowY],
+        [deckBox.x, belowY],
+        [SCENE.width / 2 - d / 2, belowY],
+        [besideRight, Math.max(midY, deckBox.y + deckBox.h - d)],
+        [besideLeft, Math.max(midY, deckBox.y + deckBox.h - d)],
         [rightX, lowY],
         [leftX, lowY],
         [rightX, midY],
         [leftX, midY],
-        [deckBox.x, belowY],
-        [right(deckBox) - d, belowY],
-        [SCENE.width / 2 - d / 2, belowY],
       ];
       return anchors.map(([x, y]) => ({ box: { x, y, w: d, h: d }, region: OPEN, variant: 'lawn' }));
     });
@@ -601,12 +675,22 @@ export function layoutScene(spec: SceneSpec): SceneLayout {
     else {
       const lw = 7 * FT;
       const lh = 14.4 * FT; // on the lawn the set stands upright: loungers sideways, umbrella below
-      const leftXs = [OPEN.x + FT];
-      const rightXs = [right(OPEN) - FT - lw];
+      const near = (x: number) => Math.abs(x + w / 2 - (deckBox.x + deckBox.w / 2));
+      // Closest to the deck first: on the lawn beside it, then just past its far edge, then by the walls.
+      const below = spread(OPEN.x + FT, right(OPEN) - FT - w, FT / 2)
+        .sort((a, b) => near(a) - near(b))
+        .map((x) => ({ box: { x, y: bottom(deckBox) + 1.5 * FT, w, h }, region: OPEN, variant: 'lawn_wide' }));
+      const besideYs = spread(WALK_BOTTOM + FT, bottom(OPEN) - FT - lh, FT);
+      const beside = besideYs.flatMap((y) => [
+        { box: { x: right(deckBox) + 1.5 * FT, y, w: lw, h: lh }, region: OPEN, variant: 'lawn' },
+        { box: { x: deckBox.x - 1.5 * FT - lw, y, w: lw, h: lh }, region: OPEN, variant: 'lawn' },
+      ]);
       const ys = spread(OPEN.y + FT, bottom(OPEN) - FT - lh, FT);
       const lawn = [
-        ...leftXs.flatMap((x) => ys.map((y) => ({ box: { x, y, w: lw, h: lh }, region: OPEN, variant: 'lawn' }))),
-        ...rightXs.flatMap((x) => ys.map((y) => ({ box: { x, y, w: lw, h: lh }, region: OPEN, variant: 'lawn' }))),
+        ...beside,
+        ...below,
+        ...ys.map((y) => ({ box: { x: OPEN.x + FT, y, w: lw, h: lh }, region: OPEN, variant: 'lawn' })),
+        ...ys.map((y) => ({ box: { x: right(OPEN) - FT - lw, y, w: lw, h: lh }, region: OPEN, variant: 'lawn' })),
         ...spread(OPEN.x + FT, right(OPEN) - FT - w, FT).map((x) => ({
           box: { x, y: bottom(OPEN) - FT - h, w, h },
           region: OPEN,
@@ -624,6 +708,9 @@ export function layoutScene(spec: SceneSpec): SceneLayout {
     const want = spec.extras.turfPlanting ? 4 : spec.project === 'backyard' ? 3 : 2;
     const c = 0.3 * d;
     const anchors: Pt[] = [
+      // In planters just off the deck's far corners, like the olive trees in the photos.
+      { x: deckBox.x - d * 0.56, y: bottom(deckBox) - d * 0.3 },
+      { x: right(deckBox) + d * 0.56, y: bottom(deckBox) - d * 0.3 },
       { x: YARD.x + c, y: YARD_BOTTOM - c },
       { x: YARD_RIGHT - c, y: YARD_BOTTOM - c },
       { x: YARD.x + c, y: (WALK_BOTTOM + YARD_BOTTOM) / 2 },
@@ -703,7 +790,7 @@ export function layoutScene(spec: SceneSpec): SceneLayout {
   return {
     pool,
     core,
-    deck: { box: deckBox, rx: spec.shape === 'freeform' ? 2 * FT : 0.3 * FT, areaSqft: deckArea, joinsWalk, turfBands },
+    deck: { box: deckBox, rx: spec.shape === 'freeform' ? 2 * FT : 0, areaSqft: deckArea, joinsWalk, turfBands },
     spa,
     baja,
     bowls,
@@ -714,4 +801,46 @@ export function layoutScene(spec: SceneSpec): SceneLayout {
     pathLights,
     windows,
   };
+}
+
+/* ------------------------------- camera ------------------------------- */
+
+/** What the picture frames: the whole design (yard) or a close look at the pool edge and finish. */
+export type CameraFocus = 'yard' | 'pool';
+
+/** Scene units of roof always left in view at the top of a yard shot (the Day/Night switch sits there). */
+const ROOF_IN_VIEW = 90;
+
+/**
+ * The part of the canvas the picture shows, as a drone would frame it (3:2,
+ * inside the canvas). 'yard': the deck, everything placed on or near it and a
+ * strip of roof, at least 68% of the canvas wide, so a simple pool fills the
+ * frame and a full backyard pulls back to show it all. 'pool': pool, coping,
+ * spa and bowls with a few feet of deck, for choosing finish, tile and coping
+ * (they read at phone size), extra room on top for the Day/Night switch.
+ */
+export function sceneCamera(layout: SceneLayout, focus: CameraFocus = 'yard'): Rect {
+  const aspect = SCENE.width / SCENE.height;
+  let box: Rect;
+  let minW: number;
+  if (focus === 'pool') {
+    box = layout.core;
+    for (const b of layout.bowls) box = union(box, { x: b.cx - b.r, y: b.cy - b.r, w: 2 * b.r, h: 2 * b.r });
+    box = { x: box.x - 4 * FT, y: box.y - 7 * FT, w: box.w + 8 * FT, h: box.h + 11 * FT };
+    minW = SCENE.width / 2;
+  } else {
+    box = layout.deck.box;
+    // Trees stand by the walls: they may be cropped, like the edge of a real drone shot.
+    for (const o of layout.objects) if (o.kind !== 'olive_tree') box = union(box, o.box);
+    box = { x: box.x - 4 * FT, y: box.y, w: box.w + 8 * FT, h: box.h + 4 * FT };
+    const top = Math.min(box.y, FRAME.roofH - ROOF_IN_VIEW);
+    box = { ...box, y: top, h: bottom(box) - top };
+    minW = SCENE.width * 0.68;
+  }
+  const w = Math.min(SCENE.width, Math.max(box.w, box.h * aspect, minW));
+  const h = w / aspect;
+  const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
+  const x = clamp(box.x + box.w / 2 - w / 2, 0, SCENE.width - w);
+  const y = clamp(focus === 'yard' ? box.y : box.y + box.h / 2 - h / 2, 0, SCENE.height - h);
+  return { x: r2(x), y: r2(y), w: r2(w), h: r2(h) };
 }

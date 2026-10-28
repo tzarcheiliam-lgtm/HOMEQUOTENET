@@ -2,10 +2,12 @@
 
 import { memo, useEffect, useId, useMemo, useRef, useState, type ReactNode, type Ref } from 'react';
 import { Check, ChevronDown, ChevronUp, Eye, Moon, Sun } from 'lucide-react';
+import { picksFor } from '@/lib/estimator/engine';
+import type { CameraFocus } from '@/lib/estimator/scene/geometry';
 import { buildScene } from '@/lib/estimator/scene/scene';
 import type { Answers, EstimatorTemplate, PoolDimensions } from '@/lib/estimator/types';
 import { cn } from '@/lib/utils';
-import { chipText, designSummary, optionLabeler, sceneChanges, sceneDescription } from '../builder';
+import { addedOptions, answerChanges, chipText, designSummary, optionLabeler, sceneChanges, sceneDescription } from '../builder';
 import { BuilderStyles, CHIP_MS } from '../motion';
 import { PoolScene } from './pool-scene';
 
@@ -25,6 +27,10 @@ export type ScenePanelProps = {
   onNightChange?: (night: boolean) => void;
   /** builder: live panel with change chips and a phone collapse control. result: the finished design. */
   variant?: 'builder' | 'result';
+  /** Camera: the whole design, or close on the pool while finish, tile and coping are chosen. */
+  focus?: CameraFocus;
+  /** The current screen: a change chip from the previous screen is cleared when it changes. */
+  stepKey?: string;
   /** The frame element (the scene's <svg> is inside it), for "Save my design" and the photoreal render. */
   frameRef?: Ref<HTMLDivElement>;
   /** Drawn over the picture inside the frame (render progress, before/after). */
@@ -36,15 +42,20 @@ export type ScenePanelProps = {
   className?: string;
 };
 
-const pill =
-  'pointer-events-auto inline-flex items-center gap-1.5 rounded-full bg-[#06122b]/70 px-3 text-xs font-semibold text-white shadow-sm backdrop-blur-md';
+// Solid, not backdrop-blur: a blur is recomputed every time the animated picture under it repaints.
+const pill = 'pointer-events-auto inline-flex items-center gap-1.5 rounded-full bg-[#06122b]/80 px-3 text-xs font-semibold text-white shadow-sm';
+
+/** Questions whose "help me choose" answer the chip names ("We'll help you pick a finish"). */
+const MATERIAL_IDS = ['surface', 'tile', 'coping', 'deck'];
 
 /**
  * The live top-down picture of the homeowner's pool beside the questions:
  * <PoolScene> drawn from the flow's answers (buildScene), framed at 3:2, with a
  * Day/Night switch, the illustration caption, a ghost state while an option is
  * previewed, and a short chip when a pick visibly changes the picture
- * ("Baja shelf added"), announced politely to screen readers.
+ * ("Baja shelf added", with a photo of a real job when the option has one;
+ * "Signature package applied"; "Equipment upgrade added to your plan"),
+ * announced politely to screen readers.
  * On phones the builder variant can be collapsed so long screens stay usable.
  * The frame's width is capped by --eb-max-h (set by the parent) so the
  * picture never takes over a short screen. Memoized: typing in the contact
@@ -58,6 +69,8 @@ export const ScenePanel = memo(function ScenePanel({
   night,
   onNightChange,
   variant = 'builder',
+  focus = 'yard',
+  stepKey,
   frameRef,
   overlay,
   hideLighting,
@@ -84,16 +97,32 @@ export const ScenePanel = memo(function ScenePanel({
   const setNight = (value: boolean) => (onNightChange ? onNightChange(value) : setOwnNight(value));
   const [collapsed, setCollapsed] = useState(false);
 
-  // Change chip: diff the committed scene against the last one (previews never chip).
-  const [chip, setChip] = useState<{ key: number; text: string } | null>(null);
-  const last = useRef(scene);
+  // Change chip: diff the committed answers and scene against the last ones (previews never chip).
+  const [chip, setChip] = useState<{ key: number; text: string; image?: string } | null>(null);
+  // A new screen starts clean: a chip about the last screen's pick would read as wrong.
+  useEffect(() => setChip(null), [stepKey]);
+  const last = useRef({ scene, answers });
   useEffect(() => {
     const prev = last.current;
-    last.current = scene;
-    if (prev === scene || variant !== 'builder') return;
-    const text = chipText(sceneChanges(prev, scene, labeler));
-    if (text) setChip({ key: Date.now(), text });
-  }, [scene, labeler, variant]);
+    last.current = { scene, answers };
+    if (variant !== 'builder' || (prev.scene === scene && prev.answers === answers)) return;
+    const fromAnswers = answerChanges(template, prev.answers, answers, labeler);
+    const unsure = new Set(
+      MATERIAL_IDS.filter((id) => {
+        const q = template.questions.find((question) => question.id === id);
+        return q ? picksFor(q, answers).includes('unsure') : false;
+      }),
+    );
+    const text = fromAnswers.package ?? chipText([...sceneChanges(prev.scene, scene, labeler, unsure), ...fromAnswers.added]);
+    if (!text) return;
+    // A just-added feature with a photo shows that real job beside the words.
+    const image = fromAnswers.package
+      ? undefined
+      : addedOptions(prev.scene, scene)
+          .map(({ questionId, optionId }) => template.questions.find((q) => q.id === questionId)?.options.find((o) => o.id === optionId)?.image)
+          .find(Boolean);
+    setChip({ key: Date.now(), text, image });
+  }, [scene, answers, template, labeler, variant]);
   useEffect(() => {
     if (!chip) return;
     const t = setTimeout(() => setChip(null), CHIP_MS);
@@ -113,7 +142,7 @@ export const ScenePanel = memo(function ScenePanel({
         )}
         style={{ aspectRatio: '3 / 2', width: 'min(100%, calc(var(--eb-max-h, 4000px) * 1.5))' }}
       >
-        <PoolScene scene={shown} night={isNight} label={sceneDescription(shown, labeler)} className="absolute inset-0 block size-full" />
+        <PoolScene scene={shown} night={isNight} focus={focus} label={sceneDescription(shown, labeler)} className="absolute inset-0 block size-full" />
         {/* Re-keyed on every chip so the frame glows once per visible change. */}
         {chip ? <div key={`glow-${chip.key}`} className="eb-glow pointer-events-none absolute inset-0 rounded-2xl" aria-hidden="true" /> : null}
 
@@ -127,7 +156,7 @@ export const ScenePanel = memo(function ScenePanel({
         ) : null}
 
         {!hideLighting ? (
-          <div role="group" aria-label="Lighting" className="absolute left-2.5 top-2.5 flex rounded-full bg-[#06122b]/70 p-0.5 shadow-sm backdrop-blur-md sm:left-3 sm:top-3">
+          <div role="group" aria-label="Lighting" className="absolute left-2.5 top-2.5 flex rounded-full bg-[#06122b]/80 p-0.5 shadow-sm sm:left-3 sm:top-3">
             {([false, true] as const).map((value) => {
               const Icon = value ? Moon : Sun;
               return (
@@ -151,9 +180,26 @@ export const ScenePanel = memo(function ScenePanel({
 
         {chip ? (
           <div key={`chip-${chip.key}`} aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center px-3">
-            <span className="eb-chip inline-flex max-w-full items-center gap-1.5 rounded-full bg-white/95 px-3.5 py-1.5 text-xs font-semibold text-[#06122b] shadow-lg sm:text-sm">
-              <Check className="size-4 shrink-0 text-emerald-600" aria-hidden="true" />
-              <span className="truncate">{chip.text}</span>
+            <span
+              className={cn(
+                'eb-chip inline-flex max-w-full items-center gap-1.5 rounded-full bg-white/95 py-1.5 pr-3.5 text-xs font-semibold text-[#06122b] shadow-lg sm:text-sm',
+                chip.image ? 'gap-2 pl-1.5' : 'pl-3.5',
+              )}
+            >
+              {chip.image ? (
+                // Plain img: a contractor photo of unknown size, cropped to a round thumbnail.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={chip.image} alt="" className="size-9 shrink-0 rounded-full object-cover sm:size-10" />
+              ) : (
+                <Check className="size-4 shrink-0 text-emerald-600" aria-hidden="true" />
+              )}
+              <span className="min-w-0">
+                <span className="flex items-center gap-1">
+                  {chip.image ? <Check className="size-3.5 shrink-0 text-emerald-600" aria-hidden="true" /> : null}
+                  <span className="truncate">{chip.text}</span>
+                </span>
+                {chip.image ? <span className="block truncate text-[10px] font-medium text-slate-500 sm:text-[11px]">Like this finished job</span> : null}
+              </span>
             </span>
           </div>
         ) : null}

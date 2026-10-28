@@ -1,5 +1,5 @@
-import type { SceneLayout, SpaLayout } from '@/lib/estimator/scene/geometry';
-import { poolOutlinePath } from '@/lib/estimator/scene/geometry';
+import type { Rect, SceneLayout, SpaLayout } from '@/lib/estimator/scene/geometry';
+import { FRAME, YARD, poolOutlinePath } from '@/lib/estimator/scene/geometry';
 import { TEXTURES } from '@/lib/estimator/scene/textures';
 import { SCENE, type SceneSpec, type TextureId } from '@/lib/estimator/scene/types';
 import { Crossfade } from './crossfade';
@@ -8,9 +8,11 @@ import { FireBowl, ShelfLounger, WaterBowl, cast } from './sprites';
 import { rng, TexturePattern, tileSize } from './textures';
 
 /**
- * The pool, back to front: deck, coping, water (floor texture tinted by the
- * finish, depth gradient, wall shadow, caustics, ripples, sun glint), Baja
- * shelf, waterline tile, spa, lights and bowls. Each material sits in its own
+ * The pool, back to front: deck (which also paves the walk along the house
+ * when a new deck is picked, so it reads as one patio), coping (square-cornered
+ * on rectangle and L pools), water (floor texture tinted by the finish, depth
+ * gradient, wall shadow, caustics, ripples, sun glint), Baja shelf, waterline
+ * tile, spa, lights and bowls on pedestals. Each material sits in its own
  * crossfading group keyed by the material, so a new pick fades in over the old.
  */
 
@@ -28,6 +30,19 @@ export const CAUSTICS = (() => {
 
 type Props = { uid: string; layout: SceneLayout; scene: SceneSpec; keys: { water: string; tile: string; coping: string; deck: string }; night: boolean };
 
+/**
+ * The deck outline: square corners against the house (the deck runs into the
+ * walk there), `rx` on the two far corners. Always the same commands, so a
+ * CSS `d` transition can tween it. `open` leaves out the house edge (for the outline stroke).
+ */
+export function deckPath(b: Rect, rx: number, open = false): string {
+  const r = Math.max(0, Math.min(rx, b.w / 2, b.h / 2));
+  const x2 = b.x + b.w;
+  const y2 = b.y + b.h;
+  const body = `V${r1(y2 - r)}Q${r1(b.x)} ${r1(y2)} ${r1(b.x + r)} ${r1(y2)}H${r1(x2 - r)}Q${r1(x2)} ${r1(y2)} ${r1(x2)} ${r1(y2 - r)}V${r1(b.y)}`;
+  return `M${r1(b.x)} ${r1(b.y)}${body}${open ? '' : 'Z'}`;
+}
+
 export function PoolLayer({ uid, layout, scene, keys, night }: Props) {
   const { pool, deck } = layout;
   const box = pool.box;
@@ -36,6 +51,7 @@ export function PoolLayer({ uid, layout, scene, keys, night }: Props) {
   const shadowShift = poolOutlinePath(pool, 1.1 * FT, 0.9 * FT);
   const pad = 2 * FT;
   const fillBox = { x: box.x - pad, y: box.y - pad, width: box.w + 2 * pad, height: box.h + 2 * pad };
+  const deckD = deckPath(deck.box, deck.rx);
 
   return (
     <g>
@@ -43,15 +59,25 @@ export function PoolLayer({ uid, layout, scene, keys, night }: Props) {
         <clipPath id={waterClip}>
           <path className="ps-morph" d={pool.path} />
         </clipPath>
+        {pool.copingPath ? (
+          <clipPath id={`${uid}-copingclip`}>
+            <path className="ps-morph" d={pool.copingPath} />
+          </clipPath>
+        ) : null}
         <clipPath id={`${uid}-deck`}>
-          <rect className="ps-morph" x={deck.box.x} y={deck.box.y} width={deck.box.w} height={deck.box.h} rx={deck.rx} />
+          <path className="ps-morph" d={deckD} />
         </clipPath>
+        {/* Saw-cut control joints every 10 ft on a new concrete deck. */}
+        <pattern id={`${uid}-sawcut`} patternUnits="userSpaceOnUse" width={10 * FT} height={10 * FT} patternTransform={`translate(${r1(deck.box.x)} ${r1(deck.box.y)})`}>
+          <path d={`M0 0H${10 * FT}M0 0V${10 * FT}`} stroke="#7f796e" strokeOpacity={0.55} strokeWidth={1.3} />
+        </pattern>
       </defs>
 
-      {/* Deck */}
+      {/* Deck (a new one also paves the walk along the house: one continuous patio) */}
       <Crossfade k={keys.deck}>
         {(k) => {
-          const tex: TextureId = k === 'existing' ? 'deck_concrete' : (k as TextureId);
+          const existing = k === 'existing';
+          const tex: TextureId = existing ? 'deck_concrete' : (k as TextureId);
           const id = `${uid}-deck-${k}`;
           return (
             <>
@@ -60,10 +86,15 @@ export function PoolLayer({ uid, layout, scene, keys, night }: Props) {
                   id={id}
                   texture={tex}
                   transform={`translate(${r1(deck.box.x)} ${r1(deck.box.y)})`}
-                  tone={k === 'existing' ? { color: '#b8ab95', opacity: 0.22 } : undefined}
+                  tone={existing ? { color: '#8f8676', opacity: 0.34 } : undefined}
                 />
               </defs>
-              <rect className="ps-morph" x={deck.box.x} y={deck.box.y} width={deck.box.w} height={deck.box.h} rx={deck.rx} fill={`url(#${id})`} />
+              {existing ? null : <rect x={YARD.x} y={FRAME.roofH} width={YARD.w} height={FRAME.walkH} fill={`url(#${id})`} />}
+              <path className="ps-morph" d={deckD} fill={`url(#${id})`} />
+              {tex === 'deck_concrete' ? (
+                <path className="ps-morph" d={deckD} fill={`url(#${uid}-sawcut)`} opacity={existing ? 0.6 : 1} />
+              ) : null}
+              {existing ? <ExistingWear deck={deck.box} seed={Math.round(deck.box.w)} clip={`${uid}-deck`} /> : null}
             </>
           );
         }}
@@ -78,10 +109,17 @@ export function PoolLayer({ uid, layout, scene, keys, night }: Props) {
           ))}
         </g>
       ) : null}
-      <rect className="ps-morph" x={deck.box.x} y={deck.box.y} width={deck.box.w} height={deck.box.h} rx={deck.rx} fill="none" stroke="#3a3328" strokeOpacity={0.18} strokeWidth={1.6} />
+      <path className="ps-morph" d={deckPath(deck.box, deck.rx, true)} fill="none" stroke="#3a3328" strokeOpacity={0.2} strokeWidth={1.6} />
 
-      {/* Coping ring (the stroke's inner half is covered by the water) */}
-      <path className="ps-morph" d={pool.path} fill="none" stroke="#1d2a2c" strokeOpacity={0.28} strokeWidth={2 * c + 3} strokeLinejoin="round" />
+      {/* Coping: square-cornered slabs around rectangle and L pools; a band following the curve on freeform */}
+      {pool.copingPath ? (
+        <>
+          <path className="ps-morph" d={pool.copingPath} fill="#0e1c20" opacity={0.16} transform="translate(2.2 2.6)" />
+          <path className="ps-morph" d={pool.copingPath} fill="none" stroke="#1d2a2c" strokeOpacity={0.3} strokeWidth={2.4} strokeLinejoin="miter" />
+        </>
+      ) : (
+        <path className="ps-morph" d={pool.path} fill="none" stroke="#1d2a2c" strokeOpacity={0.28} strokeWidth={2 * c + 3} strokeLinejoin="round" />
+      )}
       <Crossfade k={keys.coping}>
         {(k) => {
           const id = `${uid}-coping-${k}`;
@@ -90,21 +128,29 @@ export function PoolLayer({ uid, layout, scene, keys, night }: Props) {
               <defs>
                 <TexturePattern id={id} texture={k as TextureId} />
               </defs>
-              <path className="ps-morph" d={pool.path} fill="none" stroke={`url(#${id})`} strokeWidth={2 * c} strokeLinejoin="round" />
+              {pool.copingPath ? (
+                <path className="ps-morph" d={pool.copingPath} fill={`url(#${id})`} />
+              ) : (
+                <path className="ps-morph" d={pool.path} fill="none" stroke={`url(#${id})`} strokeWidth={2 * c} strokeLinejoin="round" />
+              )}
             </>
           );
         }}
       </Crossfade>
-      <path
-        className="ps-morph"
-        d={pool.path}
-        fill="none"
-        stroke="#5d584f"
-        strokeOpacity={0.35}
-        strokeWidth={2 * c}
-        strokeDasharray={`0.9 ${r1(2 * FT - 0.9)}`}
-        strokeLinejoin="round"
-      />
+      <g clipPath={pool.copingPath ? `url(#${uid}-copingclip)` : undefined}>
+        <path
+          className="ps-morph"
+          d={pool.path}
+          fill="none"
+          stroke="#5d584f"
+          strokeOpacity={0.35}
+          strokeWidth={2 * c + (pool.copingPath ? 2 * c : 0)}
+          strokeDasharray={`0.9 ${r1(2 * FT - 0.9)}`}
+          strokeLinejoin="round"
+        />
+      </g>
+      {/* Sunlit outer arris of the coping */}
+      {pool.copingPath ? <path className="ps-morph" d={pool.copingPath} fill="none" stroke="#ffffff" strokeOpacity={0.35} strokeWidth={1} /> : null}
 
       {/* Water */}
       <g clipPath={`url(#${waterClip})`}>
@@ -151,7 +197,7 @@ export function PoolLayer({ uid, layout, scene, keys, night }: Props) {
         </g>
       ))}
 
-      <Bowls layout={layout} />
+      <Bowls uid={uid} layout={layout} />
     </g>
   );
 }
@@ -178,14 +224,19 @@ function Water({ uid, k, look, fillBox, box }: { uid: string; k: string; look: W
   );
 }
 
-/** Two caustic layers drifting slowly in different directions (CSS, off under reduced motion). */
+/**
+ * Two caustic layers drifting slowly in different directions (CSS; paused
+ * off screen and while typing, one layer only on touch screens, off under
+ * reduced motion). The texture is white light in its alpha channel, so it
+ * needs no blend mode (blend modes make every frame far more expensive to paint).
+ */
 function Caustics({ uid, box, night }: { uid: string; box: { x: number; y: number; w: number; h: number }; night: boolean }) {
   const t = CAUSTICS.t;
   const pad = 2 * t;
   const rect = { x: box.x - pad, y: box.y - pad, width: box.w + 2 * pad, height: box.h + 2 * pad };
   const image = !!TEXTURES.water_caustics.src;
   return (
-    <g opacity={night ? 0.16 : image ? 0.42 : 0.3} style={image ? { mixBlendMode: 'screen' } : undefined}>
+    <g opacity={night ? 0.16 : image ? 0.5 : 0.3}>
       <defs>
         <TexturePattern id={`${uid}-ca`} texture="water_caustics" />
         <TexturePattern id={`${uid}-cb`} texture="water_caustics" transform={`rotate(${CAUSTICS.deg}) scale(${CAUSTICS.k})`} />
@@ -314,10 +365,11 @@ function Spa({ uid, spa, scene, night }: { uid: string; spa: SpaLayout; scene: S
       )}
       {/* Water sheeting over the spillway into the pool */}
       <SpillSheet uid={uid} spa={spa} len={sheet} />
-      {/* Dark tile wall with a slim coping cap */}
+      {/* Raised wall: a coping cap you see from above, then the dark tile face inside it */}
       {shape(0, { fill: `url(#${cap})` })}
-      {shape(1.6, { fill: '#2c3438' })}
-      {shape(rim * 0.55, { fill: '#384247', opacity: 0.9 })}
+      {shape(0, { fill: 'none', stroke: '#ffffff', strokeOpacity: 0.4, strokeWidth: 1 })}
+      {shape(rim * 0.58, { fill: '#2b363c' })}
+      {shape(rim * 0.8, { fill: '#3a464c', opacity: 0.9 })}
       {shape(rim, { fill: `url(#${floor})` })}
       {shape(rim, { fill: look.tint, opacity: look.tintOpacity * 0.85 })}
       {shape(rim, { fill: 'none', stroke: `url(#${tile})`, strokeWidth: 5 })}
@@ -367,28 +419,88 @@ function SpillSheet({ uid, spa, len }: { uid: string; spa: SpaLayout; len: numbe
   );
 }
 
-function Bowls({ layout }: { layout: SceneLayout }) {
+/** An existing, weathered slab: a few stains and hairline cracks, so a new deck visibly upgrades it. */
+function ExistingWear({ deck, seed, clip }: { deck: Rect; seed: number; clip: string }) {
+  const rand = rng(seed);
+  const stains = Array.from({ length: 7 }, () => ({
+    x: deck.x + rand() * deck.w,
+    y: deck.y + rand() * deck.h,
+    rx: 2 * FT + rand() * 4 * FT,
+    ry: 1.5 * FT + rand() * 3 * FT,
+  }));
+  const cracks: string[] = [];
+  for (let i = 0; i < 4; i++) {
+    let x = deck.x + rand() * deck.w;
+    let y = deck.y + rand() * deck.h;
+    let d = `M${r1(x)} ${r1(y)}`;
+    for (let j = 0; j < 5; j++) {
+      x += (rand() - 0.3) * 1.6 * FT;
+      y += (rand() - 0.5) * 1.2 * FT;
+      d += `L${r1(x)} ${r1(y)}`;
+    }
+    cracks.push(d);
+  }
+  return (
+    <g clipPath={`url(#${clip})`}>
+      {stains.map((st, i) => (
+        <ellipse key={i} cx={r1(st.x)} cy={r1(st.y)} rx={r1(st.rx)} ry={r1(st.ry)} fill="#5f574a" opacity={0.07} />
+      ))}
+      <path d={cracks.join('')} fill="none" stroke="#4a443b" strokeOpacity={0.3} strokeWidth={0.7} />
+    </g>
+  );
+}
+
+/**
+ * Fire and water bowls standing on square stucco pedestals at the pool's edge
+ * (like the Pool Masters jobs), each casting a shadow down and to the right.
+ * Water bowls pour a sheet into the pool; fire bowls warm the coping around them.
+ */
+function Bowls({ uid, layout }: { uid: string; layout: SceneLayout }) {
   if (!layout.bowls.length) return null;
-  const sh = cast(2.4);
+  const sh = cast(3.2);
+  const side = (b: { r: number }) => b.r * 2.12;
   return (
     <g>
+      <defs>
+        <linearGradient id={`${uid}-sheet`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#ffffff" stopOpacity={0.95} />
+          <stop offset="0.55" stopColor="#e9fbff" stopOpacity={0.7} />
+          <stop offset="1" stopColor="#ffffff" stopOpacity={0.25} />
+        </linearGradient>
+        <radialGradient id={`${uid}-firewarm`}>
+          <stop offset="0" stopColor="#ffb35c" stopOpacity={0.22} />
+          <stop offset="1" stopColor="#ffb35c" stopOpacity={0} />
+        </radialGradient>
+      </defs>
       {layout.bowls.map((b, i) => (
-        <circle key={`s${i}`} cx={b.cx + sh.dx} cy={b.cy + sh.dy} r={b.r} fill="#0b2129" opacity={0.26} />
+        <rect key={`s${i}`} x={b.cx - side(b) / 2 + sh.dx} y={b.cy - side(b) / 2 + sh.dy} width={side(b)} height={side(b)} rx={1.5} fill="#0b2129" opacity={0.28} />
       ))}
       {layout.bowls.map((b, i) =>
-        b.spillTo ? (
-          <g key={`w${i}`}>
-            <path d={`M${r1(b.cx)} ${r1(b.cy + b.r * 0.6)}L${r1(b.spillTo.x)} ${r1(b.spillTo.y)}`} stroke="#ffffff" strokeOpacity={0.85} strokeWidth={4.5} strokeLinecap="round" />
-            <path d={`M${r1(b.cx)} ${r1(b.cy + b.r * 0.6)}L${r1(b.spillTo.x)} ${r1(b.spillTo.y)}`} stroke="#bdf1f7" strokeWidth={1.8} strokeLinecap="round" />
-            <ellipse cx={b.spillTo.x} cy={b.spillTo.y} rx={9} ry={5.5} fill="#ffffff" opacity={0.45} />
-            <ellipse cx={b.spillTo.x} cy={b.spillTo.y + 1} rx={15} ry={9} fill="none" stroke="#ffffff" strokeOpacity={0.4} strokeWidth={1.2} />
-            <ellipse cx={b.spillTo.x} cy={b.spillTo.y + 2} rx={22} ry={13} fill="none" stroke="#ffffff" strokeOpacity={0.18} strokeWidth={1} />
-          </g>
-        ) : null,
+        b.kind === 'fire' ? <circle key={`f${i}`} cx={b.cx} cy={b.cy} r={b.r * 2.4}  fill={`url(#${uid}-firewarm)`} /> : null,
       )}
+      {layout.bowls.map((b, i) => {
+        if (!b.spillTo) return null;
+        const top = b.cy + b.r * 0.7;
+        const lip = b.r * 0.28;
+        const foot = b.r * 0.42;
+        const { x, y } = b.spillTo;
+        return (
+          <g key={`w${i}`}>
+            <path d={`M${r1(b.cx - lip)} ${r1(top)}L${r1(b.cx + lip)} ${r1(top)}L${r1(x + foot)} ${r1(y)}L${r1(x - foot)} ${r1(y)}Z`} fill={`url(#${uid}-sheet)`} />
+            <path d={`M${r1(b.cx)} ${r1(top)}L${r1(x)} ${r1(y)}`} stroke="#bdf1f7" strokeOpacity={0.8} strokeWidth={1.1} />
+            <ellipse cx={x} cy={y} rx={foot * 1.4} ry={foot * 0.8} fill="#ffffff" opacity={0.55} />
+            <ellipse cx={x} cy={y + 1} rx={foot * 2.4} ry={foot * 1.4} fill="none" stroke="#ffffff" strokeOpacity={0.4} strokeWidth={1.2} />
+            <ellipse cx={x} cy={y + 2} rx={foot * 3.6} ry={foot * 2.1} fill="none" stroke="#ffffff" strokeOpacity={0.18} strokeWidth={1} />
+          </g>
+        );
+      })}
       {layout.bowls.map((b, i) => (
         <g key={`b${i}`} className="ps-move" style={{ transform: `translate(${r1(b.cx - b.r)}px, ${r1(b.cy - b.r)}px)` }}>
-          {b.kind === 'fire' ? <FireBowl r={b.r} /> : <WaterBowl r={b.r} />}
+          {/* Pedestal: light stucco block with a sunlit top-left edge */}
+          <rect x={b.r - side(b) / 2} y={b.r - side(b) / 2} width={side(b)} height={side(b)} rx={1.5} fill="#d8d2c6" />
+          <path d={`M${r1(b.r - side(b) / 2 + 0.8)} ${r1(b.r + side(b) / 2 - 1)}V${r1(b.r - side(b) / 2 + 0.8)}H${r1(b.r + side(b) / 2 - 1)}`} fill="none" stroke="#ffffff" strokeOpacity={0.7} strokeWidth={1.2} />
+          <rect x={b.r - side(b) / 2} y={b.r - side(b) / 2} width={side(b)} height={side(b)} rx={1.5} fill="none" stroke="#3a3328" strokeOpacity={0.3} strokeWidth={0.9} />
+          <g transform={`translate(${r1(b.r * 0.06)} ${r1(b.r * 0.06)}) scale(0.94)`}>{b.kind === 'fire' ? <FireBowl r={b.r} /> : <WaterBowl r={b.r} />}</g>
         </g>
       ))}
     </g>

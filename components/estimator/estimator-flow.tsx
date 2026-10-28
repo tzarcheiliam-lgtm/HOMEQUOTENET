@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
 import { buildScene } from '@/lib/estimator/scene/scene';
 import { estimatorConsentText, submitEstimatorLead, type EstimatorLeadRequest } from '@/lib/estimator/lead-client';
 import type { Answers, ContractorEstimatorConfig, EstimatorQuestion, EstimatorTemplate } from '@/lib/estimator/types';
@@ -61,6 +61,9 @@ function readTracking(measurement: boolean): EstimatorLeadRequest['tracking'] {
   }
 }
 
+/** Questions whose choices are about the pool's edge and finish: the camera moves in close for them. */
+const CLOSE_UP_IDS = new Set(['surface', 'tile', 'coping']);
+
 /** Hover-intent delays: a quick sweep across tiles does not flicker the picture. */
 const PREVIEW_IN_MS = 70;
 const PREVIEW_OUT_MS = 140;
@@ -106,6 +109,7 @@ export function EstimatorFlow({
   const pinRef = useRef<HTMLDivElement>(null);
   const mounted = useRef(false);
   const [focusErrorTick, setFocusErrorTick] = useState(0);
+  const formId = `${useId()}-questions`;
 
   const screens = useMemo(
     () => flowScreens(template, state.answers, { customize: state.customize, hasGallery }),
@@ -118,6 +122,10 @@ export function EstimatorFlow({
     [template, state.dimensions, state.knowDimensions],
   );
   const labeler = useMemo(() => optionLabeler(template), [template]);
+  // Phones pin the picture over the questions; on the ZIP and contact screens it scrolls away
+  // instead, so the on-screen keyboard never hides the field being typed in (WCAG 2.4.11).
+  const pinned = builder && !result && (current.kind === 'questions' || current.kind === 'looks');
+  const focus = current.kind === 'questions' && current.questions.some((q) => CLOSE_UP_IDS.has(q.id)) ? 'pool' : 'yard';
 
   // Move focus to the new heading when the screen changes (not on first paint). With the live
   // builder the browser's own focus scroll would tuck the heading under the pinned picture, so
@@ -144,15 +152,17 @@ export function EstimatorFlow({
     const pin = pinRef.current;
     if (!target) return;
     const targetBox = target.getBoundingClientRect();
-    let offset = 0;
-    if (pin) {
+    // The site header (top-16 / sm:top-20 below; none in the embed).
+    let offset = embedded ? 0 : window.matchMedia?.('(min-width: 640px)').matches ? 80 : 64;
+    if (pin && pinned) {
       const pinBox = pin.getBoundingClientRect();
       const stacked = pinBox.right > targetBox.left && pinBox.left < targetBox.right;
       // Stacked (phones): clear the whole pinned picture. Side by side: clear only its sticky top (the site header).
-      offset = stacked ? pinBox.bottom : parseFloat(getComputedStyle(pin).top) || 0;
+      offset = stacked ? pinBox.bottom : parseFloat(getComputedStyle(pin).top) || offset;
     }
     const delta = scrollDelta(targetBox.top, window.innerHeight, offset + 12);
     if (delta !== null) window.scrollBy({ top: delta, behavior: smooth ? 'smooth' : 'auto' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs on screen changes only; pinned/embedded follow from them
   }, [current.id, result, builder]);
 
   // After a failed submit, focus the first invalid field.
@@ -293,10 +303,13 @@ export function EstimatorFlow({
     : 'sticky top-16 z-30 -mx-5 px-5 sm:top-20 sm:-mx-8 sm:px-8 [--eb-max-h:42svh] lg:top-24';
   const sceneColumn = result
     ? 'mb-6 lg:mb-0'
-    : cn(
-        scenePin,
-        'border-b border-[var(--hq-line)] bg-[var(--hq-bg)] pt-2 pb-1 lg:mx-0 lg:border-0 lg:bg-transparent lg:p-0 lg:[--eb-max-h:4000px]',
-      );
+    : pinned
+      ? cn(
+          scenePin,
+          'border-b border-[var(--hq-line)] bg-[var(--hq-bg)] pt-2 pb-1 lg:mx-0 lg:border-0 lg:bg-transparent lg:p-0 lg:[--eb-max-h:4000px]',
+        )
+      : // ZIP and contact: not pinned on phones (desktop keeps it beside the form).
+        cn(embedded ? 'lg:sticky lg:top-3' : 'lg:sticky lg:top-24', '[--eb-max-h:30svh] lg:[--eb-max-h:4000px]');
 
   return (
     <section
@@ -311,6 +324,15 @@ export function EstimatorFlow({
       )}
     >
       {builder ? <BuilderStyles /> : null}
+      {builder && !result ? (
+        // Keyboard users skip the picture's controls straight to the questions.
+        <a
+          href={`#${formId}`}
+          className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:m-2 focus:rounded-full focus:bg-[var(--hq-cta)] focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-[var(--hq-cta-ink)]"
+        >
+          Skip to the questions
+        </a>
+      ) : null}
       <div className={cn('mx-auto', container)}>
         {builder ? (
           <div ref={pinRef} className={sceneColumn}>
@@ -333,6 +355,8 @@ export function EstimatorFlow({
                 preview={ghost}
                 night={night}
                 onNightChange={setNight}
+                focus={focus}
+                stepKey={current.id}
               />
             )}
           </div>
@@ -392,7 +416,15 @@ export function EstimatorFlow({
               />
             </div>
           ) : (
-            <form ref={formRef} onSubmit={onSubmit} noValidate className={cn(card, '@container overflow-hidden')}>
+            <form
+              ref={formRef}
+              id={formId}
+              tabIndex={-1}
+              onSubmit={onSubmit}
+              noValidate
+              // Focused fields scroll clear of the site header (and the pinned picture is off on these screens).
+              className={cn(card, '@container overflow-hidden focus:outline-none [&_input]:scroll-mt-28 [&_textarea]:scroll-mt-28 [&_select]:scroll-mt-28')}
+            >
               <div key={current.id} className={builder ? slide.current.className : undefined}>
                 <h2 ref={headingRef} tabIndex={-1} className="mb-5 text-2xl font-semibold tracking-tight focus:outline-none">
                   {current.title}

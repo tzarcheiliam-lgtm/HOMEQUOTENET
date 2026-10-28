@@ -42,7 +42,7 @@ export function Ground({ uid, layout, scene, groundKey }: Props) {
       <Crossfade k={groundKey}>
         {(k) => <rect x={YARD.x} y={YARD.y} width={YARD.w} height={YARD.h} fill={`url(#${uid}-${k === 'turf' ? 'turf' : 'grass'})`} />}
       </Crossfade>
-      <LawnVariation uid={uid} stripes={!turf} />
+      <LawnVariation uid={uid} />
       {layout.beds.map((b, i) => (
         <Bed key={`${i}-${turf}`} x={b.x} y={b.y} w={b.w} h={b.h} kind={turf ? 'planted' : 'hedge'} seed={i * 31 + 7} bedFill={`url(#${uid}-bed)`} />
       ))}
@@ -76,10 +76,10 @@ export function Ground({ uid, layout, scene, groundKey }: Props) {
 }
 
 /**
- * Breaks up the tiled lawn: a few big soft light and dark patches, plus
- * mowing stripes on real grass (turf is uniform).
+ * Breaks up the tiled lawn with a few big soft light and dark patches. No
+ * mowing stripes: those read as a golf course, not a backyard.
  */
-function LawnVariation({ uid, stripes }: { uid: string; stripes: boolean }) {
+function LawnVariation({ uid }: { uid: string }) {
   const rand = rng(91);
   const patches = Array.from({ length: 12 }, () => ({
     x: YARD.x + rand() * YARD.w,
@@ -88,8 +88,6 @@ function LawnVariation({ uid, stripes }: { uid: string; stripes: boolean }) {
     ry: 40 + rand() * 90,
     dark: rand() > 0.5,
   }));
-  const bands: string[] = [];
-  for (let x = YARD.x; x < right; x += 12 * FT) bands.push(`M${x} ${YARD.y}h${6 * FT}V${bottom}h${-6 * FT}Z`);
   return (
     <g pointerEvents="none">
       <defs>
@@ -105,7 +103,6 @@ function LawnVariation({ uid, stripes }: { uid: string; stripes: boolean }) {
       {patches.map((p, i) => (
         <ellipse key={i} cx={r1(p.x)} cy={r1(p.y)} rx={r1(p.rx)} ry={r1(p.ry)} fill={`url(#${uid}-lawn-${p.dark ? 'dark' : 'light'})`} />
       ))}
-      {stripes ? <path d={bands.join('')} fill="#f4ffd8" opacity={0.05} /> : null}
     </g>
   );
 }
@@ -114,7 +111,7 @@ function LawnVariation({ uid, stripes }: { uid: string; stripes: boolean }) {
 export function GroundDefs({ uid, scene }: { uid: string; scene: SceneSpec }) {
   return (
     <>
-      <TexturePattern id={`${uid}-grass`} texture="lawn_grass" tone={{ color: '#8f9c62', opacity: 0.2 }} />
+      <TexturePattern id={`${uid}-grass`} texture="lawn_grass" />
       <TexturePattern id={`${uid}-turf`} texture="lawn_turf" />
       <TexturePattern id={`${uid}-bed`} texture="planting_bed" />
       <TexturePattern id={`${uid}-gravel`} texture="gravel_dg" />
@@ -175,6 +172,7 @@ export function Shadows({ layout }: { layout: SceneLayout }) {
             );
           }
           case 'kitchen': {
+            if (o.variant === 'house') return <rect key={i} x={x + kitchen.dx} y={y + kitchen.dy} width={w} height={4.2 * FT} opacity={0.24} />;
             const depth = 3 * FT;
             const cx = o.variant === 'left' ? x : x + w - depth;
             return <rect key={i} x={cx + kitchen.dx} y={y + kitchen.dy} width={depth} height={h} opacity={0.26} />;
@@ -223,7 +221,7 @@ function SceneObjectView({ uid, o, seed, night }: { uid: string; o: SceneObject;
     case 'olive_tree':
       return <OliveTree d={w} seed={seed} />;
     case 'kitchen':
-      return <Kitchen w={w} h={h} side={o.variant} counterFill={`url(#${uid}-counter)`} />;
+      return <Kitchen w={w} h={h} side={o.variant} counterFill={`url(#${uid}-counter)`} padFill={`url(#${uid}-pad)`} />;
     case 'patio_cover':
       return <PatioCover w={w} h={h} padFill={`url(#${uid}-pad)`} night={night} />;
     case 'fire_pit':

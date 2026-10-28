@@ -234,8 +234,47 @@ export function Bed({ x, y, w, h, kind, seed, bedFill }: { x: number; y: number;
 
 /* ------------------------------ kitchen ------------------------------ */
 
-/** Outdoor kitchen against a side wall (variant: which wall), with bar stools in front. */
-export function Kitchen({ w, h, side, counterFill }: { w: number; h: number; side: string; counterFill: string }) {
+/** Bar stools seen from above: round seats with a lit edge. */
+function Stools({ points }: { points: { x: number; y: number }[] }) {
+  return (
+    <g>
+      {points.map((p, i) => (
+        <g key={i}>
+          <circle cx={r1(p.x)} cy={r1(p.y)} r={FT * 0.62} fill="#3b3a38" />
+          <circle cx={r1(p.x - 1)} cy={r1(p.y - 1)} r={FT * 0.45} fill="#5b5753" />
+          <circle cx={r1(p.x - 1.6)} cy={r1(p.y - 1.6)} r={FT * 0.18} fill="#77736e" />
+        </g>
+      ))}
+    </g>
+  );
+}
+
+/**
+ * Outdoor kitchen. `side` 'house': a 12 ft counter (grill, sink) against the
+ * house on its own paved pad, stools on the yard side. 'left' / 'right': the
+ * fallback along a side wall, with the stools facing the yard.
+ */
+export function Kitchen({ w, h, side, counterFill, padFill }: { w: number; h: number; side: string; counterFill: string; padFill: string }) {
+  if (side === 'house') {
+    const depth = 4.2 * FT;
+    const stoolY = depth + 1.15 * FT;
+    return (
+      <g>
+        <rect width={w} height={h} fill={padFill} />
+        <rect width={w} height={h} fill="none" stroke="#3a3328" strokeOpacity={0.18} strokeWidth={1.2} />
+        {SPRITES.outdoor_kitchen.src ? (
+          <SpriteImage id="outdoor_kitchen" w={w} h={depth} />
+        ) : (
+          <g>
+            <rect width={w} height={depth * 0.8} rx={2} fill={counterFill} />
+            <rect x={w * 0.2} y={depth * 0.15} width={FT * 3.2} height={depth * 0.5} rx={3} fill="#a6acb2" />
+            <rect x={w * 0.62} y={depth * 0.2} width={FT * 1.6} height={depth * 0.4} rx={3} fill="#b6bec3" />
+          </g>
+        )}
+        <Stools points={[0.2, 0.4, 0.6, 0.8].map((t) => ({ x: w * t, y: stoolY }))} />
+      </g>
+    );
+  }
   const depth = 3 * FT;
   const cx = w - depth; // counter starts here when it backs onto the right wall
   const body = SPRITES.outdoor_kitchen.src ? (
@@ -260,12 +299,7 @@ export function Kitchen({ w, h, side, counterFill }: { w: number; h: number; sid
       <circle cx={cx + depth - 7} cy={h * 0.66 + FT * 0.8} r={1.8} fill="#6d757b" />
     </g>
   );
-  const stools = [0.42, 0.58, 0.74, 0.9].map((t, i) => (
-    <g key={i}>
-      <circle cx={cx - FT * 0.85} cy={h * t} r={FT * 0.62} fill="#3b3a38" />
-      <circle cx={cx - FT * 0.85 - 1} cy={h * t - 1} r={FT * 0.45} fill="#55524e" />
-    </g>
-  ));
+  const stools = <Stools points={[0.42, 0.58, 0.74, 0.9].map((t) => ({ x: cx - FT * 0.85, y: h * t }))} />;
   const content = (
     <g>
       {body}
@@ -360,12 +394,10 @@ export function FirePit({ d, gravelFill, stoneFill }: { d: number; gravelFill: s
   const pitR = Math.min(2.4 * FT, d * 0.19);
   const chairs = [45, 135, 225, 315].map((deg, i) => {
     const a = (deg * Math.PI) / 180;
-    const dist = d * 0.33;
-    const cw = FT * 2.5;
+    const dist = d * 0.34;
     return (
       <g key={i} transform={`translate(${r1(c + Math.cos(a) * dist)} ${r1(c + Math.sin(a) * dist)}) rotate(${deg + 90})`}>
-        <rect x={-cw / 2} y={-cw / 2} width={cw} height={cw} rx={4} fill="#8a6c4f" />
-        <rect x={-cw / 2 + 3} y={-cw / 2 + 6} width={cw - 6} height={cw - 9} rx={3} fill="#eee8dc" />
+        <AdirondackChair />
       </g>
     );
   });
@@ -386,6 +418,38 @@ export function FirePit({ d, gravelFill, stoneFill }: { d: number; gravelFill: s
           <Flame cx={c} cy={c} r={pitR * 0.55} />
         </g>
       )}
+    </g>
+  );
+}
+
+/**
+ * Teak Adirondack chair seen from above, drawn around its centre and facing
+ * up (-y): fanned back slats at the bottom, slatted seat, wide flat arms.
+ */
+function AdirondackChair() {
+  const w = 2.5 * FT;
+  const h = 3 * FT;
+  const top = -h / 2;
+  const seatBack = top + h * 0.62;
+  const slats: string[] = [];
+  for (let i = 1; i < 6; i++) slats.push(`M${r1(-w * 0.34)} ${r1(top + (h * 0.62 * i) / 6)}h${r1(w * 0.68)}`);
+  const back: string[] = [];
+  for (let i = 0; i < 5; i++) {
+    const x = -w * 0.3 + (w * 0.6 * i) / 4;
+    back.push(`M${r1(x * 0.75)} ${r1(seatBack)}L${r1(x)} ${r1(top + h)}`);
+  }
+  return (
+    <g>
+      {/* Back: a fan of slats */}
+      <path d={`M${r1(-w * 0.26)} ${r1(seatBack)}L${r1(-w * 0.4)} ${r1(top + h)}Q0 ${r1(top + h + 4)} ${r1(w * 0.4)} ${r1(top + h)}L${r1(w * 0.26)} ${r1(seatBack)}Z`} fill="#9c7048" />
+      <path d={back.join('')} stroke="#6e4b2c" strokeWidth={0.8} />
+      {/* Seat */}
+      <rect x={-w * 0.36} y={top} width={w * 0.72} height={h * 0.64} rx={2} fill="#b0835a" />
+      <path d={slats.join('')} stroke="#7d5735" strokeOpacity={0.8} strokeWidth={0.7} />
+      {/* Arms */}
+      <rect x={-w / 2} y={top + h * 0.14} width={w * 0.17} height={h * 0.6} rx={2} fill="#c09068" />
+      <rect x={w / 2 - w * 0.17} y={top + h * 0.14} width={w * 0.17} height={h * 0.6} rx={2} fill="#c09068" />
+      <path d={`M${r1(-w / 2 + 0.6)} ${r1(top + h * 0.15)}v${r1(h * 0.58)}`} stroke="#e2bf98" strokeOpacity={0.7} strokeWidth={0.8} />
     </g>
   );
 }

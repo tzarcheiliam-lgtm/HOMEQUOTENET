@@ -174,7 +174,10 @@ describe('photoreal render progress', () => {
     expect(renderStartProblem({ ok: false, reason: 'disabled', message: '' }).retry).toBe(false);
     expect(renderStartProblem({ ok: false, reason: 'limit', message: '' }).retry).toBe(false);
     expect(renderStartProblem({ ok: false, reason: 'error', message: '' }).retry).toBe(true);
-    expect(renderStartProblem({ ok: false, reason: 'invalid', message: '' }).retry).toBe(true);
+    // Expired session / too big / unreadable: retrying cannot help, and the server's reason is kept.
+    const invalid = renderStartProblem({ ok: false, reason: 'invalid', message: 'This design session has expired.' });
+    expect(invalid.retry).toBe(false);
+    expect(invalid.message).toMatch(/^This design session has expired\. /);
   });
 });
 

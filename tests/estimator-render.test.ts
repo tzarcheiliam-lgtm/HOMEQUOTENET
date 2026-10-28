@@ -83,11 +83,18 @@ function useEnv(env: Record<string, string | undefined>) {
   }
 }
 
-/** Default db answers: no prior renders, inserts return an id. */
-function counts(perLead: number, daily: number) {
+/**
+ * Default db answers: counts as the route sees them AFTER inserting its own
+ * row (so 1 = only this request), inserts return an id, and the render row
+ * lookup (select by task_id) finds one row.
+ */
+function counts(perLead: number, daily: number, visitor = 1) {
   m.answer = (q) => {
     const names = q.ops.map(([n]) => n);
     if (q.table === 'lead_activities' && names[0] === 'select') {
+      const filter = q.ops.find(([n]) => n === 'contains')?.[1][1] as Record<string, unknown> | undefined;
+      if (filter && 'task_id' in filter) return { data: [{ id: 'act-1', metadata: { kind: 'estimator_render', rate_key: 'h:x', status: 'running', task_id: filter.task_id } }], error: null };
+      if (filter && 'rate_key' in filter) return { count: visitor, error: null };
       return { count: names.includes('eq') ? perLead : daily, error: null };
     }
     if (q.table === 'lead_activities' && names[0] === 'insert') return { data: { id: 'act-1' }, error: null };
@@ -99,20 +106,26 @@ const startReq = (body: unknown, slug = 'fixture-pools', headers: Record<string,
   renderPost(new Request(`${ORIGIN}/api/estimator/${slug}/render`, {
     method: 'POST', headers: { origin: ORIGIN, 'content-type': 'application/json', ...headers }, body: typeof body === 'string' ? body : JSON.stringify(body),
   }), { params: Promise.resolve({ slug }) });
-const pollReq = (taskId: string, token: string | null, slug = 'fixture-pools') =>
-  renderGet(new Request(`${ORIGIN}/api/estimator/${slug}/render/${taskId}${token === null ? '' : `?token=${encodeURIComponent(token)}`}`), { params: Promise.resolve({ slug, taskId }) });
+/** Polls a moment apart (the route ignores a second kie.ai check of one task within 2 s). */
+let pollClock = Date.now();
+const pollReq = (taskId: string, token: string | null, slug = 'fixture-pools') => {
+  pollClock += 5000;
+  vi.setSystemTime(pollClock);
+  return renderGet(new Request(`${ORIGIN}/api/estimator/${slug}/render/${taskId}`, { headers: token === null ? {} : { 'x-render-token': token } }), { params: Promise.resolve({ slug, taskId }) });
+};
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
   m.sameOrigin = true; m.queries.length = 0; kie.calls.length = 0;
   useEnv({ KIE_API_KEY: 'test-kie-key', ESTIMATOR_RENDER_SECRET: 'test-secret', SUPABASE_SERVICE_ROLE_KEY: 'svc', ESTIMATOR_RENDER_DAILY_CAP: undefined, ESTIMATOR_RENDER_MODEL: undefined });
-  counts(0, 0);
+  counts(1, 1);
   kie.upload = () => Response.json({ code: 200, data: { downloadUrl: 'https://tempfile.kie.example/x.png' } });
   kie.create = () => Response.json({ code: 200, data: { taskId: 'task_abc123' } });
   kie.record = () => Response.json({ code: 200, data: { state: 'generating' } });
   globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     kie.calls.push({ url, init });
-    if (url.endsWith('/api/v1/file-stream-upload')) return kie.upload();
+    if (url === 'https://kieai.redpandaai.co/api/file-stream-upload') return kie.upload();
     if (url.endsWith('/api/v1/jobs/createTask')) return kie.create();
     if (url.includes('/api/v1/jobs/recordInfo')) return kie.record();
     throw new Error(`unexpected fetch ${url}`);
@@ -120,6 +133,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.unstubAllEnvs();
+  vi.useRealTimers();
   globalThis.fetch = realFetch;
 });
 
@@ -199,7 +213,8 @@ describe('POST /api/estimator/[slug]/render', () => {
     expect(verifyTaskRef('fixture-pools', LEAD, body.taskId)).toBe('task_abc123');
 
     const [upload, create] = kie.calls;
-    expect(upload!.url).toBe('https://api.kie.ai/api/v1/file-stream-upload');
+    // kie.ai serves uploads from its own host, without /v1.
+    expect(upload!.url).toBe('https://kieai.redpandaai.co/api/file-stream-upload');
     expect((upload!.init!.headers as Record<string, string>).Authorization).toBe('Bearer test-kie-key');
     expect(upload!.init!.body).toBeInstanceOf(FormData);
     expect(create!.url).toBe('https://api.kie.ai/api/v1/jobs/createTask');
@@ -210,6 +225,11 @@ describe('POST /api/estimator/[slug]/render', () => {
 
     const insert = m.queries.find((q) => q.ops[0]?.[0] === 'insert')!;
     expect(insert.ops[0]![1][0]).toMatchObject({ lead_id: LEAD, type: 'system', metadata: { kind: 'estimator_render', estimator: 'fixture-pools' } });
+    // Reserve first, then count: the slot is inserted before any limit query runs.
+    const order = m.queries.filter((q) => q.table === 'lead_activities').map((q) => q.ops[0]?.[0]);
+    expect(order.indexOf('insert')).toBeLessThan(order.indexOf('select'));
+    // The visitor key is a hash of the address, never the raw IP.
+    expect(JSON.stringify(insert.ops)).not.toMatch(/203\.0\.113/);
     const update = m.queries.find((q) => q.ops[0]?.[0] === 'update')!;
     expect(update.ops[0]![1][0]).toMatchObject({ metadata: { status: 'running', task_id: 'task_abc123' } });
   });
@@ -242,17 +262,35 @@ describe('POST /api/estimator/[slug]/render', () => {
     expect(bad.status).toBe(422);
     expect(kie.calls).toEqual([]);
   });
-  it('stops at three renders per lead, and at the daily cap', async () => {
+  it('stops at three renders per lead, six per visitor an hour, and at the daily cap, releasing the slot', async () => {
     counts(3, 3);
+    expect((await startReq({ renderToken: token(), image: pngUrl })).status).toBe(200);
+    counts(4, 4);
     let res = await startReq({ renderToken: token(), image: pngUrl });
     expect(res.status).toBe(429);
     expect((await res.json()).reason).toBe('limit');
-    counts(1, 100);
+    expect(m.queries.filter((q) => q.ops[0]?.[0] === 'delete')).toHaveLength(1);
+    counts(1, 5, 7);
+    expect((await startReq({ renderToken: token(), image: pngUrl })).status).toBe(429);
+    counts(1, 101);
     res = await startReq({ renderToken: token(), image: pngUrl });
     expect(res.status).toBe(429);
     vi.stubEnv('ESTIMATOR_RENDER_DAILY_CAP', '500');
-    expect((await startReq({ renderToken: token(), image: pngUrl })).status).toBe(200);
-    expect(kie.calls).toHaveLength(2);
+    expect((await startReq({ renderToken: token(), image: pngUrl }, 'fixture-pools', { 'x-forwarded-for': '203.0.113.9' })).status).toBe(200);
+    expect(kie.calls).toHaveLength(4);
+    expect(m.queries.filter((q) => q.ops[0]?.[0] === 'delete')).toHaveLength(3);
+  });
+  it('lets no more than the limit through when requests race', async () => {
+    // Each request counts after its own insert, so the k-th to count sees k rows.
+    let rows = 0;
+    m.answer = (q) => {
+      const names = q.ops.map(([n]) => n);
+      if (names[0] === 'insert') { rows += 1; return { data: { id: `act-${rows}` }, error: null }; }
+      if (names[0] === 'select') return { count: rows, error: null };
+      return { data: null, error: null };
+    };
+    const results = await Promise.all(Array.from({ length: 6 }, () => startReq({ renderToken: token(), image: pngUrl })));
+    expect(results.filter((r) => r.status === 200).length).toBeLessThanOrEqual(3);
   });
   it('releases the reserved slot when kie.ai refuses, and never leaks its reply', async () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -276,7 +314,18 @@ describe('GET /api/estimator/[slug]/render/[taskId]', () => {
     kie.record = () => Response.json({ code: 200, data: { state: 'success', resultJson: JSON.stringify({ resultUrls: ['https://cdn.kie.example/out.jpg'] }) } });
     expect(await (await pollReq(ref(), token())).json()).toEqual({ status: 'done', imageUrl: 'https://cdn.kie.example/out.jpg' });
     const update = m.queries.find((q) => q.ops[0]?.[0] === 'update')!;
-    expect(update.ops[0]![1][0]).toMatchObject({ metadata: { status: 'done', image_url: 'https://cdn.kie.example/out.jpg' } });
+    // The rest of the row (the visitor key counts toward the hourly limit) is kept.
+    expect(update.ops[0]![1][0]).toMatchObject({ metadata: { status: 'done', image_url: 'https://cdn.kie.example/out.jpg', rate_key: 'h:x' } });
+  });
+  it('checks kie.ai at most once per task every two seconds', async () => {
+    await pollReq(ref(), token());
+    const again = await renderGet(new Request(`${ORIGIN}/api/estimator/fixture-pools/render/x`, { headers: { 'x-render-token': token() } }), { params: Promise.resolve({ slug: 'fixture-pools', taskId: ref() }) });
+    expect(await again.json()).toEqual({ status: 'running' });
+    expect(kie.calls).toHaveLength(1);
+  });
+  it('ignores a token in the query string', async () => {
+    const res = await renderGet(new Request(`${ORIGIN}/api/estimator/fixture-pools/render/x?token=${encodeURIComponent(token())}`), { params: Promise.resolve({ slug: 'fixture-pools', taskId: ref() }) });
+    expect(res.status).toBe(401);
   });
   it('maps a failed task, and treats a kie.ai outage as still running', async () => {
     kie.record = () => Response.json({ code: 200, data: { state: 'fail', failMsg: 'nsfw' } });
@@ -346,6 +395,14 @@ describe('render client', () => {
     expect(await checkRender('fixture-pools', 't', 'x')).toEqual({ status: 'running' });
     globalThis.fetch = vi.fn(async () => Response.json({ status: 'done', imageUrl: 'https://cdn/x.jpg' })) as typeof fetch;
     expect(await checkRender('fixture-pools', 't', 'x')).toEqual({ status: 'done', imageUrl: 'https://cdn/x.jpg' });
+  });
+  it('polls with the token in a header, never in the URL', async () => {
+    const spy = vi.fn(async () => Response.json({ status: 'running' }));
+    globalThis.fetch = spy as unknown as typeof fetch;
+    await checkRender('fixture-pools', 'tok', 'task.sig');
+    const [url, init] = spy.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('/api/estimator/fixture-pools/render/task.sig');
+    expect((init.headers as Record<string, string>)['x-render-token']).toBe('tok');
   });
   it('sends the token and image to the render route', async () => {
     const spy = vi.fn(async () => Response.json({ ok: false, reason: 'disabled', message: 'off' }));

@@ -3,10 +3,12 @@ import { SCENE, type SceneSpec } from '@/lib/estimator/scene/types';
 import { Flame } from './sprites';
 
 /**
- * Dusk: a deep blue wash over the whole yard, then everything that gives off
- * light drawn on top of it: glowing pool water (brighter, with a violet edge,
- * when LED lights are picked), the spa, fire bowls and the fire pit with warm
- * light pooling on the deck, warm window spill from the house, eave and path
+ * Dusk: a deep blue wash over the yard, lighter around the pool (its glow
+ * lifts the deck, like the night drone photos) and darkest at the walls, then
+ * everything that gives off light drawn on top of it: glowing pool water
+ * (brighter, with a violet edge, when LED lights are picked), the spa, water
+ * bowls lit from below, fire bowls and the fire pit with warm 2700K light
+ * pooling on the deck, warm window spill from the house, eave and path
  * lights, and uplit trees. Gradients only, no filters, so it stays cheap.
  */
 
@@ -77,14 +79,24 @@ export function NightLayer({ uid, layout, scene }: { uid: string; layout: SceneL
           <stop offset="0.55" stopColor="#ffcf86" stopOpacity={0.22} />
           <stop offset="1" stopColor="#ffcf86" stopOpacity={0} />
         </radialGradient>
-        <linearGradient id={`${uid}-n-sky`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#0b1a3d" />
-          <stop offset="1" stopColor="#050c22" />
-        </linearGradient>
+        <radialGradient id={`${uid}-n-sky`} gradientUnits="userSpaceOnUse" cx={box.x + box.w / 2} cy={box.y + box.h / 2} r={Math.max(box.w, box.h) * 0.6 + 26 * FT}>
+          <stop offset="0" stopColor="#0d1f48" stopOpacity={0.58} />
+          <stop offset="0.45" stopColor="#0b1a3d" stopOpacity={0.7} />
+          <stop offset="1" stopColor="#050c22" stopOpacity={0.86} />
+        </radialGradient>
+        <radialGradient id={`${uid}-n-hearth`}>
+          <stop offset="0" stopColor="#ffb35c" stopOpacity={0.5} />
+          <stop offset="0.35" stopColor="#ffb35c" stopOpacity={0.3} />
+          <stop offset="1" stopColor="#ff9a3c" stopOpacity={0} />
+        </radialGradient>
+        <radialGradient id={`${uid}-n-spill`}>
+          <stop offset="0" stopColor="#b8f6ff" stopOpacity={0.75} />
+          <stop offset="1" stopColor="#5fe6ff" stopOpacity={0} />
+        </radialGradient>
       </defs>
 
-      {/* Dusk wash */}
-      <rect width={W} height={H} fill={g('sky')} opacity={0.8} />
+      {/* Dusk wash: lighter near the glowing pool */}
+      <rect width={W} height={H} fill={g('sky')} />
 
       {/* Warm light from the house */}
       <clipPath id={`${uid}-n-yard`}>
@@ -108,6 +120,7 @@ export function NightLayer({ uid, layout, scene }: { uid: string; layout: SceneL
 
       {cover ? (
         <g>
+          <ellipse cx={cover.box.x + cover.box.w / 2} cy={cover.box.y + cover.box.h / 2} rx={cover.box.w * 0.8} ry={cover.box.h * 0.8} fill={g('hearth')} opacity={0.8} />
           <ellipse cx={cover.box.x + cover.box.w / 2} cy={cover.box.y + cover.box.h / 2} rx={cover.box.w * 0.62} ry={cover.box.h * 0.62} fill={g('soft')} />
           {Array.from({ length: 4 }, (_, row) =>
             Array.from({ length: 6 }, (_, col) => (
@@ -124,7 +137,7 @@ export function NightLayer({ uid, layout, scene }: { uid: string; layout: SceneL
       ) : null}
       {kitchen ? (
         <ellipse
-          cx={kitchen.variant === 'left' ? kitchen.box.x + kitchen.box.w * 0.6 : kitchen.box.x + kitchen.box.w * 0.4}
+          cx={kitchen.variant === 'left' ? kitchen.box.x + kitchen.box.w * 0.6 : kitchen.variant === 'house' ? kitchen.box.x + kitchen.box.w / 2 : kitchen.box.x + kitchen.box.w * 0.4}
           cy={kitchen.box.y + kitchen.box.h / 2}
           rx={kitchen.box.w * 0.9}
           ry={kitchen.box.h * 0.6}
@@ -167,16 +180,29 @@ export function NightLayer({ uid, layout, scene }: { uid: string; layout: SceneL
         <circle key={i} cx={p.x} cy={p.y} r={2.4} fill="#ffffff" />
       ))}
 
-      {/* Fire */}
+      {/* Water bowls: lit from below, the sheet glowing where it meets the pool */}
+      {layout.bowls.map((b, i) =>
+        b.spillTo ? (
+          <g key={`w${i}`}>
+            <circle cx={b.cx} cy={b.cy} r={b.r * 0.75} fill={g('spill')} />
+            <ellipse cx={b.spillTo.x} cy={b.spillTo.y} rx={b.r * 1.3} ry={b.r * 0.8} fill={g('spill')} />
+            <path d={`M${r1(b.cx)} ${r1(b.cy + b.r * 0.7)}L${r1(b.spillTo.x)} ${r1(b.spillTo.y)}`} stroke="#c8fbff" strokeOpacity={0.7} strokeWidth={b.r * 0.4} strokeLinecap="round" />
+          </g>
+        ) : null,
+      )}
+
+      {/* Fire: warm 2700K light pooling on the deck around each flame */}
       {fires.map((b, i) => (
         <g key={i}>
-          <circle cx={b.cx} cy={b.cy} r={4.5 * FT} fill={g('warm')} />
+          <circle cx={b.cx} cy={b.cy} r={7 * FT} fill={g('hearth')} />
+          <circle cx={b.cx} cy={b.cy} r={3 * FT} fill={g('warm')} />
           <Flame cx={b.cx} cy={b.cy} r={b.r * 0.58} />
         </g>
       ))}
       {pit ? (
         <g>
-          <circle cx={pit.box.x + pit.box.w / 2} cy={pit.box.y + pit.box.h / 2} r={pit.box.w * 0.85} fill={g('warm')} />
+          <circle cx={pit.box.x + pit.box.w / 2} cy={pit.box.y + pit.box.h / 2} r={pit.box.w * 0.85} fill={g('hearth')} />
+          <circle cx={pit.box.x + pit.box.w / 2} cy={pit.box.y + pit.box.h / 2} r={pit.box.w * 0.45} fill={g('warm')} />
           <Flame cx={pit.box.x + pit.box.w / 2} cy={pit.box.y + pit.box.h / 2} r={Math.min(2.4 * FT, pit.box.w * 0.19) * 0.55} />
         </g>
       ) : null}
