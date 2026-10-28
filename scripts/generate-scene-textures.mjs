@@ -344,14 +344,27 @@ async function generate(job, force) {
   return `${job.id}: ${taskId}`;
 }
 
+/**
+ * Published size per texture: about twice its largest on-screen size, so phones decode little
+ * (small tiles 256 px, mid 384 px, decks/lawns/roof 512 px; tests/estimator-scene-assets.test.ts
+ * enforces it). The 2026-10-28 re-export also graded both lawns toward olive (saturation ~0.65,
+ * brightness ~0.82) and turned water_caustics into white light in the alpha channel; redo those
+ * by hand (sharp) if a texture is regenerated.
+ */
+const EXPORT_SIZE = {
+  tile_porcelain: 256, tile_glass: 256, tile_stone: 256, coping_concrete: 256, coping_travertine: 256, coping_stone: 256,
+  floor_pebble: 256, floor_quartz: 256, counter_stone: 256, firepit_stone: 256,
+  floor_plaster: 384, wood_slats: 384, planting_bed: 384, gravel_dg: 384,
+};
+
 function post(job) {
   if (job.kind === 'caustics') {
-    return py(['caustics', path.join(PUBLIC, 'textures', `${job.id}.webp`), '--size', '1024']);
+    return py(['caustics', path.join(PUBLIC, 'textures', `${job.id}.webp`), '--size', '512']);
   }
   if (!existsSync(rawFile(job.id))) return `${job.id}: no raw image, run generate first`;
   const o = job.post || {};
   if (job.kind === 'texture') {
-    const args = ['texture', rawFile(job.id), path.join(PUBLIC, 'textures', `${job.id}.webp`), '--size', String(o.size || 1024)];
+    const args = ['texture', rawFile(job.id), path.join(PUBLIC, 'textures', `${job.id}.webp`), '--size', String(o.size || EXPORT_SIZE[job.id] || 512)];
     if (o.target) args.push('--target', o.target);
     for (const [k, flag] of [['flatten', '--flatten'], ['flattenSigma', '--flatten-sigma'], ['balance', '--balance'], ['saturation', '--saturation'], ['contrast', '--contrast'], ['feather', '--feather'], ['crop', '--crop']]) {
       if (o[k] !== undefined) args.push(flag, String(o[k]));

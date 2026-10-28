@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Download, ExternalLink, Loader2, RotateCcw, Sparkles, X } from 'lucide-react';
 import { checkRender, startRender } from '@/lib/estimator/render-client';
 import { rasterizeScene } from '@/lib/estimator/scene/rasterize';
@@ -19,10 +19,14 @@ import { ScenePanel } from '../scene/scene-panel';
 /** File name of the "Save my design" download. */
 export const DESIGN_FILE_NAME = 'my-pool-design.png';
 
-const actionButton =
-  'inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[var(--hq-line-strong)] px-5 text-sm font-semibold text-[var(--hq-text)] transition-colors hover:border-[var(--hq-accent-bright)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--hq-accent-bright)] disabled:cursor-wait disabled:opacity-60';
+/** Quiet text action under the picture ("Save my design"). */
+const quietButton =
+  'inline-flex h-11 shrink-0 items-center gap-2 rounded-full px-2 text-sm font-semibold text-[var(--hq-accent-bright)] transition-colors hover:text-[var(--hq-text)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--hq-accent-bright)] disabled:cursor-wait disabled:opacity-60';
 const glowButton =
-  'inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[var(--hq-accent-bright)] bg-[var(--hq-accent-glow)] px-5 text-sm font-semibold text-[var(--hq-text)] transition-colors hover:bg-[var(--hq-accent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--hq-accent-bright)] disabled:cursor-wait disabled:opacity-60';
+  'inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-full border border-[var(--hq-accent-bright)] bg-[var(--hq-accent-glow)] px-4 text-sm font-semibold text-[var(--hq-text)] transition-colors hover:bg-[var(--hq-accent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--hq-accent-bright)]';
+/** The big call to action over the finished picture. */
+const heroButton =
+  'pointer-events-auto inline-flex h-12 items-center justify-center gap-2 rounded-full bg-[var(--hq-cta)] px-6 text-sm font-semibold text-[var(--hq-cta-ink)] shadow-[0_12px_32px_-8px_rgba(0,0,0,0.7)] transition-colors hover:bg-[var(--hq-cta-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:h-13 sm:px-7 sm:text-base';
 
 /** The "Your design" list: the visible choices in plain words. */
 export function DesignList({ items }: { items: DesignItem[] }) {
@@ -159,7 +163,7 @@ export function RenderProgress({ preparing, elapsedMs }: { preparing: boolean; e
   return (
     <div className="absolute inset-0 flex items-end bg-[#06122b]/40">
       <div className="eb-shimmer absolute inset-0" aria-hidden="true" />
-      <div className="relative m-2.5 w-full rounded-xl bg-[#06122b]/85 p-3 text-white shadow-lg backdrop-blur-md sm:m-4 sm:p-4">
+      <div className="relative m-2.5 w-full rounded-xl bg-[#06122b]/90 p-3 text-white shadow-lg sm:m-4 sm:p-4">
         <p className="flex items-center gap-2 text-sm font-semibold">
           <Sparkles className="size-4 text-[var(--hq-cta)]" aria-hidden="true" />
           Creating your realistic preview
@@ -203,10 +207,10 @@ export function BeforeAfter({ before, after, onClose }: { before: string; after:
           ⟷
         </span>
       </div>
-      <span className="pointer-events-none absolute bottom-2.5 left-2.5 rounded-full bg-[#06122b]/70 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur-md" aria-hidden="true">
+      <span className="pointer-events-none absolute bottom-2.5 left-2.5 rounded-full bg-[#06122b]/80 px-2.5 py-1 text-[11px] font-semibold text-white" aria-hidden="true">
         Illustration
       </span>
-      <span className="pointer-events-none absolute right-2.5 bottom-2.5 rounded-full bg-[#06122b]/70 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur-md" aria-hidden="true">
+      <span className="pointer-events-none absolute right-2.5 bottom-2.5 rounded-full bg-[#06122b]/80 px-2.5 py-1 text-[11px] font-semibold text-white" aria-hidden="true">
         Realistic
       </span>
       <input
@@ -217,13 +221,14 @@ export function BeforeAfter({ before, after, onClose }: { before: string; after:
         onChange={(e) => setPos(Number(e.target.value))}
         aria-label="Compare the illustration with the realistic preview"
         aria-valuetext={`${pos}% illustration, ${100 - pos}% realistic`}
-        className="absolute inset-0 size-full cursor-ew-resize opacity-0"
+        // pan-y: a vertical swipe that starts on the picture still scrolls the page (iOS).
+        className="absolute inset-0 size-full cursor-ew-resize touch-pan-y opacity-0"
       />
       <button
         type="button"
         onClick={onClose}
         aria-label="Back to the illustration"
-        className="absolute top-2.5 right-2.5 inline-flex size-9 items-center justify-center rounded-full bg-[#06122b]/70 text-white backdrop-blur-md hover:bg-[#06122b] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-white"
+        className="absolute top-2.5 right-2.5 inline-flex size-9 items-center justify-center rounded-full bg-[#06122b]/80 text-white hover:bg-[#06122b] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-white"
       >
         <X className="size-4" aria-hidden="true" />
       </button>
@@ -302,52 +307,96 @@ export function ResultScene({
   };
 
   const working = state.kind === 'preparing' || state.kind === 'running';
+  const canStart = Boolean(renderToken) && (state.kind === 'idle' || state.kind === 'failed');
+
+  // Keep keyboard and screen-reader focus on the action that replaced the one they were on:
+  // the finished render swaps the (disabled) button for a link, and closing the comparison
+  // removes its close button.
+  const doneRef = useRef<HTMLElement | null>(null);
+  const reopenRef = useRef<HTMLButtonElement>(null);
+  const closedByUser = useRef(false);
+  useLayoutEffect(() => {
+    const lost = !document.activeElement || document.activeElement === document.body;
+    if (state.kind === 'done' && showRender && lost) doneRef.current?.focus({ preventScroll: true });
+    if (state.kind === 'done' && !showRender && closedByUser.current) {
+      closedByUser.current = false;
+      reopenRef.current?.focus({ preventScroll: true });
+    }
+  }, [state.kind, showRender]);
+
   const overlay = working ? (
     <RenderProgress preparing={state.kind === 'preparing'} elapsedMs={elapsed} />
   ) : state.kind === 'done' && showRender ? (
-    <BeforeAfter before={state.before} after={state.imageUrl} onClose={() => setShowRender(false)} />
+    <BeforeAfter
+      before={state.before}
+      after={state.imageUrl}
+      onClose={() => {
+        closedByUser.current = true;
+        setShowRender(false);
+      }}
+    />
+  ) : canStart ? (
+    // The payoff of the builder: one clear invitation over the finished picture.
+    <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center px-3 sm:bottom-5">
+      <button type="button" onClick={() => void start()} className={heroButton}>
+        {state.kind === 'failed' ? <RotateCcw className="size-4" aria-hidden="true" /> : <Sparkles className="size-4" aria-hidden="true" />}
+        {state.kind === 'failed' ? 'Try the realistic preview again' : 'See your backyard for real'}
+      </button>
+    </div>
   ) : null;
 
+  // One line of status under the actions, always present with room for two lines, so
+  // starting and finishing a render never pushes the estimate below it around.
+  const status = saveError
+    ? { text: saveError, tone: 'warn' }
+    : state.kind === 'failed'
+      ? { text: state.message, tone: 'warn' }
+      : state.kind === 'off'
+        ? { text: state.message, tone: 'muted' }
+        : state.kind === 'done'
+          ? { text: 'Your realistic preview is ready. Drag the handle to compare it with the illustration.', tone: 'muted' }
+          : working
+            ? { text: 'Usually 20 to 60 seconds. Feel free to read your estimate meanwhile.', tone: 'muted' }
+            : renderToken
+              ? { text: 'Turns your design into a realistic aerial photo in about a minute.', tone: 'dim' }
+              : { text: '', tone: 'dim' };
+
   const footer = (
-    <div className="mt-3 space-y-2">
-      <div className="flex flex-wrap gap-2.5">
-        <button type="button" onClick={save} disabled={saving} className={actionButton}>
+    <div className="mt-2">
+      <div className="flex min-h-11 items-center justify-between gap-2">
+        <button type="button" onClick={save} disabled={saving} className={quietButton}>
           {saving ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Download className="size-4" aria-hidden="true" />}
           {saving ? 'Saving…' : 'Save my design'}
         </button>
-        {renderToken && state.kind !== 'off' ? (
-          state.kind === 'done' ? (
-            showRender ? (
-              <a href={state.imageUrl} target="_blank" rel="noopener" className={actionButton}>
-                <ExternalLink className="size-4" aria-hidden="true" />
-                Open realistic image
-              </a>
-            ) : (
-              <button type="button" onClick={() => setShowRender(true)} className={glowButton}>
-                <Sparkles className="size-4" aria-hidden="true" />
-                Show the realistic preview
-              </button>
-            )
+        {state.kind === 'done' ? (
+          showRender ? (
+            <a ref={(el) => { doneRef.current = el; }} href={state.imageUrl} target="_blank" rel="noopener" className={glowButton}>
+              <ExternalLink className="size-4" aria-hidden="true" />
+              Open full image
+            </a>
           ) : (
-            <button type="button" onClick={() => void start()} disabled={working} className={glowButton}>
-              {state.kind === 'failed' ? <RotateCcw className="size-4" aria-hidden="true" /> : <Sparkles className="size-4" aria-hidden="true" />}
-              {working ? 'Creating…' : state.kind === 'failed' ? 'Try again' : 'See it for real'}
+            <button ref={reopenRef} type="button" onClick={() => setShowRender(true)} className={glowButton}>
+              <Sparkles className="size-4" aria-hidden="true" />
+              Show realistic view
             </button>
           )
+        ) : working ? (
+          <span className="inline-flex items-center gap-2 text-sm font-medium text-[var(--hq-text-muted)]">
+            <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+            Creating…
+          </span>
         ) : null}
       </div>
-      <div role="status" aria-live="polite" className="space-y-1 text-xs leading-5 empty:hidden">
-        {saveError ? <p className="text-[var(--hq-warn)]">{saveError}</p> : null}
-        {state.kind === 'failed' || state.kind === 'off' ? (
-          <p className={cn(state.kind === 'failed' ? 'text-[var(--hq-warn)]' : 'text-[var(--hq-text-muted)]')}>{state.message}</p>
-        ) : null}
-        {state.kind === 'done' ? (
-          <p className="text-[var(--hq-text-muted)]">Your realistic preview is ready. Drag the handle to compare it with the illustration.</p>
-        ) : null}
-      </div>
-      {renderToken && state.kind === 'idle' ? (
-        <p className="text-xs leading-5 text-[var(--hq-text-dim)]">See it for real turns your design into a realistic aerial photo in about a minute.</p>
-      ) : null}
+      <p
+        role="status"
+        aria-live="polite"
+        className={cn(
+          'min-h-10 text-xs leading-5',
+          status.tone === 'warn' ? 'text-[var(--hq-warn)]' : status.tone === 'muted' ? 'text-[var(--hq-text-muted)]' : 'text-[var(--hq-text-dim)]',
+        )}
+      >
+        {status.text}
+      </p>
       {designItems.length ? (
         <div className="hidden pt-3 lg:block">
           <DesignList items={designItems} />
@@ -366,7 +415,7 @@ export function ResultScene({
       variant="result"
       frameRef={frame}
       overlay={overlay}
-      hideLighting={Boolean(overlay)}
+      hideLighting={working || (state.kind === 'done' && showRender)}
       footer={footer}
     />
   );

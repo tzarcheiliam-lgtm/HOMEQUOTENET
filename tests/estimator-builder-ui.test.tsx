@@ -1,6 +1,8 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import {
+  addedOptions,
+  answerChanges,
   chipText,
   designSummary,
   isVisualQuestion,
@@ -256,14 +258,16 @@ describe('result design', () => {
     expect(html).toContain('Outdoor kitchen');
     expect(html).toContain('Your ballpark estimate');
     expect(html).toContain('Book your free on-site consultation');
-    expect(html).not.toContain('See it for real');
+    expect(html).not.toContain('See your backyard for real');
     // The booking button comes right after the range, before the site-visit and exclusions blocks.
     expect(html.indexOf('Book your free on-site consultation')).toBeLessThan(html.indexOf('Not included'));
   });
 
-  it('offers "See it for real" only when the lead response carries a render token', () => {
+  it('offers "See your backyard for real" over the picture only when the lead response carries a render token', () => {
     const html = flow({ ...result, renderToken: 'token-123' });
-    expect(html).toContain('See it for real');
+    expect(html).toContain('See your backyard for real');
+    // The status line has room for two lines in every state, so the estimate never jumps.
+    expect(html).toMatch(/role="status" aria-live="polite" class="min-h-10/);
     expect(html).toContain('realistic aerial photo');
     expect(html).not.toContain('token-123');
   });
@@ -275,7 +279,7 @@ describe('result design', () => {
     expect(html).toContain('class="ps-root');
     expect(html).toContain('aria-label="Lighting"');
     expect(html).toContain('Save my design');
-    expect(html).toContain('See it for real');
+    expect(html).toContain('See your backyard for real');
     expect(html).toContain('Pavers, medium');
   });
 
@@ -289,5 +293,36 @@ describe('result design', () => {
 
   it('lists nothing when there is nothing to list', () => {
     expect(renderToStaticMarkup(<DesignList items={[]} />)).toBe('');
+  });
+});
+
+describe('feedback for every pick', () => {
+  it('names "not sure" picks plainly in previews', () => {
+    expect(optionPhrase('size', 'unsure', label)).toBe('Typical-size pool');
+    expect(optionPhrase('surface', 'unsure', label)).toBe('Finish to pick together');
+    expect(optionPhrase('shape', 'unsure', label)).not.toMatch(/Not sure/);
+  });
+  it('says "We\u2019ll help you pick" only when the homeowner chose help me choose', () => {
+    const pebble = { ...PLAIN, surface: 'pebble' };
+    expect(sceneChanges(pebble, PLAIN, label, new Set(['surface']))).toEqual(['We\u2019ll help you pick a finish']);
+    // Hidden by a scope change: nothing to say.
+    expect(sceneChanges(pebble, PLAIN, label)).toEqual([]);
+  });
+  it('announces a package as one line, and non-visual picks as added to the plan', () => {
+    const before: Answers = { ...BASE, scope: ['surface'] };
+    expect(answerChanges(T, BASE, withPackage('signature')).package).toBe('Signature package applied');
+    expect(answerChanges(T, withPackage('signature'), { ...withPackage('signature'), package: ['custom'] }).package).toBeNull();
+    const added = answerChanges(T, before, { ...before, scope: ['surface', 'equipment'] }, label).added;
+    expect(added).toEqual(['Equipment added to your plan']);
+    // Visual multi questions (features) chip through the scene diff instead.
+    expect(answerChanges(T, before, { ...before, features: ['spa'] }, label).added).toEqual([]);
+  });
+  it('lists newly added features and extras for the chip photo', () => {
+    const next = { ...PLAIN, features: { ...PLAIN.features, spa: true }, extras: { ...PLAIN.extras, firePit: true } };
+    expect(addedOptions(PLAIN, next)).toEqual([
+      { questionId: 'features', optionId: 'spa' },
+      { questionId: 'extras', optionId: 'fire_pit' },
+    ]);
+    expect(addedOptions(next, PLAIN)).toEqual([]);
   });
 });

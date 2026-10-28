@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, type ReactNode } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import { formatRange } from '@/lib/estimator/engine';
 import type { EstimatorLeadResponse } from '@/lib/estimator/lead-client';
 import type { ContractorEstimatorConfig, EstimatorTemplate } from '@/lib/estimator/types';
@@ -9,12 +9,44 @@ import { describeQuantity, safeHttpUrl } from '../use-estimator-flow';
 
 export type LeadSuccess = Extract<EstimatorLeadResponse, { ok: true }>;
 
+/** How long the live builder's range takes to count up to its value. */
+const COUNT_MS = 1100;
+
+/**
+ * Counts from 60% of the value up to it (ease-out) once, for the builder's
+ * reveal; the real value at once under reduced motion or when off. Rounded to
+ * $500 steps on the way so the digits roll rather than flicker.
+ */
+function useCountUp(low: number, high: number, enabled: boolean): [number, number] {
+  const [t, setT] = useState(enabled ? 0 : 1);
+  useEffect(() => {
+    if (!enabled || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      setT(1);
+      return;
+    }
+    let frame = 0;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - start) / COUNT_MS);
+      setT(1 - (1 - p) ** 3);
+      if (p < 1) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [enabled]);
+  if (t >= 1) return [low, high];
+  const at = (v: number) => Math.round((v * (0.6 + 0.4 * t)) / 500) * 500;
+  return [at(low), at(high)];
+}
+
 /**
  * The result: the SERVER's estimate (never recomputed here), laid out as a
- * ballpark range with a line-by-line breakdown, the booking button right under
- * it, the homeowner's design (when the live builder is on), what needs a site
- * visit, what is not included, the disclaimer and license and financing words
- * (no payment amounts).
+ * ballpark range with a line-by-line breakdown, what needs a site visit, what
+ * is not included, the disclaimer and license and financing words (no payment
+ * amounts) and the booking button. With the live builder (`builder`) the range
+ * counts up as it is revealed and the booking button comes right after the
+ * range card (whose last line reads "Ballpark, not a quote"), followed by the
+ * homeowner's design; every other trade keeps the button last.
  */
 export function ResultScreen({
   template,
@@ -23,6 +55,7 @@ export function ResultScreen({
   firstName,
   embedded,
   design,
+  builder,
 }: {
   template: EstimatorTemplate;
   contractor: ContractorEstimatorConfig;
@@ -31,18 +64,43 @@ export function ResultScreen({
   embedded?: boolean;
   /** The "Your design" list (live builder), shown right after the booking button. */
   design?: ReactNode;
+  /** Live builder: count-up reveal, booking button right under the range. */
+  builder?: boolean;
 }) {
   const rangeId = useId();
   const { estimate, qualified } = result;
   const hasRange = estimate.low !== null && estimate.high !== null;
   const bookingUrl = safeHttpUrl(result.calendarUrl ?? contractor.calendarUrl);
+  const [low, high] = useCountUp(estimate.low ?? 0, estimate.high ?? 0, Boolean(builder && hasRange));
+  const booking = qualified ? (
+    bookingUrl ? (
+      <a
+        href={bookingUrl}
+        target={embedded ? '_top' : undefined}
+        rel="noopener"
+        className={`${primaryButton} w-full sm:w-auto`}
+      >
+        Book your free on-site consultation
+      </a>
+    ) : (
+      <p role="status" className="text-sm text-[var(--hq-text)]">
+        {contractor.contractorName} will contact you to set up your free on-site consultation.
+      </p>
+    )
+  ) : (
+    <p role="status" className="rounded-xl border border-[var(--hq-line-strong)] p-4 text-sm leading-6 text-[var(--hq-text)]">
+      Thank you. Our team will review your details and reach out to you directly.
+    </p>
+  );
   return (
     <div className="space-y-5">
       <section className={card} aria-labelledby={rangeId}>
         <p className={eyebrow}>{firstName ? `${firstName}, your ballpark range` : 'Your ballpark range'}</p>
         {hasRange ? (
-          <p id={rangeId} className="mt-3 text-4xl font-semibold tracking-tight text-[var(--hq-text)] sm:text-5xl">
-            {formatRange(estimate.low!, estimate.high!)}
+          <p id={rangeId} className="mt-3 text-4xl font-semibold tracking-tight text-[var(--hq-text)] tabular-nums sm:text-5xl">
+            {/* Screen readers get the final figure once; the rolling digits are decoration. */}
+            <span className="sr-only">{formatRange(estimate.low!, estimate.high!)}</span>
+            <span aria-hidden="true">{formatRange(low, high)}</span>
           </p>
         ) : (
           <p id={rangeId} className="mt-3 text-2xl font-semibold text-[var(--hq-text)]">
@@ -72,26 +130,7 @@ export function ResultScreen({
         ) : null}
       </section>
 
-      {qualified ? (
-        bookingUrl ? (
-          <a
-            href={bookingUrl}
-            target={embedded ? '_top' : undefined}
-            rel="noopener"
-            className={`${primaryButton} w-full sm:w-auto`}
-          >
-            Book your free on-site consultation
-          </a>
-        ) : (
-          <p role="status" className="text-sm text-[var(--hq-text)]">
-            {contractor.contractorName} will contact you to set up your free on-site consultation.
-          </p>
-        )
-      ) : (
-        <p role="status" className="rounded-xl border border-[var(--hq-line-strong)] p-4 text-sm leading-6 text-[var(--hq-text)]">
-          Thank you. Our team will review your details and reach out to you directly.
-        </p>
-      )}
+      {builder ? booking : null}
 
       {design}
 
@@ -125,6 +164,8 @@ export function ResultScreen({
           {contractor.contractorName} · {contractor.licenseLabel}
         </p>
       </div>
+
+      {builder ? null : booking}
     </div>
   );
 }

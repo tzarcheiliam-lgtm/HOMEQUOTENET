@@ -71,6 +71,8 @@ export type PoolLayout = {
    * Null for freeform (its coping follows the curve).
    */
   copingPath: string | null;
+  /** Coping joints for rectangle and L pools: a joint every ~2 ft along each side plus a mitre at each corner. */
+  copingJoints: string | null;
   /** Sampled outline, for hit tests and placing things along the edge. */
   outline: Pt[];
   /** Coping ring width and waterline tile band width (units). */
@@ -313,6 +315,31 @@ export function offsetOrthogonal(pts: Pt[], by: number): Pt[] {
   });
 }
 
+/** Joints across the coping of an orthogonal pool: mitres at the corners, then one every ~2 ft per side. */
+function copingJointsPath(inner: Pt[], outer: Pt[]): string {
+  const n = inner.length;
+  const parts: string[] = [];
+  const seg = (a: Pt, b: Pt) => `M${r2(a.x)} ${r2(a.y)}L${r2(b.x)} ${r2(b.y)}`;
+  for (let i = 0; i < n; i++) {
+    const a = inner[i];
+    const b = inner[(i + 1) % n];
+    const oa = outer[i];
+    parts.push(seg(a, oa));
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    const count = Math.max(1, Math.round(len / (2 * FT)));
+    const nx = (outer[i].x - a.x + outer[(i + 1) % n].x - b.x) / 2;
+    const ny = (outer[i].y - a.y + outer[(i + 1) % n].y - b.y) / 2;
+    // The shared outward offset of this side (both ends move the same way across it).
+    const ax = b.x - a.x === 0 ? nx : 0;
+    const ay = b.y - a.y === 0 ? ny : 0;
+    for (let k = 1; k < count; k++) {
+      const p = { x: a.x + ((b.x - a.x) * k) / count, y: a.y + ((b.y - a.y) * k) / count };
+      parts.push(seg(p, { x: p.x + ax, y: p.y + ay }));
+    }
+  }
+  return parts.join('');
+}
+
 function polygonPath(pts: Pt[]): string {
   return pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${r2(p.x)} ${r2(p.y)}`).join('') + 'Z';
 }
@@ -401,8 +428,10 @@ function buildPool(spec: SceneSpec, x: number, y: number): LocalPool {
 
   const base = { shape: spec.shape, points, radius };
   const outline = spec.shape === 'freeform' ? sampleSpline(points, 12) : points;
-  const copingPath = spec.shape === 'freeform' ? null : polygonPath(offsetOrthogonal(points, coping));
-  const pool: PoolLayout = { ...base, box, scale: size.scale, path: poolOutlinePath(base), copingPath, outline, coping, tile, notch };
+  const outer = spec.shape === 'freeform' ? null : offsetOrthogonal(points, coping);
+  const copingPath = outer ? polygonPath(outer) : null;
+  const copingJoints = outer ? copingJointsPath(points, outer) : null;
+  const pool: PoolLayout = { ...base, box, scale: size.scale, path: poolOutlinePath(base), copingPath, copingJoints, outline, coping, tile, notch };
 
   if (spec.shape === 'freeform' && spec.features.spa) {
     // Round raised spa set into the lagoon's bay, standing mostly in the water.

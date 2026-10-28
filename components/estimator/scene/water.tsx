@@ -59,11 +59,6 @@ export function PoolLayer({ uid, layout, scene, keys, night }: Props) {
         <clipPath id={waterClip}>
           <path className="ps-morph" d={pool.path} />
         </clipPath>
-        {pool.copingPath ? (
-          <clipPath id={`${uid}-copingclip`}>
-            <path className="ps-morph" d={pool.copingPath} />
-          </clipPath>
-        ) : null}
         <clipPath id={`${uid}-deck`}>
           <path className="ps-morph" d={deckD} />
         </clipPath>
@@ -137,18 +132,20 @@ export function PoolLayer({ uid, layout, scene, keys, night }: Props) {
           );
         }}
       </Crossfade>
-      <g clipPath={pool.copingPath ? `url(#${uid}-copingclip)` : undefined}>
+      {pool.copingJoints ? (
+        <path className="ps-morph" d={pool.copingJoints} fill="none" stroke="#5d584f" strokeOpacity={0.4} strokeWidth={0.9} />
+      ) : (
         <path
           className="ps-morph"
           d={pool.path}
           fill="none"
           stroke="#5d584f"
           strokeOpacity={0.35}
-          strokeWidth={2 * c + (pool.copingPath ? 2 * c : 0)}
+          strokeWidth={2 * c}
           strokeDasharray={`0.9 ${r1(2 * FT - 0.9)}`}
           strokeLinejoin="round"
         />
-      </g>
+      )}
       {/* Sunlit outer arris of the coping */}
       {pool.copingPath ? <path className="ps-morph" d={pool.copingPath} fill="none" stroke="#ffffff" strokeOpacity={0.35} strokeWidth={1} /> : null}
 

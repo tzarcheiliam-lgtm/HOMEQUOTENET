@@ -107,6 +107,7 @@ export function EstimatorFlow({
   const formRef = useRef<HTMLFormElement>(null);
   const sectionRef = useRef<HTMLElement>(null);
   const pinRef = useRef<HTMLDivElement>(null);
+  const progressRef = useRef<HTMLDivElement>(null);
   const mounted = useRef(false);
   const [focusErrorTick, setFocusErrorTick] = useState(0);
   const formId = `${useId()}-questions`;
@@ -148,15 +149,17 @@ export function EstimatorFlow({
       sectionRef.current?.scrollIntoView({ block: 'start', behavior: smooth ? 'smooth' : 'auto' });
       return;
     }
-    const target = formRef.current;
+    const form = formRef.current;
     const pin = pinRef.current;
-    if (!target) return;
-    const targetBox = target.getBoundingClientRect();
+    if (!form) return;
+    const formBox = form.getBoundingClientRect();
+    const pinBox = pin?.getBoundingClientRect();
+    const stacked = pinBox ? pinBox.right > formBox.left && pinBox.left < formBox.right : false;
+    // Side by side (desktop) the step line above the form stays in view too; phones spend that room on the question.
+    const targetBox = !stacked && progressRef.current ? progressRef.current.getBoundingClientRect() : formBox;
     // The site header (top-16 / sm:top-20 below; none in the embed).
     let offset = embedded ? 0 : window.matchMedia?.('(min-width: 640px)').matches ? 80 : 64;
-    if (pin && pinned) {
-      const pinBox = pin.getBoundingClientRect();
-      const stacked = pinBox.right > targetBox.left && pinBox.left < targetBox.right;
+    if (pin && pinBox && pinned) {
       // Stacked (phones): clear the whole pinned picture. Side by side: clear only its sticky top (the site header).
       offset = stacked ? pinBox.bottom : parseFloat(getComputedStyle(pin).top) || offset;
     }
@@ -364,7 +367,7 @@ export function EstimatorFlow({
 
         <div className={cn('min-w-0', builder && !result && 'pt-5 lg:pt-0')}>
           {result ? null : (
-            <div className="mb-5">
+            <div ref={progressRef} className="mb-5">
               <div className="flex items-center justify-between gap-3 text-xs text-[var(--hq-text-muted)]">
                 <span>{stepText}</span>
                 {!template.pricesConfirmed ? (
@@ -405,6 +408,7 @@ export function EstimatorFlow({
                 result={result}
                 firstName={state.contact.firstName.trim() || undefined}
                 embedded={embedded}
+                builder={builder}
                 design={
                   designItems.length ? (
                     // Desktop shows the list under the picture instead (ResultScene).

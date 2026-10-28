@@ -4,8 +4,11 @@ import { POOL_TEMPLATE } from '@/lib/estimator/templates/pool';
 import { buildScene } from '@/lib/estimator/scene/scene';
 import {
   DECK_SQFT,
+  FRAME,
   YARD,
   layoutScene,
+  offsetOrthogonal,
+  sceneCamera,
   pointInPolygon,
   rectInside,
   rectsOverlap,
@@ -244,5 +247,95 @@ describe('layoutScene', () => {
   it('is deterministic', () => {
     const s = spec({ shape: 'freeform', deckSize: 'medium', deck: 'pavers', features: { baja: true, spa: true, waterBowls: true, fireBowls: false, lights: true } });
     expect(layoutScene(s)).toEqual(layoutScene(s));
+  });
+});
+
+describe('composition and camera', () => {
+  const full = spec({
+    project: 'backyard',
+    deck: 'pavers',
+    deckSize: 'medium',
+    features: { baja: true, spa: true, waterBowls: true, fireBowls: true, lights: true },
+    extras: { kitchen: true, patioCover: true, turfPlanting: true, firePit: true },
+  });
+
+  it('runs the deck into the walk along the house, with square corners on rectangle and L pools', () => {
+    for (const shape of SHAPES) {
+      for (const deckSize of DECKS) {
+        const l = layoutScene(spec({ shape, deckSize, deck: deckSize === 'none' ? null : 'pavers' }));
+        expect(l.deck.joinsWalk).toBe(true);
+        expect(l.deck.box.y).toBe(FRAME.roofH + FRAME.walkH);
+        expect(l.deck.rx).toBe(shape === 'freeform' ? 2 * SCENE.pxPerFt : 0);
+      }
+    }
+  });
+
+  it('gives rectangle and L pools a square coping ring with joints, and freeform none', () => {
+    const rect = layoutScene(spec());
+    expect(rect.pool.copingPath).toMatch(/^M[\d. ]+(L[\d. ]+){3}Z$/);
+    expect(rect.pool.copingJoints).toBeTruthy();
+    expect(layoutScene(spec({ shape: 'l_shape' })).pool.copingPath).toMatch(/^M[\d. ]+(L[\d. ]+){5}Z$/);
+    const free = layoutScene(spec({ shape: 'freeform' }));
+    expect(free.pool.copingPath).toBeNull();
+    expect(free.pool.copingJoints).toBeNull();
+  });
+
+  it('pushes an orthogonal outline out by the same amount on every side, whatever its winding', () => {
+    const square = [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 10 },
+      { x: 0, y: 10 },
+    ];
+    expect(offsetOrthogonal(square, 2)).toEqual([
+      { x: -2, y: -2 },
+      { x: 12, y: -2 },
+      { x: 12, y: 12 },
+      { x: -2, y: 12 },
+    ]);
+    expect(offsetOrthogonal([...square].reverse(), 2)).toEqual([
+      { x: -2, y: 12 },
+      { x: 12, y: 12 },
+      { x: 12, y: -2 },
+      { x: -2, y: -2 },
+    ]);
+    // The L's inside corner moves out too (into the notch).
+    const l = layoutScene(spec({ shape: 'l_shape' }));
+    const inner = l.pool.points[2];
+    const pushed = offsetOrthogonal(l.pool.points, 5)[2];
+    expect(pushed.x).toBeCloseTo(inner.x + 5);
+    expect(pushed.y).toBeCloseTo(inner.y - 5);
+  });
+
+  it('puts the kitchen and patio cover against the house when they fit', () => {
+    const l = layoutScene(full);
+    for (const kind of ['kitchen', 'patio_cover'] as const) {
+      const o = l.objects.find((x) => x.kind === kind)!;
+      expect(o.box.y - FRAME.roofH, kind).toBeLessThan(SCENE.pxPerFt);
+    }
+    expect(l.objects.find((x) => x.kind === 'kitchen')!.variant).toBe('house');
+  });
+
+  it('frames the design like a drone shot: 3:2, inside the canvas, roof in view, closer on the pool', () => {
+    for (const shape of SHAPES) {
+      for (const deckSize of DECKS) {
+        for (const s of [spec({ shape, deckSize }), { ...full, shape, deckSize }]) {
+          const l = layoutScene(s);
+          const yard = sceneCamera(l);
+          const pool = sceneCamera(l, 'pool');
+          for (const cam of [yard, pool]) {
+            expect(cam.w / cam.h).toBeCloseTo(1.5, 2);
+            expect(rectInside(cam, CANVAS)).toBe(true);
+          }
+          expect(yard.y).toBeLessThan(FRAME.roofH - 60);
+          expect(rectInside(l.deck.box, { ...yard, x: yard.x - 1, w: yard.w + 2, h: yard.h + 1 })).toBe(true);
+          expect(pool.w).toBeLessThan(yard.w);
+          expect(rectInside(l.core, pool)).toBe(true);
+        }
+      }
+    }
+    // A plain pool fills the frame; a full backyard pulls back to show it all.
+    expect(sceneCamera(layoutScene(spec())).w).toBeLessThan(SCENE.width * 0.8);
+    expect(sceneCamera(layoutScene(full)).w).toBeGreaterThan(sceneCamera(layoutScene(spec())).w);
   });
 });
