@@ -62,8 +62,15 @@ type RenderState =
  * The optional "See it for real" render: rasterize the live scene, start the
  * render with the lead's renderToken, poll until it is done (or give up after
  * RENDER_TIMEOUT_MS), then preload the image so it reveals in one go.
+ * `prepare` runs before the snapshot (the result switches the picture to day:
+ * the render prompt asks for midday light, so a night snapshot would not match).
  */
-function useRealisticRender(slug: string, renderToken: string | undefined, getSvg: () => SVGSVGElement | null) {
+function useRealisticRender(
+  slug: string,
+  renderToken: string | undefined,
+  getSvg: () => SVGSVGElement | null,
+  prepare: () => Promise<void>,
+) {
   const [state, setState] = useState<RenderState>({ kind: 'idle' });
   const [now, setNow] = useState(0);
   const busy = useRef(false);
@@ -73,9 +80,10 @@ function useRealisticRender(slug: string, renderToken: string | undefined, getSv
     busy.current = true;
     setState({ kind: 'preparing' });
     try {
-      const svg = getSvg();
       let png: string;
       try {
+        await prepare();
+        const svg = getSvg();
         if (!svg) throw new Error('scene not found');
         png = await rasterizeScene(svg);
       } catch {
@@ -95,7 +103,7 @@ function useRealisticRender(slug: string, renderToken: string | undefined, getSv
     } finally {
       busy.current = false;
     }
-  }, [slug, renderToken, getSvg]);
+  }, [slug, renderToken, getSvg, prepare]);
 
   // Poll while running.
   useEffect(() => {
@@ -258,7 +266,16 @@ export function ResultScene({
     () => frame.current?.querySelector<SVGSVGElement>('svg.ps-root') ?? frame.current?.querySelector<SVGSVGElement>('svg') ?? null,
     [],
   );
-  const { state, start, elapsed } = useRealisticRender(slug, renderToken, getSvg);
+  // Latest night value for the async snapshot (the prop changes under it once switched to day).
+  const nightRef = useRef(night);
+  nightRef.current = night;
+  const toDay = useCallback(async () => {
+    if (!nightRef.current) return;
+    onNightChange(false);
+    // Let React commit the day picture; the fading-out night layer is dropped from the snapshot.
+    await new Promise((r) => setTimeout(r, 120));
+  }, [onNightChange]);
+  const { state, start, elapsed } = useRealisticRender(slug, renderToken, getSvg, toDay);
   const [showRender, setShowRender] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');

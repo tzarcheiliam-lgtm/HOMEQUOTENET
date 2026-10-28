@@ -115,7 +115,7 @@ export const ScenePanel = memo(function ScenePanel({
       >
         <PoolScene scene={shown} night={isNight} label={sceneDescription(shown, labeler)} className="absolute inset-0 block size-full" />
         {/* Re-keyed on every chip so the frame glows once per visible change. */}
-        {chip ? <div key={chip.key} className="eb-glow pointer-events-none absolute inset-0 rounded-2xl" aria-hidden="true" /> : null}
+        {chip ? <div key={`glow-${chip.key}`} className="eb-glow pointer-events-none absolute inset-0 rounded-2xl" aria-hidden="true" /> : null}
 
         {ghost ? (
           <div className="pointer-events-none absolute inset-0 rounded-2xl ring-2 ring-inset ring-white/75" aria-hidden="true">
@@ -150,7 +150,7 @@ export const ScenePanel = memo(function ScenePanel({
         ) : null}
 
         {chip ? (
-          <div key={chip.key} aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center px-3">
+          <div key={`chip-${chip.key}`} aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center px-3">
             <span className="eb-chip inline-flex max-w-full items-center gap-1.5 rounded-full bg-white/95 px-3.5 py-1.5 text-xs font-semibold text-[#06122b] shadow-lg sm:text-sm">
               <Check className="size-4 shrink-0 text-emerald-600" aria-hidden="true" />
               <span className="truncate">{chip.text}</span>
