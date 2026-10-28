@@ -114,7 +114,7 @@ export function EstimatorFlow({
   const [submitting, setSubmitting] = useState(false);
   const [night, setNight] = useState(false);
   // How the realistic photo is doing on the result (reported by ResultScene, for the reward tracker).
-  const [photo, setPhoto] = useState<PhotoProgress>(() => (seed?.result?.renderToken ? 'pending' : 'none'));
+  const [photo, setPhoto] = useState<PhotoProgress>(() => (rendersEnabled && seed?.result?.renderToken ? 'pending' : 'none'));
   const [preview, setPreview] = useState<{ q: EstimatorQuestion; optionId: string } | null>(null);
   const previewTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const submittingRef = useRef(false);
@@ -384,7 +384,8 @@ export function EstimatorFlow({
                 night={night}
                 onNightChange={setNight}
                 slug={contractor.slug}
-                renderToken={result.renderToken}
+                // Only start a photo when this page promised one (the copy follows rendersEnabled too).
+                renderToken={rendersEnabled ? result.renderToken : undefined}
                 designItems={designItems}
                 onPhotoProgress={setPhoto}
               />

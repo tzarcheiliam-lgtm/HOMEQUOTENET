@@ -72,8 +72,8 @@ function useCountUp(ref: RefObject<HTMLSpanElement | null>, low: number, high: n
  * ballpark range with a line-by-line breakdown, what needs a site visit, what
  * is not included, the disclaimer and license and financing words (no payment
  * amounts) and the booking button. With the live builder (`builder`) the range
- * counts up as it is revealed and the booking button comes right after the
- * range card (whose last line reads "Ballpark, not a quote"), followed by the
+ * counts up as it is revealed and the booking button sits right under it
+ * (after "Ballpark, not a quote"), before the breakdown, followed by the
  * homeowner's design; every other trade keeps the button last.
  */
 export function ResultScreen({
@@ -156,6 +156,9 @@ export function ResultScreen({
           <p className="mt-1 text-sm text-[var(--hq-text-muted)]">Example prices: these figures are placeholders until pricing is confirmed.</p>
         ) : null}
 
+        {/* Live builder: booking is the next thing they see, right under the price. */}
+        {builder ? <div className="mt-5">{booking}</div> : null}
+
         {estimate.lines.length ? (
           <dl className="mt-5 divide-y divide-[var(--hq-line)] border-y border-[var(--hq-line)] text-sm">
             {estimate.lines.map((line) => {
@@ -173,8 +176,6 @@ export function ResultScreen({
           </dl>
         ) : null}
       </section>
-
-      {builder ? booking : null}
 
       {design}
 
