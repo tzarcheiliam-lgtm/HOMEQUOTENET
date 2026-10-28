@@ -51,6 +51,8 @@ export type EstimatorLeadResponse =
       /** false for renters / out-of-area ZIPs (lead still saved for review). */
       qualified: boolean;
       calendarUrl?: string;
+      /** Short-lived token for the optional photoreal render (absent when renders are off). */
+      renderToken?: string;
     }
   | { ok: false; errors: Record<string, string> };
 
