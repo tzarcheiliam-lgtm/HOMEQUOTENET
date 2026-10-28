@@ -1,5 +1,6 @@
 import 'server-only';
 import { buildCalendar } from '@/lib/calendar/ics';
+import { salesMeetingUid } from '@/lib/calls/calendar-links';
 import type { MailAttachment } from '@/lib/emails/gmail-message';
 
 /** A calendar invite (.ics) for a booked sales meeting, attached to the confirmation email. */
@@ -18,7 +19,7 @@ export function meetingInvite(m: {
     content: buildCalendar(
       [
         {
-          uid: `sales-meeting-${m.id}@homequotenet.com`,
+          uid: salesMeetingUid(m.id),
           startMs: start,
           endMs: start + 30 * 60_000,
           summary: `${how} with Liam — HomeQuote Network`,

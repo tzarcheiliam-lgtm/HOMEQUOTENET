@@ -571,6 +571,27 @@ export async function listPartners(): Promise<PartnerOption[]> {
   }));
 }
 
+/**
+ * For each appointment, the meeting time the signed-in person last added to Google
+ * or Apple Calendar (migration 0066). Empty when the table isn't there yet.
+ */
+export async function listCalendarAdds(ids: string[]): Promise<Map<string, { google: string | null; apple: string | null }>> {
+  const out = new Map<string, { google: string | null; apple: string | null }>();
+  if (ids.length === 0) return out;
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('sales_appointment_calendar_adds')
+    .select('appointment_id, provider, scheduled_at')
+    .in('appointment_id', ids);
+  if (error) return out;
+  for (const r of (data ?? []) as { appointment_id: string; provider: 'google' | 'apple'; scheduled_at: string }[]) {
+    const cur = out.get(r.appointment_id) ?? { google: null, apple: null };
+    cur[r.provider] = r.scheduled_at;
+    out.set(r.appointment_id, cur);
+  }
+  return out;
+}
+
 export async function listSalesAppointments(
   callers: CallerOption[],
   filters: { partner?: string; status?: SalesAppointmentStatus; upcoming?: boolean; needsDecision?: boolean } = {}
