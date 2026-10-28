@@ -260,7 +260,11 @@ export function OutcomeForm({
                           onClick={() => (isQuick ? quick(d.value) : setOutcome(d.value))}
                           className={cn(
                             'flex min-h-12 items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-sm font-medium leading-tight active:scale-[0.98] active:bg-accent disabled:opacity-60',
-                            isQuick ? 'border-primary/25 bg-primary/5' : 'bg-card'
+                            d.value === 'do_not_call'
+                              ? 'border-destructive/30 bg-destructive/5 text-destructive'
+                              : isQuick
+                                ? 'border-primary/25 bg-primary/5'
+                                : 'bg-card'
                           )}
                         >
                           {d.label}
@@ -284,8 +288,17 @@ export function OutcomeForm({
                   variant="outline"
                   disabled={pending}
                   onClick={() => quick(o)}
-                  className="gap-1.5 border-primary/25 bg-primary/5 hover:bg-primary/10"
-                  title={`Save as ${DISPOSITIONS.find((d) => d.value === o)?.label} and open the next prospect`}
+                  className={cn(
+                    'gap-1.5',
+                    o === 'do_not_call'
+                      ? 'border-destructive/30 bg-destructive/5 text-destructive hover:bg-destructive/10'
+                      : 'border-primary/25 bg-primary/5 hover:bg-primary/10'
+                  )}
+                  title={
+                    o === 'do_not_call'
+                      ? 'Mark do not call: blocks this number from every list, text and call, then opens the next prospect'
+                      : `Save as ${DISPOSITIONS.find((d) => d.value === o)?.label} and open the next prospect`
+                  }
                 >
                   {KEY_FOR[o] ? (
                     <kbd className="rounded border bg-background px-1 font-mono text-[10px] leading-4 text-muted-foreground">
@@ -476,29 +489,6 @@ export function OutcomeForm({
             </div>
           ) : null}
 
-          {show('confirm_do_not_call') ? (
-            <div
-              className={cn(
-                'space-y-2 rounded-md border p-3',
-                errors.confirm_do_not_call ? 'border-destructive' : 'border-amber-300 bg-amber-50'
-              )}
-            >
-              <label className="flex items-start gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  name="confirm_do_not_call"
-                  className="mt-0.5 size-4 accent-primary"
-                  required
-                />
-                <span>
-                  This contractor asked not to be called again. Marking do-not-call
-                  removes them from every calling list permanently; only an
-                  administrator can reverse it.
-                </span>
-              </label>
-              <FieldError message={errors.confirm_do_not_call} />
-            </div>
-          ) : null}
 
           <Field label="Notes" htmlFor="notes" error={errors.notes}>
             <Textarea

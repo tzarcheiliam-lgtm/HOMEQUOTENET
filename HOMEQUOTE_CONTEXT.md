@@ -1196,6 +1196,12 @@ Optimistic counting: forms call `useGoal().bump()` on submit. A server rejection
 
 **Frictionless loop.**
 - `QUICK_OUTCOMES` (no answer, voicemail, gatekeeper, spoke with DM, not interested, wrong number) have no required fields, which a test pins. Picking one saves and opens the next prospect in one tap or keypress.
+- **Do not call is one tap (2026-10-28).** It is in `QUICK_OUTCOMES`, shown in red, with no "I confirm" checkbox (the `confirm_do_not_call` field is gone). It deliberately has no keyboard key, so a stray keystroke can't block a number. Saving it is the whole job. The 0007 trigger stamps `do_not_call_at`, and from then on:
+  - the prospect leaves every calling list and queue, and is shown under the "Do not call" view with a struck-through number;
+  - its Call and Email buttons are disabled;
+  - the database refuses any further call log;
+  - workflow texts and AI calls to that phone number are suppressed (`phone_e164` match).
+  Only an admin can lift it.
 - Keyboard: 1–9/0 pick outcomes (`OUTCOME_KEYS`), C dials, N/→ skips, Enter saves & next, ? shows the list. Shortcuts are off while typing in a field, except the auto-focused outcome select.
 - The workspace prefetches the next prospect.
 - Setters on a lead page get the contact log at the top, with one-tap chips and "Log & next lead". `logContactAttempt` takes `intent=save_and_next` and redirects to `nextLeadToCall()` (open lead contacted least recently, under RLS).

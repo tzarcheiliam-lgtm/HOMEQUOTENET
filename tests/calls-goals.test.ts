@@ -231,7 +231,9 @@ describe('one-tap outcomes', () => {
     const { QUICK_OUTCOMES, OUTCOME_KEYS, LOGGABLE_OUTCOMES } = await import('@/lib/calls/constants');
     const { requiredFieldsFor } = await import('@/lib/calls/rules');
     for (const o of QUICK_OUTCOMES) expect(requiredFieldsFor(o)).toEqual([]);
-    expect(QUICK_OUTCOMES).not.toContain('do_not_call');
+    // Do not call is one tap, but never on a keyboard key, so a stray keystroke can't block a number.
+    expect(QUICK_OUTCOMES).toContain('do_not_call');
+    expect(Object.values(OUTCOME_KEYS)).not.toContain('do_not_call');
     for (const o of Object.values(OUTCOME_KEYS)) expect(LOGGABLE_OUTCOMES).toContain(o);
     expect(new Set(Object.values(OUTCOME_KEYS)).size).toBe(Object.keys(OUTCOME_KEYS).length);
   });
