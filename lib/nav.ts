@@ -198,6 +198,13 @@ const BASE_NAV_ITEMS: NavItem[] = [
     roles: ['admin'],
     newTab: true,
   },
+  // Keys that let Claude (MCP) look things up and act in HomeQuote; admin only.
+  {
+    label: 'Claude connector',
+    href: '/app/claude-connector',
+    icon: 'KeyRound',
+    roles: ['admin'],
+  },
   // API keys that let Claude (MCP) use Seret; admin only.
   {
     label: 'Seret API',
