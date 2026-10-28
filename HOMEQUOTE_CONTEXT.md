@@ -1375,3 +1375,9 @@ Homeowner flow (project, shape, size, package or custom choices, property questi
 - **Before 0066 is applied**: the buttons still work, but nothing is remembered (the read returns empty and the write fails quietly), so the Google button keeps offering "Add".
 - **Not done**: a direct Google Calendar API write (the §24 OAuth is dormant and no connection exists), and a one-time subscribe feed for sales appointments (would sync every meeting automatically).
 - Tests: `tests/sales-calendar.test.ts` (links, UID/SEQUENCE, 0066 RLS in PGlite), `tests/add-to-calendar-ui.test.tsx`.
+- **Calendar view (2026-10-28, no migration)**: `/app/calls/appointments` has a **List | Calendar** switch (`?view=calendar&month=YYYY-MM`, keeps the partner/status filters; the List-only "When" filter is hidden in calendar mode).
+  - `components/calls/appointments-calendar.tsx`: a month grid, Sunday first, 4–6 rows. Days use the calling workspace zone (`CALL_TZ`, Los Angeles), so a 9 PM meeting stays on its day.
+  - On desktop each day shows status-coloured chips (time + company, "+N more"); on phones it shows dots.
+  - Today is circled and weekends are tinted. Prev/next/Today are links.
+  - Picking a day opens its agenda: beside the grid on desktop (sticky), under it on phones (scrolls into view). The agenda shows time (plus the prospect's local time if their zone differs), status, company link, decision maker, call type/contact, who booked it (admins), notes, Call, and compact Google/Apple add buttons.
+  - Pure grid math lives in `lib/calls/calendar-grid.ts`; tests in `tests/calendar-grid.test.ts`. `listSalesAppointments` gained `from`/`to`.

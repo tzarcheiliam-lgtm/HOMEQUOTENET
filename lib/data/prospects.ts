@@ -594,7 +594,15 @@ export async function listCalendarAdds(ids: string[]): Promise<Map<string, { goo
 
 export async function listSalesAppointments(
   callers: CallerOption[],
-  filters: { partner?: string; status?: SalesAppointmentStatus; upcoming?: boolean; needsDecision?: boolean } = {}
+  filters: {
+    partner?: string;
+    status?: SalesAppointmentStatus;
+    upcoming?: boolean;
+    needsDecision?: boolean;
+    /** Scheduled at or after / before these instants (the calendar's visible range). */
+    from?: string;
+    to?: string;
+  } = {}
 ): Promise<SalesAppointmentRow[]> {
   const supabase = await createClient();
   let query = supabase
@@ -604,6 +612,8 @@ export async function listSalesAppointments(
   if (filters.partner) query = query.eq('partner_id', filters.partner);
   if (filters.status) query = query.eq('status', filters.status);
   if (filters.upcoming) query = query.gte('scheduled_at', new Date().toISOString());
+  if (filters.from) query = query.gte('scheduled_at', filters.from);
+  if (filters.to) query = query.lt('scheduled_at', filters.to);
   // Past meetings that happened (or may have) and still have no sale outcome.
   if (filters.needsDecision)
     query = query
