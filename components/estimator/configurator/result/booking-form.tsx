@@ -191,7 +191,6 @@ export function ConfiguratorBooking({ slug, contractor, selection, answers, embe
                   checked={fields.homeowner === value}
                   onChange={() => set('homeowner', value)}
                   data-field={i === 0 ? 'homeowner' : undefined}
-                  aria-invalid={err('homeowner') ? true : undefined}
                   className="sr-only"
                 />
                 {label}
