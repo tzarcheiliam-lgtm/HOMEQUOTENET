@@ -9,6 +9,7 @@ import { buildCatalogue } from '@/lib/workflows/ai-builder/catalogue';
 import { assembleGraph, checkGraph } from '@/lib/workflows/ai-builder/check';
 import { explainGraphText } from '@/lib/workflows/ai-builder/explain';
 import { parseWorkflowGraph, triggerOf } from '@/lib/workflows/graph';
+import { hashGraph } from '@/lib/workflows/graph/hash';
 import { sendPushNotification } from '@/lib/notifications/service';
 import type { McpKey, McpScope } from './keys';
 
@@ -16,7 +17,7 @@ import type { McpKey, McpScope } from './keys';
  * The HomeQuote tools Claude gets over MCP. Every tool runs on the server with the service role, acting for the admin
  * who created the key, and only does what its scope allows:
  *   read  - look up leads, appointments, texting, workflows and the business summary
- *   write - add a lead note, change a lead's pipeline status, save a workflow as an UNPUBLISHED draft
+ *   write - add a lead note, change a lead's pipeline status, save a new workflow or change an existing one as an UNPUBLISHED draft
  *   text  - text a homeowner through the Mac bridge (every texting rule still applies)
  *   assign - PROPOSE assigning a lead to contractors; it only happens when the admin taps Approve in HomeQuote
  * Nothing here publishes a workflow, deletes anything, assigns a lead without the admin's approval, places calls or touches billing.
@@ -50,6 +51,26 @@ export interface ToolDef {
 }
 
 const readOnly = { readOnlyHint: true };
+
+/** The { nodes, edges, settings? } shape Claude sends (positions are laid out on the server). */
+const WORKFLOW_INPUT: Json = {
+  type: 'object', required: ['nodes', 'edges'],
+  properties: {
+    nodes: { type: 'array', items: { type: 'object', required: ['id', 'type'], properties: { id: { type: 'string' }, type: { type: 'string' }, name: { type: 'string' }, config: { type: 'object' } } } },
+    edges: { type: 'array', items: { type: 'object', required: ['source', 'sourceHandle', 'target'], properties: { source: { type: 'string' }, sourceHandle: { type: 'string' }, target: { type: 'string' } } } },
+    settings: { type: 'object' },
+  },
+};
+
+/** A visual (graph) workflow and its draft, for get_workflow / update_workflow_draft. Classic workflows are refused. */
+async function loadGraphWorkflow(db: Db, id: string) {
+  const { data: w } = await db.from('workflows').select('id,name,description,engine,graph_status,contractor_id,is_template,archived_at').eq('id', id).maybeSingle();
+  if (!w || (w as any).is_template) fail('No workflow with that id.');
+  if ((w as any).engine !== 'graph') fail('This is a classic (list-style) workflow. Only visual workflows can be read and edited here; open it in the app to change it.');
+  const { data: d } = await db.from('workflow_graph_drafts').select('graph,revision').eq('workflow_id', id).maybeSingle();
+  if (!d) fail('This workflow has no saved steps yet.');
+  return { w: w as any, graph: parseWorkflowGraph((d as any).graph), revision: (d as any).revision as number };
+}
 
 export const TOOLS: ToolDef[] = [
   {
@@ -264,15 +285,38 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: 'get_workflow',
+    title: 'Read a workflow',
+    description: 'The current DRAFT of one visual workflow, in the same { nodes, edges, settings } shape create_workflow_draft takes, plus its revision number. Call this before update_workflow_draft: change what you need and send the whole workflow back with this revision.',
+    scope: 'read',
+    inputSchema: { type: 'object', required: ['workflow_id'], properties: { workflow_id: { type: 'string', description: 'Workflow id from list_workflows.' } } },
+    annotations: readOnly,
+    summarize: (a) => `workflow=${String(a.workflow_id ?? '').slice(0, 36)}`,
+    run: async (db, args) => {
+      const id = uuid(args.workflow_id, 'workflow_id');
+      const { w, graph, revision } = await loadGraphWorkflow(db, id);
+      return {
+        id, name: w.name, description: w.description ?? null, status: w.graph_status, archived: !!w.archived_at,
+        for: w.contractor_id ? 'one contractor' : 'HomeQuote network', contractor_id: w.contractor_id ?? null, revision,
+        workflow: {
+          nodes: graph.nodes.map((n) => ({ id: n.id, type: n.type, ...(n.name ? { name: n.name } : {}), config: n.config })),
+          edges: graph.edges.map((e) => ({ source: e.source, sourceHandle: e.sourceHandle, target: e.target })),
+          settings: graph.settings,
+        },
+        explanation: explainGraphText(graph), link: link(`/app/workflows/${id}`),
+      };
+    },
+  },
+  {
     name: 'workflow_building_guide',
     title: 'How to build a workflow',
-    description: 'The exact step types, triggers, wait events, merge fields, condition fields and limits HomeQuote workflows support right now, with the config shape for each step. Read this before create_workflow_draft.',
+    description: 'The exact step types, triggers, wait events, merge fields, condition fields and limits HomeQuote workflows support right now, with the config shape for each step. Read this before create_workflow_draft or update_workflow_draft.',
     scope: 'read',
     inputSchema: { type: 'object', properties: {} },
     annotations: readOnly,
     run: async () => {
       const c = buildCatalogue();
-      return `${c.text}\n\nTo save one, call create_workflow_draft with { name, workflow: { nodes: [{ id, type, name?, config }], edges: [{ source, sourceHandle, target }], settings? } }. Exactly one node has id "trigger". The draft is checked with the same rules as the in-app builder and is NEVER published: the admin reviews, tests and publishes it in the app.`;
+      return `${c.text}\n\nTo save one, call create_workflow_draft with { name, workflow: { nodes: [{ id, type, name?, config }], edges: [{ source, sourceHandle, target }], settings? } }. Exactly one node has id "trigger". The draft is checked with the same rules as the in-app builder and is NEVER published: the admin reviews, tests and publishes it in the app.\n\nTo change an existing visual workflow, call get_workflow { workflow_id } first, edit its nodes/edges/settings, then call update_workflow_draft { workflow_id, revision, workflow } with the revision get_workflow returned (send the whole workflow, not just the changed step). This only changes the draft: if the workflow is live, the published version keeps running until the admin publishes the new draft in the app. Classic (list-style) workflows cannot be edited here.`;
     },
   },
   {
@@ -324,14 +368,7 @@ export const TOOLS: ToolDef[] = [
         name: { type: 'string', description: 'Short name, up to 120 characters.' },
         summary: { type: 'string', description: 'One or two sentences saying what it does.' },
         contractor_id: { type: 'string', description: 'Scope it to one contractor (id from list_contractors). Omit for a HomeQuote network workflow.' },
-        workflow: {
-          type: 'object', required: ['nodes', 'edges'],
-          properties: {
-            nodes: { type: 'array', items: { type: 'object', required: ['id', 'type'], properties: { id: { type: 'string' }, type: { type: 'string' }, name: { type: 'string' }, config: { type: 'object' } } } },
-            edges: { type: 'array', items: { type: 'object', required: ['source', 'sourceHandle', 'target'], properties: { source: { type: 'string' }, sourceHandle: { type: 'string' }, target: { type: 'string' } } } },
-            settings: { type: 'object' },
-          },
-        },
+        workflow: WORKFLOW_INPUT,
       },
     },
     summarize: (a) => `name=${String(a.name ?? '').slice(0, 80)}`,
@@ -356,6 +393,57 @@ export const TOOLS: ToolDef[] = [
       if (dErr) { await db.from('workflows').update({ archived_at: new Date().toISOString() }).eq('id', id); fail('Could not save the workflow steps.'); }
       await db.from('audit_logs').insert({ actor_id: key.actorId, action: 'workflow.graph.mcp_create', metadata: { workflow_id: id, contractor_id: contractorId, key_id: key.id } }).then(() => undefined, () => undefined);
       return { saved: true, status: 'draft (not published)', workflow_id: id, link: link(`/app/workflows/${id}`), explanation: explainGraphText(graph), warnings: checked.warnings, next: 'Open the link to review it, run a dry run and publish it.' };
+    },
+  },
+  {
+    name: 'update_workflow_draft',
+    title: 'Change a workflow draft',
+    description: 'Replace the DRAFT of an existing visual workflow (call get_workflow first and send its revision with the whole edited workflow). It is checked with the in-app builder\'s rules; problems come back so you can fix them. This never publishes: a live workflow keeps running its published version until the admin publishes the draft in the app.',
+    scope: 'write',
+    inputSchema: {
+      type: 'object',
+      required: ['workflow_id', 'revision', 'workflow'],
+      properties: {
+        workflow_id: { type: 'string', description: 'Workflow id from list_workflows or get_workflow.' },
+        revision: { type: 'number', description: 'The revision get_workflow returned. If the draft changed since, the save is refused.' },
+        name: { type: 'string', description: 'New name, up to 120 characters. Omit to keep it.' },
+        summary: { type: 'string', description: 'New one or two sentence description. Omit to keep it.' },
+        workflow: WORKFLOW_INPUT,
+      },
+    },
+    summarize: (a) => `workflow=${String(a.workflow_id ?? '').slice(0, 36)} revision=${typeof a.revision === 'number' ? a.revision : '?'}`,
+    run: async (db, args, key) => {
+      const id = uuid(args.workflow_id, 'workflow_id');
+      const revision = typeof args.revision === 'number' && Number.isInteger(args.revision) && args.revision >= 1 ? args.revision : fail('revision must be the number get_workflow returned.');
+      const wfName = args.name === undefined || args.name === null ? undefined : str(args.name, 120) ?? fail('The name cannot be empty.');
+      const summary = args.summary === undefined || args.summary === null ? undefined : str(args.summary, 2000) ?? null;
+      const { w, graph: before } = await loadGraphWorkflow(db, id);
+      if (w.archived_at) fail('This workflow is archived and cannot be changed.');
+      const wf = args.workflow as any;
+      if (!wf || !Array.isArray(wf.nodes) || !Array.isArray(wf.edges ?? [])) fail('workflow needs nodes and edges arrays.');
+      const checked = checkGraph(assembleGraph({ nodes: wf.nodes, edges: wf.edges ?? [], settings: wf.settings }), { contractorId: w.contractor_id ?? null, catalogue: buildCatalogue() });
+      if (!checked.graph) fail(`The workflow has problems. Fix these and try again:\n- ${checked.errors.join('\n- ')}`);
+      let graph = checked.graph!;
+      // Same steps as before (only their settings changed): keep the admin's canvas layout instead of the automatic one.
+      const oldPos = new Map(before.nodes.map((n) => [n.id, n.position]));
+      if (graph.nodes.every((n) => oldPos.has(n.id))) graph = { ...graph, nodes: graph.nodes.map((n) => ({ ...n, position: oldPos.get(n.id)! })) };
+      const { data: saved, error } = await db.from('workflow_graph_drafts')
+        .update({ graph, revision: revision + 1, content_hash: hashGraph(graph), updated_by: key.actorId, updated_at: new Date().toISOString() })
+        .eq('workflow_id', id).eq('revision', revision).select('revision');
+      if (error) fail('Could not save the workflow.');
+      if (!Array.isArray(saved) || saved.length === 0) fail('This workflow was changed since you read it. Call get_workflow again and re-apply your change.');
+      const patch: Json = { updated_by: key.actorId };
+      if (wfName) patch.name = wfName;
+      if (summary !== undefined) patch.description = summary;
+      await db.from('workflows').update(patch).eq('id', id);
+      await db.from('audit_logs').insert({ actor_id: key.actorId, action: 'workflow.graph.mcp_update', metadata: { workflow_id: id, key_id: key.id, revision: revision + 1 } }).then(() => undefined, () => undefined);
+      const status = w.graph_status as string;
+      return {
+        saved: true, revision: revision + 1, status, explanation: explainGraphText(graph), warnings: checked.warnings, link: link(`/app/workflows/${id}`),
+        next: status === 'published' || status === 'paused'
+          ? 'This changed the draft only. The live version keeps running until you publish the draft in HomeQuote.'
+          : 'Open the link to review and publish.',
+      };
     },
   },
   {

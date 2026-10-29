@@ -80,7 +80,8 @@ describe('HomeQuote MCP: tools follow the key permissions', () => {
     const names = async (k: string) => (await (await rpc({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, k)).json()).result.tools.map((t: any) => t.name);
     const read = await names(keys.reader);
     expect(read).toContain('search_leads'); expect(read).not.toContain('add_lead_note'); expect(read).not.toContain('send_text');
-    expect(await names(keys.writer)).toEqual(expect.arrayContaining(['add_lead_note', 'update_lead_status', 'create_workflow_draft']));
+    expect(await names(keys.writer)).toEqual(expect.arrayContaining(['add_lead_note', 'update_lead_status', 'create_workflow_draft', 'update_workflow_draft']));
+    expect(read).toContain('get_workflow'); expect(read).not.toContain('update_workflow_draft');
     expect(await names(keys.texter)).toContain('send_text');
     expect(await names(keys.texter)).not.toContain('add_lead_note');
     const init = await (await rpc({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }, keys.reader)).json();
@@ -110,6 +111,7 @@ describe('HomeQuote MCP: reading', () => {
   it('the building guide comes from the real workflow catalogue', async () => {
     const g = await call(keys.reader, 'workflow_building_guide');
     expect(g.text).toContain('send_sms'); expect(g.text).toContain('create_workflow_draft');
+    expect(g.text).toContain('get_workflow'); expect(g.text).toContain('update_workflow_draft');
   });
 });
 
@@ -140,6 +142,84 @@ describe('HomeQuote MCP: changes', () => {
     expect(await q(`select 1 from public.workflow_versions where workflow_id=$1`, [ok.data.workflow_id])).toHaveLength(0); // never published
     const bad = await call(keys.writer, 'create_workflow_draft', { name: 'Broken', workflow: { nodes: [{ id: 'trigger', type: 'trigger', config: { event: 'lead.created', filters: {}, entry: null } }], edges: [] } });
     expect(bad.isError).toBe(true); expect(bad.text).toMatch(/Add at least one step/);
+  });
+});
+
+describe('HomeQuote MCP: editing workflow drafts', () => {
+  const trigger = { id: 'trigger', type: 'trigger', config: { event: 'lead.created', filters: {}, entry: null } };
+  let wfId = '';
+  beforeAll(async () => {
+    const made = await call(keys.writer, 'create_workflow_draft', { name: 'Welcome note', workflow: { nodes: [
+      trigger, { id: 'note', type: 'add_note', config: { body: 'Hello {{lead.first_name}}' } }, { id: 'done', type: 'end', config: {} },
+    ], edges: [{ source: 'trigger', sourceHandle: 'next', target: 'note' }, { source: 'note', sourceHandle: 'next', target: 'done' }] } });
+    wfId = made.data.workflow_id;
+  });
+
+  it('get_workflow returns the draft in the create_workflow_draft shape, with its revision', async () => {
+    const g = await call(keys.reader, 'get_workflow', { workflow_id: wfId });
+    expect(g.isError).toBe(false);
+    expect(g.data).toMatchObject({ id: wfId, name: 'Welcome note', status: 'draft', for: 'HomeQuote network', contractor_id: null, revision: 1 });
+    expect(g.data.workflow.nodes.map((n: any) => n.id).sort()).toEqual(['done', 'note', 'trigger']);
+    expect(g.data.workflow.nodes.find((n: any) => n.id === 'note').config.body).toBe('Hello {{lead.first_name}}');
+    expect(g.data.workflow.nodes[0]).not.toHaveProperty('position');
+    expect(g.data.workflow.edges).toEqual(expect.arrayContaining([{ source: 'trigger', sourceHandle: 'next', target: 'note' }]));
+    expect(g.data.workflow.settings).toBeTruthy();
+    expect(typeof g.data.explanation).toBe('string'); expect(g.data.link).toContain(`/app/workflows/${wfId}`);
+  });
+
+  it('a read-only key cannot call update_workflow_draft', async () => {
+    const r = await call(keys.reader, 'update_workflow_draft', { workflow_id: wfId, revision: 1, workflow: { nodes: [], edges: [] } });
+    expect(r.error?.message).toMatch(/Unknown tool/);
+  });
+
+  it('saves an edit with the right revision (revision+1, hash, attributed to the admin) and never publishes', async () => {
+    const g = await call(keys.reader, 'get_workflow', { workflow_id: wfId });
+    const wf = g.data.workflow;
+    wf.nodes.find((n: any) => n.id === 'note').config.body = 'Welcome aboard {{lead.first_name}}';
+    const r = await call(keys.writer, 'update_workflow_draft', { workflow_id: wfId, revision: g.data.revision, workflow: wf, name: 'Welcome note v2', summary: 'Adds a friendlier note.' });
+    expect(r.isError).toBe(false);
+    expect(r.data).toMatchObject({ saved: true, revision: 2, status: 'draft', next: 'Open the link to review and publish.' });
+    const [d] = await q(`select graph, revision, content_hash, updated_by from public.workflow_graph_drafts where workflow_id=$1`, [wfId]);
+    expect(d.revision).toBe(2); expect(d.updated_by).toBe(admin);
+    expect(d.content_hash).toMatch(/^[0-9a-f]{64}$/);
+    const { hashGraph } = await import('@/lib/workflows/graph/hash');
+    expect(d.content_hash).toBe(hashGraph(d.graph));
+    expect(d.graph.nodes.find((n: any) => n.id === 'note').config.body).toBe('Welcome aboard {{lead.first_name}}');
+    expect((await q(`select name, description, updated_by, graph_status from public.workflows where id=$1`, [wfId]))[0]).toEqual({ name: 'Welcome note v2', description: 'Adds a friendlier note.', updated_by: admin, graph_status: 'draft' });
+    expect(await q(`select 1 from public.workflow_versions where workflow_id=$1`, [wfId])).toHaveLength(0); // never published
+    expect(await q(`select metadata from public.audit_logs where action='workflow.graph.mcp_update'`)).toEqual([{ metadata: expect.objectContaining({ workflow_id: wfId, revision: 2 }) }]);
+  });
+
+  it('refuses a stale revision and leaves the draft alone', async () => {
+    const g = await call(keys.reader, 'get_workflow', { workflow_id: wfId });
+    const r = await call(keys.writer, 'update_workflow_draft', { workflow_id: wfId, revision: 1, workflow: g.data.workflow });
+    expect(r.isError).toBe(true);
+    expect(r.text).toBe('This workflow was changed since you read it. Call get_workflow again and re-apply your change.');
+    expect((await q(`select revision from public.workflow_graph_drafts where workflow_id=$1`, [wfId]))[0].revision).toBe(2);
+  });
+
+  it('refuses an invalid workflow with the exact problems', async () => {
+    const r = await call(keys.writer, 'update_workflow_draft', { workflow_id: wfId, revision: 2, workflow: { nodes: [trigger], edges: [] } });
+    expect(r.isError).toBe(true);
+    expect(r.text).toMatch(/^The workflow has problems. Fix these and try again:\n- /);
+    expect(r.text).toMatch(/Add at least one step after the trigger/);
+    expect((await q(`select revision from public.workflow_graph_drafts where workflow_id=$1`, [wfId]))[0].revision).toBe(2);
+  });
+
+  it('says a live workflow keeps running until the draft is published', async () => {
+    await q(`update public.workflows set graph_status='published' where id=$1`, [wfId]);
+    const g = await call(keys.reader, 'get_workflow', { workflow_id: wfId });
+    const r = await call(keys.writer, 'update_workflow_draft', { workflow_id: wfId, revision: g.data.revision, workflow: g.data.workflow });
+    expect(r.data).toMatchObject({ saved: true, revision: 3, status: 'published', next: 'This changed the draft only. The live version keeps running until you publish the draft in HomeQuote.' });
+    await q(`update public.workflows set archived_at=now() where id=$1`, [wfId]);
+    const archived = await call(keys.writer, 'update_workflow_draft', { workflow_id: wfId, revision: 3, workflow: g.data.workflow });
+    expect(archived.isError).toBe(true); expect(archived.text).toMatch(/archived/);
+  });
+
+  it('get_workflow on a classic workflow says only visual workflows can be edited', async () => {
+    const [c] = await q(`insert into public.workflows(name,trigger_type) values('Classic one','lead.created') returning id`);
+    const r = await call(keys.reader, 'get_workflow', { workflow_id: c.id });
+    expect(r.isError).toBe(true); expect(r.text).toMatch(/Only visual workflows can be read and edited here/);
   });
 });
 
