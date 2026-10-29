@@ -1,8 +1,11 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import { bathOptionTexture, BATH_DEFAULT_TEXTURES, BATH_METAL_COLORS, BATH_DEFAULT_METAL, BATH_TEXTURES } from '@/lib/estimator/scene/bath/textures';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { registerBathPainter } from '@/lib/estimator/scene/bath/rasterize';
+import { BATH_TEXTURES } from '@/lib/estimator/scene/bath/textures';
 import { BATH_SCENE, type BathMood, type BathSceneSpec } from '@/lib/estimator/scene/bath/types';
+import { onBathAssetLoad, preloadBathAssets } from './assets';
+import { materialTexture, paintBathScene } from './paint';
 
 export type BathSceneProps = {
   scene: BathSceneSpec;
@@ -10,54 +13,159 @@ export type BathSceneProps = {
   /** Accessible description of the design (the parent builds it from the answers). */
   label: string;
   className?: string;
-  /** The drawing element, for "Save my design" and the photoreal render (PNG capture). */
+  /** The drawing element, for "Save my design" and the photoreal render (PNG capture: rasterizeBathScene). */
   onCanvas?: (el: SVGSVGElement | HTMLCanvasElement | null) => void;
+  /** 'close' frames the vanity and shower tile (for finish questions). */
+  focus?: 'overview' | 'close';
+  /** No crossfade (thumbnails, reduced motion is detected on its own). */
+  still?: boolean;
 };
 
-/** Fallback colour of a material, or of its neutral default. */
-function colour(question: keyof typeof BATH_DEFAULT_TEXTURES, id: string | null): string {
-  const texture = (id && bathOptionTexture(question, id)) || BATH_DEFAULT_TEXTURES[question];
-  return BATH_TEXTURES[texture].fallback;
+/** Crossfade between the old and the new frame. */
+export const BATH_FADE_MS = 250;
+/** Device pixels per frame unit are capped here (2x is sharp on every phone). */
+const MAX_SCALE = 2;
+/** A paint slower than this (no GPU canvas) drops the next ones to 1x. */
+const SLOW_PAINT_MS = 70;
+
+const CSS = `
+:where(.bs-root){position:relative;display:block;overflow:hidden}
+:where(.bs-root.bs-sized){width:100%;aspect-ratio:3/2}
+.bs-root>canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.bs-root>.bs-prev{opacity:0;pointer-events:none}
+.bs-root>.bs-prev.bs-fading{transition:opacity ${BATH_FADE_MS}ms ease-out}
+@media (prefers-reduced-motion:reduce){.bs-root>.bs-prev{display:none}}
+`;
+
+function reducedMotion(): boolean {
+  try {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return false;
+  }
+}
+
+/** Device px per frame unit for an element `cssWidth` wide. */
+export function bathCanvasScale(cssWidth: number, dpr: number, cap = MAX_SCALE): number {
+  const w = Number.isFinite(cssWidth) && cssWidth > 0 ? cssWidth : BATH_SCENE.width;
+  const raw = (w * (Number.isFinite(dpr) && dpr > 0 ? dpr : 1)) / BATH_SCENE.width;
+  // Quarter steps, so a resize by a few px does not repaint at a new size.
+  return Math.min(cap, Math.max(0.5, Math.ceil(raw * 4) / 4));
 }
 
 /**
- * STAND-IN for the live bathroom picture: flat front-on blocks in the chosen
- * colours so the flow can be wired and tested. The real layered renderer
- * replaces this file's body and keeps its props.
+ * The live bathroom picture: a photo-like, eye-level view into the
+ * homeowner's bathroom, painted on a canvas (see paint.ts) and repainted
+ * synchronously on every pick, with a short crossfade from the old frame.
+ * Before the script runs the box shows the wall colour, so nothing flashes.
  */
-export function BathScene({ scene, mood = 'day', label, className, onCanvas }: BathSceneProps) {
-  const ref = useRef<SVGSVGElement>(null);
-  useEffect(() => {
-    onCanvas?.(ref.current);
-    return () => onCanvas?.(null);
-  }, [onCanvas]);
+export function BathScene({ scene, mood = 'day', label, className, onCanvas, focus = 'overview', still = false }: BathSceneProps) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const prevRef = useRef<HTMLCanvasElement>(null);
+  const [scale, setScale] = useState(1);
+  const [cap, setCap] = useState(MAX_SCALE);
+  const [assetTick, setAssetTick] = useState(0);
+  const latest = useRef({ scene, mood, focus });
+  latest.current = { scene, mood, focus };
+  const painted = useRef<string | null>(null);
 
-  const { width: W, height: H } = BATH_SCENE;
-  const metal = BATH_METAL_COLORS[scene.metal ?? BATH_DEFAULT_METAL] ?? BATH_METAL_COLORS[BATH_DEFAULT_METAL];
-  const vanityW = scene.vanity === 'double' ? 440 : scene.vanity === 'floating' ? 320 : 240;
-  const vanityY = scene.vanity === 'floating' ? 470 : 500;
-  const vanityH = scene.vanity === 'floating' ? 110 : 160;
+  // Size the backing store to the element (and the screen), and follow resizes.
+  useLayoutEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const update = () => setScale(bathCanvasScale(el.clientWidth, window.devicePixelRatio || 1, cap));
+    update();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [cap]);
+
+  // Texture / sprite files: preload once, repaint as each arrives.
+  useEffect(() => {
+    const off = onBathAssetLoad(() => setAssetTick((t) => t + 1));
+    void preloadBathAssets();
+    return () => {
+      off();
+    };
+  }, []);
+
+  const key = `${JSON.stringify(scene)}|${mood}|${focus}`;
+  useLayoutEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const w = Math.round(BATH_SCENE.width * scale);
+    const h = Math.round(BATH_SCENE.height * scale);
+    const changed = painted.current !== null && painted.current !== key;
+    // Keep the old frame on top and fade it out over the new one.
+    const prev = prevRef.current;
+    if (changed && prev && !still && !reducedMotion() && canvas.width > 1) {
+      prev.width = canvas.width;
+      prev.height = canvas.height;
+      prev.getContext('2d')?.drawImage(canvas, 0, 0);
+      prev.classList.remove('bs-fading');
+      prev.style.opacity = '1';
+      // Next frame: let the transition run to transparent.
+      requestAnimationFrame(() => {
+        prev.classList.add('bs-fading');
+        prev.style.opacity = '0';
+      });
+    }
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+    }
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const t0 = performance.now();
+    try {
+      paintBathScene(ctx, scene, { scale, mood, focus });
+    } catch {
+      // A drawing failure must never break the flow: the wall colour stays.
+    }
+    painted.current = key;
+    if (performance.now() - t0 > SLOW_PAINT_MS && scale > 1) setCap(1);
+    // assetTick: repaint when a file has loaded.
+  }, [key, scale, assetTick, scene, mood, focus, still]);
+
+  // Hand the canvas out, and register a painter so exports are sharp and settled.
+  const painter = useCallback(async (width: number, height: number) => {
+    await preloadBathAssets();
+    const out = document.createElement('canvas');
+    out.width = width;
+    out.height = height;
+    const ctx = out.getContext('2d');
+    if (!ctx) throw new Error('This browser cannot draw the design.');
+    const { scene: s, mood: m } = latest.current;
+    paintBathScene(ctx, s, { scale: width / BATH_SCENE.width, mood: m, focus: 'overview' });
+    return out;
+  }, []);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const off = registerBathPainter(canvas, painter);
+    onCanvas?.(canvas);
+    return () => {
+      off();
+      onCanvas?.(null);
+    };
+  }, [onCanvas, painter]);
+
+  const wall = BATH_TEXTURES[materialTexture('paint', scene.paint)].fallback;
   return (
-    <svg
-      ref={ref}
-      viewBox={`0 0 ${W} ${H}`}
-      className={className}
+    <div
+      ref={rootRef}
+      className={['bs-root', className ? '' : 'bs-sized', className ?? ''].filter(Boolean).join(' ')}
       role="img"
       aria-label={label}
       data-bath-scene=""
       data-mood={mood}
-      preserveAspectRatio="xMidYMid slice"
+      style={{ backgroundColor: wall }}
     >
-      <rect width={W} height={660} fill={colour('paint', scene.paint)} />
-      <rect y={660} width={W} height={H - 660} fill={colour('floor', scene.floor)} />
-      <rect x={60} y={120} width={420} height={540} fill={colour('showerTile', scene.showerTile)} />
-      {scene.bathing !== 'walk_in' ? <rect x={60} y={560} width={420} height={100} rx={10} fill="#fbfbfa" stroke="#d9d9d6" /> : null}
-      {scene.glass ? <rect x={470} y={140} width={10} height={520} fill="#cfe3ea" opacity={0.7} /> : null}
-      <rect x={1100 - vanityW} y={vanityY} width={vanityW} height={vanityH} fill={colour('vanityFinish', scene.vanityFinish)} />
-      <rect x={1090 - vanityW} y={vanityY - 18} width={vanityW + 20} height={18} fill={colour('counter', scene.counter)} />
-      <rect x={1100 - vanityW / 2 - 6} y={vanityY - 60} width={12} height={42} fill={metal} />
-      <rect x={1100 - vanityW / 2 - 90} y={180} width={180} height={220} rx={scene.extras.ledMirror ? 20 : 4} fill="#dfe8ec" stroke={scene.extras.ledMirror ? '#fff6d8' : metal} strokeWidth={6} />
-      {mood === 'evening' ? <rect width={W} height={H} fill="#1b1a33" opacity={0.35} /> : null}
-    </svg>
+      <style>{CSS}</style>
+      <canvas ref={canvasRef} width={1} height={1} aria-hidden="true" />
+      <canvas ref={prevRef} className="bs-prev" width={1} height={1} aria-hidden="true" />
+    </div>
   );
 }
