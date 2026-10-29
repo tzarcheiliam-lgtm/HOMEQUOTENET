@@ -22,6 +22,7 @@ process.env.ESTIMATOR_RENDER_SECRET = 'test-share-secret';
 
 import { runRecovery, sendMissedCallRecovery, sendSpeedToLeadAlert, type RecoveryEmail } from '@/lib/booking/recovery.server';
 import { runTextReminders } from '@/lib/sms/reminders';
+import { sendBookingConfirmation, type OutgoingEmail } from '@/lib/booking/notify.server';
 import { RECOVERY_REPLY } from '@/lib/sms/reminder-replies';
 import { handleInbound } from '@/lib/sms/service';
 
@@ -244,6 +245,25 @@ describe('"Couldn\'t reach them"', () => {
     const t = await texts(m.id);
     expect(t).toHaveLength(1);
     expect(new Date(t[0].send_after).toISOString()).toBe('2026-11-04T16:00:00.000Z'); // 8:00 AM next morning
+  });
+});
+
+describe('their design on the booking confirmation', () => {
+  it('the email carries the "Your design" block (photo, picks, ballpark, share link); the text says it was emailed', async () => {
+    const l = await newLead();
+    const a = await call(l.id, { startsAt: new Date(Date.now() + 3 * 86_400_000) });
+    const sent: OutgoingEmail[] = [];
+    const r = await sendBookingConfirmation('appointment', a, { db: sb, sendEmail: async (m) => { sent.push(m); }, siteUrl: 'https://hq.test', linkSecret: 'secret' });
+    expect(r).toMatchObject({ notice: 'confirmed', email: 'sent', sms: 'queued' });
+    const guest = sent.find((m) => m.toEmail.startsWith('jordan'))!;
+    expect(guest.text).toContain('Your Luxe pool design:');
+    expect(guest.text).toContain('Classic · Luxe · Zero-edge spa');
+    expect(guest.text).toContain('Ballpark $85,000 – $110,000');
+    expect(guest.text).toMatch(/See your design: https:\/\/hq\.test\/estimator\/pool-masters\/my-design\?size=classic&finish=luxe&extras=spa&spa=zero_edge&v=/);
+    expect(guest.html).toContain('src="https://hq.test/spa.webp"');
+    const t = await texts(l.id);
+    expect(t.at(-1)!.body).toContain('We emailed you your design.');
+    expect(t.at(-1)!.body).not.toMatch(URL_RE);
   });
 });
 

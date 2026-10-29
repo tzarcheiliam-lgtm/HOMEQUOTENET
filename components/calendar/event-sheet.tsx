@@ -12,7 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { CalendarPanel } from './panel';
 import { SlotChooser, type ChosenTime } from './slot-chooser';
-import { isLive, longDayLabel, sourceLabel, statusActions, statusStyle, type CalendarEvent } from './view';
+import { canReportMissedCall, isLive, longDayLabel, sourceLabel, statusActions, statusStyle, type CalendarEvent } from './view';
 import { localParts } from '@/lib/availability/time';
 
 type Mode = 'details' | 'reschedule' | 'cancel';
@@ -65,7 +65,7 @@ export function EventSheet({
   const canCancel = canWork && live && event.startMs > nowMs;
   const actions = canWork ? statusActions(event.kind, event.status, event.startMs, nowMs) : [];
   // The call time came and nobody picked up: text + email them a link to pick a new time (lead recovery).
-  const canReportMissed = canWork && event.kind === 'appointment' && !!event.leadId && event.status === 'scheduled' && event.startMs <= nowMs;
+  const canReportMissed = canReportMissedCall(event, canWork, nowMs);
   const missed = () => {
     setError(null);
     setNotice(null);

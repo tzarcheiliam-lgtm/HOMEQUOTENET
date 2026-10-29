@@ -235,6 +235,11 @@ export function statusStyle(kind: EventKind, status: string): { label: string; b
 }
 
 /** The status actions offered in the details sheet. */
+/** "Couldn't reach them" (lead recovery): a homeowner's call on a calendar whose time came and that is still scheduled. */
+export function canReportMissedCall(e: Pick<CalendarEvent, 'kind' | 'status' | 'startMs' | 'leadId'>, canWork: boolean, nowMs: number): boolean {
+  return canWork && e.kind === 'appointment' && !!e.leadId && e.status === 'scheduled' && e.startMs <= nowMs;
+}
+
 export function statusActions(kind: EventKind, status: string, startMs: number, nowMs: number): { value: string; label: string }[] {
   if (status === 'cancelled') return [];
   // Held / no-show only once the call time has come (or to correct an earlier outcome).

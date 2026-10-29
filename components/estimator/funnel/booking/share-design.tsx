@@ -3,6 +3,30 @@
 import { useId, useRef, useState } from 'react';
 import { Check, Share } from 'lucide-react';
 
+type ShareNav = Pick<Navigator, 'clipboard'> & { share?: (d: ShareData) => Promise<void>; canShare?: (d: ShareData) => boolean };
+
+/**
+ * The share sheet when there is one (a closed sheet is not an error), else copy the link, else 'manual' (show it).
+ * Exported for tests.
+ */
+export async function shareOrCopy(nav: ShareNav, data: { title: string; text: string; url: string }): Promise<'shared' | 'cancelled' | 'copied' | 'manual'> {
+  if (typeof nav.share === 'function' && (!nav.canShare || nav.canShare({ url: data.url }))) {
+    try {
+      await nav.share(data);
+      return 'shared';
+    } catch (e) {
+      // They closed the sheet: nothing to do. Anything else falls back to copying.
+      if ((e as { name?: string })?.name === 'AbortError') return 'cancelled';
+    }
+  }
+  try {
+    await nav.clipboard.writeText(data.url);
+    return 'copied';
+  } catch {
+    return 'manual';
+  }
+}
+
 /**
  * "Send my design to my partner" on the booking screen (before and after they
  * book). The phone's own share sheet (Web Share API: iMessage, WhatsApp, mail…)
@@ -24,21 +48,9 @@ export function ShareDesignButton({ url, title, text }: { url: string; title: st
   };
 
   const onShare = async () => {
-    const link = absolute();
-    const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
-    if (typeof nav.share === 'function' && (!nav.canShare || nav.canShare({ url: link }))) {
-      try {
-        await nav.share({ title, text, url: link });
-        return;
-      } catch (e) {
-        // They closed the sheet: nothing to do. Anything else falls back to copying.
-        if ((e as { name?: string })?.name === 'AbortError') return;
-      }
-    }
-    try {
-      await navigator.clipboard.writeText(link);
-      setState('copied');
-    } catch {
+    const r = await shareOrCopy(navigator, { title, text, url: absolute() });
+    if (r === 'copied') setState('copied');
+    else if (r === 'manual') {
       setState('manual');
       requestAnimationFrame(() => inputRef.current?.select());
     }
