@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { recordAutomationRun } from '@/lib/automations/runs.server';
 import { equalSecret } from '@/lib/funnels/server';
 import { runCalendarMaintenance } from '@/lib/calendar/sync.server';
 import { runNotificationMaintenance } from '@/lib/notifications/outbox';
@@ -18,6 +19,7 @@ export async function POST(request: Request) {
   if (!expected || !equalSecret(request.headers.get('authorization') ?? '', `Bearer ${expected}`)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  const startedAt = new Date();
   try {
     const result = await processWorkflowTick();
     const retention = await pruneWorkflowHistory();
@@ -51,8 +53,11 @@ export async function POST(request: Request) {
     } catch {
       aduQuiz = { error: 'adu quiz retry failed' };
     }
-    return NextResponse.json({ ...result, retention, notifications, calendar, signing, sms, reminders, aduQuiz }, { status: result.failures ? 207 : 200 });
+    const body = { ...result, retention, notifications, calendar, signing, sms, reminders, aduQuiz };
+    await recordAutomationRun('workflow_tick', startedAt, !result.failures, body);
+    return NextResponse.json(body, { status: result.failures ? 207 : 200 });
   } catch {
+    await recordAutomationRun('workflow_tick', startedAt, false, { error: 'Workflow processing unavailable' });
     return NextResponse.json({ error: 'Workflow processing unavailable' }, { status: 503 });
   }
 }

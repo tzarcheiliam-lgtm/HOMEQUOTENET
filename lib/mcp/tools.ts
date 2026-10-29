@@ -11,6 +11,8 @@ import { explainGraphText } from '@/lib/workflows/ai-builder/explain';
 import { parseWorkflowGraph, triggerOf } from '@/lib/workflows/graph';
 import { hashGraph } from '@/lib/workflows/graph/hash';
 import { sendPushNotification } from '@/lib/notifications/service';
+import { AREA_LABELS, AUTOMATIONS } from '@/lib/automations/registry';
+import { automationStatuses } from '@/lib/automations/status.server';
 import type { McpKey, McpScope } from './keys';
 
 /**
@@ -225,6 +227,27 @@ export const TOOLS: ToolDef[] = [
     run: async (db) => {
       const { data } = await db.from('contractors').select('id,name,status,texting_enabled').order('name').limit(200);
       return (data ?? []).map((c: any) => ({ id: c.id, name: c.name, status: c.status, texting_enabled: !!c.texting_enabled, link: link(`/app/contractors/${c.id}`) }));
+    },
+  },
+  {
+    name: 'list_automations',
+    title: 'Automation map',
+    description: 'Every automation HomeQuote runs on its own (schedulers, texting, reminders, alerts, Meta, calls, workflows): whether each is on, off, not active or needs a look, when it last ran and how many times in 7 days. Optional filter by state.',
+    scope: 'read',
+    inputSchema: { type: 'object', properties: { state: { type: 'string', enum: ['on', 'off', 'dormant', 'not_set_up', 'attention'], description: 'Only automations in this state.' } } },
+    annotations: readOnly,
+    run: async (db, args) => {
+      const { statuses, workflows } = await automationStatuses(db as never);
+      const byId = new Map(statuses.map((s) => [s.id, s]));
+      const want = typeof args.state === 'string' ? args.state : null;
+      return {
+        link: link('/app/automations'),
+        automations: AUTOMATIONS.filter((a) => !want || byId.get(a.id)?.state === want).map((a) => {
+          const st = byId.get(a.id);
+          return { name: a.name, area: AREA_LABELS[a.area], when: a.when, what: a.what, state: st?.state, note: st?.note, last_ran: st?.lastRunAt ?? null, last_7_days: st?.count7d ?? null };
+        }),
+        workflows: workflows.map((w) => ({ name: w.name, live: w.live, status: w.status, trigger: w.triggerType, runs_7_days: w.runs7d, failed_7_days: w.failed7d, last_run: w.lastRunAt, link: link(`/app/workflows/${w.id}`) })),
+      };
     },
   },
   {

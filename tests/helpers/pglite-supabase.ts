@@ -43,7 +43,7 @@ class Builder {
   lte(col: string, val: unknown) { this.filters.push({ col, op: 'lte', val }); return this; }
   lt(col: string, val: unknown) { this.filters.push({ col, op: 'lt', val }); return this; }
   gt(col: string, val: unknown) { this.filters.push({ col, op: 'gt', val }); return this; }
-  not(col: string, op: string, val: unknown) { if (op === 'in') this.filters.push({ col, op: 'notin', val: String(val).replace(/^\(|\)$/g, '').split(',') }); return this; }
+  not(col: string, op: string, val: unknown) { if (op === 'is' && val === null) { this.filters.push({ col, op: 'is', val: 'not null' }); return this; } if (op === 'in') this.filters.push({ col, op: 'notin', val: String(val).replace(/^\(|\)$/g, '').split(',') }); return this; }
   or(expr: string) { this.filters.push({ col: '', op: 'or', val: expr }); return this; }
   order(col: string, o?: { ascending?: boolean }) { this._order.push({ col, asc: o?.ascending !== false }); return this; }
   limit(n: number) { this._limit = n; return this; }

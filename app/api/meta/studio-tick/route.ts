@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { recordAutomationRun } from '@/lib/automations/runs.server';
 import { equalSecret } from '@/lib/funnels/server';
 import { admin, readOptions, syncObjectState } from '@/lib/meta/studio/server';
 import { runRulesTick } from '@/lib/meta/studio/rules.server';
@@ -16,6 +17,7 @@ export async function POST(request: Request) {
   if (!expected || !equalSecret(request.headers.get('authorization') ?? '', `Bearer ${expected}`)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  const startedAt = new Date();
   const db = admin();
   const out: Record<string, unknown> = {};
   const g = readOptions();
@@ -25,5 +27,6 @@ export async function POST(request: Request) {
     catch { out.state = { error: 'state sync failed' }; }
   }
   try { out.rules = await runRulesTick(db); } catch { out.rules = { error: 'rules tick failed' }; }
+  await recordAutomationRun('meta_studio_tick', startedAt, !JSON.stringify(out).includes('"error"'), out);
   return NextResponse.json(out);
 }
