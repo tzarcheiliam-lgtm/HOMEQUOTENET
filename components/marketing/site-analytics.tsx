@@ -14,7 +14,7 @@ export type SiteTrackingIds = { metaPixelId: string; googleTagId: string };
 const cfgFor = (ids: SiteTrackingIds): TrackingConfig => ({ ...ids, measurementMode: 'opt_out' });
 
 /**
- * Loads the Meta Pixel and Google tag on the marketing pages and reports phone_click and
+ * Loads the ad pixel and Google tag on the marketing pages and reports phone_click and
  * apply_submit. Measurement is on by default and visitors can switch it off (footer toggle);
  * the choice is shared with /adu-quiz. Renders nothing; does nothing when no IDs are configured.
  */

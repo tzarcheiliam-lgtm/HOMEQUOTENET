@@ -341,7 +341,7 @@ under each hero.
 
 `components/marketing/site-analytics.tsx` loads the Meta Pixel and Google tag
 for every `(marketing)` route using `lib/site-tracking.ts` (env
-`NEXT_PUBLIC_META_PIXEL_ID`, `NEXT_PUBLIC_GOOGLE_TAG_ID`, falling back to the
+`NEXT_PUBLIC_SITE_PIXEL_ID`, `NEXT_PUBLIC_SITE_GOOGLE_TAG_ID`, falling back to the
 ADU-quiz IDs; nothing loads when unset). It reuses the loaders and consent
 helpers in `components/adu-quiz/tracking.ts`.
 
