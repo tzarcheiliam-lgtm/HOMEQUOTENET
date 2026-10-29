@@ -1,9 +1,9 @@
 import { funnelAnswers, normalizeFunnelSelection } from '@/lib/estimator/funnel/engine';
 import type { FunnelSelection, FunnelSpec } from '@/lib/estimator/funnel/types';
+import { addressZip, currentPlace, type AddressPlace } from '@/lib/estimator/address-client';
 import {
   FUNNEL_FIELD_ORDER,
   funnelErrorKey,
-  normalizeZip,
   splitFullName,
   type EstimatorLeadRequest,
   type FunnelContactInput,
@@ -17,8 +17,7 @@ import {
  */
 
 export type FunnelContactFields = FunnelContactInput & {
-  /** Optional street address (FunnelContactStep.askAddress); sent in the note. */
-  address: string;
+  place: AddressPlace | null;
   /** Honeypot: stays empty for people. */
   website: string;
 };
@@ -27,8 +26,8 @@ export const emptyFunnelFields = (): FunnelContactFields => ({
   name: '',
   email: '',
   phone: '',
-  zip: '',
   address: '',
+  place: null,
   homeowner: '',
   consent: false,
   website: '',
@@ -73,13 +72,25 @@ export function funnelLeadRequest(input: {
   const selection = normalizeFunnelSelection(spec, input.selection);
   const name = splitFullName(fields.name) ?? { firstName: fields.name.trim(), lastName: '' };
   const address = fields.address.trim();
+  const place = currentPlace(fields.address, fields.place);
   return {
     answers: funnelAnswers(spec, selection),
     funnel: selection,
-    zip: normalizeZip(fields.zip) ?? fields.zip.trim(),
-    // Only when the form asks it (FunnelContactStep.askHomeowner); the server marks it "not asked" otherwise.
-    ...(spec.contactStep.askHomeowner ? { homeowner: fields.homeowner === 'no' ? ('no' as const) : ('yes' as const) } : {}),
-    ...(address ? { note: `Address: ${address.slice(0, 300)}` } : {}),
+    // From the picked Google place, else the typed address (the form checked there is one).
+    zip: addressZip(fields.address, fields.place) ?? '',
+    address: address.slice(0, 300),
+    ...(place
+      ? {
+          addressDetails: {
+            verified: true,
+            ...(place.city ? { city: place.city } : {}),
+            ...(place.state ? { state: place.state } : {}),
+            ...(place.lat !== null && place.lng !== null ? { lat: place.lat, lng: place.lng } : {}),
+          },
+        }
+      : {}),
+    // Always the visitor's own answer (the form requires it; an empty one is refused by the server, never assumed).
+    homeowner: fields.homeowner as 'yes' | 'no',
     contact: {
       firstName: name.firstName,
       lastName: name.lastName,
@@ -128,15 +139,31 @@ export function loadContactDraft(slug: string): Partial<FunnelContactFields> | n
     name: str(o.name, 200),
     email: str(o.email, 254),
     phone: str(o.phone, 30),
-    zip: str(o.zip, 10),
     address: str(o.address, 300),
+    place: readPlace(o.place),
     homeowner: o.homeowner === 'yes' || o.homeowner === 'no' ? o.homeowner : '',
   };
 }
 
+function readPlace(v: unknown): AddressPlace | null {
+  if (!v || typeof v !== 'object') return null;
+  const p = v as Record<string, unknown>;
+  const num = (n: unknown, max: number) => (typeof n === 'number' && Number.isFinite(n) && Math.abs(n) <= max ? n : null);
+  const address = str(p.address, 300);
+  if (!address) return null;
+  return {
+    address,
+    zip: typeof p.zip === 'string' && /^\d{5}$/.test(p.zip) ? p.zip : null,
+    city: str(p.city, 80) || null,
+    state: typeof p.state === 'string' && /^[A-Z]{2}$/.test(p.state) ? p.state : null,
+    lat: num(p.lat, 90),
+    lng: num(p.lng, 180),
+  };
+}
+
 export function saveContactDraft(slug: string, fields: FunnelContactFields) {
-  const { name, email, phone, zip, address, homeowner } = fields;
-  write(draftKey(slug), { name, email, phone, zip, address, homeowner });
+  const { name, email, phone, address, place, homeowner } = fields;
+  write(draftKey(slug), { name, email, phone, address, place, homeowner });
 }
 
 export const clearContactDraft = (slug: string) => write(draftKey(slug), null);

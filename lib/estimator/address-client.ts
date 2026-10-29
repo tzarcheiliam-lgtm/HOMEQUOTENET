@@ -33,7 +33,7 @@ export const AUTOCOMPLETE_INPUT_MAX = 200;
  * ("12345 Ventura Blvd, Studio City").
  */
 export function extractZip(address: string): string | null {
-  const text = address.trim().replace(/[\s,]*(?:USA|US|United States)\.?$/i, '');
+  const text = address.trim().replace(/(?:^|[\s,]+)(?:USA|US|United States)\.?$/i, '');
   const end = /(?:^|[\s,])(\d{5})(?:-\d{4})?$/.exec(text);
   // A lone number is a street number, not a ZIP ("12345").
   if (end && /[A-Za-z]/.test(text)) return end[1];

@@ -17,6 +17,7 @@ const m = vi.hoisted(() => ({
   funnel: null as unknown,
   rpc: vi.fn(),
   inserts: [] as { table: string; row: Record<string, unknown> }[],
+  updates: [] as { table: string; row: Record<string, unknown> }[],
 }));
 
 vi.mock('server-only', () => ({}));
@@ -26,6 +27,10 @@ vi.mock('@/lib/supabase/admin', () => ({
     rpc: m.rpc,
     from: (table: string) => ({
       select: () => ({ eq: () => ({ gte: async () => ({ count: 0, error: null }) }) }),
+      update: (row: Record<string, unknown>) => {
+        m.updates.push({ table, row });
+        return { eq: () => ({ is: async () => ({ error: null }) }) };
+      },
       insert: (row: Record<string, unknown>) => {
         m.inserts.push({ table, row });
         const saved = { data: { ...row, id: 'sess-1', version: 0, created_at: '2026-10-01T10:00:00Z' }, error: null };
@@ -68,7 +73,7 @@ import type { FunnelLeadResult } from '@/components/estimator/funnel/screens';
 import { publicTemplate } from '@/lib/estimator/config';
 import { allFunnelSelections, encodeFunnelSelection, estimateFunnel, funnelAnswers, funnelSpecFor } from '@/lib/estimator/funnel/engine';
 import { funnelLeadDesign, parseLeadRequest, sanitizeEstimatorAnswers } from '@/lib/estimator/lead';
-import { describeFunnelDesign, estimatorConsentText, funnelContactErrors, splitFullName } from '@/lib/estimator/lead-client';
+import { ADDRESS_NEEDS_ZIP, describeFunnelDesign, estimatorConsentText, funnelContactErrors, splitFullName } from '@/lib/estimator/lead-client';
 import { getEstimator } from '@/lib/estimator/registry';
 
 const { template, contractor } = getEstimator('pool-masters')!;
@@ -81,7 +86,7 @@ const fields = {
   name: '  Jordan  Rivera ',
   email: ' jordan@example.test ',
   phone: '(818) 555-0142',
-  zip: '91302-1234',
+  address: '4521 Park Granada, Calabasas, CA 91302-1234',
   homeowner: 'yes' as const,
   consent: true,
 };
@@ -103,6 +108,7 @@ const activity = () => m.inserts.find((i) => i.table === 'lead_activities')!.row
 beforeEach(() => {
   vi.clearAllMocks();
   m.inserts.length = 0;
+  m.updates.length = 0;
   m.funnel = { id: 'f1', slug: 'pool-masters', is_demo: false, contractor_id: 'c1', integration_id: null, config: funnelConfig };
   m.rpc.mockResolvedValue({ data: { id: 'sess-1', lead_id: 'lead-9' }, error: null });
 });
@@ -114,30 +120,56 @@ describe('contact step request', () => {
     expect(splitFullName('Jordan')).toBeNull();
   });
   it('checks the fields with specific, fixable messages in on-screen order', () => {
-    const errors = funnelContactErrors({ name: 'Jordan', email: 'nope', phone: '818', zip: '9130', homeowner: '', consent: false });
-    expect(Object.keys(errors)).toEqual(['name', 'email', 'phone', 'zip', 'homeowner', 'consent']);
+    const errors = funnelContactErrors({ name: 'Jordan', email: 'nope', phone: '818', address: '', homeowner: '', consent: false });
+    expect(Object.keys(errors)).toEqual(['name', 'email', 'phone', 'address', 'homeowner', 'consent']);
     expect(errors.name).toMatch(/first and last name/);
+    expect(errors.address).toBe('Enter the address of the home.');
     expect(firstInvalid(errors)).toBe('name');
     expect(funnelContactErrors({ ...fields })).toEqual({});
   });
-  it('the four-field form (no ownership question, agree-on-submit) only checks name, email, phone and ZIP', () => {
-    const rules = { askHomeowner: false, consentOnSubmit: true };
-    const errors = funnelContactErrors({ name: '', email: '', phone: '', zip: '', homeowner: '', consent: false }, rules);
-    expect(Object.keys(errors)).toEqual(['name', 'email', 'phone', 'zip']);
-    expect(funnelContactErrors({ ...fields, homeowner: '', consent: false }, rules)).toEqual({});
-    expect(spec.contactStep.askHomeowner).toBeFalsy();
+  it('agree-on-submit: name, email, phone, address and the ownership answer, no box to tick', () => {
+    const rules = { consentOnSubmit: true };
+    const errors = funnelContactErrors({ name: '', email: '', phone: '', address: '', homeowner: '', consent: false }, rules);
+    expect(Object.keys(errors)).toEqual(['name', 'email', 'phone', 'address', 'homeowner']);
+    expect(errors.homeowner).toBe('Tell us whether this pool is at your home.');
+    expect(funnelContactErrors({ ...fields, consent: false }, rules)).toEqual({});
   });
-  it('agree-on-submit sends consent with the exact wording, and no ownership answer it never asked', () => {
-    const body = funnelLeadRequest({ spec, selection: picks, fields: { ...fields, homeowner: '', consent: false }, consentText: 'x', measurement: false, consentOnSubmit: true });
+  it('asks "Is this pool at your home?" with Yes, it’s my home / No, I rent', () => {
+    expect(spec.contactStep.homeowner).toEqual({ label: 'Is this pool at your home?', yes: 'Yes, it’s my home', no: 'No, I rent' });
+    // The funnel this files into qualifies homeowners only: the answer is always asked, never assumed.
+    expect(funnelConfig.qualificationRules).toContainEqual({ question: 'homeowner', operator: 'equals', values: ['yes'] });
+    expect('askHomeowner' in spec.contactStep).toBe(false);
+  });
+  it('a typed address without a ZIP asks for it, with the exact message', () => {
+    const errors = funnelContactErrors({ ...fields, address: '4521 Park Granada, Calabasas' }, { consentOnSubmit: true });
+    expect(errors).toEqual({ address: ADDRESS_NEEDS_ZIP });
+    expect(ADDRESS_NEEDS_ZIP).toBe('Add your ZIP code to the address');
+    expect(funnelContactErrors({ ...fields, address: '91302' }, { consentOnSubmit: true }).address).toMatch(/street address/);
+  });
+  it('a picked place gives its ZIP, until the text is edited', () => {
+    const place = { address: '4521 Park Granada, Calabasas, CA', zip: '91302', city: 'Calabasas', state: 'CA', lat: 34.15, lng: -118.64 };
+    expect(funnelContactErrors({ ...fields, address: place.address, place }, { consentOnSubmit: true })).toEqual({});
+    expect(funnelContactErrors({ ...fields, address: `${place.address} `, place }, { consentOnSubmit: true })).toEqual({});
+    expect(funnelContactErrors({ ...fields, address: '4521 Park Granada, Calabasas', place }, { consentOnSubmit: true }).address).toBe(ADDRESS_NEEDS_ZIP);
+    const body = funnelLeadRequest({ spec, selection: picks, fields: { ...fields, address: place.address, place }, consentText: 'x', measurement: false, consentOnSubmit: true });
+    expect(body.zip).toBe('91302');
+    expect(body.address).toBe(place.address);
+    expect(body.addressDetails).toEqual({ verified: true, city: 'Calabasas', state: 'CA', lat: 34.15, lng: -118.64 });
+    expect(parseLeadRequest(body).ok).toBe(true);
+  });
+  it('agree-on-submit sends consent with the exact wording and the visitor’s own ownership answer', () => {
+    const body = funnelLeadRequest({ spec, selection: picks, fields: { ...fields, homeowner: 'no', consent: false }, consentText: 'x', measurement: false, consentOnSubmit: true });
     expect(body.contact.consent).toBe(true);
     expect(body.consentText).toBe('x');
-    expect('homeowner' in body).toBe(false);
+    expect(body.homeowner).toBe('no');
   });
   it('sends the picks, the contact and the exact consent wording, never a price', () => {
     const body = request();
     expect(body.funnel).toEqual(picks);
     expect(body.contact).toMatchObject({ firstName: 'Jordan', lastName: 'Rivera', email: 'jordan@example.test', consent: true });
     expect(body.zip).toBe('91302');
+    expect(body.address).toBe('4521 Park Granada, Calabasas, CA 91302-1234');
+    expect(body.addressDetails).toBeUndefined();
     expect(JSON.stringify(body)).not.toMatch(/low|high|\$/);
     const parsed = parseLeadRequest(body);
     expect(parsed.ok).toBe(true);
@@ -147,9 +179,8 @@ describe('contact step request', () => {
     expect(placed.name).toBe('Enter your last name');
     expect(formErrors(placed)).toEqual(['Try again.']);
   });
-  it('sends an optional address in the note', () => {
-    const body = funnelLeadRequest({ spec, selection: picks, fields: { ...fields, address: '12 Elm St' }, consentText: 'x', measurement: true });
-    expect(body.note).toBe('Address: 12 Elm St');
+  it('never puts the address in the note', () => {
+    expect(request().note).toBeUndefined();
   });
 });
 
@@ -187,20 +218,39 @@ describe('funnel lead route', () => {
     expect(url.searchParams.get('name')).toBe('Jordan Rivera');
     expect(url.searchParams.get('email')).toBe('jordan@example.test');
   });
-  it('without the ownership question the lead still qualifies, marked "not asked online"', async () => {
-    const body = await (await post(request())).json();
-    expect(request().homeowner).toBeUndefined();
-    expect(body.qualified).toBe(true);
-    const meta = (activity().metadata as { estimator: { homeowner: string } }).estimator;
-    expect(meta.homeowner).toBe('not_asked');
-    expect((rpcArgs().p_answers as Record<string, string>).estimator_check_on_site).toContain('Owns the home (not asked online)');
-  });
-  it('a request without the funnel picks still has to answer the ownership question', async () => {
-    const { funnel: _f, ...rest } = request();
-    void _f;
+  it('a request without the ownership answer is refused (it is never assumed)', async () => {
+    const { homeowner: _h, ...rest } = request();
+    void _h;
     const res = await post(rest);
     expect(res.status).toBe(422);
     expect((await res.json()).errors.homeowner).toBeTruthy();
+    expect(m.rpc).not.toHaveBeenCalled();
+  });
+  it('stores the homeowner answer and never an "assumed" ownership line', async () => {
+    await post(request());
+    const meta = (activity().metadata as { estimator: { homeowner: string } }).estimator;
+    expect(meta.homeowner).toBe('yes');
+    expect(String((rpcArgs().p_answers as Record<string, string>).estimator_check_on_site ?? '')).not.toMatch(/not asked online/);
+    expect((rpcArgs().p_answers as Record<string, string>).homeowner).toBe('yes');
+  });
+  it('gives the contractor the full address (summary, answers, lead columns) and validates the ZIP', async () => {
+    const res = await post({ ...request(), address: '4521 Park Granada, Calabasas, CA', zip: '91302', addressDetails: { verified: true, city: 'Calabasas', state: 'CA', lat: 34.1561, lng: -118.6388 } });
+    expect(res.status).toBe(200);
+    const answers = rpcArgs().p_answers as Record<string, string>;
+    expect(answers.estimator_address).toBe('4521 Park Granada, Calabasas, CA 91302');
+    expect(answers.estimator_address_map).toBe('https://www.google.com/maps/search/?api=1&query=34.156100,-118.638800');
+    expect(String(activity().body)).toContain('Home address: 4521 Park Granada, Calabasas, CA 91302 (picked from Google suggestions)');
+    const meta = (activity().metadata as { estimator: { address: Record<string, unknown> } }).estimator;
+    expect(meta.address).toMatchObject({ line: '4521 Park Granada, Calabasas, CA 91302', zip: '91302', city: 'Calabasas', state: 'CA', verified: true });
+    expect(m.updates).toEqual([{ table: 'leads', row: { address: '4521 Park Granada, Calabasas, CA 91302', city: 'Calabasas', state: 'CA' } }]);
+    const bad = await post({ ...request(), zip: '9130' });
+    expect(bad.status).toBe(422);
+    expect((await bad.json()).errors.zip).toBeTruthy();
+  });
+  it('a bad address detail is dropped, never a failed lead', async () => {
+    const res = await post({ ...request(), addressDetails: { lat: 'x', state: 'California' } });
+    expect(res.status).toBe(200);
+    expect(String(activity().body)).toContain('(typed)');
   });
   it('a funnel set to stop unqualified visitors says nothing was saved', async () => {
     m.funnel = { ...(m.funnel as object), config: { ...funnelConfig, unqualifiedAction: 'stop' } };
@@ -208,11 +258,14 @@ describe('funnel lead route', () => {
     expect(body).toMatchObject({ ok: true, qualified: false, saved: false });
     expect(m.rpc).not.toHaveBeenCalled();
   });
-  it('a renter is saved for review without a booking link', async () => {
+  it('a renter ("No, I rent") is saved for review without a booking link', async () => {
     const body = await (await post({ ...request(), homeowner: 'no' })).json();
     expect(body.ok).toBe(true);
     expect(body.qualified).toBe(false);
     expect(body.calendarUrl).toBeUndefined();
+    expect(body.saved).toBeUndefined();
+    expect(rpcArgs().p_qualified).toBe(false);
+    expect(String(activity().body)).toContain('Homeowner: no, they rent');
   });
   it('unknown steps and options fall back to the defaults instead of failing', async () => {
     const res = await post({ ...request(), funnel: { size: 'mega', nope: 'x' } });
@@ -277,16 +330,26 @@ describe('screens render', () => {
     expect(html).toMatch(/autoComplete="name"|autocomplete="name"/);
     expect(html).toMatch(/type="email"[^>]*inputMode="email"|inputMode="email"/i);
     expect(html).toMatch(/type="tel"/);
-    expect(html).toMatch(/inputMode="numeric"/i);
+    expect(html).not.toMatch(/inputMode="numeric"/i);
+    expect(html).toContain('Home address');
+    expect(html).not.toContain('ZIP code');
+    expect(html).toMatch(/role="combobox"[^>]*aria-autocomplete="list"[^>]*aria-expanded="false"/);
+    expect(html).toMatch(/autoComplete="street-address"|autocomplete="street-address"/i);
     expect(html).toContain(estimatorConsentText(contractor.contractorName).replace(/'/g, '&#x27;'));
     expect(html).toContain('By tapping');
     expect(html).toContain('CSLB #1112793');
-    // Four fields, no ownership question, no consent checkbox, the measurement box never pre-ticked.
+    // Four text fields + the ownership buttons, no consent checkbox, the measurement box never pre-ticked.
     expect(html.match(/data-text=""/g)).toHaveLength(4);
+    expect(html).toContain('Is this pool at your home?');
+    expect(html).toContain('Yes, it’s my home');
+    expect(html).toContain('No, I rent');
+    expect(html.match(/type="radio"/g)).toHaveLength(2);
+    expect(html).not.toMatch(/type="radio"[^>]*checked/);
     expect(html).not.toContain('Do you own this home?');
     expect(html).not.toMatch(/data-field="consent"/);
     expect(html).not.toMatch(/type="checkbox"[^>]*checked/);
-    expect(html).toMatch(/enterKeyHint="go"|enterkeyhint="go"/i);
+    // Name, email and phone say "Next"; the address too until the ownership question is answered.
+    expect(html.match(/enterKeyHint="next"/gi)).toHaveLength(4);
     expect(html).not.toMatch(/★|reviews/i);
   });
   it('the booking step: picks, range, ballpark and example-price wording, financing without payments, call link', () => {
@@ -310,7 +373,7 @@ describe('screens render', () => {
     expect(html).toContain('tel:+18186436888');
     expect(html).toContain('Open the calendar in a new tab');
   });
-  it('the booking step without a booking link (renter / outside the area) says we will call', () => {
+  it('the booking step without a booking link (outside the area) says we will call', () => {
     const result: FunnelLeadResult = {
       estimate: estimateFunnel(spec, template, picks).estimate,
       qualified: false,
@@ -321,6 +384,27 @@ describe('screens render', () => {
     );
     expect(html).toContain('within one business day');
     expect(html).not.toContain('calendly');
+  });
+  it('a renter saved for review gets the review wording: no booking and no promised call', () => {
+    const result: FunnelLeadResult = {
+      estimate: estimateFunnel(spec, template, picks).estimate,
+      qualified: false,
+      homeowner: 'no',
+      contact: { firstName: 'Jordan', lastName: 'Rivera', email: 'j@x.test' },
+    };
+    const html = renderToStaticMarkup(
+      <FunnelBookingScreen slug="pool-masters" spec={spec} contractor={contractor} template={pub} selection={picks} result={result} embedded={false} headingId="h" />,
+    );
+    expect(html).toContain('Your project needs a personal review.');
+    expect(html).toContain('Your ballpark estimate');
+    expect(html).not.toContain('Book your free on-site estimate');
+    expect(html).not.toContain('within one business day');
+    expect(html).not.toContain('calendly');
+    const unsaved = renderToStaticMarkup(
+      <FunnelBookingScreen slug="pool-masters" spec={spec} contractor={contractor} template={pub} selection={picks} result={{ ...result, saved: false }} embedded={false} headingId="h" />,
+    );
+    expect(unsaved).toContain('were not saved');
+    expect(unsaved).not.toContain('are saved');
   });
 });
 

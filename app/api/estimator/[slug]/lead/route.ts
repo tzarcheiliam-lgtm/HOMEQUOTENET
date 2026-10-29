@@ -17,7 +17,7 @@ import { configuratorSpecFor } from '@/lib/estimator/configurator/engine';
 import { funnelSpecFor } from '@/lib/estimator/funnel/engine';
 import { getEstimator } from '@/lib/estimator/registry';
 import {
-  ReplayCache, acceptedConsent, bookingUrl, buildLeadPayload, configuratorLeadDesign, funnelLeadDesign, isHoneypot, originAllowed, parseLeadRequest, pickLikedLooks,
+  ReplayCache, acceptedConsent, addressLine, bookingUrl, buildLeadPayload, configuratorLeadDesign, funnelLeadDesign, isHoneypot, originAllowed, parseLeadRequest, pickLikedLooks,
   sanitizeEstimatorAnswers, type ConfiguratorLeadDesign,
 } from '@/lib/estimator/lead';
 import { estimatorConsentText, type EstimatorLeadResponse } from '@/lib/estimator/lead-client';
@@ -117,9 +117,6 @@ async function handle(request: Request, context: Context): Promise<Response> {
   const where = { origin: request.headers.get('origin') && originAllowed(request) ? request.headers.get('origin')! : origin, slug };
   const spec = configuratorSpecFor(contractor);
   const funnelSpec = funnelSpecFor(contractor);
-  // Only a funnel whose contact step keeps to four fields may leave ownership out.
-  const homeownerRequired = !(funnelSpec && lead.funnel && !funnelSpec.contactStep.askHomeowner);
-  if (homeownerRequired && !lead.homeowner) return reply({ ok: false, errors: { homeowner: 'Tell us whether you own the home.' } }, 422);
   let answers = sanitizeEstimatorAnswers(template, lead.answers);
   let estimate = computeEstimate(template, { answers, dimensions: lead.dimensions });
   let design: ConfiguratorLeadDesign | undefined;
@@ -186,6 +183,16 @@ async function handle(request: Request, context: Context): Promise<Response> {
     });
     if (error) throw error;
     const leadId = typeof data?.lead_id === 'string' ? data.lead_id : null;
+
+    // The home address on the lead's own columns (the CRM contact card), only where they are still
+    // empty: a funnel without an Address question leaves leads.address blank, and a deduped earlier
+    // lead keeps whatever it already has. No schema change; never fails the submission.
+    if (leadId && lead.address && !funnel.is_demo) {
+      const { city, state } = lead.addressDetails ?? {};
+      const fill = { address: addressLine(lead.address, lead.zip), ...(city ? { city } : {}), ...(state ? { state } : {}) };
+      const { error: addressError } = await db.from('leads').update(fill).eq('id', leadId).is('address', null);
+      if (addressError) console.error('[estimator-lead] could not store the address', addressError.code ?? 'unknown');
+    }
 
     if (!funnel.is_demo) {
       // The full breakdown (lines, site-visit items, liked looks) on the lead's timeline.

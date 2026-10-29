@@ -276,8 +276,9 @@ config (`content/estimators/pool-masters.ts`) sets `experience: 'funnel'`, `funn
 
 **Routes.** `/estimator/pool-masters` is the landing page (announcement bar "Serving LA, OC, Ventura & the Inland
 Empire", floating header card with the logo and a menu, "Backyard pools, remodeled just for you", one line, a blue
-"Design your pool" button, the evening hero photo with an "Example design · AI-assisted" badge; below the fold three
-real projects and the licence). `/estimator/pool-masters/design?step=1|2|3|contact|book&size=..&finish=..&extras=..`
+"Design your pool" button, the evening hero photo (nothing drawn over it); below the fold three
+real projects and the licence). No photo carries a badge: one quiet footer line on every funnel page (and under the
+embed's column) says "Photos show example designs, AI-assisted from Pool Masters projects." (`FunnelSpec.photoNote`). `/estimator/pool-masters/design?step=1|2|3|contact|book&size=..&finish=..&extras=..`
 holds the steps (`noindex`). `/embed/estimator/pool-masters` starts at step 1.
 
 **Steps.** One question per screen: "STEP n OF 3", the photo (all option photos stacked and loaded, so a tap swaps it
@@ -293,12 +294,29 @@ Prices: `estimateFunnel` = `computeEstimate` on `funnelAnswers` (the configurato
 Go Luxe discount**, so Luxe totals sit above the configurator's Go Luxe figure. Classic + Luxe + spa is $65,000 –
 $106,500 (examples). No equipment or site questions: those are checked at the free on-site visit (the lead lists them).
 
-**Contact step.** "Your estimate is ready. / Where should we send it?" Name, Email, Phone number, ZIP code (it gates the
-service area), the button, the trust line, and the consent wording in small print under the button: tapping "Get my
+**Contact step.** "Your estimate is ready. / Where should we send it?" Name, Email, Phone number, **Home address**
+(Google address suggestions, see below), then "Is this pool at your home?" with two buttons "Yes, it's my home" / "No,
+I rent" (`contactStep.homeowner`; the lead's `homeowner` yes / no, always asked and required by the route, never
+assumed), the button, the trust line, and the consent wording in small print under the button: tapping "Get my
 estimate" is the agreement (the request sends `consent: true` with that exact `consentText`; the route still checks the
-wording). No ownership question (`contactStep.askHomeowner` false): the route accepts a funnel request without
-`homeowner`, assumes it for qualification and adds "Owns the home (not asked online)" to the check-on-site list. The
-optional ad-measurement box is never pre-ticked. One error at a time; Return moves to the next field.
+wording). The optional ad-measurement box is never pre-ticked. One error at a time; Return moves to the next field.
+
+**Address autocomplete.** `components/estimator/funnel/contact/address-field.tsx` (ARIA combobox + listbox; 200 ms
+debounce, 3+ characters, white list with 1px #d0d0d0 border, 8px radius, 48px rows, arrows / Return / Escape, closes on
+blur, overlays the page, scrolls the field to the top on touch devices; `autocomplete="street-address"`). It calls
+`POST /api/estimator/[slug]/address/autocomplete` and `/address/details` (`lib/estimator/address.ts`), server proxies for
+Google Places API (New) with `GOOGLE_PLACES_API_KEY` (never sent to the browser): US street addresses biased to a 50 km
+circle around downtown LA, session token passed through, details with the Essentials field mask
+`formattedAddress,addressComponents,location` -> `{address, zip, city, state, lat, lng}`. Same-origin check, registered
+slug only, input caps, an in-memory per-IP limit (90 suggestions / 30 picks per 5 min per instance), 3-4 s timeouts,
+nothing logged. Without the key the autocomplete route answers `{ok:false, reason:'disabled'}` and the field is a plain
+input. ZIP: the picked place's (while the text is unchanged), else a 5-digit ZIP typed at the end of the address or
+after a state code (`extractZip`); none -> "Add your ZIP code to the address". The ZIP still gates the service area
+and is validated by the lead route.
+
+**Renters.** "No, I rent" fails the funnel's `homeowner = yes` rule: the lead is saved for review
+(`unqualifiedAction: 'review'`), no booking link; the last screen says "Your ballpark estimate" and "Your project needs
+a personal review" (no promised call). With `unqualifiedAction: 'stop'` it says the details were not saved and to call.
 
 **Booking step.** "Book your free on-site estimate", a price card (picks on one line, the server's range, "Ballpark
 price, not a quote…", "Example prices, not yet confirmed." while unconfirmed, "Financing available · See details" with
@@ -311,6 +329,10 @@ picks, the typed details and the lead result through a refresh.
 
 **Lead.** The request carries `funnel` (step id → option id); the server re-prices from it alone (`funnelLeadDesign`)
 and stores the picks in words, one photo per step, a link back to the design and the mapped configurator selection.
+The request also carries `address` (+ `addressDetails` {city, state, lat, lng, verified} from a picked place): the lead
+gets `estimator_address` / `estimator_address_map` answers, "Home address: …" and "Homeowner: …" lines on its timeline,
+`estimator.address` in the metadata, a funnel Address question (if the funnel has one) and `leads.address` / `city` /
+`state` filled where still empty.
 
 **Reuse.** `FunnelSpec` (`lib/estimator/funnel/types.ts`) is plain data: landing copy, steps, options mapped to
 configurator models/rows or to template answers, photo rules per option or per configurator view. A bathroom or
@@ -320,7 +342,8 @@ kitchen funnel needs a spec and photos, no new components.
 
 - **Agree-on-submit consent.** The funnel's consent is "by tapping the button" instead of a checkbox (the wording and the
   server check are unchanged). Get legal sign-off for the TCPA wording used this way.
-- **Ownership not asked online.** Funnel leads qualify without the homeowner question; renters are caught on the call.
+- **Google attribution.** The suggestion list shows a text "Powered by Google" line; check it against Google's current
+  attribution rules (they may want the logo).
 
 - **Pool Masters calendar.** `calendarUrl` is `https://calendly.com/homequotenetwork/30min` (HomeQuote's account). Swap
   in a Pool Masters calendar when they have one.

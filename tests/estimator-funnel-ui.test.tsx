@@ -176,7 +176,11 @@ describe('funnel step markup', () => {
     expect(html).toContain('aria-label="Back"');
     expect(html).toContain('>Get my estimate</button>');
     expect(html).toContain('aerial-porcelain-pebble-spa');
-    expect(html).toContain('Example design');
+    // Nothing over the photos: the example-design note is one quiet line in the footer.
+    expect(html).not.toContain('Example design');
+    expect(html).not.toMatch(/AI-assisted<\/span>/);
+    expect(html.match(/AI-assisted/g)).toHaveLength(1);
+    expect(html.slice(html.indexOf('<footer'))).toContain(SPEC.photoNote!);
     expect(html).toMatch(/<input[^>]*checked=""[^>]*value="spa"/);
   });
 
@@ -185,6 +189,9 @@ describe('funnel step markup', () => {
     expect(html).not.toContain('<footer');
     expect(html).not.toContain('<main');
     expect(text(html)).toContain('Step 1 of 3');
+    // The note sits once under the column, never on the photo.
+    expect(html.match(/AI-assisted/g)).toHaveLength(1);
+    expect(html).not.toContain('Example design');
   });
 
   it('?step=book without a sent lead renders a placeholder, never someone else\'s price', () => {
@@ -214,6 +221,10 @@ describe('funnel landing', () => {
     for (const p of SPEC.landing.projects ?? []) expect(html).toContain(p.src);
     expect(t).toContain(contractor.licenseLabel);
     expect(t).not.toMatch(/\$\s?\d|★|reviews?/i);
+    // No badge on the hero: one quiet footer line only.
+    expect(html).not.toContain('Example design');
+    expect(html.match(/AI-assisted/g)).toHaveLength(1);
+    expect(html.slice(html.indexOf('<footer'))).toContain(SPEC.photoNote!);
   });
 });
 

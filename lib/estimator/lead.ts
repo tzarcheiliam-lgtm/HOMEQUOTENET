@@ -70,8 +70,19 @@ export const leadRequestSchema = z.object({
     (v) => (typeof v === 'string' ? normalizeZip(v) ?? v : v),
     z.string({ required_error: 'Enter the property’s 5-digit ZIP code.' }).regex(/^\d{5}$/, 'Enter a valid five-digit ZIP code.'),
   ),
-  // Required except on a funnel that does not ask it (the route checks: homeownerRequired).
-  homeowner: z.enum(['yes', 'no'], { errorMap: () => ({ message: 'Tell us whether you own the home.' }) }).optional(),
+  // Always required: the funnel's qualification rules read it (never assumed).
+  homeowner: z.enum(['yes', 'no'], { errorMap: () => ({ message: 'Tell us whether you own the home.' }) }),
+  // The home's full address (funnel "Home address"); the ZIP above stays the validated one.
+  address: z.string().max(300, 'Use 300 characters or fewer for the address.').optional()
+    .transform((v) => v?.replace(/[\u0000-\u001F\u007F]/g, ' ').replace(/\s+/g, ' ').trim() || undefined),
+  // What a picked Google place adds; nice to have, so a bad value is dropped, never a failed lead.
+  addressDetails: z.object({
+    city: z.string().trim().max(80).optional(),
+    state: z.string().regex(/^[A-Z]{2}$/).optional(),
+    lat: z.number().finite().min(-90).max(90).optional(),
+    lng: z.number().finite().min(-180).max(180).optional(),
+    verified: z.boolean().default(false),
+  }).optional().catch(undefined),
   // Optional: the configurator does not ask it (the funnel's timeline question then stays open).
   timeline: z.enum(LEAD_TIMELINES.map((t) => t.id) as [string, ...string[]], { errorMap: () => ({ message: 'Choose when you want to start.' }) }).optional(),
   contact,
@@ -305,13 +316,13 @@ function projectAliases(trade: string, project: string | undefined): string[] {
 
 /**
  * Fills the funnel's own questions from the estimator answers: the ZIP question,
- * the homeowner and timeline questions by id, and any choice question whose
+ * an address question (with the home address), the homeowner and timeline questions by id, and any choice question whose
  * option matches the project pick. Optional typed questions are skipped (''),
  * anything else stays unanswered (qualifyLead then decides on what is known).
  */
 export function funnelAnswersFor(
   config: FunnelConfig,
-  input: { zip: string; homeowner: string; timeline?: string; project?: string; trade?: string },
+  input: { zip: string; homeowner: string; timeline?: string; project?: string; trade?: string; address?: string },
 ): Record<string, string> {
   const answers: Record<string, string> = {};
   const aliases = projectAliases(input.trade ?? 'pool', input.project);
@@ -319,6 +330,8 @@ export function funnelAnswersFor(
     if (!q.showWhen.every((c) => matches(c, answers))) continue;
     const has = (value: string) => q.options.some((o) => o.value === value);
     if (q.type === 'zip') answers[q.id] = input.zip;
+    // The funnel's own Address question (if any) also fills leads.address (save_funnel_session).
+    else if (q.type === 'address' && input.address) answers[q.id] = input.address;
     else if (q.type !== 'choice') {
       if (q.required === false) answers[q.id] = '';
     } else if (q.id === 'homeowner' && has(input.homeowner)) answers[q.id] = input.homeowner;
@@ -515,15 +528,22 @@ export function funnelLeadDesign(
   };
 }
 
+/**
+ * The address as the contractor reads it, always with the ZIP the lead was
+ * validated and gated on ("12 Elm St, Calabasas, CA" + 91302 -> "..., CA 91302").
+ */
+export function addressLine(address: string, zip: string): string {
+  const line = address.replace(/,\s*(USA|United States)$/i, '').trim();
+  return new RegExp(`\\b${zip}\\b`).test(line) ? line : `${line} ${zip}`;
+}
+
 export function buildLeadPayload(input: LeadPayloadInput): LeadPayload {
   const { template, contractor, funnel, request, answers, estimate, likedLooks, design } = input;
   const projectQ = template.questions.find((q) => q.role === 'project');
   const project = projectQ ? picksFor(projectQ, answers)[0] : undefined;
 
-  // A funnel that keeps to four fields never asks about ownership: it is assumed for the
-  // qualification rules and listed as "not asked online" for the call / on-site visit.
-  const homeownerAsked = request.homeowner !== undefined;
-  const base = funnelAnswersFor(funnel.config, { zip: request.zip, homeowner: request.homeowner ?? 'yes', timeline: request.timeline, project, trade: template.trade });
+  const address = request.address ? addressLine(request.address, request.zip) : undefined;
+  const base = funnelAnswersFor(funnel.config, { zip: request.zip, homeowner: request.homeowner, timeline: request.timeline, project, trade: template.trade, address });
   const qualified = qualifyLead(funnel.config, base);
   const areaValid = areaValidFor(funnel.config, base);
 
@@ -533,8 +553,9 @@ export function buildLeadPayload(input: LeadPayloadInput): LeadPayload {
   // Questions the page never asked (the configurator skips the property questions): check them on site.
   const notAsked = [
     ...estimate.unanswered.map((id) => template.questions.find((q) => q.id === id)).filter((q) => q !== undefined).map((q) => q.summaryLabel ?? q.label),
-    ...(homeownerAsked ? [] : ['Owns the home (not asked online)']),
   ];
+  const details = request.addressDetails;
+  const mapUrl = details?.lat !== undefined && details?.lng !== undefined ? `https://www.google.com/maps/search/?api=1&query=${details.lat.toFixed(6)},${details.lng.toFixed(6)}` : undefined;
   const geometry = estimate.geometry;
   const [sizeKey, sizeText] = describeSize(template, geometry);
   const source = estimatorSourceLabel(template);
@@ -546,6 +567,8 @@ export function buildLeadPayload(input: LeadPayloadInput): LeadPayload {
     estimator_source: source,
     estimator_range: range,
     estimator_status: estimate.status,
+    ...(address ? { estimator_address: clip(address, 300) } : {}),
+    ...(mapUrl ? { estimator_address_map: mapUrl } : {}),
     [sizeKey]: sizeText,
     ...(picks.length ? { estimator_picks: clip(picks.join('; ')) } : {}),
     ...(siteVisit.length ? { estimator_site_visit: clip(siteVisit.join('; ')) } : {}),
@@ -568,6 +591,9 @@ export function buildLeadPayload(input: LeadPayloadInput): LeadPayload {
 
   const lines = [
     `${source}: ballpark ${range} (not a quote${template.pricesConfirmed ? '' : '; example prices'})`,
+    ...(address ? [`Home address: ${address}${details?.verified ? ' (picked from Google suggestions)' : ' (typed)'}`] : []),
+    ...(mapUrl ? [`Map: ${mapUrl}`] : []),
+    `Homeowner: ${request.homeowner === 'yes' ? 'yes, the pool is at their home' : 'no, they rent'}`,
     ...(design ? ['Their design:', ...design.summary.map((d) => `- ${d}`)] : []),
     ...(design ? ['Price lines:'] : []),
     ...estimate.lines.map((l) => `- ${l.label}: ${formatRange(l.low, l.high)}`),
@@ -605,7 +631,10 @@ export function buildLeadPayload(input: LeadPayloadInput): LeadPayload {
           likedLooks: likedLooks.map((l) => l.src),
           note: request.note ?? null,
           timeline: request.timeline ?? null,
-          homeowner: request.homeowner ?? 'not_asked',
+          homeowner: request.homeowner,
+          address: address
+            ? { line: address, zip: request.zip, city: details?.city ?? null, state: details?.state ?? null, lat: details?.lat ?? null, lng: details?.lng ?? null, verified: details?.verified ?? false }
+            : null,
           ...(design
             ? {
                 ...(design.funnel ? { funnel: design.funnel } : {}),

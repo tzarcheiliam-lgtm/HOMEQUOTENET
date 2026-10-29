@@ -15,7 +15,9 @@ import { bookingFrameUrl, priceEyebrow, priceRange, readCalendlyMessage } from '
  * 2. The booking card: the contractor's Calendly inline (name / email
  *    prefilled by the server), sized to its content, with a button that opens
  *    it in a new tab (also the only option inside the /embed iframe). An
- *    unqualified lead (outside the service area) is told we will call, or,
+ *    unqualified lead outside the service area is told we will call; a renter
+ *    ("No, I rent") that the funnel saved for review is told the project needs
+ *    a personal review (the funnel's own review wording, no promised call);
  *    when nothing was saved (result.saved false), to call us.
  * 3. "Prefer to talk now? Call (818) 643-6888".
  *
@@ -37,6 +39,8 @@ export function FunnelBookingScreen({ spec, selection, contractor, result, embed
 
   const range = priceRange(result.estimate);
   const calendarUrl = result.qualified ? result.calendarUrl : undefined;
+  // "No, I rent": the funnel's homeowner rule did not pass (never a booking, never a promised call).
+  const renter = !result.qualified && result.homeowner === 'no';
   const frame = !embedded && calendarUrl && host ? bookingFrameUrl(calendarUrl, host) : null;
   const tel = telHref(contractor.phone);
   const examplePrices = contractor.pricesConfirmed === false;
@@ -60,7 +64,7 @@ export function FunnelBookingScreen({ spec, selection, contractor, result, embed
   return (
     <div className="w-full" data-funnel-booking="">
       <h1 id={headingId} tabIndex={-1} className="fn-h1 text-balance outline-none">
-        {step.headline}
+        {renter ? 'Your ballpark estimate' : step.headline}
       </h1>
 
       {/* Price card */}
@@ -163,7 +167,20 @@ export function FunnelBookingScreen({ spec, selection, contractor, result, embed
               {firstName ? `Thanks, ${firstName}.` : 'Thank you.'} We can&rsquo;t book this one online.
             </h2>
             <p className="mt-1.5 text-[15px] leading-[22px] text-[var(--fn-text)]">
-              It may be outside the area we serve. Give {contractor.contractorName} a call and we&rsquo;ll tell you what we can do.
+              {renter
+                ? `We book online visits with homeowners. Your details were not saved; give ${contractor.contractorName} a call and we’ll tell you what we can do.`
+                : `It may be outside the area we serve. Give ${contractor.contractorName} a call and we’ll tell you what we can do.`}
+            </p>
+          </div>
+        ) : renter ? (
+          // Saved for review (the funnel's unqualifiedAction 'review'): no booking, no promised call.
+          <div data-funnel-review="">
+            <h2 id={`${uid}-book`} className="text-[19px] font-medium leading-tight text-[var(--fn-ink)]">
+              {firstName ? `Thanks, ${firstName}.` : 'Thank you.'} Your project needs a personal review.
+            </h2>
+            <p className="mt-1.5 text-[15px] leading-[22px] text-[var(--fn-text)]">
+              We book on-site estimates online with homeowners. Your details are saved, and the {contractor.contractorName} team will review them
+              before we can confirm a fit.
             </p>
           </div>
         ) : (

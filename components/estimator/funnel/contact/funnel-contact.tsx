@@ -5,6 +5,7 @@ import { ArrowRight, Loader2 } from 'lucide-react';
 import { tidyPhone } from '@/components/estimator/configurator/result/booking-state';
 import { estimatorConsentText, funnelContactErrors, newSubmissionId, submitEstimatorLead, type EstimatorLeadRequest } from '@/lib/estimator/lead-client';
 import type { FunnelContactScreenProps } from '../screens';
+import { AddressField } from './address-field';
 import {
   clearContactDraft,
   emptyFunnelFields,
@@ -19,11 +20,12 @@ import {
 
 /**
  * The funnel's contact step: "Your estimate is ready. / Where should we send it?"
- * Buildoly's shape: four fields (name, email, phone, ZIP: it gates the service
- * area), then the button, with the consent wording in small print right under
- * it: tapping the button is the agreement (agree-on-submit; the lead route
- * still checks the exact wording). "Do you own this home?" is asked only when
- * the spec says so (contactStep.askHomeowner). Then the lead POST with the picks.
+ * Buildoly's shape: name, email, phone, home address (Google suggestions via
+ * ./address-field; its ZIP gates the service area), then "Is this pool at your
+ * home?" (Yes, it's my home / No, I rent: the lead's homeowner answer, always
+ * asked, never assumed), then the button, with the consent wording in small
+ * print right under it: tapping the button is the agreement (agree-on-submit;
+ * the lead route still checks the exact wording). Then the lead POST with the picks.
  * The server prices the picks and answers with the estimate; onSuccess hands it
  * to the shell (onDone), which stores it and opens the booking screen.
  *
@@ -55,14 +57,16 @@ const fieldBase =
 const fieldOk = 'border-[var(--fn-line)] focus:border-[var(--fn-blue)] focus:shadow-[0_0_0_1px_var(--fn-blue)]';
 const fieldBad = 'border-[#c4281c] focus:shadow-[0_0_0_1px_#c4281c]';
 
-type TextKey = 'name' | 'email' | 'phone' | 'zip' | 'address';
+type TextKey = 'name' | 'email' | 'phone';
 
 export function FunnelContactScreen({ slug, spec, selection, contractor, headingId, onDone, onOpenSent }: FunnelContactScreenProps) {
   const uid = useId();
   const step = spec.contactStep;
-  const askHomeowner = step.askHomeowner === true;
-  const rules = { askHomeowner, consentOnSubmit: true };
+  const rules = { consentOnSubmit: true };
   const [fields, setFields] = useState<FunnelContactFields>(emptyFunnelFields);
+  // The latest fields for checks that run after an await (a resolved address pick).
+  const fieldsRef = useRef(fields);
+  fieldsRef.current = fields;
   // Never pre-ticked (same as the configurator): only the visitor's own tick sends browser ids to Meta.
   const [measurement, setMeasurement] = useState(false);
   const [consentWording, setConsentWording] = useState(() => estimatorConsentText(contractor.contractorName));
@@ -136,6 +140,7 @@ export function FunnelContactScreen({ slug, spec, selection, contractor, heading
         contact: { firstName: draft.contact.firstName, lastName: draft.contact.lastName, email: draft.contact.email },
         selection: draft.funnel,
         saved: res.saved,
+        homeowner: draft.homeowner,
       });
       return;
     }
@@ -148,9 +153,9 @@ export function FunnelContactScreen({ slug, spec, selection, contractor, heading
   };
 
   /** Leaving a field that has something in it checks just that field (an empty one waits for the submit). */
-  const check = (key: TextKey, value: string) => {
-    if (key === 'address' || !value.trim()) return;
-    const message = funnelContactErrors({ ...fields, [key]: value }, rules)[key];
+  const check = (key: TextKey | 'address', value: string) => {
+    if (!value.trim()) return;
+    const message = funnelContactErrors({ ...fieldsRef.current, [key]: value }, rules)[key];
     setErrors((e) => {
       if ((e[key] ?? undefined) === message) return e;
       const next = { ...e };
@@ -160,17 +165,20 @@ export function FunnelContactScreen({ slug, spec, selection, contractor, heading
     });
   };
 
-  /** The keyboard says "Next": go to the next field instead of submitting the form. */
+  /** The keyboard says "Next": go to the next field instead of submitting the form (after the last one, close the keyboard). */
   const onEnter = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== 'Enter' || e.currentTarget.enterKeyHint !== 'next') return;
     e.preventDefault();
     const inputs = Array.from(formRef.current?.querySelectorAll<HTMLInputElement>('input[data-text]') ?? []);
-    inputs[inputs.indexOf(e.currentTarget) + 1]?.focus();
+    const next = inputs[inputs.indexOf(e.currentTarget) + 1];
+    if (next) next.focus();
+    else e.currentTarget.blur();
   };
 
   const general = formErrors(errors);
   const err = (key: string) => errors[key];
-  const lastText: TextKey = step.askAddress ? 'address' : 'zip';
+  const labelClass =
+    'pointer-events-none absolute left-[16px] top-[17px] origin-left text-[16px] leading-[22px] text-[var(--fn-muted)] transition-transform duration-150 ease-out peer-focus:-translate-y-[10px] peer-focus:scale-[0.75] peer-[:not(:placeholder-shown)]:-translate-y-[10px] peer-[:not(:placeholder-shown)]:scale-[0.75] motion-reduce:transition-none';
 
   const text = (key: TextKey, label: string, extra: Record<string, string | number | boolean>) => (
     <div>
@@ -191,16 +199,13 @@ export function FunnelContactScreen({ slug, spec, selection, contractor, heading
               check('phone', tidy);
             } else check(key, fields[key]);
           }}
-          enterKeyHint={key === lastText ? 'go' : 'next'}
+          enterKeyHint="next"
           aria-invalid={err(key) ? true : undefined}
           aria-describedby={err(key) ? `${uid}-${key}-e` : undefined}
           className={`${fieldBase} ${err(key) ? fieldBad : fieldOk}`}
           {...extra}
         />
-        <label
-          htmlFor={`${uid}-${key}`}
-          className="pointer-events-none absolute left-[16px] top-[17px] origin-left text-[16px] leading-[22px] text-[var(--fn-muted)] transition-transform duration-150 ease-out peer-focus:-translate-y-[10px] peer-focus:scale-[0.75] peer-[:not(:placeholder-shown)]:-translate-y-[10px] peer-[:not(:placeholder-shown)]:scale-[0.75] motion-reduce:transition-none"
-        >
+        <label htmlFor={`${uid}-${key}`} className={labelClass}>
           {label}
         </label>
       </div>
@@ -242,18 +247,42 @@ export function FunnelContactScreen({ slug, spec, selection, contractor, heading
             maxLength: 254,
           })}
           {text('phone', 'Phone number', { type: 'tel', autoComplete: 'tel', inputMode: 'tel', maxLength: 30 })}
-          {text('zip', 'ZIP code', { type: 'text', autoComplete: 'postal-code', inputMode: 'numeric', maxLength: 10 })}
-          {step.askAddress ? text('address', 'Street address (optional)', { type: 'text', autoComplete: 'street-address', maxLength: 300 }) : null}
+          <div>
+            <AddressField
+              slug={slug}
+              id={`${uid}-address`}
+              label="Home address"
+              value={fields.address}
+              onChange={(value, place) => {
+                setFields((f) => ({ ...f, address: value, place }));
+                if (errors.address) {
+                  setErrors((e) => {
+                    const next = { ...e };
+                    delete next.address;
+                    return next;
+                  });
+                }
+              }}
+              onBlur={() => check('address', fieldsRef.current.address)}
+              onKeyDown={onEnter}
+              invalid={!!err('address')}
+              describedBy={err('address') ? `${uid}-address-e` : undefined}
+              // The last text field: "Go" once the ownership question is answered, else Return just closes the keyboard.
+              enterKeyHint={fields.homeowner ? 'go' : 'next'}
+              className={`${fieldBase} ${err('address') ? fieldBad : fieldOk}`}
+              labelClassName={labelClass}
+            />
+            <FieldError id={`${uid}-address-e`}>{err('address')}</FieldError>
+          </div>
         </div>
 
-        {askHomeowner ? (
-        <fieldset className="mt-5" aria-describedby={err('homeowner') ? `${uid}-homeowner-e` : undefined}>
-          <legend className="text-[15px] font-medium text-[var(--fn-ink)]">Do you own this home?</legend>
-          <div className="mt-2 grid grid-cols-2 gap-3">
+        <fieldset className="mt-4" aria-describedby={err('homeowner') ? `${uid}-homeowner-e` : undefined}>
+          <legend className="text-[15px] font-medium leading-5 text-[var(--fn-ink)]">{step.homeowner.label}</legend>
+          <div className="mt-2 grid grid-cols-2 gap-2">
             {(
               [
-                ['yes', 'Yes'],
-                ['no', 'No'],
+                ['yes', step.homeowner.yes],
+                ['no', step.homeowner.no],
               ] as const
             ).map(([value, label], i) => {
               const on = fields.homeowner === value;
@@ -261,9 +290,10 @@ export function FunnelContactScreen({ slug, spec, selection, contractor, heading
                 <label
                   key={value}
                   data-selected={on || undefined}
+                  data-homeowner={value}
                   // The error border inline: .es-fn .fn-option's own border outranks a utility class.
                   style={err('homeowner') && !on ? { borderColor: '#c4281c' } : undefined}
-                  className="fn-option flex h-12 items-center justify-center text-[16px] font-medium text-[var(--fn-ink)]"
+                  className="fn-option flex h-12 items-center justify-center px-2 text-center text-[15px] font-medium leading-5 text-[var(--fn-ink)]"
                 >
                   <input
                     type="radio"
@@ -281,7 +311,6 @@ export function FunnelContactScreen({ slug, spec, selection, contractor, heading
           </div>
           <FieldError id={`${uid}-homeowner-e`}>{err('homeowner')}</FieldError>
         </fieldset>
-        ) : null}
 
         {/* Honeypot: hidden, inert, and named so browser autofill leaves it alone. */}
         <div hidden inert aria-hidden="true" className="hidden">

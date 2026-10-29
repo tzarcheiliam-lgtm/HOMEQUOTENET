@@ -108,7 +108,7 @@ export function mapSuggestions(data: unknown): AddressSuggestion[] {
     const p = s?.placePrediction;
     const placeId = p?.placeId;
     if (typeof placeId !== 'string' || !/^[A-Za-z0-9_-]{10,300}$/.test(placeId)) continue;
-    const main = p?.structuredFormat?.mainText?.text ?? p?.text?.text ?? '';
+    const main = tidy(p?.structuredFormat?.mainText?.text ?? p?.text?.text ?? '');
     if (!main) continue;
     const secondary = tidy(p?.structuredFormat?.secondaryText?.text ?? '');
     out.push({ placeId, main: main.slice(0, 200), secondary: secondary.slice(0, 200) });
