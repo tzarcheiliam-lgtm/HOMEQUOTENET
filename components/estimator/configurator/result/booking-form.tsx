@@ -58,8 +58,8 @@ const badBorder = 'border-[#b42318]';
 export function ConfiguratorBooking({ slug, contractor, selection, answers, embedded, onSent }: ConfiguratorBookingProps) {
   const uid = useId();
   const [fields, setFields] = useState<BookingFields>(emptyBookingFields);
-  // Off until the homeowner ticks it (an opt-in, never pre-ticked).
-  const [measurement, setMeasurement] = useState(false);
+  // Pre-ticked unless the contractor is set to opt_in (the owner's call); the homeowner can still untick it.
+  const [measurement, setMeasurement] = useState(contractor.adMeasurement !== 'opt_in');
   const [consentWording, setConsentWording] = useState(() => estimatorConsentText(contractor.contractorName));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [sending, setSending] = useState(false);

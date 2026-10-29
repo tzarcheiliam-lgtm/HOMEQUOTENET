@@ -338,7 +338,7 @@ describe('screens render', () => {
     expect(html).toContain(estimatorConsentText(contractor.contractorName).replace(/'/g, '&#x27;'));
     expect(html).toContain('By tapping');
     expect(html).toContain('CSLB #1112793');
-    // Four text fields + the ownership buttons, no consent checkbox, the measurement box never pre-ticked.
+    // Four text fields + the ownership buttons, no consent checkbox, the measurement box pre-ticked (opt-out contractor).
     expect(html.match(/data-text=""/g)).toHaveLength(4);
     expect(html).toContain('Are you the homeowner?');
     expect(html).toContain('>Yes<');
@@ -347,7 +347,7 @@ describe('screens render', () => {
     expect(html).not.toMatch(/type="radio"[^>]*checked/);
     expect(html).not.toContain('Do you own this home?');
     expect(html).not.toMatch(/data-field="consent"/);
-    expect(html).not.toMatch(/type="checkbox"[^>]*checked/);
+    expect(html).toMatch(/type="checkbox"[^>]*checked/);
     // Name, email and phone say "Next"; the address too until the ownership question is answered.
     expect(html.match(/enterKeyHint="next"/gi)).toHaveLength(4);
     expect(html).not.toMatch(/★|reviews/i);
