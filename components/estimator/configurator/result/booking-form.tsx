@@ -26,7 +26,7 @@ import {
  * The configurator's booking step: contact details (first and last name,
  * phone, email, ZIP, "do you own the home", the funnel consent wording and the
  * optional measurement box, exactly as the old flow), then the lead POST with
- * the design, then a free 30-minute call on HomeQuote's own calendar
+ * the design, then a quick free call (10 minutes) on HomeQuote's own calendar
  * (<BookingFlow>, booked and recorded server-side with the lead route's
  * ticket), or the external calendar link when the estimator still uses one.
  *
@@ -342,7 +342,7 @@ function BookingDone({
           </h3>
           <p className="mt-1.5 text-[14.5px] leading-[22px] text-[#4a463f]">
             We&rsquo;ll call you within one business day
-            {ticket ? ', or pick a time for a free 30-minute call now.' : link ? ', or pick a time for your free on-site consultation now.' : ' to talk through your design and next steps.'}
+            {ticket ? ', or pick a time for a quick call now.' : link ? ', or pick a time for your free on-site consultation now.' : ' to talk through your design and next steps.'}
           </p>
         </div>
       </div>

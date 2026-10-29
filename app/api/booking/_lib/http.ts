@@ -91,6 +91,8 @@ export const LIMITS = {
   callback: { limit: 5, windowMs: 60 * 60_000 },
   manageRead: { limit: 60, windowMs: 10 * 60_000 },
   manageWrite: { limit: 10, windowMs: 10 * 60_000 },
+  /** The public host vCard ("Save Liam's number"). */
+  contact: { limit: 30, windowMs: 10 * 60_000 },
 } as const;
 
 export function limited(request: Request, bucket: keyof typeof LIMITS, extraKey?: string): boolean {

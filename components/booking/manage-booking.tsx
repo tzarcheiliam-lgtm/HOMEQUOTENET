@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Loader2, Phone } from 'lucide-react';
 import { formatDayHeading, formatTime } from '@/lib/booking/format';
-import { AddToCalendar, CallHow, CallTime, ViewHeading } from './call-summary';
+import { AddToCalendar, CallHow, CallTime, HostContactCard, ViewHeading } from './call-summary';
 import { SlotPicker, SlotPickerSkeleton } from './slot-picker';
 import type { ManageResponse, ManageSlotsResponse, PublicBooking, PublicSlot } from './types';
 import { useViewerTimeZone } from './zone';
@@ -110,7 +110,7 @@ export function ManageBooking({ token, initial }: { token: string; initial: Publ
       {mode === 'view' ? (
         <>
           <ViewHeading level={1} headingRef={headingRef}>
-            {cancelled ? 'Your call is cancelled' : past ? 'Your call' : `Your call with ${booking.hostName}`}
+            {cancelled ? 'Your call is cancelled' : past ? 'Your call' : `Your call with ${booking.host?.displayName ?? booking.hostName}`}
           </ViewHeading>
           {done ? <p className="bk-copy mt-3 text-[16px] leading-[24px] text-[var(--bk-text)]" data-booking-done="">{done}</p> : null}
           <div className="mt-6">
@@ -118,9 +118,10 @@ export function ManageBooking({ token, initial }: { token: string; initial: Publ
           </div>
           {!cancelled ? (
             <div className="mt-4">
-              <CallHow meetingType={booking.meetingType} hostName={booking.hostName} durationMinutes={booking.durationMinutes} phoneHint={booking.phoneHint} videoLink={booking.videoLink} />
+              <CallHow meetingType={booking.meetingType} hostName={booking.hostName} durationMinutes={booking.durationMinutes} phoneHint={booking.phoneHint} videoLink={booking.videoLink} host={booking.host} />
             </div>
           ) : null}
+          {booking.canChange && booking.host?.vcardUrl ? <div className="mt-5"><HostContactCard host={booking.host} primary={false} /></div> : null}
           {message ? <p role="alert" className="bk-copy mt-4 rounded-[8px] bg-[#fdf3e7] px-4 py-3 text-[15px] leading-[22px] text-[#6b3d07]">{message}</p> : null}
 
           {booking.canChange ? (

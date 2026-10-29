@@ -36,6 +36,21 @@ export interface GuestMessageContext {
   /** "Add to calendar" (.ics) link. */
   icsUrl: string | null;
   previousStartMs?: number | null;
+  /**
+   * Who calls (the calendar's host contact): "Liam from Pool Masters", "Liam",
+   * the number the call comes from, and the absolute "Save Liam's number"
+   * vCard link. Null = the wording names hostName.
+   */
+  host?: GuestHost | null;
+}
+
+export interface GuestHost {
+  displayName: string;
+  firstName: string | null;
+  /** E.164 the call comes from. */
+  phone: string | null;
+  /** Absolute vCard URL (GET /api/booking/contact/<id>.vcf). */
+  vcardUrl: string | null;
 }
 
 export interface HostMessageContext {
@@ -84,21 +99,47 @@ export function prettyPhone(phone: string | null | undefined): string | null {
   return ten ? `(${ten.slice(0, 3)}) ${ten.slice(3, 6)}-${ten.slice(6)}` : raw;
 }
 
-const minutes = (startMs: number, endMs: number) => Math.max(1, Math.round((endMs - startMs) / 60_000));
+export const callMinutes = (startMs: number, endMs: number) => Math.max(1, Math.round((endMs - startMs) / 60_000));
+const minutes = callMinutes;
+
+/** Who the call is with, as the guest reads it: "Liam from Pool Masters", else the host's name. */
+export const callWith = (c: Pick<GuestMessageContext, 'hostName' | 'host'>) => c.host?.displayName ?? c.hostName;
+
+/** "Save Liam's number" / "Save our number". */
+export const saveNumberText = (c: Pick<GuestMessageContext, 'host'>) => (c.host?.firstName ? `Save ${c.host.firstName}'s number` : 'Save our number');
 
 /** How the call happens, in one sentence for the guest. */
-export function howLine(c: Pick<GuestMessageContext, 'meetingType' | 'phone' | 'videoLink' | 'hostName'>): string {
+export function howLine(c: Pick<GuestMessageContext, 'meetingType' | 'phone' | 'videoLink' | 'hostName' | 'host'>): string {
   if (c.meetingType === 'video') {
     const link = safeLink(c.videoLink);
-    return link ? `It's a video call. Join here: ${link}` : `It's a video call. ${c.hostName} will send you the link.`;
+    return link ? `It's a video call. Join here: ${link}` : `It's a video call. ${callWith(c)} will send you the link.`;
   }
   const phone = prettyPhone(c.phone);
+  if (c.host) {
+    const who = c.host.firstName ?? c.host.displayName;
+    const from = prettyPhone(c.host.phone);
+    return `${who} will call you${phone ? ` at ${phone}` : ''}${from ? ` from ${from}` : ''}.`;
+  }
   return phone ? `We'll call you at ${phone}.` : `${c.hostName} will call you.`;
 }
 
 interface Button { label: string; url: string }
 
-function shell(paragraphs: string[], buttons: Button[], footer: string): string {
+/** The host's card under the buttons: name, number, "Save Liam's number". */
+interface ContactBlock { name: string; phone: string | null; label: string; url: string }
+
+function contactHtml(b: ContactBlock): string {
+  return [
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px 0;width:100%;max-width:420px;border:1px solid #DCE4F2;border-radius:12px;"><tr><td style="padding:14px 16px;font-family:Arial,Helvetica,sans-serif;">',
+    `<div style="font-size:16px;font-weight:700;color:#0A1B3D;">${escapeHtml(b.name)}</div>`,
+    b.phone ? `<div style="font-size:14px;color:#5B6B8C;margin-top:2px;">${escapeHtml(b.phone)}</div>` : '',
+    `<div style="margin-top:12px;"><a href="${escapeHtml(b.url)}" style="display:inline-block;padding:10px 16px;border-radius:8px;background:#0038B8;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;">${escapeHtml(b.label)}</a></div>`,
+    '<div style="font-size:13px;color:#5B6B8C;margin-top:8px;">So you know it\'s us when we call.</div>',
+    '</td></tr></table>',
+  ].join('');
+}
+
+function shell(paragraphs: string[], buttons: Button[], footer: string, contact: ContactBlock | null = null): string {
   const body = paragraphs.map((p) => `<p style="margin:0 0 16px 0;">${escapeHtml(p).replace(/\n/g, '<br>')}</p>`).join('');
   const cells = buttons
     .map((b, i) => `<td style="border-radius:8px;background:${i === 0 ? '#0038B8' : '#EEF3FC'};"><a href="${escapeHtml(b.url)}" style="display:inline-block;padding:12px 20px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;color:${i === 0 ? '#ffffff' : '#0038B8'};text-decoration:none;border-radius:8px;">${escapeHtml(b.label)}</a></td>`)
@@ -109,14 +150,16 @@ function shell(paragraphs: string[], buttons: Button[], footer: string): string 
     '<div style="max-width:600px;margin:0;padding:4px 0;">',
     body,
     row,
+    contact ? contactHtml(contact) : '',
     '<div style="margin-top:16px;border-top:1px solid #DCE4F2;padding-top:12px;font-size:13px;color:#5B6B8C;">',
     escapeHtml(footer),
     '</div></div></div>',
   ].join('');
 }
 
-function textOf(paragraphs: string[], buttons: Button[], footer: string): string {
-  return [...paragraphs, ...buttons.map((b) => `${b.label}: ${b.url}`), `—\n${footer}`].join('\n\n');
+function textOf(paragraphs: string[], buttons: Button[], footer: string, contact: ContactBlock | null = null): string {
+  const card = contact ? [`${contact.label}: ${contact.url}`] : [];
+  return [...paragraphs, ...buttons.map((b) => `${b.label}: ${b.url}`), ...card, `—\n${footer}`].join('\n\n');
 }
 
 /** The guest's email for one notice. */
@@ -124,44 +167,52 @@ export function buildGuestBookingEmail(notice: HomeownerNotice, c: GuestMessageC
   const tz = safeTimeZone(c.timeZone);
   const when = formatSlot(c.startMs, tz);
   const hi = c.firstName?.trim() ? `Hi ${c.firstName.trim()},` : 'Hi,';
-  const length = `${minutes(c.startMs, c.endMs)}-minute ${c.meetingType === 'video' ? 'video' : 'phone'} call`;
+  const mins = minutes(c.startMs, c.endMs);
+  const with_ = callWith(c);
+  const length = `${mins}-minute ${c.meetingType === 'video' ? 'video' : 'phone'} call`;
   const detail = `When: ${when}\nLength: ${length} (${formatRange(c.startMs, c.endMs, tz)})`;
   const manage = safeLink(c.manageUrl);
   const ics = safeLink(c.icsUrl);
+  const vcard = safeLink(c.host?.vcardUrl);
   const buttons: Button[] = [];
   if (notice !== 'cancelled' && manage) buttons.push({ label: 'Reschedule or cancel', url: manage });
   if (notice !== 'cancelled' && ics) buttons.push({ label: 'Add to calendar', url: ics });
   const change = manage ? null : 'Need to change it? Just reply to this email.';
+  // "Save Liam's number" on the confirmation and the reminders (the call is coming), never on a cancellation.
+  const contact: ContactBlock | null = notice !== 'cancelled' && vcard && c.host
+    ? { name: c.host.displayName, phone: prettyPhone(c.host.phone), label: saveNumberText(c), url: vcard }
+    : null;
+  const quick = mins <= 15 ? 'quick ' : '';
 
   let subject: string;
   let lines: string[];
   switch (notice) {
     case 'confirmed':
-      subject = `Your call with ${c.hostName} is booked: ${when}`;
-      lines = [hi, `You're all set. Your call with ${c.hostName} is booked.`, detail, howLine(c)];
+      subject = `Your call with ${with_} is booked: ${when}`;
+      lines = [hi, c.host ? `You're all set for a ${quick}${mins}-minute call with ${with_}.` : `You're all set. Your call with ${with_} is booked.`, detail, howLine(c)];
       break;
     case 'rescheduled': {
       const was = c.previousStartMs ? ` (it was ${formatSlot(c.previousStartMs, tz)})` : '';
-      subject = `Your call with ${c.hostName} moved to ${when}`;
-      lines = [hi, `Your call with ${c.hostName} has a new time${was}.`, detail, howLine(c)];
+      subject = `Your call with ${with_} moved to ${when}`;
+      lines = [hi, `Your call with ${with_} has a new time${was}.`, detail, howLine(c)];
       break;
     }
     case 'reminder_24h':
-      subject = `Reminder: your call with ${c.hostName} is coming up (${when})`;
-      lines = [hi, `A quick reminder that your call with ${c.hostName} is coming up.`, detail, howLine(c)];
+      subject = `Reminder: your call with ${with_} is coming up (${when})`;
+      lines = [hi, `A quick reminder that your call with ${with_} is coming up.`, detail, howLine(c)];
       break;
     case 'reminder_1h':
-      subject = `Starting soon: your call with ${c.hostName} at ${when}`;
-      lines = [hi, `Your call with ${c.hostName} starts in about an hour.`, detail, howLine(c)];
+      subject = `Starting soon: your call with ${with_} at ${when}`;
+      lines = [hi, `Your call with ${with_} starts in about an hour.`, detail, howLine(c)];
       break;
     case 'cancelled':
-      subject = `Your call with ${c.hostName} is cancelled`;
-      lines = [hi, `Your call with ${c.hostName} on ${when} is cancelled.`, 'Want a new time? Just reply to this email and we will set one up.'];
+      subject = `Your call with ${with_} is cancelled`;
+      lines = [hi, `Your call with ${with_} on ${when} is cancelled.`, 'Want a new time? Just reply to this email and we will set one up.'];
       break;
   }
   if (notice !== 'cancelled' && change) lines.push(change);
   const footer = c.hostName.toLowerCase().includes('homequote') ? 'HomeQuote Network · homequotenet.com' : `${c.hostName} · booked through HomeQuote Network`;
-  return { subject, html: shell(lines, buttons, footer), text: textOf(lines, buttons, footer) };
+  return { subject, html: shell(lines, buttons, footer, contact), text: textOf(lines, buttons, footer, contact) };
 }
 
 /** The host's (calendar member's) email for one change. */

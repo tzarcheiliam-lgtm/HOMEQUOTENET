@@ -280,14 +280,14 @@ export function FunnelExperience({ slug, initialConfig, demo, previewMode, jumpT
           <Button type="submit" className="funnel-primary" disabled={busy}>{busy ? 'Saving your request…' : demo ? 'Preview the next step' : session?.qualified && calendarStep ? native ? 'Pick a time for my call' : 'Choose my estimate time' : 'Request my free estimate'}<ArrowRight size={18} /></Button>
         </form>}
         {step === 'calendar' && !done && native && previewMode && <div className="funnel-calendar">
-          <p className="funnel-description">Your request is saved. Pick a time for a free 30-minute call.</p>
+          <p className="funnel-description">Your request is saved. Pick a time for a quick call with the team.</p>
           <div className="funnel-preview-calendar">The HomeQuote calendar shows open times here for a real visitor{session?.booked_at ? ' (preview: booked)' : ''}.</div>
           {!session?.booked_at && <Button className="funnel-primary" onClick={() => void save({ simulateBooking: true })}>Preview: simulate a booking</Button>}
         </div>}
         {step === 'calendar' && !done && native && !previewMode && <div className="funnel-calendar funnel-calendar-native" data-funnel-native-calendar="">
           {demo ? <p className="funnel-description">In a published funnel, open times from the calendar show here. Nothing is booked in the demo.</p>
             : session?.bookingTicket ? <BookingFlow grant={session.bookingTicket} heading={null} headingLevel={2}
-              intro={session.booked_at ? null : 'Your request is saved. Pick a time for a free 30-minute call about your project.'}
+              intro={session.booked_at ? null : 'Your request is saved. Pick a time for a quick {minutes}-minute call with {host}.'}
               onBooked={() => setSession(s => s && { ...s, booked_at: s.booked_at ?? new Date().toISOString() })} />
             : <p className="funnel-description">Your request is saved. Online booking isn’t available right now, so the team will call you to set up a time.</p>}
           {nativeBooked && vcard && <><p>Save our number so you recognise us when we call.</p><Button className="funnel-primary" type="button" onClick={() => saveToContacts(config)}><UserPlus size={18} /> Save {config.clientName} to my contacts</Button></>}

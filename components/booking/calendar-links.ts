@@ -8,16 +8,20 @@ import type { PublicBooking } from './types';
 const stamp = (ms: number) => new Date(ms).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
 
 /** "Phone call with Pool Masters" / "Video call with a HomeQuote project specialist". */
-export function callTitle(b: Pick<PublicBooking, 'meetingType' | 'hostName'>): string {
+export function callTitle(b: Pick<PublicBooking, 'meetingType' | 'hostName'> & { host?: PublicBooking['host'] }): string {
   const how = b.meetingType === 'video' ? 'Video call' : b.meetingType === 'in_person' ? 'Meeting' : 'Phone call';
-  return `${how} with ${b.hostName}`;
+  return `${how} with ${b.host?.displayName ?? b.hostName}`;
 }
 
 /** How the call happens, plus the link to change it. */
-export function callDetails(b: Pick<PublicBooking, 'meetingType' | 'hostName' | 'phoneHint' | 'videoLink' | 'durationMinutes'>, manageAbsoluteUrl: string | null): string {
+export function callDetails(
+  b: Pick<PublicBooking, 'meetingType' | 'hostName' | 'phoneHint' | 'videoLink' | 'durationMinutes'> & { host?: PublicBooking['host'] },
+  manageAbsoluteUrl: string | null,
+): string {
+  const from = b.host?.phoneDisplay ? ` from ${b.host.phoneDisplay}` : '';
   const how = b.meetingType === 'video'
     ? b.videoLink ? `Join the video call: ${b.videoLink}` : 'We will send the video link before the call.'
-    : `${capitalize(b.hostName)} will call you${b.phoneHint ? ` at the number ending ${b.phoneHint}` : ''}.`;
+    : `${capitalize(b.host?.displayName ?? b.hostName)} will call you${b.phoneHint ? ` at the number ending ${b.phoneHint}` : ''}${from}.`;
   return [`${b.durationMinutes}-minute call. ${how}`, manageAbsoluteUrl ? `Reschedule or cancel: ${manageAbsoluteUrl}` : null].filter(Boolean).join('\n');
 }
 

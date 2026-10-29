@@ -85,14 +85,24 @@ beforeAll(async () => {
 afterAll(async () => { await db?.close(); });
 
 describe('0068 schema + seeds', () => {
-  it('seeds team, sales and Pool Masters with 9–5 Mon–Fri Los Angeles and the defaults', async () => {
-    const cals = await q(`select kind, name, timezone, duration_minutes, buffer_minutes, min_notice_minutes, horizon_days, max_per_day, meeting_type, active
+  it('seeds team, sales and Pool Masters with 9–5 Mon–Fri Los Angeles: 10-minute homeowner calls every 15 minutes, 30-minute sales calls', async () => {
+    const cals = await q(`select kind, name, timezone, duration_minutes, slot_step_minutes, buffer_minutes, min_notice_minutes, horizon_days, max_per_day, meeting_type, active,
+                                 host_display_name, host_first_name, host_org, host_phone, host_email, host_photo_path, host_note
                             from public.booking_calendars order by kind`);
     expect(cals.map((c) => c.kind)).toEqual(['contractor', 'sales', 'team']);
     for (const c of cals) {
-      expect(c).toMatchObject({ timezone: TZ, duration_minutes: 30, buffer_minutes: 15, min_notice_minutes: 120, horizon_days: 14, max_per_day: null, meeting_type: 'phone', active: true });
+      expect(c).toMatchObject({ timezone: TZ, min_notice_minutes: 120, horizon_days: 14, max_per_day: null, meeting_type: 'phone', active: true, host_first_name: 'Liam', host_phone: '+17472175713', host_email: null });
     }
-    expect(cals.find((c) => c.kind === 'contractor')!.name).toBe('Pool Masters LA');
+    const by = Object.fromEntries(cals.map((c) => [c.kind, c]));
+    // Homeowner calls (Liam qualifies and books the on-site visit): 10 min, starts every 15 (9:00, 9:15 …), 5 min buffer.
+    for (const k of ['team', 'contractor']) expect(by[k]).toMatchObject({ duration_minutes: 10, slot_step_minutes: 15, buffer_minutes: 5 });
+    // Contractor prospects keep the 30-minute call.
+    expect(by.sales).toMatchObject({ duration_minutes: 30, slot_step_minutes: 30, buffer_minutes: 15 });
+    expect(by.contractor).toMatchObject({ name: 'Pool Masters LA', host_display_name: 'Liam from Pool Masters', host_org: 'Pool Masters LA', host_photo_path: '/images/brand/poolmasters-logo.png' });
+    expect(by.contractor.host_note).toContain('pool design call');
+    for (const k of ['team', 'sales']) {
+      expect(by[k]).toMatchObject({ host_display_name: 'Liam from HomeQuote', host_org: 'HomeQuote Network', host_photo_path: '/images/brand/homequote-network-logo.webp' });
+    }
     for (const cal of [team, sales, calA]) {
       const rules = await q(`select weekday, start_minute, end_minute from public.booking_calendar_rules where calendar_id=$1 order by weekday`, [cal]);
       expect(rules).toEqual([1, 2, 3, 4, 5].map((weekday) => ({ weekday, start_minute: 540, end_minute: 1020 })));
@@ -137,7 +147,7 @@ describe('book_appointment: team calendar from a network funnel', () => {
     const ap = await one(`select * from public.appointments where id=$1`, [apptId]);
     expect(ap).toMatchObject({ assignment_id: null, lead_id: leadId, calendar_id: team, status: 'scheduled', source: 'funnel', meeting_type: 'phone',
       booked_via: 'website', manage_token_hash: token, time_zone: TZ, invitee_time_zone: 'America/New_York', contact_name: 'Team Doe', contact_phone: '+13105550100' });
-    expect(new Date(ap.ends_at).getTime() - new Date(ap.scheduled_at).getTime()).toBe(30 * 60_000);
+    expect(new Date(ap.ends_at).getTime() - new Date(ap.scheduled_at).getTime()).toBe(10 * 60_000);
     expect((await one(`select booked_at from public.funnel_sessions where id=$1`, [s.id])).booked_at).toBeTruthy();
     expect(await one(`select provider, verified, external_id from public.funnel_bookings where session_id=$1`, [s.id])).toEqual({ provider: 'homequote', verified: true, external_id: apptId });
     expect(await q(`select 1 from public.funnel_events where session_id=$1 and event='appointment_booked'`, [s.id])).toHaveLength(1);
@@ -168,8 +178,11 @@ describe('book_appointment: team calendar from a network funnel', () => {
   it('prevents double booking, including the buffer and a simultaneous race', async () => {
     const other = await lead('Other');
     expect((await book({ p_calendar: team, p_starts_at: la(DAY, 10), p_lead: other, p_source: 'manual' })).error).toBe('slot_taken');
-    expect((await book({ p_calendar: team, p_starts_at: la(DAY, 10, 30), p_lead: other, p_source: 'manual' })).error).toBe('slot_taken'); // 15-min buffer
-    expect((await book({ p_calendar: team, p_starts_at: la(DAY, 9, 30), p_lead: other, p_source: 'manual' })).error).toBe('slot_taken');
+    // The 5-minute buffer: on the 15-minute grid it never bites (10:10 + 5 = 10:15), so check it on a 5-minute grid.
+    await q(`update public.booking_calendars set slot_step_minutes=5 where id=$1`, [team]);
+    expect((await book({ p_calendar: team, p_starts_at: la(DAY, 10, 10), p_lead: other, p_source: 'manual' })).error).toBe('slot_taken');
+    expect((await book({ p_calendar: team, p_starts_at: la(DAY, 9, 50), p_lead: other, p_source: 'manual' })).error).toBe('slot_taken');
+    await q(`update public.booking_calendars set slot_step_minutes=15 where id=$1`, [team]);
     const [a, b] = await Promise.all([
       book({ p_calendar: team, p_starts_at: la(DAY, 13), p_lead: other, p_source: 'manual' }),
       book({ p_calendar: team, p_starts_at: la(DAY, 13), p_lead: await lead('Racer'), p_source: 'manual' }),
@@ -178,7 +191,7 @@ describe('book_appointment: team calendar from a network funnel', () => {
     expect([a.error, b.error].filter(Boolean)).toEqual(['slot_taken']);
     // Writes that skip the RPCs are guarded too (same lock, no overlap), with the unique index behind it.
     await expect(q(`insert into public.appointments(lead_id, calendar_id, scheduled_at) values ($1,$2,$3)`, [other, team, la(DAY, 13)])).rejects.toThrow(/already booked/);
-    await expect(q(`insert into public.appointments(lead_id, calendar_id, scheduled_at, ends_at) values ($1,$2,$3,$4)`, [other, team, la(DAY, 13, 15), la(DAY, 13, 45)])).rejects.toThrow(/already booked/);
+    await expect(q(`insert into public.appointments(lead_id, calendar_id, scheduled_at, ends_at) values ($1,$2,$3,$4)`, [other, team, la(DAY, 13, 5), la(DAY, 13, 35)])).rejects.toThrow(/already booked/);
     const side = (await one(`insert into public.appointments(lead_id, calendar_id, scheduled_at, ends_at) values ($1,$2,$3,$4) returning id`, [other, team, la(DAY2, 9), la(DAY2, 9, 30)])).id;
     await expect(q(`update public.appointments set scheduled_at=$2, ends_at=$3 where id=$1`, [side, la(DAY, 13), la(DAY, 13, 30)])).rejects.toThrow(/already booked/);
     await q(`update public.appointments set status='cancelled' where id=$1`, [side]);
@@ -190,8 +203,9 @@ describe('book_appointment: team calendar from a network funnel', () => {
     expect((await r(new Date(Date.now() + 60 * 60_000).toISOString())).error).toBe('too_soon');
     expect((await r(new Date(Date.now() + 20 * 86_400_000).toISOString())).error).toBe('too_far');
     expect((await r(la(DAY, 8))).error).toBe('outside_hours');
-    expect((await r(la(DAY, 16, 45))).error).toBe('outside_hours');
-    // Off the 30-minute grid, or not a whole minute: refused even inside the hours.
+    expect((await r(la(DAY, 16, 55))).error).toBe('outside_hours');
+    expect((await r(la(DAY, 16, 45))).ok).toBe(true); // the last 10-minute call ends at 4:55
+    // Off the 15-minute grid, or not a whole minute: refused even inside the hours.
     expect((await r(la(DAY, 11, 7))).error).toBe('invalid_time');
     expect((await r(new Date(Date.parse(la(DAY, 11)) + 13_000).toISOString())).error).toBe('invalid_time');
     let sat = DAY; while (weekdayOfDate(sat) !== 6) sat = addDays(sat, 1);
@@ -202,9 +216,9 @@ describe('book_appointment: team calendar from a network funnel', () => {
     expect((await r(la(sat, 10))).ok).toBe(true);
     // Staff override skips hours, but never an overlap.
     expect((await r(la(DAY2, 11), { p_override: true, p_actor: id.admin })).ok).toBe(true);
-    expect((await r(la(DAY, 13, 15), { p_override: true })).error).toBe('slot_taken');
-    await q(`update public.booking_calendars set max_per_day=2 where id=$1`, [team]);
-    expect((await r(la(DAY, 15))).error).toBe('daily_cap'); // DAY already has 10:00 and 13:00
+    expect((await r(la(DAY, 13, 5), { p_override: true })).error).toBe('slot_taken');
+    await q(`update public.booking_calendars set max_per_day=3 where id=$1`, [team]);
+    expect((await r(la(DAY, 15))).error).toBe('daily_cap'); // DAY already has 10:00, 13:00 and 16:45
     await q(`update public.booking_calendars set max_per_day=null where id=$1`, [team]);
     await q(`update public.booking_calendars set active=false where id=$1`, [team]);
     expect((await r(la(DAY, 15))).error).toBe('calendar_inactive');
@@ -214,7 +228,7 @@ describe('book_appointment: team calendar from a network funnel', () => {
 
   it('reschedules in place (workflow + push fire) and cancels', async () => {
     await q(`update public.appointments set confirmed_at=now(), reminder_24h_sent_at=now() where id=$1`, [apptId]);
-    // Moving 30 min later overlaps its own old time: allowed (it excludes itself).
+    // Moving it excludes its own old time.
     const move = (await one(`select public.reschedule_appointment($1,$2,null,'homeowner') as r`, [apptId, la(DAY, 10, 30)])).r;
     expect(move).toMatchObject({ ok: true, appointment_id: apptId });
     const ap = await one(`select scheduled_at, ends_at, confirmed_at, reminder_24h_sent_at, reschedule_count, status from public.appointments where id=$1`, [apptId]);
@@ -306,7 +320,7 @@ describe('RLS', () => {
     await as(id.ownerA, () => q(`update public.booking_calendars set buffer_minutes=10 where id=$1`, [calA]));
     expect((await one(`select buffer_minutes from public.booking_calendars where id=$1`, [calA])).buffer_minutes).toBe(10);
     await as(id.ownerA, () => q(`update public.booking_calendars set buffer_minutes=0 where id=$1`, [team])); // silently no rows
-    expect((await one(`select buffer_minutes from public.booking_calendars where id=$1`, [team])).buffer_minutes).toBe(15);
+    expect((await one(`select buffer_minutes from public.booking_calendars where id=$1`, [team])).buffer_minutes).toBe(5);
     await expect(as(id.ownerA, () => q(`update public.booking_calendars set contractor_id=$2 where id=$1`, [calA, id.companyB]))).rejects.toThrow();
     await expect(as(id.staffA, () => q(`insert into public.booking_calendar_rules(calendar_id,weekday,start_minute,end_minute) values ($1,6,540,600)`, [calA]))).rejects.toThrow();
     await expect(as(id.ownerA, () => q(`insert into public.booking_calendar_rules(calendar_id,weekday,start_minute,end_minute) values ($1,6,540,600)`, [team]))).rejects.toThrow();

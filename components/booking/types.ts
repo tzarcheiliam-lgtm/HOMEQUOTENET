@@ -8,6 +8,27 @@ import type { BookingError } from '@/lib/booking/types';
 
 export type PublicMeetingType = 'phone' | 'video' | 'in_person';
 
+/**
+ * Who will call (the calendar's host contact, lib/booking/host-contact.ts):
+ * business details only. `vcardUrl` is the "Save Liam's number" card; null
+ * when there is no number to save.
+ */
+export interface PublicHostContact {
+  /** "Liam from Pool Masters" */
+  displayName: string;
+  /** "Liam" */
+  firstName: string | null;
+  /** "Pool Masters LA" */
+  org: string;
+  /** E.164 */
+  phone: string | null;
+  /** "(747) 217-5713" */
+  phoneDisplay: string | null;
+  /** Logo / photo under /images (shown as the card's avatar). */
+  photoUrl: string | null;
+  vcardUrl: string | null;
+}
+
 /** What the homeowner may know about the calendar they are booking. */
 export interface PublicCalendar {
   /** Who the call is with: the contractor's name, "a HomeQuote project specialist", or "HomeQuote". */
@@ -17,6 +38,8 @@ export interface PublicCalendar {
   timeZone: string;
   durationMinutes: number;
   meetingType: PublicMeetingType;
+  /** Who will call; null = the wording names hostName (a contractor calendar with no host set). */
+  host: PublicHostContact | null;
 }
 
 export interface PublicSlot {
@@ -50,6 +73,8 @@ export interface PublicBooking {
   icsUrl: string | null;
   /** Still in the future and scheduled: can be rescheduled or cancelled online. */
   canChange: boolean;
+  /** Who will call (contact card, wording). */
+  host: PublicHostContact | null;
 }
 
 export type ApiFailure = { ok: false; error: BookingError | 'rate_limited' | 'invalid_request' | 'forbidden'; message: string };

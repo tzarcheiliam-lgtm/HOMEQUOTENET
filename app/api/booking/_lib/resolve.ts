@@ -4,7 +4,9 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { calendarForContractorFunnel, calendarForFunnel, getCalendar } from '@/lib/booking/calendars.server';
 import { ensureManageToken } from '@/lib/booking/notify.server';
 import type { BookingCalendar, BookingError } from '@/lib/booking/types';
-import type { PublicBooking, PublicCalendar, PublicMeetingType } from '@/components/booking/types';
+import { displayPhone, hostVCardPath, resolveHostContact } from '@/lib/booking/host-contact';
+import { vcardPhone } from '@/lib/funnels/vcard';
+import type { PublicBooking, PublicCalendar, PublicHostContact, PublicMeetingType } from '@/components/booking/types';
 import { parseGrant, submissionTokenMatches, type SessionSource } from './grant';
 
 type Db = ReturnType<typeof createAdminClient>;
@@ -93,8 +95,24 @@ export function hostName(cal: Pick<BookingCalendar, 'kind' | 'name'> | null): st
   return cal.name;
 }
 
+/** The calendar's host contact as the homeowner sees it (business details only). */
+export function publicHost(cal: BookingCalendar | null): PublicHostContact | null {
+  const h = cal ? resolveHostContact(cal) : null;
+  if (!cal || !h) return null;
+  const phone = h.phone ? vcardPhone(h.phone) : null;
+  return {
+    displayName: h.displayName,
+    firstName: h.firstName,
+    org: h.org,
+    phone,
+    phoneDisplay: phone ? displayPhone(phone) : null,
+    photoUrl: h.photoPath,
+    vcardUrl: phone ? hostVCardPath(cal.id) : null,
+  };
+}
+
 export function publicCalendar(cal: BookingCalendar): PublicCalendar {
-  return { hostName: hostName(cal), kind: cal.kind, timeZone: cal.timezone, durationMinutes: cal.durationMinutes, meetingType: cal.meetingType };
+  return { hostName: hostName(cal), kind: cal.kind, timeZone: cal.timezone, durationMinutes: cal.durationMinutes, meetingType: cal.meetingType, host: publicHost(cal) };
 }
 
 export const phoneHint = (phone: unknown): string | null => {
@@ -157,6 +175,7 @@ export function publicBooking(f: BookingFacts): PublicBooking {
     manageUrl: f.token ? manageUrl(f.token) : null,
     icsUrl: f.token ? icsUrl(f.token) : null,
     canChange: (f.sales ? LIVE_SALES : LIVE).has(f.status) && startMs > (f.nowMs ?? Date.now()),
+    host: publicHost(f.calendar),
   };
 }
 

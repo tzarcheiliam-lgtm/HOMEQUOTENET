@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useId, useReducer, useRef, useState } from 'react';
 import { CircleCheck, Loader2 } from 'lucide-react';
 import { formatDayHeading, safeTimeZone } from '@/lib/booking/format';
-import { AddToCalendar, CallHow, CallTime, ViewHeading } from './call-summary';
+import { AddToCalendar, BookedTime, CallHow, CallTime, HostContactCard, ViewHeading } from './call-summary';
 import { flowReducer, initialFlow } from './flow-state';
 import { SlotPicker, SlotPickerSkeleton, type PickerExpansion } from './slot-picker';
-import type { BookResponse, CallbackResponse, PublicBooking, SlotsResponse } from './types';
+import type { BookResponse, CallbackResponse, PublicBooking, PublicCalendar, SlotsResponse } from './types';
 import { useViewerTimeZone } from './zone';
 import './booking.css';
 
@@ -28,6 +28,11 @@ export interface BookingFlowProps {
   grant: string;
   /** Shown above the times; the funnel's own step heading can replace it (heading={null}). */
   heading?: string | null;
+  /**
+   * One sentence above the times. "{minutes}" becomes the calendar's call
+   * length and "{host}" who calls ("Liam from Pool Masters"), once the
+   * calendar has loaded (the line keeps its height until then).
+   */
   intro?: string | null;
   /** Heading level of the flow's own headings (2 inside a page that has an h1). */
   headingLevel?: 1 | 2 | 3;
@@ -45,6 +50,13 @@ export interface BookingFlowProps {
 const UNAVAILABLE = 'Booking is temporarily unavailable. Please try again in a moment.';
 /** The book request itself failed: say plainly that nothing was booked. */
 const NOT_BOOKED = 'We couldn’t confirm your call. Nothing was booked yet. Tap Confirm call to try again.';
+
+/** The intro with the calendar's own facts filled in; null while the calendar is unknown and the text needs it. */
+export function fillIntro(intro: string, cal: Pick<PublicCalendar, 'durationMinutes' | 'hostName' | 'host'> | null): string | null {
+  if (!/\{(minutes|host)\}/.test(intro)) return intro;
+  if (!cal) return null;
+  return intro.replaceAll('{minutes}', String(cal.durationMinutes)).replaceAll('{host}', cal.host?.displayName ?? cal.hostName);
+}
 
 async function call<T>(url: string, init: RequestInit): Promise<T> {
   const res = await fetch(url, { ...init, credentials: 'same-origin', cache: 'no-store' });
@@ -166,7 +178,9 @@ export function BookingFlow({
         <ViewHeading level={headingLevel} headingRef={headingRef}>{heading}</ViewHeading>
       ) : null}
       {(s.view === 'loading' || s.view === 'pick') && intro ? (
-        <p className={`bk-copy text-[17px] leading-[25px] text-[var(--bk-text)] ${heading ? 'mt-3' : ''}`}>{intro}</p>
+        <p className={`bk-copy text-[17px] leading-[25px] text-[var(--bk-text)] ${heading ? 'mt-3' : ''}`} data-booking-intro="">
+          {fillIntro(intro, cal) ?? <span aria-hidden className="bk-skeleton inline-block h-[17px] w-[min(18rem,80%)] align-middle" />}
+        </p>
       ) : null}
 
       {alert ? <Alert className="mt-4">{alert}</Alert> : null}
@@ -229,7 +243,7 @@ export function BookingFlow({
             <CallTime startsAt={s.selected} endsAt={new Date(Date.parse(s.selected) + cal.durationMinutes * 60_000).toISOString()} timeZone={shownZone} />
           </div>
           <div className="mt-4">
-            <CallHow meetingType={cal.meetingType} hostName={cal.hostName} durationMinutes={cal.durationMinutes} phoneHint={s.contact.phoneHint} />
+            <CallHow meetingType={cal.meetingType} hostName={cal.hostName} durationMinutes={cal.durationMinutes} phoneHint={s.contact.phoneHint} host={cal.host} />
           </div>
           {s.message ? <Alert className="mt-5">{s.message}</Alert> : null}
           <button
@@ -300,7 +314,11 @@ function Alert({ children, className = '' }: { children: React.ReactNode; classN
   );
 }
 
-/** "You're booked": the time, how the call happens, Add to calendar, and the change link. */
+/**
+ * "You're booked": calm and complete. A check, the time set large, who will
+ * call (and from which number), the host's contact card with "Save Liam's
+ * number", Add to calendar, then the quiet reschedule / cancel link.
+ */
 export function BookedView({ booking, timeZone, headingLevel = 2, headingRef, hideHeading = false }: {
   booking: PublicBooking; timeZone: string; headingLevel?: 1 | 2 | 3; headingRef?: React.Ref<HTMLHeadingElement>;
   /** The host page already says it (the sales funnel's own "Your call is booked." heading). */
@@ -308,26 +326,31 @@ export function BookedView({ booking, timeZone, headingLevel = 2, headingRef, hi
 }) {
   // Sales calls (contractor prospects) get email only; homeowners get a text too.
   const emailOnly = booking.kind === 'sales';
+  const host = booking.host;
+  const card = host?.vcardUrl ? host : null;
   return (
     <div className="bk-enter" data-booking-booked="">
       {hideHeading ? null : (
         <>
-          <CircleCheck aria-hidden className="mb-3 size-8 text-[var(--bk-accent)]" strokeWidth={1.8} />
+          <span className="bk-check" aria-hidden>
+            <CircleCheck className="size-[26px]" strokeWidth={2} />
+          </span>
           <ViewHeading level={headingLevel} headingRef={headingRef}>
             You’re booked{booking.firstName ? `, ${booking.firstName}` : ''}
           </ViewHeading>
         </>
       )}
       <div className={hideHeading ? '' : 'mt-5'}>
-        <CallTime startsAt={booking.startsAt} endsAt={booking.endsAt} timeZone={timeZone} />
+        <BookedTime startsAt={booking.startsAt} endsAt={booking.endsAt} timeZone={timeZone} />
       </div>
-      <div className="mt-4">
-        <CallHow meetingType={booking.meetingType} hostName={booking.hostName} durationMinutes={booking.durationMinutes} phoneHint={booking.phoneHint} videoLink={booking.videoLink} />
+      <div className="bk-rule mt-5 pt-5">
+        <CallHow meetingType={booking.meetingType} hostName={booking.hostName} durationMinutes={booking.durationMinutes} phoneHint={booking.phoneHint} videoLink={booking.videoLink} host={host} />
       </div>
-      <p className="bk-copy mt-3 text-[15px] leading-[22px] text-[var(--bk-muted)]">
+      {card ? <div className="mt-5"><HostContactCard host={card} /></div> : null}
+      <p className="bk-copy mt-4 text-[15px] leading-[22px] text-[var(--bk-muted)]">
         {emailOnly ? 'We’ll email you the details, and a reminder before the call.' : 'We’ll text and email you the details, and send a reminder before the call.'}
       </p>
-      {booking.icsUrl ? <div className="mt-6"><AddToCalendar booking={booking} /></div> : null}
+      {booking.icsUrl ? <div className="mt-5"><AddToCalendar booking={booking} /></div> : null}
       {booking.manageUrl ? (
         <a className="bk-link mt-3" href={booking.manageUrl} data-booking-manage="">Reschedule or cancel</a>
       ) : (

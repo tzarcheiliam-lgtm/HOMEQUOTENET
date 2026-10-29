@@ -20,6 +20,19 @@ export function priceRange(estimate: Pick<Estimate, 'low' | 'high'>): string | n
   return estimate.low !== null && estimate.high !== null && estimate.high > 0 ? formatRange(estimate.low, estimate.high) : null;
 }
 
+/**
+ * The booking title without the native calendar's placeholders, for the
+ * external-calendar fallback (no calendar facts to fill in):
+ * "Pick a time for a quick {minutes}-minute call with {host}." -> "Pick a time for a free call."
+ */
+export function plainBookingTitle(title: string): string {
+  return title
+    .replace(/\s+with \{host\}/g, '')
+    .replace(/\b(a )?quick \{minutes\}-minute /g, '$1free ')
+    .replace(/\{minutes\}-minute /g, '')
+    .replace(/\{host\}/g, 'us');
+}
+
 /** The inline Calendly URL (embed params, name / email kept), or null for a non-Calendly link. */
 export const bookingFrameUrl = (calendarUrl: string | undefined, host: string) => calendarFrameUrl(calendarUrl, host);
 

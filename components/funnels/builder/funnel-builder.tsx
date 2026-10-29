@@ -162,14 +162,14 @@ export function FunnelBuilder({
               {!calendarStep && <p className="text-xs text-muted-foreground">Optional — qualified visitors book a time before the thank-you screen. Choose the HomeQuote calendar, or an external provider with a URL; without one they skip straight to the thank-you screen.</p>}
               <Field label="Provider">
                 <Select value={config.calendarProvider} onChange={e => patch(setCalendarProvider(config, e.target.value as CalendarProvider))}>
-                  <option value="homequote">HomeQuote calendar (built in, 30-minute call)</option>
+                  <option value="homequote">HomeQuote calendar (built in, quick 10-minute call)</option>
                   <option value="ghl">GoHighLevel (embedded calendar, server-confirmed; fallback)</option>
                   <option value="calendly">Calendly (inline, prefilled; fallback)</option>
                 </Select>
               </Field>
               {config.calendarProvider === 'homequote' ? (
                 <p className="text-xs text-muted-foreground" data-builder-native-calendar="">
-                  Qualified visitors book a free 30-minute call on {nativeCalendarOwner(routedContractor)}. Hours, buffers and hosts are set on the
+                  Qualified visitors book a quick free call (10 minutes by default) on {nativeCalendarOwner(routedContractor)}. Hours, buffers and hosts are set on the
                   {' '}<Link href="/app/calendar" className="underline underline-offset-2">Calendar</Link> page; confirmations and reminders go out automatically.
                   {routingDirty ? ' Save the routing for this to apply.' : ''}
                 </p>

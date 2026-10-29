@@ -25,7 +25,7 @@ export const POOL_MASTERS_ESTIMATOR: ContractorEstimatorConfig = {
   financingDisclosure:
     'Financing is provided by third-party lenders, including Lyon Financial, and is subject to credit approval. Pool Masters LA is not a lender and does not make credit decisions, set rates, or guarantee approval. All financing terms, rates and monthly payments are determined by the lender based on your application.',
   funnelSlug: 'pool-masters',
-  // Books a free 30-minute call on Pool Masters' own HomeQuote calendar (as the
+  // Books a quick free 10-minute call (Liam) on Pool Masters' own HomeQuote calendar (as the
   // pool-masters funnel, content/funnels/clients/pool-masters-la.json); no Calendly.
   calendarProvider: 'homequote',
   // The simple mobile funnel (landing, three taps, contact, then the range and booking):

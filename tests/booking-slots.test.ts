@@ -3,12 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { zonedToUtc } from '@/lib/availability/time';
 import { calendarSlots, groupSlotsByDay, slotProblem, type CalendarState } from '@/lib/booking/slots';
 import { DEFAULT_CALENDAR, type BookingCalendar } from '@/lib/booking/types';
+import { EMPTY_HOST_FIELDS } from '@/lib/booking/host-contact';
 import { formatForHomeowner, formatRange, formatSlot } from '@/lib/booking/format';
 import { hashManageToken, isManageTokenShape, newManageToken } from '@/lib/booking/tokens';
 
 const TZ = 'America/Los_Angeles';
 const at = (date: string, hh: number, mm = 0) => zonedToUtc(date, hh * 60 + mm, TZ);
-const cal: BookingCalendar = { ...DEFAULT_CALENDAR, id: 'cal', kind: 'team', contractorId: null, name: 'HomeQuote team' };
+const cal: BookingCalendar = { ...DEFAULT_CALENDAR, id: 'cal', kind: 'team', contractorId: null, name: 'HomeQuote team', host: EMPTY_HOST_FIELDS };
 const weekdays = [1, 2, 3, 4, 5].map((weekday) => ({ weekday, startMinute: 540, endMinute: 1020 }));
 // Monday 2026-11-02 08:00 PST (the day after DST ends).
 const NOW = at('2026-11-02', 8);

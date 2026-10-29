@@ -13,7 +13,7 @@
 -- describe when a contractor can take ON-SITE appointments that staff book (no
 -- schedule = unrestricted, 60-min default, Sun–Fri default hours), are keyed by
 -- contractor only, and are already live in production with contractors' own
--- choices. A booking calendar is a 30-minute VIRTUAL call offered to homeowners
+-- choices. A booking calendar is a short VIRTUAL call offered to homeowners
 -- and contractor prospects, exists for HomeQuote's own team and sales desk too
 -- (no contractor), and must be re-checked inside one SQL transaction. One rule
 -- shape for every kind keeps that check in one place. (A contractor calendar
@@ -34,9 +34,21 @@
 -- pg_advisory_xact_lock, so two visitors can never take the same slot.
 --
 -- Defaults (owner's decision, 2026-10-29): Mon–Fri 9:00–17:00
--- America/Los_Angeles, 30-minute calls, 15-minute buffer, 2 h notice, 14-day
--- horizon, no daily cap. Seeds: "HomeQuote team", "HomeQuote sales", and Pool
--- Masters' contractor calendar (looked up, skipped if absent).
+-- America/Los_Angeles, 2 h notice, 14-day horizon, no daily cap. Homeowner
+-- calls (the team calendar and every contractor calendar) are a quick
+-- 10-MINUTE call on a 15-minute grid (9:00, 9:15 …) with a 5-minute buffer:
+-- Liam calls each homeowner to qualify and book the on-site visit. The sales
+-- calendar (contractor prospects) keeps 30-minute calls, 30-minute grid,
+-- 15-minute buffer (the column defaults). Seeds: "HomeQuote team",
+-- "HomeQuote sales", and Pool Masters' contractor calendar (looked up,
+-- skipped if absent).
+--
+-- Host contact (host_* columns): who calls the homeowner. It drives the
+-- wording ("Liam from Pool Masters will call you"), the contact card on the
+-- booked screen and the public vCard (GET /api/booking/contact/<id>.vcf).
+-- On the calendar so it can be changed on /app/calendar/settings without a
+-- deploy; null fields fall back to lib/booking/host-contact.ts (team / sales:
+-- Liam at HomeQuote's number; a contractor calendar: none).
 --
 -- Homeowners never get table access: public pages go through server routes that
 -- use the service role, gated by the funnel session token or the manage token
@@ -71,6 +83,16 @@ create table if not exists public.booking_calendars (
   meeting_type       text not null default 'phone' check (meeting_type in ('phone', 'video')),
   video_link         text check (video_link is null or (video_link ~ '^https://' and length(video_link) <= 500)),
   active             boolean not null default true,
+  -- Host contact (business details only; shown to homeowners and in the public vCard).
+  host_display_name  text check (host_display_name is null or length(trim(host_display_name)) between 1 and 80),
+  host_first_name    text check (host_first_name is null or length(trim(host_first_name)) between 1 and 40),
+  host_org           text check (host_org is null or length(trim(host_org)) between 1 and 80),
+  host_phone         text check (host_phone is null or host_phone ~ '^\+[1-9][0-9]{7,14}$'),
+  host_email         text check (host_email is null or (length(host_email) <= 254 and host_email ~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$')),
+  -- A file under public/images only (the vCard route reads it from disk / the site, never an outside URL).
+  host_photo_path    text check (host_photo_path is null or (host_photo_path ~ '^/images/[A-Za-z0-9/_.-]+\.(png|jpe?g|webp)$' and host_photo_path !~ '\.\.')),
+  -- vCard NOTE; {minutes} is replaced with the call length.
+  host_note          text check (host_note is null or length(trim(host_note)) between 1 and 300),
   created_at         timestamptz not null default now(),
   updated_at         timestamptz not null default now(),
   constraint booking_calendars_contractor_kind check ((kind = 'contractor') = (contractor_id is not null))
@@ -599,7 +621,7 @@ begin
                                      and (e.start_minute is null or (e.start_minute <= m and e.end_minute > m)))) then
       return 'outside_hours';
     end if;
-    -- Starts sit on the calendar's grid (9:00, 9:30, … local), whole minutes only.
+    -- Starts sit on the calendar's grid (9:00, 9:15, … local on a 15-minute step), whole minutes only.
     if extract(second from ls) <> 0 or smin % greatest(5, c.slot_step_minutes) <> 0 then return 'invalid_time'; end if;
   end if;
 
@@ -1143,8 +1165,9 @@ begin
   if v is not null then return v; end if;
   select name into v_name from public.contractors where id = p_contractor;
   if not found then return null; end if;
-  insert into public.booking_calendars(kind, contractor_id, name)
-    values ('contractor', p_contractor, left(coalesce(nullif(trim(v_name), ''), 'Contractor'), 120))
+  -- Homeowner calls: 10 minutes on a 15-minute grid, 5-minute buffer (lib/booking/types.ts HOMEOWNER_CALL).
+  insert into public.booking_calendars(kind, contractor_id, name, duration_minutes, slot_step_minutes, buffer_minutes)
+    values ('contractor', p_contractor, left(coalesce(nullif(trim(v_name), ''), 'Contractor'), 120), 10, 15, 5)
     on conflict do nothing returning id into v;
   if v is null then
     select id into v from public.booking_calendars where kind = 'contractor' and contractor_id = p_contractor;
@@ -1163,8 +1186,19 @@ grant execute on function public.ensure_contractor_booking_calendar(uuid) to ser
 do $$
 declare v uuid; pm uuid;
 begin
-  insert into public.booking_calendars(kind, name) values ('team', 'HomeQuote team') on conflict do nothing;
-  insert into public.booking_calendars(kind, name) values ('sales', 'HomeQuote sales') on conflict do nothing;
+  -- Team: homeowner calls (10 min, every 15, 5 min buffer). Sales: contractor prospects (30 / 30 / 15, the defaults).
+  -- Both: Liam at HomeQuote's main number (content/site.ts) until the owner changes it.
+  insert into public.booking_calendars(kind, name, duration_minutes, slot_step_minutes, buffer_minutes,
+      host_display_name, host_first_name, host_org, host_phone, host_photo_path, host_note)
+    values ('team', 'HomeQuote team', 10, 15, 5,
+      'Liam from HomeQuote', 'Liam', 'HomeQuote Network', '+17472175713', '/images/brand/homequote-network-logo.webp',
+      'Your free {minutes}-minute project call. Save this so you know it''s us when we call.')
+    on conflict do nothing;
+  insert into public.booking_calendars(kind, name, host_display_name, host_first_name, host_org, host_phone, host_photo_path, host_note)
+    values ('sales', 'HomeQuote sales',
+      'Liam from HomeQuote', 'Liam', 'HomeQuote Network', '+17472175713', '/images/brand/homequote-network-logo.webp',
+      'Your {minutes}-minute call with HomeQuote. Save this so you know it''s us when we call.')
+    on conflict do nothing;
   for v in select id from public.booking_calendars where kind in ('team', 'sales') loop
     perform public.booking_seed_default_rules(v);
     -- Active admins host both until the owner changes it.
@@ -1178,7 +1212,15 @@ begin
   if pm is null then
     select c.id into pm from public.contractors c where c.name ilike '%pool masters%' order by c.created_at limit 1;
   end if;
-  if pm is not null then perform public.ensure_contractor_booking_calendar(pm); end if;
+  if pm is not null then
+    v := public.ensure_contractor_booking_calendar(pm);
+    -- Liam calls Pool Masters' homeowners too: his number, the Pool Masters logo (only if nobody set a host yet).
+    update public.booking_calendars
+       set host_display_name = 'Liam from Pool Masters', host_first_name = 'Liam', host_org = 'Pool Masters LA',
+           host_phone = '+17472175713', host_photo_path = '/images/brand/poolmasters-logo.png',
+           host_note = 'Your free {minutes}-minute pool design call. Save this so you know it''s us when we call.'
+     where id = v and host_display_name is null and host_phone is null;
+  end if;
 end $$;
 
 -- ---------------------------------------------------------------------------

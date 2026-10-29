@@ -10,6 +10,7 @@ import {
   bookingIcsAttachment,
   buildGuestBookingEmail,
   buildHostBookingEmail,
+  type GuestHost,
   type GuestMessageContext,
   type HomeownerNotice,
   type HostNotice,
@@ -20,7 +21,8 @@ import { loadSettings, queueWorkflowText } from '@/lib/sms/service';
 import { safeTimeZone } from './format';
 import { bookingSms } from './sms-copy';
 import { hashManageToken, isManageTokenShape, managePath } from './tokens';
-import type { BookingActorKind } from './types';
+import { hostVCardPath, resolveHostContact } from './host-contact';
+import { mapHostFields, type BookingActorKind } from './types';
 
 type Db = ReturnType<typeof createAdminClient>;
 
@@ -176,6 +178,8 @@ interface Booking {
   meetingType: 'phone' | 'video';
   videoLink: string | null;
   hostName: string;
+  /** Who calls (the calendar's host contact); the vCard link is made absolute in guestContext. */
+  host: { displayName: string; firstName: string | null; phone: string | null; calendarId: string } | null;
   guestName: string;
   firstName: string | null;
   phone: string | null;
@@ -199,8 +203,16 @@ const ms = (v: unknown) => new Date(String(v)).getTime();
 
 async function calendarOf(db: Db, id: string | null) {
   if (!id) return null;
-  const { data } = await db.from('booking_calendars').select('id, kind, contractor_id, name, timezone, meeting_type, video_link').eq('id', id).maybeSingle();
+  const { data } = await db.from('booking_calendars')
+    .select('id, kind, contractor_id, name, timezone, meeting_type, video_link, host_display_name, host_first_name, host_org, host_phone, host_email, host_photo_path, host_note')
+    .eq('id', id).maybeSingle();
   return data as any;
+}
+
+function hostOf(cal: any): Booking['host'] {
+  if (!cal?.id || !cal.kind) return null;
+  const h = resolveHostContact({ kind: cal.kind, name: cal.name ?? '', host: mapHostFields(cal) });
+  return h ? { displayName: h.displayName, firstName: h.firstName, phone: h.phone, calendarId: cal.id } : null;
 }
 
 async function loadBooking(db: Db, kind: BookingKind, id: string): Promise<Booking | null> {
@@ -230,7 +242,7 @@ async function loadBooking(db: Db, kind: BookingKind, id: string): Promise<Booki
       calendarId: ap.calendar_id ?? null, calendarKind: cal?.kind ?? null, contractorId: cal?.kind === 'contractor' ? cal.contractor_id : null,
       calendarName: cal?.name ?? 'HomeQuote', calendarTz, guestTz: safeTimeZone(ap.invitee_time_zone, calendarTz),
       meetingType: (ap.meeting_type ?? cal?.meeting_type) === 'video' ? 'video' : 'phone', videoLink: cal?.video_link ?? null,
-      hostName, guestName, firstName: (l.first_name as string | undefined)?.trim() || guestName.split(' ')[0] || null,
+      hostName, host: hostOf(cal), guestName, firstName: (l.first_name as string | undefined)?.trim() || guestName.split(' ')[0] || null,
       phone: ap.contact_phone ?? l.phone ?? null, email: ap.contact_email ?? l.email ?? null,
       leadId: ap.lead_id ?? null, prospectId: null, consent: l.consent_granted === true, emailOptOut: false,
       project: l.project_description ?? null, notes: ap.notes ?? null, source: ap.source ?? null,
@@ -256,7 +268,7 @@ async function loadBooking(db: Db, kind: BookingKind, id: string): Promise<Booki
     calendarId: sa.calendar_id ?? null, calendarKind: cal?.kind ?? null, contractorId: null,
     calendarName: cal?.name ?? 'HomeQuote sales', calendarTz, guestTz: safeTimeZone(sa.time_zone, calendarTz),
     meetingType: (sa.appointment_type ?? cal?.meeting_type) === 'video' ? 'video' : 'phone', videoLink: cal?.video_link ?? null,
-    hostName: 'HomeQuote Network', guestName, firstName: (sa.decision_maker_name as string | null)?.trim().split(' ')[0] || null,
+    hostName: 'HomeQuote Network', host: hostOf(cal), guestName, firstName: (sa.decision_maker_name as string | null)?.trim().split(' ')[0] || null,
     phone: prospect.phone ?? null, email: prospect.email ?? (String(sa.contact_info ?? '').match(EMAIL_RE)?.[0] ?? null),
     leadId: null, prospectId: sa.prospect_id, consent: false, emailOptOut: !!prospect.email_opt_out_at,
     project: prospect.company_name ?? null, notes: sa.notes ?? null, source: sa.source ?? null,
@@ -274,13 +286,22 @@ function guestContext(b: Booking, token: string | null, site: string, previousSt
     manageUrl: token ? `${site}${managePath(token)}` : null,
     icsUrl: token ? `${site}${bookingIcsPath(token)}` : null,
     previousStartMs: previousStartMs ?? null,
+    host: guestHost(b, site),
+  };
+}
+
+function guestHost(b: Booking, site: string): GuestHost | null {
+  if (!b.host) return null;
+  return {
+    displayName: b.host.displayName, firstName: b.host.firstName, phone: b.host.phone,
+    vcardUrl: b.host.phone ? `${site}${hostVCardPath(b.host.calendarId)}` : null,
   };
 }
 
 function icsInput(b: Booking, site: string, token: string | null, cancelled = false) {
   return {
     kind: b.kind, id: b.id, startMs: b.startMs, endMs: b.endMs,
-    title: `${b.meetingType === 'video' ? 'Video call' : 'Phone call'} with ${b.hostName}`,
+    title: `${b.meetingType === 'video' ? 'Video call' : 'Phone call'} with ${b.host?.displayName ?? b.hostName}`,
     description: token ? `Reschedule or cancel: ${site}${managePath(token)}` : null,
     location: b.meetingType === 'video' ? b.videoLink : 'Phone call',
     url: token ? `${site}${managePath(token)}` : null,

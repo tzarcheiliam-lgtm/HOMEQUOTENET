@@ -121,7 +121,7 @@ async function lead(o: { consent?: boolean; email?: string | null } = {}): Promi
     [o.email === undefined ? `pat-${randomUUID().slice(0, 6)}@example.test` : o.email, o.consent ?? true, `+1310555${String(phoneSeq++).padStart(4, '0')}`])).id;
 }
 async function appt(leadId: string, calendarId: string, startsAt: string, extra: Record<string, unknown> = {}): Promise<string> {
-  const cols = { lead_id: leadId, calendar_id: calendarId, scheduled_at: startsAt, ends_at: new Date(Date.parse(startsAt) + 1_800_000).toISOString(),
+  const cols = { lead_id: leadId, calendar_id: calendarId, scheduled_at: startsAt, ends_at: new Date(Date.parse(startsAt) + 600_000).toISOString(), // a 10-minute homeowner call
     time_zone: TZ, source: 'funnel', meeting_type: 'phone', ...extra };
   const names = Object.keys(cols);
   return (await one(`insert into public.appointments(${names.join(',')}) values (${names.map((_, i) => `$${i + 1}`).join(',')}) returning id`, Object.values(cols))).id;
@@ -148,6 +148,39 @@ beforeAll(async () => {
 afterAll(async () => { await db?.close(); });
 beforeEach(() => { sent = []; });
 
+describe('booking copy with a host contact (Liam, 10-minute call)', () => {
+  const liam = (o: Partial<GuestMessageContext> = {}) => guest({
+    hostName: 'Pool Masters LA', endMs: START + 10 * 60_000,
+    host: { displayName: 'Liam from Pool Masters', firstName: 'Liam', phone: '+17472175713', vcardUrl: `${SITE}/api/booking/contact/cal.vcf` }, ...o,
+  });
+
+  it('email: who calls, from which number, and "Save Liam’s number" with the vCard link (not on a cancellation)', () => {
+    const m = buildGuestBookingEmail('confirmed', liam());
+    expect(m.subject).toBe('Your call with Liam from Pool Masters is booked: Tue, Nov 3 · 9:30 AM PST');
+    expect(m.text).toContain("You're all set for a quick 10-minute call with Liam from Pool Masters.");
+    expect(m.text).toContain('Length: 10-minute phone call (9:30 AM – 9:40 AM PST)');
+    expect(m.text).toContain('Liam will call you at (310) 555-0100 from (747) 217-5713.');
+    expect(m.text).toContain(`Save Liam's number: ${SITE}/api/booking/contact/cal.vcf`);
+    expect(m.html).toContain(`href="${SITE}/api/booking/contact/cal.vcf"`);
+    expect(m.html).toContain('Save Liam&#039;s number');
+    expect(m.html).toContain('(747) 217-5713');
+    expect(buildGuestBookingEmail('reminder_24h', liam()).text).toContain("Save Liam's number");
+    expect(buildGuestBookingEmail('cancelled', liam()).text).not.toContain('Save Liam');
+    expect(buildGuestBookingEmail('confirmed', liam({ host: { displayName: 'Liam from HomeQuote', firstName: 'Liam', phone: '+17472175713', vcardUrl: 'javascript:x' } })).html).not.toContain('javascript:');
+  });
+
+  it('texts: say who calls and spell out the number to save (the vCard link would be stripped), within 320 characters', () => {
+    expect(bookingSms('confirmed', liam(), { hasEmail: true })).toBe(
+      'Hi Pat, you’re booked: a quick 10-minute call with Liam from Pool Masters, Tue, Nov 3 · 9:30 AM PST. Liam will call you at (310) 555-0100. Save (747) 217-5713 so you know it’s us. Need to reschedule or cancel? Use the link in your confirmation email.');
+    expect(bookingSms('reminder_1h', liam(), { hasEmail: true })).toBe(
+      'Reminder: your quick 10-minute call with Liam from Pool Masters starts in about an hour, at 9:30 AM PST. Liam will call you at (310) 555-0100. Save (747) 217-5713 so you know it’s us.');
+    expect(bookingSms('cancelled', liam(), { hasEmail: false })).toBe('Hi Pat, your call with Liam from Pool Masters on Tue, Nov 3 · 9:30 AM PST is cancelled.');
+    for (const n of ['confirmed', 'rescheduled', 'reminder_24h', 'reminder_1h', 'cancelled'] as const) {
+      expect(bookingSms(n, liam({ firstName: 'Bartholomew-Alexander' }), { hasEmail: true }).length).toBeLessThanOrEqual(320);
+    }
+  });
+});
+
 describe('confirmation', () => {
   it('emails + texts the homeowner, emails the hosts, sets a working manage link, and runs once', async () => {
     const l = await lead();
@@ -160,7 +193,8 @@ describe('confirmation', () => {
     expect(await findByManageToken(token, sb)).toMatchObject({ id: a, kind: 'appointment' });
 
     const homeowner = sent.find((m) => m.toEmail.startsWith('pat-'))!;
-    expect(homeowner.subject).toMatch(/^Your call with HomeQuote is booked: .* E[SD]T$/); // the homeowner's zone
+    expect(homeowner.subject).toMatch(/^Your call with Liam from HomeQuote is booked: .* E[SD]T$/); // the homeowner's zone
+    expect(homeowner.text).toContain(`Save Liam's number: ${SITE}/api/booking/contact/${team}.vcf`);
     expect(homeowner.text).toContain(`${SITE}/booking/manage/${token}`);
     expect(homeowner.attachments?.[0].content).toContain(`UID:booking-${a}@homequotenet.com`);
     const host = sent.find((m) => m.toEmail === 'admin@t.test')!;
@@ -170,7 +204,7 @@ describe('confirmation', () => {
     const t = await texts(l);
     expect(t).toHaveLength(1);
     expect(t[0]).toMatchObject({ status: 'queued', workflow_step_run_id: bookingTextKey('appointment', a, 'confirm', 0) });
-    expect(t[0].body).toMatch(/^Hi Pat, your call with HomeQuote is booked for .* E[SD]T\. We’ll call you at \(310\) 555-\d{4}\./);
+    expect(t[0].body).toMatch(/^Hi Pat, you’re booked: a quick 10-minute call with Liam from HomeQuote, .* E[SD]T\. Liam will call you at \(310\) 555-\d{4}\. Save \(747\) 217-5713 so you know it’s us\./);
 
     sent = [];
     expect(await sendBookingConfirmation('appointment', a, deps())).toBeNull();
@@ -199,7 +233,7 @@ describe('confirmation', () => {
     const r = await sendBookingConfirmation('appointment', a, deps());
     expect(r).toMatchObject({ email: 'sent', sms: 'contractor_texting_off', hostEmails: 1 });
     expect(sent.find((m) => m.toEmail.startsWith('pat-'))!.fromName).toBe('Pool Masters LA');
-    expect(sent.find((m) => m.toEmail.startsWith('pat-'))!.subject).toContain('Your call with Pool Masters LA');
+    expect(sent.find((m) => m.toEmail.startsWith('pat-'))!.subject).toContain('Your call with Liam from Pool Masters');
     expect(sent.some((m) => m.toEmail === 'contractor@t.test')).toBe(true);
   });
 
@@ -286,7 +320,7 @@ describe('sales calls (contractor prospects)', () => {
     const r = await sendBookingConfirmation('sales_appointment', sa, deps());
     expect(r).toMatchObject({ notice: 'confirmed', email: 'sent', sms: 'not_supported', hostEmails: 1 });
     const mail = sent.find((m) => m.toEmail === 'sam@builder.test')!;
-    expect(mail.subject).toMatch(/^Your call with HomeQuote Network is booked: .* M[SD]T$/);
+    expect(mail.subject).toMatch(/^Your call with Liam from HomeQuote is booked: .* M[SD]T$/);
     expect(mail.attachments?.[0].content).toContain(`UID:sales-meeting-${sa}@homequotenet.com`);
     expect(sent.find((m) => m.toEmail === 'admin@t.test')!.text).toContain(`${SITE}/app/calls/${pr}`);
     expect((await one(`select booking_confirmed_at from public.prospect_sales_appointments where id=$1`, [sa])).booking_confirmed_at).toBeTruthy();

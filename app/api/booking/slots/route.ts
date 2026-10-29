@@ -43,7 +43,7 @@ export async function GET(request: Request) {
       ok: true,
       calendar: cal
         ? publicCalendar(result?.calendar ?? cal)
-        : { hostName: booked!.hostName, kind: r.kind === 'submission' ? 'sales' : 'team', timeZone: booked!.timeZone, durationMinutes: booked!.durationMinutes, meetingType: booked!.meetingType },
+        : { hostName: booked!.hostName, kind: r.kind === 'submission' ? 'sales' : 'team', timeZone: booked!.timeZone, durationMinutes: booked!.durationMinutes, meetingType: booked!.meetingType, host: booked!.host },
       slots: (result?.slots ?? []).map((s) => ({ start: new Date(s.startMs).toISOString(), end: new Date(s.endMs).toISOString() })),
       booked,
       callbackRequested: booked ? false : await callbackRequested(db, r),

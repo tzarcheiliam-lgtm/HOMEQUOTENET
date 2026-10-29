@@ -37,6 +37,7 @@ import { POST as callbackPOST } from '@/app/api/booking/callback/route';
 import { GET as manageGET, POST as managePOST } from '@/app/api/booking/manage/[token]/route';
 import { GET as manageSlotsGET } from '@/app/api/booking/manage/[token]/slots/route';
 import { GET as icsGET } from '@/app/(booking)/booking/manage/[token]/calendar.ics/route';
+import { GET as contactGET } from '@/app/api/booking/contact/[file]/route';
 import { manageTokenFor } from '@/lib/booking/notify.server';
 import { parseGrant, signBookingTicket } from '@/app/api/booking/_lib/grant';
 import { resetRateLimits } from '@/app/api/booking/_lib/http';
@@ -128,21 +129,36 @@ describe('homeowner booking (network funnel -> HomeQuote team calendar)', () => 
   let slot: string;
   let manage: string;
 
-  it('lists 9:00–17:00 Los Angeles weekday times for the team calendar, with the contact hint', async () => {
+  it('lists 10-minute calls every 15 minutes (9:00, 9:15 …) on Los Angeles weekdays for the team calendar, with the contact hint and Liam as the caller', async () => {
     s = await session(ids.house);
     const { status, body } = await slotsFor(s.ticket);
     expect(status).toBe(200);
-    expect(body.calendar).toEqual({ hostName: 'a HomeQuote project specialist', kind: 'team', timeZone: TZ, durationMinutes: 30, meetingType: 'phone' });
+    const team = (await one(`select id from public.booking_calendars where kind='team'`)).id;
+    expect(body.calendar).toEqual({
+      hostName: 'a HomeQuote project specialist', kind: 'team', timeZone: TZ, durationMinutes: 10, meetingType: 'phone',
+      host: { displayName: 'Liam from HomeQuote', firstName: 'Liam', org: 'HomeQuote Network', phone: '+17472175713', phoneDisplay: '(747) 217-5713',
+        photoUrl: '/images/brand/homequote-network-logo.webp', vcardUrl: `/api/booking/contact/${team}.vcf` },
+    });
     expect(body.contact).toEqual({ firstName: 'Sam', phoneHint: '0123' });
     expect(body.booked).toBeNull();
     expect(body.slots.length).toBeGreaterThan(10);
     for (const x of body.slots) {
       const p = localParts(Date.parse(x.start), TZ);
       expect(p.minuteOfDay).toBeGreaterThanOrEqual(540);
-      expect(p.minuteOfDay + 30).toBeLessThanOrEqual(1020);
-      expect(Date.parse(x.end) - Date.parse(x.start)).toBe(30 * 60_000);
+      expect(p.minuteOfDay + 10).toBeLessThanOrEqual(1020);
+      expect(p.minuteOfDay % 15).toBe(0);
+      expect(Date.parse(x.end) - Date.parse(x.start)).toBe(10 * 60_000);
       expect(Date.parse(x.start)).toBeGreaterThanOrEqual(Date.now() + 2 * 3_600_000 - 5_000);
     }
+    // A full open day reads 9:00, 9:15, 9:30 … 4:45 PM (10-minute call + 5-minute buffer fits every quarter hour).
+    const days = new Map<string, number[]>();
+    for (const x of body.slots) {
+      const p = localParts(Date.parse(x.start), TZ);
+      days.set(p.date, [...(days.get(p.date) ?? []), p.minuteOfDay]);
+    }
+    const full = [...days.values()].find((m) => m[0] === 540);
+    expect(full?.slice(0, 4)).toEqual([540, 555, 570, 585]);
+    expect(full?.at(-1)).toBe(1005);
     slot = body.slots[0].start;
   });
 
@@ -152,7 +168,8 @@ describe('homeowner booking (network funnel -> HomeQuote team calendar)', () => 
     const body = (await res.json()) as any;
     expect(body.ok).toBe(true);
     expect(body.booking).toMatchObject({ status: 'scheduled', startsAt: slot, timeZone: TZ, inviteeTimeZone: 'America/New_York', meetingType: 'phone',
-      hostName: 'a HomeQuote project specialist', durationMinutes: 30, firstName: 'Sam', phoneHint: '0123', canChange: true });
+      hostName: 'a HomeQuote project specialist', durationMinutes: 10, firstName: 'Sam', phoneHint: '0123', canChange: true });
+    expect(body.booking.host).toMatchObject({ displayName: 'Liam from HomeQuote', phoneDisplay: '(747) 217-5713', vcardUrl: expect.stringMatching(/^\/api\/booking\/contact\/[0-9a-f-]{36}\.vcf$/) });
     expect(body.booking.manageUrl).toMatch(/^\/booking\/manage\/[A-Za-z0-9_-]{43}$/);
     expect(body.booking.icsUrl).toBe(`${body.booking.manageUrl}/calendar.ics`);
     expect(body.metaEventId).toBeNull(); // house funnel config has no pixel
@@ -250,7 +267,8 @@ describe('contractor funnel (Pool Masters calendar) and the race for one time', 
   it('books the contractor calendar and sends Meta Schedule with the session event id', async () => {
     const s = await session(ids.pool, { first: 'Pia' });
     const { body } = await slotsFor(s.ticket);
-    expect(body.calendar).toMatchObject({ hostName: 'Pool Masters LA', kind: 'contractor' });
+    expect(body.calendar).toMatchObject({ hostName: 'Pool Masters LA', kind: 'contractor', durationMinutes: 10,
+      host: { displayName: 'Liam from Pool Masters', org: 'Pool Masters LA', phone: '+17472175713', photoUrl: '/images/brand/poolmasters-logo.png' } });
     const res = await book(s.ticket, body.slots[1].start);
     const out = (await res.json()) as any;
     expect(out.ok).toBe(true);
@@ -335,7 +353,8 @@ describe('contractor sales funnel (HomeQuote sales calendar)', () => {
   it('books a sales call with only the submission token, and links the submission', async () => {
     const sub = await submission();
     const { body } = await slotsFor(sub.grant);
-    expect(body.calendar).toMatchObject({ hostName: 'HomeQuote', kind: 'sales' });
+    // Contractor prospects keep the 30-minute call (only homeowner calls are 10 minutes).
+    expect(body.calendar).toMatchObject({ hostName: 'HomeQuote', kind: 'sales', durationMinutes: 30, host: { displayName: 'Liam from HomeQuote' } });
     expect(body.contact).toEqual({ firstName: 'Dana', phoneHint: '0199' });
     const out = (await (await book(sub.grant, body.slots[0].start)).json()) as any;
     expect(out.ok).toBe(true);
@@ -359,5 +378,88 @@ describe('contractor sales funnel (HomeQuote sales calendar)', () => {
     expect(((await cb.json()) as any).ok).toBe(true);
     expect((await one(`select review_notes from public.contractor_funnel_submissions where submission_id=$1`, [sub.submissionId])).review_notes)
       .toMatch(/Asked for a callback: none of the offered call times worked\. Best time: mornings/);
+  });
+});
+
+describe('host contact card: GET /api/booking/contact/<calendarId>.vcf', () => {
+  const card = (file: string, ip?: string) => contactGET(req(`/api/booking/contact/${file}`, { origin: null, ip }), { params: Promise.resolve({ file }) });
+  const unfold = (v: string) => v.replace(/\r\n /g, '');
+
+  it('serves Pool Masters\' card inline as a vCard 3.0 with Liam, the number, a note and the logo as a JPEG', async () => {
+    const pm = (await one(`select id from public.booking_calendars where kind='contractor' and contractor_id=$1`, [ids.poolCo])).id;
+    const res = await card(`${pm}.vcf`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('text/vcard; charset=utf-8');
+    expect(res.headers.get('content-disposition')).toMatch(/^inline; filename="Liam - Pool Masters\.vcf"/);
+    expect(res.headers.get('cache-control')).toMatch(/public, max-age=3600/);
+    const text = await res.text();
+    // Folded: every physical line is at most 75 octets, CRLF throughout, continuation lines start with one space.
+    expect(text.endsWith('\r\n')).toBe(true);
+    for (const line of text.split('\r\n')) expect(Buffer.byteLength(line, 'utf8')).toBeLessThanOrEqual(75);
+    expect(text.split('\r\n').filter((l) => l.startsWith(' ')).length).toBeGreaterThan(10);
+    const v = unfold(text);
+    expect(v).toMatch(/^BEGIN:VCARD\r\nVERSION:3\.0\r\n/);
+    expect(v).toContain('\r\nFN:Liam from Pool Masters\r\n');
+    expect(v).toContain('\r\nN:;Liam from Pool Masters;;;\r\n');
+    expect(v).toContain('\r\nORG:Pool Masters LA\r\n');
+    expect(v).toContain('\r\nTEL;TYPE=CELL,VOICE:+17472175713\r\n');
+    expect(v).toContain('\r\nURL:https://homequotenet.com\r\n');
+    expect(v).toContain("\r\nNOTE:Your free 10-minute pool design call. Save this so you know it's us when we call.\r\n");
+    expect(v).not.toContain('EMAIL');
+    const photo = /\r\nPHOTO;ENCODING=b;TYPE=JPEG:([A-Za-z0-9+/=]+)\r\n/.exec(v);
+    expect(photo).not.toBeNull();
+    const jpeg = Buffer.from(photo![1], 'base64');
+    expect(jpeg.subarray(0, 3).toString('hex')).toBe('ffd8ff');
+    const sharp = (await import('sharp')).default;
+    expect(await sharp(jpeg).metadata()).toMatchObject({ format: 'jpeg', width: 256, height: 256 });
+    expect(v.endsWith('END:VCARD\r\n')).toBe(true);
+  });
+
+  it('the team card is Liam from HomeQuote; an email shows once set; nothing about homeowners or bookings', async () => {
+    const team = (await one(`select id from public.booking_calendars where kind='team'`)).id;
+    await q(`update public.booking_calendars set host_email='liam@homequotenet.com' where id=$1`, [team]);
+    const res = await card(`${team.toUpperCase()}.vcf`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-disposition')).toMatch(/filename="Liam - HomeQuote\.vcf"/);
+    const v = unfold(await res.text());
+    expect(v).toContain('\r\nFN:Liam from HomeQuote\r\n');
+    expect(v).toContain('\r\nORG:HomeQuote Network\r\n');
+    expect(v).toContain('\r\nEMAIL;TYPE=INTERNET:liam@homequotenet.com\r\n');
+    expect(v).toContain('NOTE:Your free 10-minute project call.');
+    expect(v).toMatch(/PHOTO;ENCODING=b;TYPE=JPEG:/);
+    expect(v).not.toMatch(/Sam|Doe|0123|manage/);
+    await q(`update public.booking_calendars set host_email=null where id=$1`, [team]);
+  });
+
+  it('is not found for a malformed name, an unknown or switched-off calendar, or a contractor calendar with no host number', async () => {
+    expect((await card('nope.vcf')).status).toBe(404);
+    expect((await card(`${randomUUID()}.vcf`)).status).toBe(404);
+    expect((await card(`${randomUUID()}.txt`)).status).toBe(404);
+    const other = randomUUID();
+    await q(`insert into public.contractors(id,name) values ($1,'Other Pools')`, [other]);
+    const cal = (await one(`select public.ensure_contractor_booking_calendar($1) as id`, [other])).id;
+    // On-demand contractor calendars are homeowner calls too: 10 minutes, every 15, 5-minute buffer, no host card yet.
+    expect(await one(`select duration_minutes, slot_step_minutes, buffer_minutes, host_phone from public.booking_calendars where id=$1`, [cal]))
+      .toEqual({ duration_minutes: 10, slot_step_minutes: 15, buffer_minutes: 5, host_phone: null });
+    expect((await card(`${cal}.vcf`)).status).toBe(404);
+    const sales = (await one(`select id from public.booking_calendars where kind='sales'`)).id;
+    await q(`update public.booking_calendars set active=false where id=$1`, [sales]);
+    expect((await card(`${sales}.vcf`)).status).toBe(404);
+    await q(`update public.booking_calendars set active=true where id=$1`, [sales]);
+  });
+
+  it('refuses a bad host contact in the database (number, photo outside /images, email)', async () => {
+    const team = (await one(`select id from public.booking_calendars where kind='team'`)).id;
+    await expect(q(`update public.booking_calendars set host_phone='747-217-5713' where id=$1`, [team])).rejects.toThrow();
+    await expect(q(`update public.booking_calendars set host_photo_path='https://evil.test/x.png' where id=$1`, [team])).rejects.toThrow();
+    await expect(q(`update public.booking_calendars set host_photo_path='/images/../../etc/passwd.png' where id=$1`, [team])).rejects.toThrow();
+    await expect(q(`update public.booking_calendars set host_email='not an email' where id=$1`, [team])).rejects.toThrow();
+  });
+
+  it('is lightly rate limited per client', async () => {
+    const team = (await one(`select id from public.booking_calendars where kind='team'`)).id;
+    let last = 200;
+    for (let i = 0; i < 31; i++) last = (await card(`${team}.vcf`, '10.9.9.9')).status;
+    expect(last).toBe(429);
   });
 });

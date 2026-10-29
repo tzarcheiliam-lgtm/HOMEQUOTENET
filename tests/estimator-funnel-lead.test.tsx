@@ -387,7 +387,10 @@ describe('screens render', () => {
     // HomeQuote's own booking flow (times load in the browser), never a Calendly frame.
     expect(html).toContain('data-funnel-calendar="homequote"');
     expect(html).toContain('data-booking-flow=""');
-    expect(html).toContain('Pick a time for a free 30-minute call.');
+    // "Pick a time for a quick 10-minute call with Liam from Pool Masters." once the calendar loads (filled from it, never "{minutes}").
+    expect(spec.bookingStep.bookingTitle).toBe('Pick a time for a quick {minutes}-minute call with {host}.');
+    expect(html).toContain('data-booking-intro=""');
+    expect(html).not.toContain('{minutes}');
     expect(html).not.toMatch(/calendly|<iframe/i);
     expect(html.replace(/<[^>]+>/g, '')).toContain('Classic · Luxe · With spa');
     expect(html).toContain(priceRange(result.estimate)!);

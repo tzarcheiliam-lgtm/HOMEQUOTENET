@@ -62,7 +62,8 @@ describe('pool masters funnel: config', () => {
   });
 
   it('copy is truthful: no reviews, ratings or monthly payments', () => {
-    const text = JSON.stringify({ ...SPEC, configurator: undefined });
+    // The example payment is DEMO ONLY (shown only with ?demo=financing; tests/estimator-demo-financing.test.tsx).
+    const text = JSON.stringify({ ...SPEC, configurator: undefined, bookingStep: { ...SPEC.bookingStep, exampleFinancing: undefined } });
     expect(text).not.toMatch(/★|review|\/mo\b|per month|guarantee/i);
     expect(SPEC.contactStep.trustLine).toContain(POOL_MASTERS_ESTIMATOR.licenseLabel);
     expect(SPEC.landing.headline.length).toBeLessThanOrEqual(42);

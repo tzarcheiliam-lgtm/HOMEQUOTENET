@@ -10,6 +10,8 @@ const nextConfig: NextConfig = {
     // Contracts render PDFs in server actions: the Unicode font and the HomeQuote logo must ship with those routes.
     '/app/contracts/**': ['./lib/signing/assets/DejaVuSans.ttf', './public/assets/brand/hq-logo-horizontal.png'],
     '/app/contractors/**': ['./lib/signing/assets/DejaVuSans.ttf', './public/assets/brand/hq-logo-horizontal.png'],
+    // The host vCard turns these logos into its PHOTO (lib/booking/host-photo.server.ts).
+    '/api/booking/contact/**': ['./public/images/brand/poolmasters-logo.png', './public/images/brand/homequote-network-logo.webp', './public/images/brand/homequote-network-logo.png'],
     '/api/**': ['./lib/signing/assets/**', './node_modules/pdfjs-dist/standard_fonts/**', './node_modules/pdfjs-dist/cmaps/**', './node_modules/pdfjs-dist/wasm/**', './node_modules/pdfjs-dist/iccs/**', './node_modules/tesseract.js-core/**'],
   },
   experimental: {

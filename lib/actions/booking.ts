@@ -18,6 +18,7 @@ import {
 import { notifyBookingSoon } from '@/lib/booking/notify.server';
 import { BOOKING_ERROR_MESSAGES, mapCalendar, PICK_ANOTHER_TIME, type BookingCalendar, type BookingError } from '@/lib/booking/types';
 import { isValidTimeZone } from '@/lib/availability/time';
+import { vcardPhone } from '@/lib/funnels/vcard';
 import { flushNotificationsSoon } from '@/lib/notifications/outbox';
 import { flushCalendarSyncSoon } from '@/lib/calendar/sync.server';
 import { canManageCalendar, canOverrideSlots, canUseCalendarPage, canWorkCalendar, type CalendarViewer } from '@/components/calendar/access';
@@ -452,6 +453,20 @@ const settingsSchema = z
     meeting_type: z.enum(['phone', 'video']),
     video_link: z.string().max(500).regex(/^https:\/\//, 'The video link must start with https://').nullable(),
     active: z.boolean(),
+    // Who calls (contact card + "Save Liam's number"); blank = the default (lib/booking/host-contact.ts).
+    host_display_name: z.string().max(80, 'Keep the caller name to 80 characters').nullable(),
+    host_first_name: z.string().max(40, 'Keep the first name to 40 characters').nullable(),
+    host_org: z.string().max(80, 'Keep the company name to 80 characters').nullable(),
+    host_phone: z.string().nullable().transform((v, ctx) => {
+      if (!v) return null;
+      const e164 = vcardPhone(v);
+      if (!e164) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a valid US phone number for the caller' });
+      return e164;
+    }),
+    host_email: z.string().max(254).email('Enter a valid email for the caller').nullable(),
+    host_photo_path: z.string().regex(/^\/images\/[A-Za-z0-9/_.-]+\.(png|jpe?g|webp)$/, 'The photo must be an image under /images/, e.g. /images/brand/logo.png')
+      .refine((v) => !v.includes('..'), 'The photo must be an image under /images/').nullable(),
+    host_note: z.string().max(300, 'Keep the card note to 300 characters').nullable(),
   })
   .refine((s) => s.meeting_type !== 'video' || !!s.video_link, { message: 'Add the video link callers will join', path: ['video_link'] });
 
@@ -471,6 +486,13 @@ export async function saveBookingCalendarSettings(calendarId: string, _prev: Set
     meeting_type: field(formData, 'meeting_type'),
     video_link: field(formData, 'video_link') || null,
     active: formData.get('active') === 'on',
+    host_display_name: field(formData, 'host_display_name') || null,
+    host_first_name: field(formData, 'host_first_name') || null,
+    host_org: field(formData, 'host_org') || null,
+    host_phone: field(formData, 'host_phone') || null,
+    host_email: field(formData, 'host_email') || null,
+    host_photo_path: field(formData, 'host_photo_path') || null,
+    host_note: field(formData, 'host_note') || null,
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Check the settings' };
   const { data, error } = await m.ctx.userDb.from('booking_calendars').update(parsed.data).eq('id', m.calendar.id).select('id');

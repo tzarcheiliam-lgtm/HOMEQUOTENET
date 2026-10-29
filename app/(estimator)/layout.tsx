@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Inter_Tight } from 'next/font/google';
+import { DemoFlagCapture } from '@/components/estimator/demo-flags';
 import '../(marketing)/marketing.css';
 
 // Pages here set their own robots (noindex while prices are examples); this is the safe default.
@@ -28,6 +29,7 @@ export default function EstimatorLayout({ children }: { children: React.ReactNod
       >
         Skip to content
       </a>
+      <DemoFlagCapture />
       {children}
     </div>
   );

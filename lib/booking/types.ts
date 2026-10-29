@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- rows come from the untyped Supabase client, as elsewhere in lib/data */
+import type { CalendarHostFields } from './host-contact';
 /**
  * HomeQuote-native booking calendars (migration 0068). Shared types, error
  * codes and row mappers. Times are UTC ISO strings / epoch ms everywhere;
@@ -30,6 +31,8 @@ export interface BookingCalendar {
   meetingType: MeetingType;
   videoLink: string | null;
   active: boolean;
+  /** Who calls the homeowner (contact card, wording); see host-contact.ts. Null fields use its defaults. */
+  host: CalendarHostFields;
 }
 
 export interface CalendarRule {
@@ -142,7 +145,11 @@ export interface Slot {
   endMs: number;
 }
 
-export const DEFAULT_CALENDAR: Omit<BookingCalendar, 'id' | 'kind' | 'contractorId' | 'name'> = {
+/**
+ * Column defaults (also the HomeQuote sales calendar: 30-minute calls with
+ * contractor prospects). Homeowner calendars use HOMEOWNER_CALL below.
+ */
+export const DEFAULT_CALENDAR: Omit<BookingCalendar, 'id' | 'kind' | 'contractorId' | 'name' | 'host'> = {
   timezone: 'America/Los_Angeles',
   durationMinutes: 30,
   slotStepMinutes: 30,
@@ -154,6 +161,29 @@ export const DEFAULT_CALENDAR: Omit<BookingCalendar, 'id' | 'kind' | 'contractor
   videoLink: null,
   active: true,
 };
+
+/**
+ * Homeowner calls (HomeQuote team calendar, every contractor calendar; owner's
+ * decision 2026-10-29): Liam calls each homeowner for a quick 10-minute call to
+ * qualify and book the on-site visit. Starts every 15 minutes (9:00, 9:15 …)
+ * with 5 minutes between calls. Seeded in 0068 and used by
+ * ensure_contractor_booking_calendar.
+ */
+export const HOMEOWNER_CALL = { durationMinutes: 10, slotStepMinutes: 15, bufferMinutes: 5 } as const;
+
+const text = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
+
+export function mapHostFields(r: Record<string, any>): CalendarHostFields {
+  return {
+    displayName: text(r.host_display_name),
+    firstName: text(r.host_first_name),
+    org: text(r.host_org),
+    phone: text(r.host_phone),
+    email: text(r.host_email),
+    photoPath: text(r.host_photo_path),
+    note: text(r.host_note),
+  };
+}
 
 export function mapCalendar(r: Record<string, any>): BookingCalendar {
   return {
@@ -171,6 +201,7 @@ export function mapCalendar(r: Record<string, any>): BookingCalendar {
     meetingType: r.meeting_type === 'video' ? 'video' : 'phone',
     videoLink: r.video_link ?? null,
     active: r.active !== false,
+    host: mapHostFields(r),
   };
 }
 

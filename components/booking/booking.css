@@ -163,3 +163,55 @@
 .bk-on-dark .bk-slot[aria-selected='true'] { background: #fff; color: #0a0a0a; }
 .bk-on-dark .bk-slot:focus-visible { box-shadow: 0 0 0 2px #0b1730, 0 0 0 5px var(--bk-accent); }
 .bk-on-dark .bk-secondary.bk-danger { color: #ffa196; }
+
+/*
+ * "You're booked": a soft check, the time set large, a hairline, who calls,
+ * then the host's contact card ("Save Liam's number") as the one loud action.
+ */
+.bk-check {
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 14px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bk-accent) 11%, transparent);
+  color: var(--bk-accent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .bk-check { animation: bk-pop 420ms var(--bk-ease-out) both; }
+}
+@keyframes bk-pop {
+  from { opacity: 0; transform: scale(0.6); }
+}
+.bk-when { font-variant-numeric: tabular-nums; }
+.bk-rule { box-shadow: inset 0 1px 0 var(--bk-hair); }
+
+.bk-contact {
+  border-radius: 14px;
+  padding: 16px;
+  background: var(--bk-card, #fafaf8);
+  box-shadow: inset 0 0 0 1px var(--bk-hair);
+}
+.bk-avatar {
+  display: inline-flex;
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px var(--bk-hair), 0 1px 2px rgb(0 0 0 / 0.05);
+}
+.bk-avatar img { width: 100%; height: 100%; padding: 6px; object-fit: contain; }
+
+/* Add to calendar: stacked on phones, side by side once there is room. */
+.bk-add { container-type: inline-size; }
+.bk-add-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+@container (min-width: 460px) { .bk-add-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.bk-on-dark .bk { --bk-card: rgb(255 255 255 / 0.05); }
+.bk-on-dark .bk-avatar { background: #fff; }

@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { zonedToUtc } from '@/lib/availability/time';
 import { SlotPicker, SlotPickerSkeleton } from '@/components/booking/slot-picker';
-import { BookedView, BookingFlow } from '@/components/booking/booking-flow';
+import { BookedView, BookingFlow, fillIntro } from '@/components/booking/booking-flow';
+import { CallHow } from '@/components/booking/call-summary';
 import { ManageBooking } from '@/components/booking/manage-booking';
 import { callDetails, callTitle, googleCalendarLink } from '@/components/booking/calendar-links';
 import { flowReducer, initialFlow, nextIndex, type FlowState } from '@/components/booking/flow-state';
@@ -23,12 +24,18 @@ function day(date: string, hours: number[]): PublicSlot[] {
 }
 // Winter dates (PST) so the zone label is stable.
 const slots = [...day('2026-12-01', [9, 10, 11, 12]), ...day('2026-12-02', [13]), ...day('2026-12-03', [9]), ...day('2026-12-04', [15]), ...day('2026-12-07', [9])];
-const calendar: PublicCalendar = { hostName: 'Pool Masters LA', kind: 'contractor', timeZone: LA, durationMinutes: 30, meetingType: 'phone' };
+const calendar: PublicCalendar = { hostName: 'Pool Masters LA', kind: 'contractor', timeZone: LA, durationMinutes: 30, meetingType: 'phone', host: null };
 const booking: PublicBooking = {
   status: 'scheduled', startsAt: at('2026-12-01', 9, 30), endsAt: at('2026-12-01', 10), timeZone: LA, inviteeTimeZone: LA, meetingType: 'phone',
   hostName: 'Pool Masters LA', kind: 'contractor', hostPhone: '+18186436888', durationMinutes: 30, firstName: 'Sam', phoneHint: '0123', videoLink: null,
-  manageUrl: '/booking/manage/' + 'a'.repeat(43), icsUrl: '/api/booking/manage/' + 'a'.repeat(43) + '/ics', canChange: true,
+  manageUrl: '/booking/manage/' + 'a'.repeat(43), icsUrl: '/api/booking/manage/' + 'a'.repeat(43) + '/ics', canChange: true, host: null,
 };
+const LIAM = {
+  displayName: 'Liam from Pool Masters', firstName: 'Liam', org: 'Pool Masters LA', phone: '+17472175713', phoneDisplay: '(747) 217-5713',
+  photoUrl: '/images/brand/poolmasters-logo.png', vcardUrl: '/api/booking/contact/11111111-1111-4111-8111-111111111111.vcf',
+};
+/** The Pool Masters calendar as shipped: Liam calls for a quick 10-minute call. */
+const liamBooking: PublicBooking = { ...booking, startsAt: at('2026-12-01', 9, 15), endsAt: at('2026-12-01', 9, 25), durationMinutes: 10, host: LIAM };
 const picker = (p: Partial<Parameters<typeof SlotPicker>[0]> = {}) =>
   renderToStaticMarkup(<SlotPicker slots={slots} timeZone={LA} onSelect={() => undefined} {...p} />);
 const count = (html: string, needle: string) => html.split(needle).length - 1;
@@ -99,8 +106,10 @@ describe('BookingFlow and BookedView', () => {
     const h = renderToStaticMarkup(<BookedView booking={booking} timeZone={LA} />);
     expect(h).toContain('You’re booked, Sam');
     expect(h).toContain('Tuesday, December 1');
-    expect(h).toContain('9:30 AM – 10:00 AM PST');
+    expect(h).toContain('>9:30 AM<');
+    expect(h).toContain('to 10:00 AM PST');
     expect(h).toContain('A 30-minute phone call with Pool Masters LA.');
+    expect(h).not.toContain('data-booking-save-contact'); // no host contact: no card
     expect(h).toContain('They will call you at the number ending <span class="tabular-nums">0123</span>');
     expect(h).toContain('Google Calendar');
     expect(h).toContain(`href="${booking.icsUrl}"`);
@@ -120,6 +129,65 @@ describe('BookingFlow and BookedView', () => {
     expect(sales).toContain('We’ll email you the details');
     expect(sales).not.toContain('text and email');
     expect(sales).not.toContain('You’re booked');
+  });
+});
+
+describe('Liam as the caller (10-minute calls, contact card)', () => {
+  it('"You’re booked": the time large, who calls, the contact card with "Save Liam’s number", Add to calendar, then change', () => {
+    const h = renderToStaticMarkup(<BookedView booking={liamBooking} timeZone={LA} />);
+    expect(h).toContain('You’re booked, Sam');
+    expect(h).toContain('>9:15 AM<');
+    expect(h).toContain('to 9:25 AM PST');
+    expect(h).toContain('A quick 10-minute call. <span class="font-medium text-[var(--bk-ink)]">Liam from Pool Masters</span> will call you at the number ending <span class="tabular-nums">0123</span>.');
+    expect(h).toContain('src="/images/brand/poolmasters-logo.png"');
+    expect(h).toContain(`href="${LIAM.vcardUrl}" data-booking-save-contact=""`);
+    expect(h).toContain('Save Liam’s number');
+    expect(h).toContain('(747) 217-5713');
+    expect(h).not.toContain(' download');
+    // Order: the card comes before Add to calendar, and the change link last.
+    expect(h.indexOf('data-booking-save-contact')).toBeLessThan(h.indexOf('data-booking-add-to-calendar'));
+    expect(h.indexOf('data-booking-add-to-calendar')).toBeLessThan(h.indexOf('data-booking-manage'));
+  });
+
+  it('a host with no number to save shows the wording but no card; network funnels read "Liam from HomeQuote"', () => {
+    const h = renderToStaticMarkup(<BookedView booking={{ ...liamBooking, host: { ...LIAM, phone: null, phoneDisplay: null, vcardUrl: null } }} timeZone={LA} />);
+    expect(h).toContain('Liam from Pool Masters</span> will call you');
+    expect(h).not.toContain('data-booking-save-contact');
+    const team = renderToStaticMarkup(<CallHow meetingType="phone" hostName="a HomeQuote project specialist" durationMinutes={10} phoneHint="4567" host={{ ...LIAM, displayName: 'Liam from HomeQuote' }} />);
+    expect(team).toContain('A quick 10-minute call. <span class="font-medium text-[var(--bk-ink)]">Liam from HomeQuote</span> will call you at the number ending');
+    // A longer call is not "quick".
+    expect(renderToStaticMarkup(<CallHow meetingType="phone" hostName="HomeQuote" durationMinutes={30} phoneHint={null} host={LIAM} />)).toContain('A 30-minute call. ');
+  });
+
+  it('fills the funnel intro from the calendar once it has loaded', () => {
+    const intro = 'Pick a time for a quick {minutes}-minute call with {host}.';
+    expect(fillIntro(intro, null)).toBeNull();
+    expect(fillIntro(intro, { ...calendar, durationMinutes: 10, host: LIAM })).toBe('Pick a time for a quick 10-minute call with Liam from Pool Masters.');
+    expect(fillIntro(intro, calendar)).toBe('Pick a time for a quick 30-minute call with Pool Masters LA.');
+    expect(fillIntro('No placeholders here.', null)).toBe('No placeholders here.');
+    // Server render: a quiet placeholder line instead of "{minutes}".
+    const h = renderToStaticMarkup(<BookingFlow grant="hqb1.x" heading={null} intro={intro} />);
+    expect(h).not.toContain('{minutes}');
+    expect(h).toContain('data-booking-intro');
+  });
+
+  it('the picker reads 9:00, 9:15, 9:30 … on a 15-minute grid', () => {
+    const quarter = [0, 15, 30, 45].map((m) => ({ start: at('2026-12-01', 9, m), end: new Date(Date.parse(at('2026-12-01', 9, m)) + 10 * 60_000).toISOString() }));
+    const h = renderToStaticMarkup(<SlotPicker slots={quarter} timeZone={LA} onSelect={() => undefined} />);
+    const times = [...h.matchAll(/>(\d{1,2}:\d{2} [AP]M)</g)].map((m) => m[1]);
+    expect(times).toEqual(['9:00 AM', '9:15 AM', '9:30 AM', '9:45 AM']);
+  });
+
+  it('manage page: Liam’s card with a quiet button while the call can change', () => {
+    const h = renderToStaticMarkup(<ManageBooking token={'a'.repeat(43)} initial={liamBooking} />);
+    expect(h).toContain('Your call with Liam from Pool Masters');
+    expect(h).toContain('class="bk-secondary w-full mt-4" href="/api/booking/contact/');
+    expect(renderToStaticMarkup(<ManageBooking token={'a'.repeat(43)} initial={{ ...liamBooking, status: 'cancelled', canChange: false }} />)).not.toContain('data-booking-save-contact');
+  });
+
+  it('calendar entries name Liam and the number he calls from', () => {
+    expect(callTitle(liamBooking)).toBe('Phone call with Liam from Pool Masters');
+    expect(callDetails(liamBooking, null)).toBe('10-minute call. Liam from Pool Masters will call you at the number ending 0123 from (747) 217-5713.');
   });
 });
 
