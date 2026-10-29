@@ -41,12 +41,13 @@ export const site = {
   },
 
   nav: [
+    { label: 'For homeowners', href: '/homeowners' },
     { label: 'How it works', href: '/#how-it-works' },
     /* wideOnly: hidden in the desktop bar below 1280px, where the Industries
        menu needs the room. Always listed in the mobile sheet. */
     { label: 'Projects', href: '/#projects', wideOnly: true },
     { label: 'Appointment standards', href: '/lead-standards' },
-    { label: 'Working together', href: '/#options' },
+    { label: 'Working together', href: '/#options', wideOnly: true },
     { label: 'FAQ', href: '/#faq', wideOnly: true },
   ],
 
@@ -55,6 +56,14 @@ export const site = {
       { label: 'About', href: '/about' },
       { label: 'Appointment standards', href: '/lead-standards' },
       { label: 'Contractor application', href: '/apply' },
+    ],
+    homeowners: [
+      { label: 'All homeowner guides', href: '/homeowners' },
+      { label: 'ADUs', href: '/homeowners/adu' },
+      { label: 'Kitchen remodels', href: '/homeowners/kitchen-remodel' },
+      { label: 'Bathroom remodels', href: '/homeowners/bathroom-remodel' },
+      { label: 'Pool remodels', href: '/homeowners/pool-remodel' },
+      { label: 'ADU price estimator', href: '/adu-estimator' },
     ],
     legal: [
       { label: 'Privacy Policy', href: '/privacy' },

@@ -17,6 +17,7 @@ route group, its own theme, its own content layer.
 | `/fencing` | `app/(marketing)/fencing/page.tsx` | Industry page — fencing |
 | `/hvac` | `app/(marketing)/hvac/page.tsx` | Industry page — HVAC |
 | `/lead-standards` | `app/(marketing)/lead-standards/page.tsx` | The valid-lead standard in full |
+| `/homeowners`, `/homeowners/{adu,kitchen-remodel,bathroom-remodel,pool-remodel}` | `app/(marketing)/homeowners/**`, copy in `content/homeowners.ts`, template `components/marketing/homeowner-page.tsx` | Homeowner section. No invented figures: cost/timeline text says "varies by project" until a sourced range is added. Only `adu` has a quiz (`/adu-quiz`); other pages offer phone until a funnel exists (set `quizHref`) |
 | `/about` | `app/(marketing)/about/page.tsx` | Entity page: who runs HomeQuote Network, referral-service disclosure, service area. Bio, photo and contractor-vetting sections are omitted until real facts are supplied |
 | `/llms.txt` | `public/llms.txt` | Static plain-text site summary for AI crawlers; add new public pages here |
 | `/apply` | `app/(marketing)/apply/page.tsx` | Contractor application (`?track=managed` preselects the managed option; `?niche=roofing` etc. shows that industry's services) |

@@ -1,6 +1,7 @@
 import type { MetadataRoute } from 'next';
 import { site } from '@/content/site';
 import { industries } from '@/content/industries';
+import { homeownerProjects } from '@/content/homeowners';
 
 /** Public marketing routes only. The /app CRM and auth pages stay out. */
 export default function sitemap(): MetadataRoute.Sitemap {
@@ -13,6 +14,18 @@ export default function sitemap(): MetadataRoute.Sitemap {
       lastModified: now,
       changeFrequency: 'weekly' as const,
       priority: 0.9,
+    })),
+    {
+      url: `${site.url}/homeowners`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.8,
+    },
+    ...homeownerProjects.map((p) => ({
+      url: `${site.url}/homeowners/${p.slug}`,
+      lastModified: now,
+      changeFrequency: 'monthly' as const,
+      priority: 0.7,
     })),
     {
       url: `${site.url}/about`,

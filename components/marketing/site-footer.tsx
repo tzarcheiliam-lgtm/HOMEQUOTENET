@@ -11,7 +11,7 @@ export function SiteFooter() {
     <footer className="border-t border-[var(--hq-line)] bg-[var(--hq-bg)]">
       <Container>
         <div className="grid gap-12 py-16 md:grid-cols-12 md:gap-8">
-          <div className="md:col-span-5">
+          <div className="md:col-span-4">
             <Wordmark size="lg" />
             <p className="mt-4 max-w-sm text-sm leading-6 text-[var(--hq-text-muted)]">
               Qualified homeowner appointments for home-service contractors. We
@@ -58,7 +58,7 @@ export function SiteFooter() {
             </a>
           </div>
 
-          <div className="md:col-span-3">
+          <div className="md:col-span-2">
             <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--hq-text-dim)]">
               Contractors
             </h3>
@@ -67,6 +67,24 @@ export function SiteFooter() {
                 ...industries.map((i) => ({ label: i.navLabel, href: `/${i.slug}` })),
                 ...site.footerLinks.company,
               ].map((link) => (
+                <li key={link.href}>
+                  <Link
+                    href={link.href}
+                    className="inline-block py-1.5 text-sm text-[var(--hq-text-muted)] transition-colors hover:text-[var(--hq-text)]"
+                  >
+                    {link.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="md:col-span-2">
+            <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--hq-text-dim)]">
+              Homeowners
+            </h3>
+            <ul className="mt-3 space-y-1">
+              {site.footerLinks.homeowners.map((link) => (
                 <li key={link.href}>
                   <Link
                     href={link.href}
