@@ -1,10 +1,9 @@
 /*
-  Homeowner homepage. Scoped to .ho (page) plus .ho-header / .ho-footer (chrome),
+  Homeowner homepage. Scoped to .ho (page) and .ho-header / .ho-footer (chrome),
   so nothing here reaches the contractor pages or the CRM.
 
-  Scene: a homeowner on a phone, evening, deciding whether to start. The hero is
-  the brand Blue, full bleed, with the project choice as the largest thing on
-  screen. Gold marks the one action. Everything below is daylight Mist.
+  Quiet on purpose: white ground, navy ink, brand Blue only where something is
+  interactive. The photographs carry the page.
 */
 
 .ho,
@@ -12,232 +11,122 @@
 .ho-footer {
   --ho-blue: #0038b8;
   --ho-navy: #0a1b3d;
-  --ho-mist: #f4f7fc;
-  --ho-mist-2: #e8eef9;
-  --ho-gold: #f5b700;
-  --ho-ink-soft: #3b4c70; /* 8.6:1 on Mist */
-  --ho-on-blue: #dbe5ff; /* 9.5:1 on Blue */
-  --ho-rule: #c9d4ea;
-  font-variant-numeric: tabular-nums;
-}
-
-.ho {
-  color-scheme: light;
-  background: var(--ho-mist);
+  --ho-ink-soft: #4a5a7d; /* 6.9:1 on white */
+  --ho-rule: #e3e9f5;
   color: var(--ho-navy);
-  scrollbar-color: var(--ho-navy) var(--ho-mist-2);
+  background: #fff;
+  color-scheme: light;
 }
 
 .ho ::selection,
 .ho-header ::selection,
 .ho-footer ::selection {
-  background: var(--ho-gold);
-  color: var(--ho-navy);
+  background: var(--ho-blue);
+  color: #fff;
 }
 
-.ho :where(a, button, summary):focus-visible {
-  outline: 3px solid var(--ho-blue);
-  outline-offset: 3px;
-  border-radius: 4px;
-}
-
-.ho-hero :where(a, button, summary):focus-visible,
-.ho-blue :where(a, button, summary):focus-visible,
-.ho-header :where(a, button):focus-visible {
-  outline-color: var(--ho-gold);
+.ho :where(a, button):focus-visible,
+.ho-header :where(a, button):focus-visible,
+.ho-footer :where(a, button):focus-visible {
+  outline: 2px solid var(--ho-blue);
+  outline-offset: 4px;
+  border-radius: 6px;
 }
 
 .ho-display {
   font-family: var(--font-sora), system-ui, sans-serif;
-  font-weight: 700;
-  letter-spacing: -0.04em;
-  line-height: 1;
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.04;
   text-wrap: balance;
 }
 
-/* ---- Chrome -------------------------------------------------------------- */
-
-.ho-header {
-  background: var(--ho-blue);
-  color: #fff;
-}
-
-.ho-header a {
+.ho-header a,
+.ho-footer a {
   color: inherit;
 }
 
-.ho-footer {
-  background: var(--ho-navy);
-  color: #c9d6f2;
-}
-
+.ho-header a:hover,
 .ho-footer a:hover {
-  color: #fff;
+  color: var(--ho-blue);
 }
 
-/* ---- Buttons ------------------------------------------------------------- */
-
-.ho-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.6rem;
-  min-height: 3.5rem;
-  padding: 0 1.75rem;
-  border-radius: 6px;
-  font-weight: 700;
-  font-size: 1rem;
-  line-height: 1;
-  white-space: nowrap;
-  transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1), background-color 160ms ease;
-}
-
-.ho-btn:active {
-  transform: translateY(1px);
-}
-
-.ho-btn-gold {
-  background: var(--ho-gold);
-  color: var(--ho-navy) !important;
-  box-shadow: 0 1px 0 rgb(10 27 61 / 0.3), 0 6px 14px -6px rgb(10 27 61 / 0.4);
-}
-
-.ho-btn-gold:hover {
-  background: #ffc933;
-}
-
-/* ---- Hero project picker ------------------------------------------------- */
-
-.ho-hero {
-  background: var(--ho-blue);
-  color: #fff;
-}
-
-.ho-picks {
-  border-top: 2px solid #fff;
-}
+/* ---- Project choices ------------------------------------------------------ */
 
 .ho-pick {
-  display: grid;
-  grid-template-columns: 1fr;
-  border-bottom: 2px solid #fff;
-  color: #fff;
-  background: transparent;
-  transition: background-color 220ms ease, color 220ms ease;
-}
-
-@media (min-width: 768px) {
-  .ho-pick {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 24rem);
-  }
-}
-
-.ho-pick:hover,
-.ho-pick:has(a:focus-visible) {
-  background: var(--ho-navy);
+  display: block;
+  color: inherit;
 }
 
 .ho-pick-photo {
   position: relative;
-  min-height: 9rem;
   overflow: hidden;
-  order: -1;
-}
-
-@media (min-width: 768px) {
-  .ho-pick-photo {
-    order: 0;
-    min-height: 100%;
-  }
+  border-radius: 14px;
+  aspect-ratio: 4 / 3;
+  background: var(--ho-rule);
 }
 
 .ho-pick-photo img {
-  position: absolute;
-  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
   transition: transform 700ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.ho-pick:hover .ho-pick-photo img {
-  transform: scale(1.05);
+.ho-pick:hover .ho-pick-photo img,
+.ho-pick:focus-visible .ho-pick-photo img {
+  transform: scale(1.04);
 }
 
-.ho-go {
-  position: absolute;
-  right: 1.25rem;
-  bottom: 1.25rem;
-  display: grid;
-  place-items: center;
-  width: 3.5rem;
-  height: 3.5rem;
-  border-radius: 6px;
-  background: var(--ho-gold);
-  color: var(--ho-navy);
+.ho-pick-name {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--ho-rule);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  transition: border-color 200ms ease, color 200ms ease;
+}
+
+.ho-pick:hover .ho-pick-name {
+  border-color: var(--ho-blue);
+  color: var(--ho-blue);
+}
+
+.ho-pick-name svg {
   transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.ho-pick:hover .ho-go {
+.ho-pick:hover .ho-pick-name svg {
   transform: translateX(4px);
 }
 
-/* One authored moment: the three choices rise into place, staggered. */
+/* One authored moment: the choices fade up in sequence. */
 @keyframes ho-rise {
   from {
     opacity: 0.001;
-    transform: translateY(24px);
-    clip-path: inset(0 0 100% 0);
+    transform: translateY(16px);
   }
   to {
     opacity: 1;
     transform: none;
-    clip-path: inset(0 0 0 0);
   }
 }
 
 .ho-pick {
   animation: ho-rise 800ms cubic-bezier(0.16, 1, 0.3, 1) both;
-  animation-delay: calc(var(--i, 0) * 120ms + 150ms);
+  animation-delay: calc(var(--i, 0) * 110ms + 120ms);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .ho-pick,
   .ho-pick-photo img,
-  .ho-go,
-  .ho-btn {
+  .ho-pick-name svg {
     animation: none;
     transition: none;
   }
-}
-
-/* ---- Ruled lists --------------------------------------------------------- */
-
-.ho-rows > li,
-.ho-rows > div {
-  border-top: 2px solid var(--ho-navy);
-}
-
-.ho-rows > li:last-child,
-.ho-rows > div:last-child {
-  border-bottom: 2px solid var(--ho-navy);
-}
-
-/* ---- FAQ ----------------------------------------------------------------- */
-
-.ho-faq summary {
-  list-style: none;
-  cursor: pointer;
-}
-
-.ho-faq summary::-webkit-details-marker {
-  display: none;
-}
-
-.ho-plus {
-  transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.ho-faq details[open] .ho-plus {
-  transform: rotate(45deg);
 }

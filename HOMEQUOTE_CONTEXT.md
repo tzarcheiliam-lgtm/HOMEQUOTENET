@@ -99,7 +99,7 @@ middleware.ts           Delegates to lib/supabase/middleware.ts (session refresh
 ## 4. Routes
 
 ### Marketing (public, `app/(marketing)/`)
-`/` (HOMEOWNER-directed home, 2026-10-29: blue hero + project picker linking to `/estimate/bathroom-remodel`, `/estimate/kitchen-remodel`, `/adu-quiz`; styles in `app/(marketing)/home.css`, scoped `.ho`; header/footer swap by pathname via `components/marketing/homeowner-chrome.tsx`), `/contractors` (the former contractor homepage, moved verbatim), `/pool-contractors`, `/hvac`, `/roofing`, `/fencing`,
+`/` (HOMEOWNER-directed home, 2026-10-29: minimal white page, one headline + Bathroom/Kitchen/ADU photo choices linking to `/estimate/bathroom-remodel`, `/estimate/kitchen-remodel`, `/adu-quiz`; styles in `app/(marketing)/home.css`, scoped `.ho`; header/footer swap by pathname via `components/marketing/homeowner-chrome.tsx`), `/contractors` (the former contractor homepage, moved verbatim), `/pool-contractors`, `/hvac`, `/roofing`, `/fencing`,
 `/general-contractors`, `/lead-standards`, `/apply` (contractor application
 form), `/privacy`, `/terms`, `/adu-estimator` (homeowner ADU price estimator, see
 `docs/adu-estimator.md`: pricing in `lib/adu/pricing-config.ts`,
