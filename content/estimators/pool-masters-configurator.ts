@@ -250,4 +250,13 @@ export const POOL_MASTERS_CONFIGURATOR: ConfiguratorSpec = {
   },
   photos: photoMatrix(VIEWS),
   photoNote: 'Photos show example designs (AI-assisted, based on Pool Masters projects), not your yard.',
+  // Real Pool Masters LA jobs, unedited (permission granted): the "Recent projects" strip.
+  projects: [
+    { src: `${DIR}projects/hilltop-pool-spa-baja-shelf.webp`, alt: 'Hilltop pool and spa with a Baja shelf by Pool Masters LA', caption: 'Hilltop pool, spa and Baja shelf' },
+    { src: `${DIR}projects/long-pool-raised-spa.webp`, alt: 'Long pool with a raised spa by Pool Masters LA', caption: 'Long pool with a raised spa' },
+    { src: `${DIR}projects/led-pool-spa-night.webp`, alt: 'Pool and spa lit with LED lights at night by Pool Masters LA', caption: 'LED lighting at night' },
+    { src: `${DIR}projects/overhead-pool-blue-umbrellas.webp`, alt: 'Overhead view of a pool with blue umbrellas by Pool Masters LA', caption: 'Pool deck from above' },
+    { src: `${DIR}projects/covered-outdoor-kitchen.webp`, alt: 'Covered outdoor kitchen next to a pool by Pool Masters LA', caption: 'Covered outdoor kitchen' },
+    { src: `${DIR}projects/fire-and-water-bowls.webp`, alt: 'Fire and water bowls on a pool edge by Pool Masters LA', caption: 'Fire and water bowls' },
+  ],
 };

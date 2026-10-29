@@ -1,4 +1,4 @@
-import type { Answers } from '../types.ts';
+import type { Answers, GalleryImage } from '../types.ts';
 
 /**
  * One-page configurator ("pick the size, pick the finish, pick the upgrades"),
@@ -113,6 +113,8 @@ export type ConfiguratorSpec = {
   photos: Record<string, ConfiguratorPhoto>;
   /** Shown once on the page, e.g. "Photos show example designs (AI-assisted), not your yard." */
   photoNote: string;
+  /** Real finished jobs (never AI-edited) for the "Recent projects" strip; falls back to the contractor's gallery. */
+  projects?: GalleryImage[];
 };
 
 /**

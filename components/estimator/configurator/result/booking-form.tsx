@@ -139,7 +139,16 @@ export function ConfiguratorBooking({ slug, contractor, selection, answers, embe
         name={key}
         value={fields[key]}
         onChange={(e) => set(key, e.target.value)}
-        onBlur={key === 'phone' ? () => set('phone', tidyPhone(fields.phone)) : undefined}
+        // Only when tidying changes it: a no-op set would clear the field's error on blur, shift the layout
+        // under the pointer and swallow the click on "Book my free consultation".
+        onBlur={
+          key === 'phone'
+            ? () => {
+                const tidy = tidyPhone(fields.phone);
+                if (tidy !== fields.phone) set('phone', tidy);
+              }
+            : undefined
+        }
         aria-invalid={err(key) ? true : undefined}
         aria-describedby={describedBy(key, Boolean(hint))}
         className={`${input} ${err(key) ? badBorder : okBorder}`}
@@ -248,7 +257,7 @@ export function ConfiguratorBooking({ slug, contractor, selection, answers, embe
       <div role="alert" aria-live="assertive" className="empty:hidden">
         {fieldCount > 0 && general.length === 0 ? (
           <p className="text-[13.5px] font-medium text-[#b42318]">
-            {fieldCount === 1 ? 'One thing to fix above.' : `${fieldCount} things to fix above.`} Everything you typed is still there.
+            {fieldCount === 1 ? 'One thing to fix above.' : `${fieldCount} things to fix above.`}
           </p>
         ) : null}
         {general.map((message) => (

@@ -69,7 +69,7 @@ describe('configurator page markup', () => {
     expect(p.src).toBe(SPEC.views[0].fallback.src);
     const ok = stagePhoto(SPEC, 'aerial-resurface', { ...manifest, 'aerial-resurface': { full: true, sm: true } });
     expect(ok.src).toBe(SPEC.photos['aerial-resurface'].src);
-    expect(ok.srcSet).toContain('aerial-resurface-sm.webp 1024w');
+    expect(ok.srcSet).toContain('aerial-resurface-sm.webp 900w');
     expect(render({ manifest })).toContain(SPEC.views[0].fallback.src);
     expect(configuratorPhotoManifest(SPEC, '/no/such/dir')).toBeNull();
   });

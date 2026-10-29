@@ -24,7 +24,8 @@ import { CostSummary, TotalBar } from './cost';
 import { LuxeCard, ModelPicker, OptionGroupCard, type RowView } from './options';
 import { PhotoStage } from './photo-stage';
 import { currentPhotos, stagePhoto, viewPhotos, type PhotoManifest, type StagePhoto } from './photos';
-import { ConfiguratorResult, ProjectStrip } from './result';
+import { ProjectStrip } from './result';
+import { ConfiguratorResultPage } from './result/result-page';
 import {
   costBreakdown,
   deltaLabel,
@@ -188,6 +189,8 @@ export function Configurator({ spec, template, contractor, manifest = null, embe
   /* ---------------- Render ---------------- */
 
   const examplePrices = !template.pricesConfirmed;
+  // Real finished jobs (never AI): the spec's list, else the contractor's gallery.
+  const projects = spec.projects?.length ? spec.projects : (contractor.gallery ?? []);
   const top = embedded ? 'top-0' : 'top-14 lg:top-16';
   // The embed layout already wraps the page in <main id="main">.
   const Main = embedded ? 'div' : 'main';
@@ -197,7 +200,7 @@ export function Configurator({ spec, template, contractor, manifest = null, embe
       <div className="es-cfg flex min-h-[100dvh] flex-1 flex-col" data-estimator-done="">
         {embedded ? null : <ConfiguratorHeader contractor={contractor} />}
         <Main id={embedded ? undefined : 'main'} className="flex-1">
-          <ConfiguratorResult
+          <ConfiguratorResultPage
             slug={contractor.slug}
             contractor={contractor}
             template={template}
@@ -209,6 +212,7 @@ export function Configurator({ spec, template, contractor, manifest = null, embe
             designUrl={href}
             embedded={embedded}
             photoNote={spec.photoNote}
+            projects={projects}
             onBack={() => go('design')}
           />
         </Main>
@@ -269,8 +273,8 @@ export function Configurator({ spec, template, contractor, manifest = null, embe
                   <OptionGroupCard key={group.id} group={group} rows={rows} onRow={(rowId, on) => act({ type: 'row', rowId, on })} />
                 ))}
 
-                {contractor.gallery?.length ? (
-                  <ProjectStrip gallery={contractor.gallery} title={`Recent ${contractor.contractorName} projects`} className="pt-6" />
+                {projects.length ? (
+                  <ProjectStrip gallery={projects} title={`Recent ${contractor.contractorName} projects`} className="pt-6" />
                 ) : null}
               </div>
               <TotalBar breakdown={breakdown} open={barOpen} onOpen={setBarOpen} onContinue={() => go('summary')} examplePrices={examplePrices} />
