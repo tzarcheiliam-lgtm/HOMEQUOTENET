@@ -3,26 +3,32 @@ import { POOL_MASTERS_CONFIGURATOR } from './pool-masters-configurator';
 
 /*
  * Pool Masters LA's simple mobile funnel (experience 'funnel'): a landing page,
- * then exactly three taps of choice (size, finish, extras), the contact step
- * and the booking step. Owner's brief: "too much going on = too many
- * questions; it should feel straightforward and simple." Equipment and site
+ * then three taps of choice (size, finish, extras), follow-up design steps
+ * only when the extras ask for them, the contact step and the booking step.
+ * Owner's brief: "too much going on = too many questions; it should feel
+ * straightforward and simple" and, for the follow-ups, "keep it simple; these
+ * are only design options shown if they choose it." Equipment and site
  * questions are left to the free on-site visit.
  *
  * Every option maps to the one-page configurator's models and rows
- * (./pool-masters-configurator.ts), so prices come from the same example
- * price table (lib/estimator/templates/pool.ts; still examples while
- * pricesConfirmed is false) and the photos are its pre-rendered files.
+ * (./pool-masters-configurator.ts) and/or template answers, so prices come
+ * from the same example price table (lib/estimator/templates/pool.ts; still
+ * examples while pricesConfirmed is false).
  *
  * - Standard = the configurator's included design (white plaster, porcelain
- *   waterline tile, concrete coping, resurfaced deck, new pump and filter).
- * - Luxe = pebble, glass tile + travertine coping, porcelain deck. Priced as
- *   plain rows: the Go Luxe bundle discount is never applied here.
- * - Extras: just the pool / + raised spa / + spa, outdoor kitchen, patio cover
- *   and fire bowls.
+ *   waterline tile, precast concrete coping, resurfaced deck, new pump and filter).
+ * - Luxe = pebble, glass tile, porcelain coping (catalog option, enabled in
+ *   ./pool-masters.ts), porcelain deck. Priced as plain rows: the Go Luxe
+ *   bundle discount is never applied here.
+ * - Extras: just the pool (3 steps) / a spa (+ "Choose your spa.": 4 steps) /
+ *   the full backyard (spa, outdoor kitchen, fire feature, cabana: 7 steps).
+ *   The follow-ups answer the template's optional spaStyle / kitchenStyle /
+ *   coverStyle questions (what each build adds) or pick the fire feature.
  */
 
 const DIR = '/estimator/pool-masters/configurator/';
 const FUNNEL_DIR = '/estimator/pool-masters/funnel/';
+const REAL = '/estimator/pool-masters/';
 
 /** Shown if a to-scale plan image fails to load. */
 const SIZE_FALLBACK = {
@@ -30,6 +36,11 @@ const SIZE_FALLBACK = {
   srcSm: `${DIR}aerial-resurface-sm.webp`,
   alt: 'Drone view of a rectangular pool with a freshly resurfaced light concrete deck (example design)',
 };
+
+/** A follow-up option's photo in public/estimator/pool-masters/funnel/ (scripts/generate-pool-funnel-options.mjs). */
+function optionPhoto(key: string, alt: string): FunnelPhoto {
+  return { src: `${FUNNEL_DIR}${key}.webp`, srcSm: `${FUNNEL_DIR}${key}-sm.webp`, alt };
+}
 
 function sizePlan(id: string, dims: string): FunnelPhoto {
   return {
@@ -78,12 +89,15 @@ export const POOL_MASTERS_FUNNEL: FunnelSpec = {
       id: 'finish',
       label: 'Choose your finish.',
       options: [
-        { id: 'standard', title: 'Standard', subtitle: 'Plaster, porcelain tile, concrete coping' },
+        // The configurator's base design, with the coping named for what it is (precast concrete).
+        { id: 'standard', title: 'Standard', subtitle: 'Plaster, standard tile, precast coping', answers: { coping: ['concrete'] } },
         {
           id: 'luxe',
           title: 'Luxe',
-          subtitle: 'Pebble, glass tile, travertine, porcelain deck',
+          subtitle: 'Pebble, glass tile, porcelain coping and deck',
+          // Glass tile from the edge row, then porcelain coping in place of its travertine.
           rows: ['pebble', 'edge_glass_travertine', 'deck_porcelain'],
+          answers: { coping: ['porcelain'] },
         },
       ],
       // poolside-plaster-classic vs poolside-pebble-premium (+ "-spa" once a spa is picked).
@@ -94,20 +108,114 @@ export const POOL_MASTERS_FUNNEL: FunnelSpec = {
       label: 'Add the extras.',
       options: [
         { id: 'pool', title: 'Just the pool', short: 'Pool only', subtitle: 'No spa or backyard extras' },
-        { id: 'spa', title: 'Add a spa', short: 'With spa', subtitle: 'Raised spa with a spillover', rows: ['spa'] },
+        // The spa step names the spa on the price card.
+        { id: 'spa', title: 'Add a spa', short: '', subtitle: 'Pool and a spa', rows: ['spa'] },
         {
           id: 'backyard',
           title: 'The full backyard',
-          short: 'Full backyard',
-          subtitle: 'Spa, kitchen, patio cover, fire bowls',
-          rows: ['spa', 'outdoor_kitchen', 'patio_cover', 'fire_bowls'],
+          short: '',
+          subtitle: 'Spa, outdoor kitchen, fire and shade',
+          rows: ['spa', 'outdoor_kitchen', 'patio_cover'],
         },
       ],
       // e.g. aerial-resurface, aerial-porcelain-pebble-spa, aerial-resurface-spa-yard.
       photo: { kind: 'view', view: 'aerial' },
-      cta: 'Get my estimate',
+    },
+    // ---- Follow-ups: only when "Add the extras." asks for them (design options; one tap each).
+    {
+      id: 'spa',
+      label: 'Choose your spa.',
+      showWhen: { stepId: 'extras', anyOf: ['spa', 'backyard'] },
+      defaultOption: 'raised',
+      options: [
+        { id: 'flush', title: 'Flush spa', subtitle: 'Level with the pool, spills in', answers: { spaStyle: ['flush'] } },
+        { id: 'raised', title: 'Raised spa', subtitle: 'Dark-tile wall with a spillway', answers: { spaStyle: ['raised'] } },
+        { id: 'zero_edge', title: 'Zero-edge spa', subtitle: 'Overflows on all four sides', answers: { spaStyle: ['zero_edge'] } },
+      ],
+      photo: {
+        kind: 'option',
+        photos: {
+          flush: optionPhoto('spa-flush', 'Poolside view of the pool with a flush spa set level with the water, spilling gently into the pool (example design)'),
+          raised: {
+            src: `${DIR}poolside-pebble-premium-spa.webp`,
+            srcSm: `${DIR}poolside-pebble-premium-spa-sm.webp`,
+            alt: 'Poolside view of the pool with a raised dark-tile spa and a spillway (example design)',
+          },
+          zero_edge: optionPhoto('spa-zero-edge', 'Poolside view of the pool with a zero-edge spa brimming over its dark-tile walls (example design)'),
+        },
+      },
+    },
+    {
+      id: 'kitchen',
+      label: 'Choose your outdoor kitchen.',
+      showWhen: { stepId: 'extras', anyOf: ['backyard'] },
+      defaultOption: 'full',
+      options: [
+        { id: 'grill', title: 'Grill island', subtitle: 'Built-in grill and counter', answers: { kitchenStyle: ['grill'] } },
+        { id: 'full', title: 'Full kitchen', subtitle: 'Grill, sink and bar seating', answers: { kitchenStyle: ['full'] } },
+        { id: 'chef', title: "Chef's kitchen", subtitle: 'Everything, plus a pizza oven', answers: { kitchenStyle: ['chef'] } },
+      ],
+      photo: {
+        kind: 'option',
+        photos: {
+          // Real Pool Masters job (unedited).
+          grill: { src: `${REAL}outdoor-kitchen-slab-counter.webp`, alt: 'Built-in stainless grill and stone counter by Pool Masters LA' },
+          full: optionPhoto('kitchen-full', 'Outdoor kitchen with a grill, a stone island with a sink and bar stools, from above (example design)'),
+          // PLACEHOLDER until scripts/generate-pool-funnel-options.mjs makes kitchen-chef (kie.ai credits ran out):
+          // the real kitchen bar of this yard, no pizza oven yet.
+          chef: { src: `${REAL}covered-outdoor-kitchen-bar.webp`, alt: 'Outdoor kitchen bar with stools under a pergola with pendant lights' },
+        },
+      },
+    },
+    {
+      id: 'fire',
+      label: 'Choose your fire feature.',
+      showWhen: { stepId: 'extras', anyOf: ['backyard'] },
+      defaultOption: 'bowls',
+      options: [
+        { id: 'pit', title: 'Fire pit', subtitle: 'A built-in gathering spot', rows: ['fire_pit'] },
+        { id: 'fireplace', title: 'Outdoor fireplace', short: 'Fireplace', subtitle: 'A built fireplace wall', addAnswers: { extras: ['fireplace'] } },
+        { id: 'bowls', title: 'Fire bowls', subtitle: 'A pair on the pool edge', rows: ['fire_bowls'] },
+      ],
+      photo: {
+        kind: 'option',
+        photos: {
+          pit: { src: `${REAL}fire-pit-stone-wall-seating.webp`, alt: 'Round fire pit beside built-in bench seating by Pool Masters LA' },
+          fireplace: optionPhoto('fire-fireplace', 'The pool at dusk with a modern outdoor fireplace wall beyond the far end (example design)'),
+          bowls: {
+            src: `${DIR}evening-pebble-fire-spa.webp`,
+            srcSm: `${DIR}evening-pebble-fire-spa-sm.webp`,
+            alt: 'The pool at dusk with two lit fire bowls at the far end (example design)',
+          },
+        },
+      },
+    },
+    {
+      id: 'cabana',
+      label: 'Choose your cabana.',
+      showWhen: { stepId: 'extras', anyOf: ['backyard'] },
+      defaultOption: 'lounge',
+      options: [
+        { id: 'pergola', title: 'Pergola', subtitle: 'Open beams, filtered shade', answers: { coverStyle: ['pergola'] } },
+        { id: 'cabana', title: 'Cabana', subtitle: 'Roofed, with flowing curtains', answers: { coverStyle: ['cabana'] } },
+        { id: 'lounge', title: 'Covered lounge', subtitle: 'Solid roof, lights and a fan', answers: { coverStyle: ['covered_lounge'] } },
+      ],
+      photo: {
+        kind: 'option',
+        photos: {
+          pergola: { src: `${REAL}covered-lounge-pool-dusk.webp`, alt: 'Louvered pergola over a lounge beside a pool by Pool Masters LA' },
+          // PLACEHOLDER until scripts/generate-pool-funnel-options.mjs makes cabana-curtains (kie.ai credits ran out):
+          // this yard's real pergola, no curtains yet.
+          cabana: { src: `${REAL}covered-outdoor-kitchen-bar.webp`, alt: 'Shaded pergola with pendant lights in the same backyard' },
+          lounge: optionPhoto('cabana-lounge', 'Covered outdoor lounge with sofas under a dark patio cover, from above (example design)'),
+        },
+      },
     },
   ],
+  // The last step on the path (3 for just the pool, 4 with a spa, 7 for the full backyard).
+  finalCta: 'Get my estimate',
+  // The steps' lines name the real coping, spa, kitchen, fire and shade picks; the configurator rows only approximate them.
+  summaryReplacesGroups: ['edge', 'features', 'backyard'],
   contactStep: {
     eyebrow: 'Last step',
     headline: 'Your estimate is ready.',

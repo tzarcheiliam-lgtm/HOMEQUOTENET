@@ -3,7 +3,7 @@ import { consentText, contactSchema, inServiceArea, matches, qualify, serviceAre
 import { encodeSelection, estimateSelection, normalizeSelection, photoFor, photoSrc, selectionToAnswers } from './configurator/engine.ts';
 import type { ConfiguratorSelection, ConfiguratorSpec, Range } from './configurator/types.ts';
 import { formatRange, picksFor, visibleQuestions } from './engine.ts';
-import { encodeFunnelSelection, estimateFunnel, funnelAnswers, funnelPhoto, normalizeFunnelSelection, photoKey, pickedTitles, toConfiguratorSelection } from './funnel/engine.ts';
+import { activeSteps, encodeFunnelSelection, estimateFunnel, funnelAnswers, funnelPhoto, normalizeFunnelSelection, photoKey, pickedTitles, toConfiguratorSelection } from './funnel/engine.ts';
 import type { FunnelSelection, FunnelSpec } from './funnel/types.ts';
 import {
   LEAD_TIMELINES, describeConfiguratorDesign, describeFunnelDesign, estimatorConsentText, normalizeZip, usPhoneDigits, type EstimatorLeadRequest,
@@ -507,8 +507,13 @@ export function funnelLeadDesign(
   };
   const cfgSel = toConfiguratorSelection(spec, selection) ?? undefined;
   // What "Standard" / "Luxe" really include, from the configurator (its size line repeats the first step).
-  const includes = spec.configurator && cfgSel ? describeConfiguratorDesign(spec.configurator, cfgSel).filter((l) => !l.startsWith('Size:')) : [];
-  const photos = spec.steps.map((s) => {
+  // Groups the steps already name exactly (spec.summaryReplacesGroups: coping, spa, kitchen, fire, shade) are left out.
+  const replaced = new Set((spec.summaryReplacesGroups ?? []).map((id) => spec.configurator?.groups.find((g) => g.id === id)?.title).filter(Boolean));
+  const includes =
+    spec.configurator && cfgSel
+      ? describeConfiguratorDesign(spec.configurator, cfgSel).filter((l) => !l.startsWith('Size:') && !replaced.has(l.slice(0, l.indexOf(':'))))
+      : [];
+  const photos = activeSteps(spec, selection).map((s) => {
     const photo = funnelPhoto(spec, s.id, selection);
     return { view: s.id, label: s.label.replace(/[.?!]$/, ''), key: photoKey(spec, s.id, selection), url: absolute(photo.src), alt: photo.alt };
   });

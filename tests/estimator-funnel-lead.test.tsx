@@ -78,7 +78,7 @@ import {
 } from '@/components/estimator/funnel/contact/state';
 import type { FunnelLeadResult } from '@/components/estimator/funnel/screens';
 import { publicTemplate } from '@/lib/estimator/config';
-import { allFunnelSelections, encodeFunnelSelection, estimateFunnel, funnelAnswers, funnelSpecFor } from '@/lib/estimator/funnel/engine';
+import { activeSteps, allFunnelSelections, encodeFunnelSelection, estimateFunnel, funnelAnswers, funnelSpecFor } from '@/lib/estimator/funnel/engine';
 import { funnelLeadDesign, parseLeadRequest, sanitizeEstimatorAnswers } from '@/lib/estimator/lead';
 import { ADDRESS_NEEDS_ZIP, describeFunnelDesign, estimatorConsentText, funnelContactErrors, splitFullName } from '@/lib/estimator/lead-client';
 import { getEstimator } from '@/lib/estimator/registry';
@@ -87,7 +87,7 @@ const { template, contractor } = getEstimator('pool-masters')!;
 const spec = funnelSpecFor(contractor)!;
 const funnelConfig = funnelSchema.parse(poolMastersFunnel);
 const pub = publicTemplate(template, contractor);
-const picks = { size: 'classic', finish: 'luxe', extras: 'spa' };
+const picks = { size: 'classic', finish: 'luxe', extras: 'spa', spa: 'zero_edge' };
 const fields = {
   ...emptyFunnelFields(),
   name: '  Jordan  Rivera ',
@@ -210,12 +210,14 @@ describe('funnel lead route', () => {
     expect(answers.estimator_design).toContain('Select your pool size: Classic (About 30 × 15 ft)');
     expect(answers.estimator_design).toContain('Choose your finish: Luxe');
     expect(answers.estimator_design).toContain('Add the extras: Add a spa');
+    expect(answers.estimator_design).toContain('Choose your spa: Zero-edge spa (Overflows on all four sides)');
+    expect(answers.estimator_photos).toContain('https://homequote.example/estimator/pool-masters/funnel/spa-zero-edge.webp');
     expect(answers.estimator_photos).toContain('https://homequote.example/estimator/pool-masters/funnel/size-classic.webp');
     expect(answers.estimator_photos).toMatch(/\/configurator\/aerial-[a-z-]*spa[a-z-]*\.webp/);
-    expect(answers.estimator_design_url).toBe('https://homequote.example/estimator/pool-masters/design?size=classic&finish=luxe&extras=spa');
+    expect(answers.estimator_design_url).toBe('https://homequote.example/estimator/pool-masters/design?size=classic&finish=luxe&extras=spa&spa=zero_edge');
     expect(answers.estimator_check_on_site).toBeTruthy();
     const meta = (activity().metadata as { estimator: { funnel: { selection: unknown; titles: string[] } } }).estimator;
-    expect(meta.funnel).toEqual({ selection: picks, titles: ['Classic', 'Luxe', 'Add a spa'] });
+    expect(meta.funnel).toEqual({ selection: picks, titles: ['Classic', 'Luxe', 'Add a spa', 'Zero-edge spa'] });
     expect(String(activity().body)).toMatch(/Their design:\n- Select your pool size: Classic/);
     expect(String(activity().body)).not.toMatch(/Go Luxe bundle saving/);
     expect(rpcArgs().p_qualified).toBe(true);
@@ -296,17 +298,55 @@ describe('funnel lead route', () => {
     for (const sel of allFunnelSelections(spec)) {
       const { estimate, design } = funnelLeadDesign(spec, template, sel, { origin: 'https://x.test', slug: 'pool-masters' });
       expect(estimate.low).toBeGreaterThan(0);
-      expect(design.photos).toHaveLength(spec.steps.length);
-      expect(design.summary.slice(0, 3)).toEqual(describeFunnelDesign(spec, sel));
+      const shown = activeSteps(spec, sel);
+      expect(design.photos.map((p) => p.view)).toEqual(shown.map((s) => s.id));
+      expect(design.summary.slice(0, shown.length)).toEqual(describeFunnelDesign(spec, sel));
+      // The steps name the coping, spa, kitchen, fire and shade; the configurator's approximate lines are left out.
+      expect(design.summary.some((l) => /^(Tile & coping|Pool features|Backyard):/.test(l))).toBe(false);
       expect(design.designUrl).toContain(encodeFunnelSelection(spec, sel));
     }
   });
 });
 
+describe('funnel lead summary: follow-up picks in plain words', () => {
+  it('lists every follow-up pick of the full backyard for the contractor, and prices them', () => {
+    const sel = { size: 'estate', finish: 'luxe', extras: 'backyard', spa: 'flush', kitchen: 'chef', fire: 'pit', cabana: 'cabana' };
+    const { design, estimate } = funnelLeadDesign(spec, template, sel, { origin: 'https://x.test', slug: 'pool-masters' });
+    expect(design.summary.slice(0, 7)).toEqual([
+      'Select your pool size: Estate (About 36 × 18 ft or larger)',
+      'Choose your finish: Luxe (Pebble, glass tile, porcelain coping and deck)',
+      'Add the extras: The full backyard (Spa, outdoor kitchen, fire and shade)',
+      'Choose your spa: Flush spa (Level with the pool, spills in)',
+      "Choose your outdoor kitchen: Chef's kitchen (Everything, plus a pizza oven)",
+      'Choose your fire feature: Fire pit (A built-in gathering spot)',
+      'Choose your cabana: Cabana (Roofed, with flowing curtains)',
+    ]);
+    // The flush spa is the base spa (no extra line); the upgrades each add one.
+    const lines = estimate.lines.map((l) => l.label);
+    expect(lines.join(' | ')).toMatch(/Spa/);
+    expect(lines.join(' | ')).toMatch(/Chef's kitchen/);
+    expect(lines.join(' | ')).toMatch(/Fire pit/);
+    expect(lines.join(' | ')).toMatch(/Cabana/);
+    expect(lines.join(' | ')).toMatch(/Porcelain/);
+    expect(lines.join(' | ')).not.toMatch(/Fire bowls|Travertine/);
+    expect(design.photos).toHaveLength(7);
+  });
+
+  it('a changed "Add the extras." sends no stale follow-up picks', () => {
+    const { design } = funnelLeadDesign(spec, template, { size: 'classic', finish: 'standard', extras: 'pool', spa: 'flush', kitchen: 'chef' }, { origin: 'https://x.test', slug: 'pool-masters' });
+    expect(design.funnel!.selection).toEqual({ size: 'classic', finish: 'standard', extras: 'pool' });
+    expect(design.summary.join(' ')).not.toMatch(/Choose your (spa|outdoor kitchen)/);
+    expect(design.summary).toContain('Choose your finish: Standard (Plaster, standard tile, precast coping)');
+  });
+});
+
 describe('booking screen helpers', () => {
   it('names the picks over the range', () => {
-    expect(priceEyebrow(spec, picks)).toBe('Classic · Luxe · With spa');
-    expect(priceEyebrow(spec, { size: 'estate', finish: 'standard', extras: 'backyard' })).toBe('Estate · Standard · Full backyard');
+    expect(priceEyebrow(spec, picks)).toBe('Classic · Luxe · Zero-edge spa');
+    expect(priceEyebrow(spec, { size: 'classic', finish: 'standard', extras: 'pool' })).toBe('Classic · Standard · Pool only');
+    expect(priceEyebrow(spec, { size: 'estate', finish: 'standard', extras: 'backyard', kitchen: 'chef', fire: 'fireplace' })).toBe(
+      'Estate · Standard · Raised spa · Chef’s kitchen · Fireplace · Covered lounge'.replace('’', "'"),
+    );
     expect(priceRange({ low: 65000, high: 106500 })).toBe('$65,000 – $106,500');
     expect(priceRange({ low: null, high: null })).toBeNull();
   });
@@ -392,7 +432,7 @@ describe('screens render', () => {
     expect(html).toContain('data-booking-intro=""');
     expect(html).not.toContain('{minutes}');
     expect(html).not.toMatch(/calendly|<iframe/i);
-    expect(html.replace(/<[^>]+>/g, '')).toContain('Classic · Luxe · With spa');
+    expect(html.replace(/<[^>]+>/g, '')).toContain('Classic · Luxe · Zero-edge spa');
     expect(html).toContain(priceRange(result.estimate)!);
     expect(html).toContain('Ballpark price, not a quote');
     expect(html).toContain('Example prices');

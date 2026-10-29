@@ -279,20 +279,54 @@ Empire", floating header card with the logo and a menu, "Backyard pools, remodel
 "Design your pool" button, the evening hero photo (nothing drawn over it); below the fold three
 real projects and the licence). No photo carries a badge: one quiet footer line on every funnel page (and under the
 embed's column) says "Photos show example designs, AI-assisted from Pool Masters projects." (`FunnelSpec.photoNote`). `/estimator/pool-masters/design?step=1|2|3|contact|book&size=..&finish=..&extras=..`
-holds the steps (`noindex`). `/embed/estimator/pool-masters` starts at step 1.
+holds the steps (`noindex`; follow-up picks ride along as `&spa=..&kitchen=..&fire=..&cabana=..`). `/embed/estimator/pool-masters` starts at step 1.
 
-**Steps.** One question per screen: "STEP n OF 3", the photo (all option photos stacked and loaded, so a tap swaps it
-instantly), the question, option cards, one blue button.
+**Steps.** One question per screen: "STEP n OF m", the photo (all option photos stacked and loaded, so a tap swaps it
+instantly), the question, option cards, one blue button. m counts only the steps on the homeowner's path: 3 for just
+the pool, 4 with a spa, 7 for the full backyard (owner, 2026-10-29: "keep it simple; these are only design options
+shown if they choose it"). Follow-up steps carry `showWhen: { stepId: 'extras', anyOf }`; a hidden step has no pick
+(`normalizeFunnelSelection` drops it, so changing step 3 forgets follow-ups that no longer apply), no URL param and no
+price. The last step on the path says `finalCta` "Get my estimate"; the others "Continue".
 
-| Step | Options | Maps to | Photo |
+| Step (id) | Options (ids) | Maps to | Photo |
 | --- | --- | --- | --- |
-| Select your pool size. | Compact / Classic / Estate | configurator model small / medium / large | to-scale plan `funnel/size-*.webp` (fallback: aerial) |
-| Choose your finish. | Standard / Luxe | base rows / pebble + edge_glass_travertine + deck_porcelain | poolside view |
-| Add the extras. | Just the pool / Add a spa / The full backyard | none / spa / spa + outdoor_kitchen + patio_cover + fire_bowls | aerial view |
+| Select your pool size. (`size`) | Compact / Classic / Estate | configurator model small / medium / large | to-scale plan `funnel/size-*.webp` (fallback: aerial) |
+| Choose your finish. (`finish`) | Standard "Plaster, standard tile, precast coping" / Luxe "Pebble, glass tile, porcelain coping and deck" | base rows + coping concrete (labelled "Precast concrete") / pebble + edge_glass_travertine + deck_porcelain + coping **porcelain** | poolside view |
+| Add the extras. (`extras`) | Just the pool / Add a spa / The full backyard | none / spa / spa + outdoor_kitchen + patio_cover | aerial view |
+| Choose your spa. (`spa`, extras = spa or backyard) | Flush spa `flush` / Raised spa `raised` (default) / Zero-edge spa `zero_edge` | `spaStyle` | `funnel/spa-flush`, configurator `poolside-pebble-premium-spa`, `funnel/spa-zero-edge` |
+| Choose your outdoor kitchen. (`kitchen`, backyard) | Grill island `grill` / Full kitchen `full` (default) / Chef's kitchen `chef` | `kitchenStyle` | real `outdoor-kitchen-slab-counter`, `funnel/kitchen-full` (aerial crop), real `covered-outdoor-kitchen-bar` (PLACEHOLDER) |
+| Choose your fire feature. (`fire`, backyard) | Fire pit `pit` / Outdoor fireplace `fireplace` / Fire bowls `bowls` (default) | row fire_pit / addAnswers extras fireplace / row fire_bowls | real `fire-pit-stone-wall-seating`, `funnel/fire-fireplace`, configurator `evening-pebble-fire-spa` |
+| Choose your cabana. (`cabana`, backyard) | Pergola `pergola` / Cabana `cabana` / Covered lounge `lounge` (default) | `coverStyle` pergola / cabana / covered_lounge | real `covered-lounge-pool-dusk`, real `covered-outdoor-kitchen-bar` (PLACEHOLDER), `funnel/cabana-lounge` (aerial crop) |
 
-Prices: `estimateFunnel` = `computeEstimate` on `funnelAnswers` (the configurator's `selectionToAnswers`), with **no
-Go Luxe discount**, so Luxe totals sit above the configurator's Go Luxe figure. Classic + Luxe + spa is $65,000 –
-$106,500 (examples). No equipment or site questions: those are checked at the free on-site visit (the lead lists them).
+**Template additions (example prices).** Optional single questions, each shown only after its base pick, so the
+step-by-step builder can ask them too and the configurator (which never answers them) prices exactly as before:
+`spaStyle` (after `features.spa`; flush +$0, raised +$3k–7k, zero-edge +$10k–17k; `features.spa` itself is now the
+flush build at $15k–28k, and the configurator's spa row answers `spaStyle: raised`, so its spa stays $18k–35k:
+flush $15k–28k < raised $18k–35k < zero-edge $25k–45k), `kitchenStyle` (after `extras.kitchen` $8k–25k: grill +$0,
+full +$10k–18k, chef +$25k–40k), `coverStyle` (after `extras.patio_cover` $9k–22k: pergola +$0, cabana +$6k–12k,
+covered lounge +$12k–25k), and `extras.fireplace` ($8k–20k; fire pit $2.5k–7k, fire bowls 2 × $1.8k–3.5k). The
+template's concrete coping is relabelled "Precast concrete" (the catalog's separate `precast` option is gone);
+porcelain coping ($60–90/ft) comes from the catalog, enabled for Pool Masters in `content/estimators/pool-masters.ts`
+in place of coping "Help me choose" (the coping question allows four options). The Go Luxe bundle is unchanged (the
+funnel never uses it).
+
+Prices: `estimateFunnel` = `computeEstimate` on `funnelAnswers` (the configurator's `selectionToAnswers`, then each
+pick's `answers` replace and `addAnswers` add), with **no Go Luxe discount**. Examples, medium pool, Standard: just the
+pool $20,000–32,000; a spa adds $15k–28k / $18k–35k / $25k–45k by type. No equipment or site questions: those are
+checked at the free on-site visit (the lead lists them).
+
+**Recap and lead.** The price card's line uses each pick's `short` ('' leaves a pick out): "CLASSIC · LUXE · ZERO-EDGE
+SPA", "ESTATE · LUXE · FLUSH SPA · CHEF'S KITCHEN · FIREPLACE · CABANA", "CLASSIC · STANDARD · POOL ONLY". The lead
+summary has one plain line per step on the path ("Choose your spa: Zero-edge spa (Overflows on all four sides)"), then
+the configurator lines except the groups `summaryReplacesGroups` names (tile & coping, pool features, backyard: the
+steps say them exactly); one photo per step shown.
+
+**Follow-up photos** (`public/estimator/pool-masters/funnel/`, `scripts/generate-pool-funnel-options.mjs`, prompts in
+the script): kie.ai nano-banana-pro edits of this yard's configurator photos for `spa-flush`, `spa-zero-edge` and
+`fire-fireplace`; `kitchen-full` and `cabana-lounge` are crops of configurator aerials (`crops`); the rest reuse a
+configurator photo or a real Pool Masters job photo. **Open:** kie.ai credits ran out (2026-10-29), so Chef's kitchen and
+Cabana show a real photo of this yard's pergola kitchen bar as a placeholder (no pizza oven / curtains). Top up, run
+`generate kitchen-chef cabana-curtains` + `export`, and point those two options at `funnel/<key>.webp`.
 
 **Contact step.** "Your estimate is ready. / Where should we send it?" Name, Email, Phone number, **Home address**
 (Google address suggestions, see below), then "Are you the homeowner?" with two buttons "Yes" / "No"

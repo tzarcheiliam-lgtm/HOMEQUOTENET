@@ -5,7 +5,8 @@ import type { ExampleFinancing } from '../demo-financing.ts';
 /**
  * The simple mobile funnel (ContractorEstimatorConfig.experience === 'funnel'):
  * a landing page, then one question per screen ("Select your pool size.",
- * "Choose your finish.", "Add the extras."), each with a photo on top that
+ * "Choose your finish.", "Add the extras.", then follow-up steps only when
+ * a pick asks for them, e.g. "Choose your spa."), each with a photo on top that
  * swaps with the selected option, then the contact step (the range is revealed
  * only after it) and the booking step.
  *
@@ -52,7 +53,10 @@ export type FunnelOption = {
   title: string;
   /** One grey line, e.g. "About 30 × 15 ft". */
   subtitle: string;
-  /** Shorter title for the one-line recap on the price card, e.g. "Full backyard". Default: title. */
+  /**
+   * Shorter title for the one-line recap on the price card, e.g. "Full backyard". Default: title.
+   * '' leaves the pick out of the recap (e.g. "Add a spa" when the spa step's pick says it).
+   */
   short?: string;
   /** Configurator model id this option selects (needs FunnelSpec.configurator). */
   model?: string;
@@ -64,6 +68,8 @@ export type FunnelOption = {
    * option's whole mapping.
    */
   answers?: Answers;
+  /** Template answers ADDED to what the mapping already picked (a multi question keeps its other picks), e.g. one more backyard extra. */
+  addAnswers?: Answers;
 };
 
 export type FunnelStep = {
@@ -75,8 +81,14 @@ export type FunnelStep = {
   /** Option selected when the step is first shown. Default: the first option. */
   defaultOption?: string;
   photo: FunnelPhotoRule;
-  /** Primary button text. Default "Continue". The last step uses e.g. "Get my estimate". */
+  /** Primary button text. Default "Continue" (FunnelSpec.finalCta on whichever step is last on the path). */
   cta?: string;
+  /**
+   * A follow-up step: shown only when an EARLIER step's pick is one of `anyOf`
+   * (e.g. "Choose your spa." after "Add a spa"). Hidden steps have no pick in
+   * the selection, are not counted in "STEP n OF m" and price nothing.
+   */
+  showWhen?: { stepId: string; anyOf: string[] };
 };
 
 export type FunnelLanding = {
@@ -137,8 +149,16 @@ export type FunnelBookingStep = {
 
 export type FunnelSpec = {
   landing: FunnelLanding;
-  /** One question per screen, in order ("STEP n OF steps.length"). */
+  /** One question per screen, in order ("STEP n OF m", m = the steps shown on this path, see showWhen). */
   steps: FunnelStep[];
+  /** Button of the last step shown on the path, e.g. "Get my estimate". Default: that step's cta, else "Continue". */
+  finalCta?: string;
+  /**
+   * Configurator group ids whose lines the lead summary leaves out because the
+   * steps say it better (the steps' own lines name the real picks, e.g. the
+   * coping or the kind of spa the configurator rows only approximate).
+   */
+  summaryReplacesGroups?: string[];
   contactStep: FunnelContactStep;
   bookingStep: FunnelBookingStep;
   /**
@@ -152,5 +172,5 @@ export type FunnelSpec = {
   photoNote?: string;
 };
 
-/** What the homeowner picked: option id per step id. */
+/** What the homeowner picked: option id per step id (steps not shown on this path have no entry). */
 export type FunnelSelection = Record<string, string>;
