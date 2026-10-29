@@ -94,6 +94,36 @@ function BathTradeScene({ scene, mode, label, focus, focusOn, still, leaving, co
 }
 
 /**
+ * "Keep my current tub/shower" has no photo: a small drawing of a plain
+ * existing tub-shower alcove keeps the row of option pictures even.
+ * Decorative (the tile's label says what it is).
+ */
+function KeepCurrentThumb() {
+  return (
+    <svg viewBox="0 0 120 80" preserveAspectRatio="xMidYMid slice" aria-hidden="true" data-keep-thumb="" className="h-full w-full">
+      <rect width="120" height="80" fill="#e9e4da" />
+      <rect y="62" width="120" height="18" fill="#d8cfbf" />
+      {/* Beige 12" tile around the tub. */}
+      <rect x="18" y="10" width="64" height="52" fill="#e4dccb" />
+      <path d="M18 23H82M18 36H82M18 49H82M34 10V62M50 10V62M66 10V62" stroke="#cfc4b0" strokeWidth="0.8" />
+      {/* Tub apron and rim. */}
+      <rect x="18" y="47" width="64" height="17" rx="1.5" fill="#f6f4ef" />
+      <rect x="18" y="47" width="64" height="2.5" fill="#ffffff" />
+      {/* Shower head, valve and spout. */}
+      <path d="M50 16v4" stroke="#b9bcbf" strokeWidth="1.4" />
+      <ellipse cx="50" cy="21" rx="3.2" ry="1.6" fill="#c3c6c9" />
+      <circle cx="50" cy="35" r="2.4" fill="#c3c6c9" />
+      {/* Curtain on its rod, pulled to the left. */}
+      <path d="M16 8H84" stroke="#b9bcbf" strokeWidth="1.2" />
+      <path d="M17 8.5h17v46c-3 1-14 1-17 0z" fill="#efe8dc" />
+      <path d="M21 9v45M25.5 9v45.5M30 9v45" stroke="#ddd3c3" strokeWidth="1" />
+      {/* Partition wall at the end. */}
+      <rect x="82" y="6" width="6" height="58" fill="#efebe3" />
+    </svg>
+  );
+}
+
+/**
  * The bathroom's words. HomeQuote Network is a matching network, not a
  * contractor: the next step is a free in-home consultation with a licensed
  * local bathroom contractor, and nothing says "we" build it.
@@ -150,7 +180,11 @@ export const BATH_BUILDER: TradeBuilder<BathSceneSpec> = {
   unsureIds: [],
   chipAlign: 'start',
   optionVisual: (questionId, optionId) =>
-    hasBathSample(questionId, optionId) ? <BathSample questionId={questionId} optionId={optionId} className="h-full w-full" /> : null,
+    questionId === 'bathing' && optionId === 'keep' ? (
+      <KeepCurrentThumb />
+    ) : hasBathSample(questionId, optionId) ? (
+      <BathSample questionId={questionId} optionId={optionId} className="h-full w-full" />
+    ) : null,
   rasterize: (frame) => {
     const el = frame.querySelector<HTMLCanvasElement>('[data-bath-scene] > canvas:not(.bs-prev)') ?? frame.querySelector<SVGSVGElement>('[data-bath-scene] svg');
     return el ? rasterizeBathScene(el) : Promise.reject(new Error('scene not found'));
