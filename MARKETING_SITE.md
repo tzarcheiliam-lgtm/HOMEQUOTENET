@@ -334,3 +334,22 @@ and printed in small type at the bottom of each page. Files were re-encoded to
 WebP (q≈76–78) at 1920px for heroes and 800–1100px for gallery frames. The same
 positioning rule as the pool imagery applies: `stockImageryDisclosure` sits
 under each hero.
+
+---
+
+## Measurement (marketing pages)
+
+`components/marketing/site-analytics.tsx` loads the Meta Pixel and Google tag
+for every `(marketing)` route using `lib/site-tracking.ts` (env
+`NEXT_PUBLIC_META_PIXEL_ID`, `NEXT_PUBLIC_GOOGLE_TAG_ID`, falling back to the
+ADU-quiz IDs; nothing loads when unset). It reuses the loaders and consent
+helpers in `components/adu-quiz/tracking.ts`.
+
+- **Opt-out model:** measurement is on by default; the footer toggle turns it
+  off and the choice is shared with `/adu-quiz`. A browser Global Privacy
+  Control signal turns it off unless the visitor explicitly opted in.
+- **Events:** `phone_click` (any `tel:` link; Meta custom `PhoneClick`),
+  `apply_submit` (successful `/apply`; Meta custom `ContractorApplicationSubmit`),
+  `quiz_start` and `quiz_complete` (fired by the quiz: `QuizStart` and `Lead`).
+  Meta `Lead`/`QualifiedLead` stay quiz-only so contractor applications never
+  feed homeowner-lead optimisation.

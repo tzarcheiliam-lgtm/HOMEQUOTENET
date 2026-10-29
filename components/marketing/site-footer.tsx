@@ -3,8 +3,9 @@ import { site, disclaimers } from '@/content/site';
 import { industries } from '@/content/industries';
 import { Container, Rule } from './primitives';
 import { Wordmark } from './wordmark';
+import { MeasurementToggle } from './site-analytics';
 
-export function SiteFooter() {
+export function SiteFooter({ measurement = false }: { measurement?: boolean }) {
   const year = new Date().getFullYear();
 
   return (
@@ -149,6 +150,7 @@ export function SiteFooter() {
           <p className="text-xs leading-6 text-[var(--hq-text-dim)]">
             {site.tradeNameLine}
           </p>
+          {measurement ? <MeasurementToggle /> : null}
           <p className="text-xs text-[var(--hq-text-dim)]">
             &copy; {year} {site.legalName}. All rights reserved.
           </p>

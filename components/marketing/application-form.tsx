@@ -276,6 +276,12 @@ export function ApplicationForm({
     if (state.status === 'error') errorRef.current?.focus();
   }, [state.status]);
 
+  useEffect(() => {
+    if (state.status === 'success') {
+      window.dispatchEvent(new CustomEvent('hqn:site-event', { detail: { name: 'apply_submit' } }));
+    }
+  }, [state.status]);
+
   if (state.status === 'success') return <SuccessPanel />;
 
   const v = state.values;

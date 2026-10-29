@@ -5,6 +5,8 @@ import { SiteFooter } from '@/components/marketing/site-footer';
 import { site } from '@/content/site';
 import { industries } from '@/content/industries';
 import { baseOpenGraph } from '@/lib/site-metadata';
+import { SiteAnalytics } from '@/components/marketing/site-analytics';
+import { siteTrackingIds } from '@/lib/site-tracking';
 
 export const metadata: Metadata = {
   metadataBase: new URL(site.url),
@@ -42,8 +44,11 @@ export default function MarketingLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const ids = siteTrackingIds();
+  const measured = Boolean(ids.metaPixelId || ids.googleTagId);
   return (
     <div className="hq min-h-[100dvh]">
+      <SiteAnalytics ids={ids} />
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-[var(--hq-accent)] focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white"
@@ -54,7 +59,7 @@ export default function MarketingLayout({
         industries={industries.map((i) => ({ label: i.navLabel, href: `/${i.slug}` }))}
       />
       <main id="main">{children}</main>
-      <SiteFooter />
+      <SiteFooter measurement={measured} />
     </div>
   );
 }

@@ -27,7 +27,7 @@ declare global {
  */
 export type QuizEvent = 'BuildStart' | 'BuildStep' | 'DesignComplete' | 'QuizStart' | 'QuizStep' | 'Lead' | 'QualifiedLead' | 'Schedule';
 const META_STANDARD = new Set<QuizEvent>(['Lead', 'Schedule']);
-const GOOGLE_NAME: Partial<Record<QuizEvent, string>> = { Lead: 'generate_lead' };
+const GOOGLE_NAME: Partial<Record<QuizEvent, string>> = { Lead: 'generate_lead', QuizStart: 'quiz_start' };
 
 export type TrackingConfig = { metaPixelId: string; googleTagId: string; measurementMode: 'opt_in' | 'opt_out' };
 
@@ -40,6 +40,8 @@ export function readMeasurement(mode: TrackingConfig['measurementMode']): boolea
     if (stored === 'yes') return true;
     if (stored === 'no') return false;
   } catch { /* Optional storage. */ }
+  // Honour the browser's Global Privacy Control signal unless the visitor chose otherwise above.
+  if ((navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl === true) return false;
   return mode === 'opt_out';
 }
 export function writeMeasurement(on: boolean) {
@@ -97,6 +99,7 @@ export function track(cfg: TrackingConfig, event: QuizEvent, eventId: string, pa
     if (cfg.googleTagId) {
       loadGoogleTag(cfg.googleTagId);
       window.gtag!('event', GOOGLE_NAME[event] ?? event, { event_id: eventId, ...params });
+      if (event === 'Lead') window.gtag!('event', 'quiz_complete', { event_id: eventId, ...params });
     }
     window.dataLayer ??= [];
     if (!cfg.googleTagId) window.dataLayer.push({ event: `adu_quiz_${event}`, event_id: eventId, ...params });
@@ -145,4 +148,24 @@ export function trackingForSubmit(): Record<string, string> {
   if (fbp) out.fbp = fbp;
   if (fbc) out.fbc = fbc;
   return out;
+}
+
+
+/**
+ * Site-wide custom event for the marketing pages (phone_click, apply_submit). Same consent gate and
+ * loaders as the quiz. `metaName` is a custom Meta event, deliberately not the standard Lead, so
+ * contractor applications and phone taps never pollute homeowner-lead optimisation.
+ */
+export function trackSiteEvent(cfg: TrackingConfig, name: string, metaName: string, params: Record<string, string> = {}) {
+  if (!readMeasurement(cfg.measurementMode)) return;
+  if (cfg.metaPixelId) {
+    loadMetaPixel(cfg.metaPixelId);
+    window.fbq!('trackSingleCustom', cfg.metaPixelId, metaName, params);
+  }
+  if (cfg.googleTagId) {
+    loadGoogleTag(cfg.googleTagId);
+    window.gtag!('event', name, params);
+  }
+  window.dataLayer ??= [];
+  if (!cfg.googleTagId) window.dataLayer.push({ event: name, ...params });
 }
