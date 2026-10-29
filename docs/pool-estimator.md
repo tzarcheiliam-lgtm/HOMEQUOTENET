@@ -7,10 +7,11 @@ Pool Masters specifics live in one config file.
 
 Always labeled "ballpark, not a quote". No AI pricing. No monthly payment amounts anywhere (lending disclosure rules).
 
-**Pool Masters now uses the one-page configurator** (`experience: 'configurator'`, see "Pool Masters configurator"
-below): pick a size, a finish and the upgrades on one page over pre-rendered photos, the range is visible from the
-first click (`revealRange: 'immediately'`), and contact details are asked only at the booking step. The step-by-step
-flow described next is still the engine and the fallback, and is what `/estimator/bathroom-remodel` uses.
+**Pool Masters now uses the simple mobile funnel** (`experience: 'funnel'`, see "Pool Masters simple funnel" below), a
+copy of Buildoly's mobile flow: a landing page, three one-tap questions (size, finish, extras) over pre-rendered photos,
+a four-field contact step, then the range and the booking calendar (`revealRange: 'after_contact'`). The one-page
+configurator ("Pool Masters configurator") and the step-by-step flow described next still work: the configurator is the
+price/photo mapping the funnel reuses, and the builder is what `/estimator/bathroom-remodel` uses.
 
 ## Homeowner flow (step-by-step builder)
 
@@ -266,7 +267,60 @@ estimator page's own wording and stores the funnel's canonical text. After a sav
 the form, so nothing jumps), then the Calendly link from `calendarUrl`, prefilled with name and email (inline on our own
 page, a new tab in the iframe).
 
+## Pool Masters simple funnel
+
+The owner's brief: "too much going on = too many questions; it should feel straightforward and simple". Pool Masters'
+config (`content/estimators/pool-masters.ts`) sets `experience: 'funnel'`, `funnel: POOL_MASTERS_FUNNEL`
+(`content/estimators/pool-masters-funnel.ts`), `revealRange: 'after_contact'` and keeps `configurator` attached.
+`funnelSpecFor(contractor)` (`lib/estimator/funnel/engine.ts`) picks the experience for the pages and the lead route.
+
+**Routes.** `/estimator/pool-masters` is the landing page (announcement bar "Serving LA, OC, Ventura & the Inland
+Empire", floating header card with the logo and a menu, "Backyard pools, remodeled just for you", one line, a blue
+"Design your pool" button, the evening hero photo with an "Example design · AI-assisted" badge; below the fold three
+real projects and the licence). `/estimator/pool-masters/design?step=1|2|3|contact|book&size=..&finish=..&extras=..`
+holds the steps (`noindex`). `/embed/estimator/pool-masters` starts at step 1.
+
+**Steps.** One question per screen: "STEP n OF 3", the photo (all option photos stacked and loaded, so a tap swaps it
+instantly), the question, option cards, one blue button.
+
+| Step | Options | Maps to | Photo |
+| --- | --- | --- | --- |
+| Select your pool size. | Compact / Classic / Estate | configurator model small / medium / large | to-scale plan `funnel/size-*.webp` (fallback: aerial) |
+| Choose your finish. | Standard / Luxe | base rows / pebble + edge_glass_travertine + deck_porcelain | poolside view |
+| Add the extras. | Just the pool / Add a spa / The full backyard | none / spa / spa + outdoor_kitchen + patio_cover + fire_bowls | aerial view |
+
+Prices: `estimateFunnel` = `computeEstimate` on `funnelAnswers` (the configurator's `selectionToAnswers`), with **no
+Go Luxe discount**, so Luxe totals sit above the configurator's Go Luxe figure. Classic + Luxe + spa is $65,000 –
+$106,500 (examples). No equipment or site questions: those are checked at the free on-site visit (the lead lists them).
+
+**Contact step.** "Your estimate is ready. / Where should we send it?" Name, Email, Phone number, ZIP code (it gates the
+service area), the button, the trust line, and the consent wording in small print under the button: tapping "Get my
+estimate" is the agreement (the request sends `consent: true` with that exact `consentText`; the route still checks the
+wording). No ownership question (`contactStep.askHomeowner` false): the route accepts a funnel request without
+`homeowner`, assumes it for qualification and adds "Owns the home (not asked online)" to the check-on-site list. The
+optional ad-measurement box is never pre-ticked. One error at a time; Return moves to the next field.
+
+**Booking step.** "Book your free on-site estimate", a price card (picks on one line, the server's range, "Ballpark
+price, not a quote…", "Example prices, not yet confirmed." while unconfirmed, "Financing available · See details" with
+the lender disclosure), then the Calendly scheduler inline (a button in the embed) and "Prefer to talk now? Call". The
+result is stored with the picks it was priced for: change a pick and the booking step closes until the contact step is
+sent again; the contact step says "You've already sent this design" while the picks are unchanged.
+
+**State.** The URL holds the screen and the picks (Continue pushes history, browser Back works); sessionStorage keeps the
+picks, the typed details and the lead result through a refresh.
+
+**Lead.** The request carries `funnel` (step id → option id); the server re-prices from it alone (`funnelLeadDesign`)
+and stores the picks in words, one photo per step, a link back to the design and the mapped configurator selection.
+
+**Reuse.** `FunnelSpec` (`lib/estimator/funnel/types.ts`) is plain data: landing copy, steps, options mapped to
+configurator models/rows or to template answers, photo rules per option or per configurator view. A bathroom or
+kitchen funnel needs a spec and photos, no new components.
+
 ## Open items
+
+- **Agree-on-submit consent.** The funnel's consent is "by tapping the button" instead of a checkbox (the wording and the
+  server check are unchanged). Get legal sign-off for the TCPA wording used this way.
+- **Ownership not asked online.** Funnel leads qualify without the homeowner question; renters are caught on the call.
 
 - **Pool Masters calendar.** `calendarUrl` is `https://calendly.com/homequotenetwork/30min` (HomeQuote's account). Swap
   in a Pool Masters calendar when they have one.
@@ -281,8 +335,9 @@ page, a new tab in the iframe).
 - **Sitemap and linking** once prices are confirmed.
 - **Duplicate timeline rows.** A replayed submission that `save_funnel_session` dedupes onto an existing lead still adds a
   second estimator timeline entry.
-- **`unqualifiedAction: 'stop'` copy.** For such a funnel nothing is saved, but the result still says the team will reach
-  out. Dormant: Pool Masters uses `review`.
+- **`unqualifiedAction: 'stop'` copy.** For such a funnel nothing is saved, but the builder's result still says the team
+  will reach out (the simple funnel reads the route's `saved: false` and says "call us"). Dormant: Pool Masters uses
+  `review`.
 - **Photoreal render follow-ups.** Confirm the kie.ai upload host with one real call on a staging key before setting
   `KIE_API_KEY` in production. The stored `image_url` is kie.ai's temporary link (about 14 days): copy finished renders to
   Supabase Storage if they should last. A render abandoned mid-way stays `running` on the lead. The daily-cap count has no
