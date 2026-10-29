@@ -78,6 +78,10 @@ export type ExampleImages = {
   photo: string;
   designAlt: string;
   photoAlt: string;
+  /** Badge on the photo half of the slider (default EXAMPLE_LABELS.photo). */
+  photoLabel?: string;
+  /** Caption under the slider (default EXAMPLE_PHOTO_CAPTION). */
+  caption?: string;
 };
 
 /** A short silent clip of an AI-rendered example (shown with a poster; paused under reduced motion). */

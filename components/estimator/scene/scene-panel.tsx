@@ -338,7 +338,7 @@ export const ScenePanel = memo(function ScenePanel({
           {collapsed ? (
             <span className="lg:hidden">{copy.hiddenNote}</span>
           ) : caption || compare ? (
-            (caption ?? (exampleMedia?.kind === 'video' ? EXAMPLE_VIDEO_CAPTION : EXAMPLE_PHOTO_CAPTION))
+            (caption ?? (exampleMedia?.kind === 'video' ? EXAMPLE_VIDEO_CAPTION : (exampleMedia?.caption ?? EXAMPLE_PHOTO_CAPTION)))
           ) : (
             <>
               <span className={cn(variant === 'builder' && 'max-sm:hidden')}>{copy.sceneCaption}</span>

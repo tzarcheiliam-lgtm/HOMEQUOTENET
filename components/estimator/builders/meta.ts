@@ -48,8 +48,12 @@ export const TRADE_META: Record<EstimatorTrade, TradeMeta> = {
     exampleImages: {
       illustration: BATH_EXAMPLE_IMAGES.illustration,
       photo: BATH_EXAMPLE_IMAGES.photo,
-      designAlt: 'Example bathroom design made in this builder',
+      designAlt:
+        'Example design made in this builder: a large bathroom with a marble walk-in shower and bench, a freestanding tub, a floating green vanity and brushed gold fixtures',
       photoAlt: 'The same example design as an AI-rendered realistic photo, made from the design picture',
+      // A network with no jobs of its own: the photo half always says it is AI-rendered.
+      photoLabel: 'AI-rendered photo',
+      caption: 'Example: a design made here, and the AI-rendered photo made from it. Not a real job.',
     },
     exampleVideo: BATH_HERO_VIDEO,
     // A network, not a contractor: it connects them with a licensed local contractor.

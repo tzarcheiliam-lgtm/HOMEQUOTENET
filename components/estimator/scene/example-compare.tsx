@@ -98,7 +98,7 @@ export function ExampleCompare({
         {EXAMPLE_LABELS.design}
       </span>
       <span aria-hidden="true" className={cn(label, 'right-2.5 sm:right-3')}>
-        {EXAMPLE_LABELS.photo}
+        {images.photoLabel ?? EXAMPLE_LABELS.photo}
       </span>
       {leaving ? null : (
         <input

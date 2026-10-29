@@ -11,8 +11,10 @@ export const HERO_IMAGES = {
 } as const;
 
 /**
- * Bathroom builder examples. The pair (a <BathScene> design and its kie.ai
- * render, same 1200 x 800 WebP format) is made by the integration step; the
+ * Bathroom builder examples. The pair: a <BathScene> of the Spa retreat
+ * package in a large room (the builder's own "Save my design" export) and its
+ * render from the production kie.ai model and bathroom prompt
+ * (renderPromptFor('bathroom')), same 1200 x 800 WebP format. The
  * clip is an AI-rendered remodeled bathroom (scripts/generate-bath-assets.mjs).
  * Either may be missing: the page only shows the files that exist
  * (resolveExampleMedia).
