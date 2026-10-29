@@ -26,7 +26,7 @@ function CopyBlock({ label, value }: { label: string; value: string }) {
 const PERMS = [
   { value: 'write', label: 'Make changes', hint: 'Add notes to leads, change a lead’s status, and save workflow drafts (never published).' },
   { value: 'text', label: 'Text homeowners', hint: 'Send texts from your Mac. Every texting rule still applies; at most 30 texts a day per key.' },
-  { value: 'assign', label: 'Propose lead assignments', hint: 'Claude can ask to assign a lead to contractors. Nothing is assigned until you tap Approve here (you get a notification).' },
+  { value: 'assign', label: 'Propose assignments & appointments', hint: 'Claude can ask to assign a lead to contractors or book an estimate visit. Nothing happens until you tap Approve here (you get a notification).' },
 ];
 
 export function CreateMcpKeyForm({ mcpUrl }: { mcpUrl: string }) {
