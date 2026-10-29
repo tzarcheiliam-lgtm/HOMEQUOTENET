@@ -24,7 +24,9 @@ export async function listAppointments(): Promise<AppointmentRow[]> {
   const { data } = await supabase
     .from('appointments')
     .select(
-      `id, scheduled_at, status, location,
+      `id, scheduled_at, status, location, contact_name, contact_phone,
+       direct_lead:leads(id, first_name, last_name, phone, address, city, state, zip,
+         vertical:verticals(name), sub_service:sub_services(name)),
        assignment:lead_assignments(
          lead:leads(id, first_name, last_name, phone, address, city, state, zip,
            vertical:verticals(name), sub_service:sub_services(name)),
@@ -34,10 +36,14 @@ export async function listAppointments(): Promise<AppointmentRow[]> {
     .order('scheduled_at', { ascending: true });
 
   return (data ?? []).map((a: any) => {
-    const lead = a.assignment?.lead;
+    // HomeQuote-calendar bookings (team calendar) may have no assignment yet:
+    // fall back to appointments.lead_id, then to the contact typed at booking.
+    const lead = a.assignment?.lead ?? a.direct_lead;
     const leadName =
       [lead?.first_name, lead?.last_name].filter(Boolean).join(' ') ||
+      a.contact_name ||
       lead?.phone ||
+      a.contact_phone ||
       'Lead';
     return {
       id: a.id,
@@ -47,7 +53,7 @@ export async function listAppointments(): Promise<AppointmentRow[]> {
       lead_id: lead?.id ?? null,
       lead_name: leadName,
       contractor_name: a.assignment?.contractor?.name ?? null,
-      lead_phone: lead?.phone ?? null,
+      lead_phone: lead?.phone ?? a.contact_phone ?? null,
       address: lead?.address ?? null,
       city: lead?.city ?? null,
       state: lead?.state ?? null,

@@ -402,11 +402,27 @@ async function leadAssigned(ctx: Ctx): Promise<OutgoingNotification[]> {
   return group(ctx, people, 'New Lead Assigned', body, (role) => leadUrl(role, leadId));
 }
 
+/**
+ * Hosts of a HomeQuote booking calendar (booking_calendar_members, notify on),
+ * e.g. the project specialists on the team calendar. Staff hosts are added as
+ * hand-picked staff; a contractor host still has to pass authorize() as the
+ * assigned contractor (own company + an assignment on the lead), so a team
+ * calendar can never reach a contractor this way.
+ */
+async function calendarHosts(ctx: Ctx, calendarId: string | null, exclude: (string | null)[]): Promise<Candidate[]> {
+  if (!calendarId) return [];
+  const { data } = await ctx.db.from('booking_calendar_members').select('user_id').eq('calendar_id', calendarId).eq('notify', true);
+  const ids = ((data ?? []) as { user_id: string }[]).map((m) => m.user_id).filter((id) => !exclude.includes(id));
+  const people = await peopleByIds(ctx.db, ids);
+  return people.map((person) => ({ id: person.id, via: person.role === 'contractor' ? ('assigned_contractor' as const) : ('specific' as const) }));
+}
+
 async function homeownerAppointment(ctx: Ctx): Promise<OutgoingNotification[]> {
   const p = ctx.event.payload;
   const a = await associate(ctx, { assignmentId: str(p.assignmentId), appointmentId: str(p.appointmentId) });
   // An admin who booked it themselves does not need to be told.
   const cands = await homeownerAudience(ctx, a, [a.bookedBy]);
+  cands.push(...(await calendarHosts(ctx, str(p.calendarId), [a.bookedBy])));
   const people = await authorize(ctx, cands);
 
   const summary = await leadSummary(ctx.db, a.leadId);
