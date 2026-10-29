@@ -43,7 +43,8 @@ function sizePlan(id: string, dims: string): FunnelPhoto {
 
 export const POOL_MASTERS_FUNNEL: FunnelSpec = {
   landing: {
-    announcement: 'Serving Los Angeles, Orange, Ventura, Riverside & San Bernardino counties',
+    // One line on a phone (Buildoly's bar); the Inland Empire = Riverside and San Bernardino counties.
+    announcement: 'Serving LA, OC, Ventura & the Inland Empire',
     headline: 'Backyard pools, remodeled just for you',
     subline: 'Design your pool in 60 seconds and get a ballpark price, with a free on-site estimate.',
     cta: 'Design your pool',
