@@ -1,6 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 38, "column": 0}, "map": {"version":3,"sources":["file:///home/user/HOMEQUOTENET/app/%28booking%29/book/manage/%5Btoken%5D/page.tsx"],"sourcesContent":["import { redirect } from 'next/navigation';\n\n/**\n * lib/booking/tokens managePath() builds /book/manage/<token>; the page lives\n * at /booking/manage/<token>. Either link works.\n */\nexport const dynamic = 'force-dynamic';\n\nexport default async function ManageBookingAlias({ params }: { params: Promise<{ token: string }> }) {\n  const { token } = await params;\n  redirect(`/booking/manage/${encodeURIComponent(token)}`);\n}\n"],"names":[],"mappings":";;;;;;AAAA;AAAA;;AAMO,MAAM,UAAU;AAER,eAAe,mBAAmB,EAAE,MAAM,EAA0C;IACjG,MAAM,EAAE,KAAK,EAAE,GAAG,MAAM;IACxB,IAAA,iMAAQ,EAAC,CAAC,gBAAgB,EAAE,mBAAmB,QAAQ;AACzD","debugId":null}}]
-}
