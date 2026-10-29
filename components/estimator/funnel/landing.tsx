@@ -11,7 +11,7 @@ import { FunnelReviews } from './reviews';
 import { photoSrcSet } from './state';
 
 /*
- * The funnel's landing page (Buildoly's mobile landing, for a pool remodeler):
+ * The funnel's landing page (Buildoly's mobile landing; a pool remodeler, the bathroom network):
  * a dark announcement bar, a floating white header card, a huge two-line
  * headline on a pale sky, one line under it, one full-width blue button, and
  * the hero photo rising out of the sky to the bottom of the screen. When the
@@ -33,17 +33,22 @@ export function FunnelLanding({
   contractor,
   designHref,
   reviews = null,
+  missingPhotos = [],
 }: {
   spec: FunnelSpec;
   contractor: ContractorEstimatorConfig;
   designHref: string;
   /** Already filtered 5-star reviews (lib/estimator/reviews.server.ts), or null: nothing renders. */
   reviews?: FunnelReviewsData | null;
+  /** Photo files the server found missing (missingFunnelPhotos): a missing hero shows landing.heroFallback. */
+  missingPhotos?: string[];
 }) {
   const { landing } = spec;
   const tel = telHref(contractor.phone);
   const lines = headlineLines(landing.headline);
-  const hero = landing.heroPhoto;
+  const useFallback = !!landing.heroFallback && missingPhotos.includes(landing.heroPhoto.src);
+  const hero = useFallback && landing.heroFallback ? landing.heroFallback : landing.heroPhoto;
+  const heroAlt = useFallback && landing.heroFallback ? landing.heroFallback.alt : landing.heroAlt;
   const heroSrcSet = photoSrcSet(hero);
   // The hero is the largest paint: ask for it with the HTML (the right width from the srcset).
   preload(hero.src, { as: 'image', fetchPriority: 'high', ...(heroSrcSet ? { imageSrcSet: heroSrcSet, imageSizes: '100vw' } : {}) });
@@ -59,7 +64,7 @@ export function FunnelLanding({
           <div className="relative z-20 px-3 pt-[11px] lg:px-3 lg:pt-3">
             <header className="relative mx-auto flex h-[50px] max-w-[1416px] items-center justify-between rounded-[12px] border border-black/[0.06] bg-white pl-6 pr-4 shadow-[0_1px_2px_rgb(0_0_0/0.05),0_4px_14px_rgb(0_0_0/0.06)] lg:h-[56px] lg:pl-6 lg:pr-3">
               <Link href={`/estimator/${contractor.slug}`} aria-label={`${contractor.contractorName} home`} className="-mx-1 rounded-[4px] px-1 py-1 focus-visible:outline-2 focus-visible:outline-[var(--fn-blue)]">
-                <FunnelLogo contractor={contractor} height={30} priority />
+                <FunnelLogo contractor={contractor} logo={landing.logo} height={30} priority />
               </Link>
               <HeaderMenu
                 links={[
@@ -98,7 +103,7 @@ export function FunnelLanding({
               )}
             </h1>
             <p className="mx-auto mt-[13px] max-w-[352px] text-pretty text-[17px] leading-[23px] tracking-[-0.01em] text-[#1c1b19] sm:max-w-[520px] lg:mt-4 lg:max-w-[720px] lg:text-[20px] lg:leading-[28px]">
-              {/* Non-breaking hyphens: "on-site" never splits across lines. */}
+              {/* Non-breaking hyphens: "on-site" / "in-home" never split across lines. */}
               {landing.subline.replace(/-/g, '\u2011')}
             </p>
             <Link
@@ -118,7 +123,7 @@ export function FunnelLanding({
               src={hero.src}
               srcSet={heroSrcSet}
               sizes="100vw"
-              alt={landing.heroAlt}
+              alt={heroAlt}
               fetchPriority="high"
               decoding="async"
               draggable={false}
@@ -133,7 +138,7 @@ export function FunnelLanding({
               Recent {contractor.contractorName} projects
             </h2>
             <p className="mt-2 max-w-[560px] text-pretty text-[16px] leading-[23px] text-[var(--fn-muted)] lg:text-[18px] lg:leading-[26px]">
-              Real backyards we remodeled, photographed as built.
+              {landing.projectsNote ?? 'Real backyards we remodeled, photographed as built.'}
             </p>
             <ul className="-mx-8 mt-6 flex snap-x snap-mandatory scroll-px-8 gap-3 overflow-x-auto px-8 pb-2 [scrollbar-width:none] lg:mx-0 lg:grid lg:grid-cols-3 lg:gap-5 lg:overflow-visible lg:px-0 [&::-webkit-scrollbar]:hidden">
               {projects.map((p) => (

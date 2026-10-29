@@ -25,9 +25,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const found = getEstimator(slug);
   if (!found) return { title: 'Estimator not found', robots: { index: false, follow: false } };
   const { template, contractor } = found;
+  const spec = funnelSpecFor(contractor);
+  const description = (spec?.designDescription ?? 'Three quick picks, then a ballpark price for your {noun} from {name} and a free on-site estimate.')
+    .replaceAll('{noun}', template.projectNoun)
+    .replaceAll('{name}', contractor.contractorName);
   return {
     title: { absolute: `Design your ${template.projectNoun} · ${contractor.contractorName}` },
-    description: `Three quick picks, then a ballpark price for your ${template.projectNoun} from ${contractor.contractorName} and a free on-site estimate.`,
+    description,
     // The questions are one step of the landing page: that is the page to index (once prices are confirmed).
     alternates: { canonical: `/estimator/${contractor.slug}` },
     robots: { index: false, follow: true },

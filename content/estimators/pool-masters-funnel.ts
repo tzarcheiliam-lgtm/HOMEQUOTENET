@@ -179,9 +179,8 @@ export const POOL_MASTERS_FUNNEL: FunnelSpec = {
           // Real Pool Masters job (unedited).
           grill: { src: `${REAL}outdoor-kitchen-slab-counter.webp`, alt: 'Built-in stainless grill and stone counter by Pool Masters LA' },
           full: optionPhoto('kitchen-full', 'Outdoor kitchen with a grill, a stone island with a sink and bar stools, from above (example design)'),
-          // PLACEHOLDER until scripts/generate-pool-funnel-options.mjs makes kitchen-chef (kie.ai credits ran out):
-          // the real kitchen bar of this yard, no pizza oven yet.
-          chef: { src: `${REAL}covered-outdoor-kitchen-bar.webp`, alt: 'Outdoor kitchen bar with stools under a pergola with pendant lights' },
+          // Same-yard edit of the real kitchen bar (scripts/generate-pool-funnel-options.mjs).
+          chef: optionPhoto('kitchen-chef', "Chef's outdoor kitchen with a pizza oven, a built-in grill and a bar with stools under a pergola (example design)"),
         },
       },
     },
@@ -222,9 +221,8 @@ export const POOL_MASTERS_FUNNEL: FunnelSpec = {
         kind: 'option',
         photos: {
           pergola: { src: `${REAL}covered-lounge-pool-dusk.webp`, alt: 'Louvered pergola over a lounge beside a pool by Pool Masters LA' },
-          // PLACEHOLDER until scripts/generate-pool-funnel-options.mjs makes cabana-curtains (kie.ai credits ran out):
-          // this yard's real pergola, no curtains yet.
-          cabana: { src: `${REAL}covered-outdoor-kitchen-bar.webp`, alt: 'Shaded pergola with pendant lights in the same backyard' },
+          // Same-yard edit of the real pergola (scripts/generate-pool-funnel-options.mjs).
+          cabana: optionPhoto('cabana-curtains', 'Roofed cabana with flowing white curtains over an outdoor sofa (example design)'),
           lounge: optionPhoto('cabana-lounge', 'Covered outdoor lounge with sofas under a dark patio cover, from above (example design)'),
         },
       },

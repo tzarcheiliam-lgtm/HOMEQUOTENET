@@ -27,6 +27,8 @@ export const BATHROOM_CATALOG: EstimatorCatalog = {
   ],
   vanity: [
     ...fromTemplate('vanity'),
+    // HomeQuote's bathroom funnel turns this one on ("Floating double vanity").
+    { id: 'floating_double', label: 'Floating double vanity', note: 'Two sinks, wall-mounted, open below', price: { unit: 'flat', low: 5000, high: 9500 } },
     { id: 'custom_built', label: 'Custom-built vanity', note: 'Made to fit your room', price: { unit: 'flat', low: 5000, high: 11000 } },
   ],
   counter: [

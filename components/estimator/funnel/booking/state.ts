@@ -30,7 +30,8 @@ export function priceRange(estimate: Pick<Estimate, 'low' | 'high'>): string | n
 export function plainBookingTitle(title: string): string {
   return title
     .replace(/\s+with \{host\}/g, '')
-    .replace(/\b(a )?quick \{minutes\}-minute /g, '$1free ')
+    .replace(/\{host\} will call/g, 'We will call')
+    .replace(/\b([Aa] )?quick \{minutes\}-minute /g, '$1free ')
     .replace(/\{minutes\}-minute /g, '')
     .replace(/\{host\}/g, 'us');
 }

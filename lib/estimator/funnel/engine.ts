@@ -137,13 +137,15 @@ export function smallVariant(src: string): string | undefined {
 
 /**
  * The image key a step shows for a selection: "<stepId>-<optionId>" for an
- * option rule (e.g. "size-classic"), the configurator image key for a view
- * rule (e.g. "aerial-porcelain-pebble-spa").
+ * option rule (e.g. "size-classic"), "<stepId>-<optionId>-<otherPick>" for a
+ * matrix rule (e.g. "layout-walkin-luxe"), the configurator image key for a
+ * view rule (e.g. "aerial-porcelain-pebble-spa").
  */
 export function photoKey(spec: FunnelSpec, stepId: string, selection: FunnelSelection): string {
   const step = stepOf(spec, stepId) ?? spec.steps[0];
   const sel = normalizeFunnelSelection(spec, selection);
   if (step.photo.kind === 'option') return `${step.id}-${optionPick(step, selection)}`;
+  if (step.photo.kind === 'matrix') return `${step.id}-${optionPick(step, selection)}-${otherPick(spec, step.photo.stepId, selection)}`;
   const cfg = spec.configurator;
   const cfgSel = toConfiguratorSelection(spec, sel);
   if (!cfg || !cfgSel) return step.photo.view;
@@ -156,12 +158,22 @@ function optionPick(step: FunnelStep, selection: FunnelSelection | null | undefi
   return typeof v === 'string' && step.options.some((o) => o.id === v) ? v : defaultOptionOf(step);
 }
 
+/** Another step's pick for a matrix photo (its default when it has none yet, e.g. a later step). */
+function otherPick(spec: FunnelSpec, stepId: string, selection: FunnelSelection | null | undefined): string {
+  const other = stepOf(spec, stepId);
+  return other ? optionPick(other, selection) : '';
+}
+
 /** The photo a step shows for a selection (src, phone-size src, alt and a fallback for a missing file). */
 export function funnelPhoto(spec: FunnelSpec, stepId: string, selection: FunnelSelection): FunnelPhoto {
   const step = stepOf(spec, stepId) ?? spec.steps[0];
   const sel = normalizeFunnelSelection(spec, selection);
   const rule = step.photo;
   if (rule.kind === 'option') return rule.photos[optionPick(step, selection)] ?? Object.values(rule.photos)[0];
+  if (rule.kind === 'matrix') {
+    const row = rule.photos[optionPick(step, selection)] ?? Object.values(rule.photos)[0];
+    return row[otherPick(spec, rule.stepId, selection)] ?? Object.values(row)[0];
+  }
   const cfg = spec.configurator;
   const view = cfg?.views.find((v) => v.id === rule.view);
   if (!cfg || !view) return { src: spec.landing.heroPhoto.src, srcSm: spec.landing.heroPhoto.srcSm, alt: spec.landing.heroAlt };

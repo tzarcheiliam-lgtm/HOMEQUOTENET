@@ -44,7 +44,14 @@ export type FunnelPhoto = {
  */
 export type FunnelPhotoRule =
   | { kind: 'option'; photos: Record<string, FunnelPhoto> }
-  | { kind: 'view'; view: string };
+  | { kind: 'view'; view: string }
+  /**
+   * matrix: one photo per option of THIS step AND the pick of another step
+   * (`stepId`, earlier or later; its default while it has no pick), e.g. the
+   * bathroom's "Choose your layout." photo per layout and finish:
+   * photos[optionId][otherPick]. Key "<stepId>-<optionId>-<otherPick>".
+   */
+  | { kind: 'matrix'; stepId: string; photos: Record<string, Record<string, FunnelPhoto>> };
 
 export type FunnelOption = {
   /** Unique within the step; used in the URL and sessionStorage. */
@@ -81,6 +88,12 @@ export type FunnelStep = {
   /** Option selected when the step is first shown. Default: the first option. */
   defaultOption?: string;
   photo: FunnelPhotoRule;
+  /**
+   * How the photo fills the card: 'cover' (room photos) or 'contain' (plan
+   * drawings on white, zoomed in a little). Default: 'cover' for view and
+   * matrix rules, 'contain' for option rules. Fallback photos always cover.
+   */
+  photoFit?: 'cover' | 'contain';
   /** Primary button text. Default "Continue" (FunnelSpec.finalCta on whichever step is last on the path). */
   cta?: string;
   /**
@@ -101,6 +114,15 @@ export type FunnelLanding = {
   cta: string;
   heroPhoto: { src: string; srcSm?: string };
   heroAlt: string;
+  /** Shown instead of heroPhoto when the server finds its file missing (e.g. a photo not generated yet). */
+  heroFallback?: { src: string; srcSm?: string; alt: string };
+  /**
+   * The logo's width / height (default 2.38, the Pool Masters mark) and, for a
+   * round badge too small to read in the header, a wordmark set next to it.
+   */
+  logo?: { aspect?: number; wordmark?: string };
+  /** Line under "Recent {name} projects" (only with projects). Default: "Real backyards we remodeled, photographed as built." */
+  projectsNote?: string;
   /** Optional, below the fold: a few real finished jobs (never AI-edited). */
   projects?: GalleryImage[];
   /** Optional: a few of the contractor's real 5-star Google reviews under the button (lib/estimator/reviews.ts). */
@@ -181,6 +203,19 @@ export type FunnelBookingStep = {
   bookingTitle: string;
   /** e.g. "Prefer to talk now? Call". The contractor's phone follows. */
   callPrompt?: string;
+  /** Instead of a range when nothing priced was picked. Default: "Priced at your free on-site visit". */
+  noRangeText?: string;
+  /**
+   * Qualified without a calendar to book on: what happens next. Default: "We’ll call you
+   * within one business day to talk through it and set up your free on-site estimate."
+   */
+  followUpText?: string;
+  /**
+   * Not the homeowner, saved for review: `{name}` is the contractor's name. Default: "We book
+   * on-site estimates online with homeowners. Your details are saved, and the {name} team
+   * will review them before we can confirm a fit."
+   */
+  reviewText?: string;
 };
 
 export type FunnelSpec = {
@@ -206,6 +241,11 @@ export type FunnelSpec = {
   baseAnswers?: Answers;
   /** One quiet line in the page footer (and under the embed's column): photos are example designs. Never on a photo. */
   photoNote?: string;
+  /**
+   * Meta description of the /design page; `{noun}` = the template's projectNoun, `{name}` = the
+   * contractor. Default: "Three quick picks, then a ballpark price for your {noun} from {name} and a free on-site estimate."
+   */
+  designDescription?: string;
 };
 
 /** What the homeowner picked: option id per step id (steps not shown on this path have no entry). */

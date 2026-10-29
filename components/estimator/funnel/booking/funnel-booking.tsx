@@ -39,6 +39,11 @@ import { shareDesignPath, shareMessage } from '@/lib/estimator/share';
 
 const FRAME_START = 700;
 
+/** The pool funnel's words; a spec can set its own (bookingStep.reviewText / followUpText). */
+const DEFAULT_REVIEW_TEXT =
+  'We book on-site estimates online with homeowners. Your details are saved, and the {name} team will review them before we can confirm a fit.';
+const DEFAULT_FOLLOW_UP = 'We’ll call you within one business day to talk through it and set up your free on-site estimate.';
+
 /** "or from $649/mo*" -> the words, the amount (set a touch heavier) and the asterisk. */
 function monthlyParts(line: string): { before: string; amount: string; after: string } {
   const m = /^(.*?)(\$[\d,]+\/mo)(.*)$/.exec(line);
@@ -108,7 +113,7 @@ export function FunnelBookingScreen({
           {priceEyebrow(spec, selection)}
         </p>
         <p className="mt-2.5 text-[clamp(26px,7.6vw,31px)] font-medium leading-[1.1] tracking-[-0.02em] text-[var(--fn-ink)] tabular-nums [text-wrap:balance]">
-          {range ?? 'Priced at your free on-site visit'}
+          {range ?? step.noRangeText ?? 'Priced at your free on-site visit'}
         </p>
         {monthly && example ? (
           // DEMO ONLY, right under the range: an example payment, never an offer (the fine print is behind "See details").
@@ -253,8 +258,7 @@ export function FunnelBookingScreen({
               {firstName ? `Thanks, ${firstName}.` : 'Thank you.'} Your project needs a personal review.
             </h2>
             <p className="mt-1.5 text-[15px] leading-[22px] text-[var(--fn-text)]">
-              We book on-site estimates online with homeowners. Your details are saved, and the {contractor.contractorName} team will review them
-              before we can confirm a fit.
+              {(step.reviewText ?? DEFAULT_REVIEW_TEXT).replaceAll('{name}', contractor.contractorName)}
             </p>
           </div>
         ) : (
@@ -262,7 +266,7 @@ export function FunnelBookingScreen({
             <h2 id={`${uid}-book`} className="text-[19px] font-medium leading-tight text-[var(--fn-ink)]">
               {firstName ? `Thanks, ${firstName}.` : 'Thank you.'} Your design is with {contractor.contractorName}.
             </h2>
-            <p className="mt-1.5 text-[15px] leading-[22px] text-[var(--fn-text)]">We&rsquo;ll call you within one business day to talk through it and set up your free on-site estimate.</p>
+            <p className="mt-1.5 text-[15px] leading-[22px] text-[var(--fn-text)]">{step.followUpText ?? DEFAULT_FOLLOW_UP}</p>
           </div>
         )}
       </section>

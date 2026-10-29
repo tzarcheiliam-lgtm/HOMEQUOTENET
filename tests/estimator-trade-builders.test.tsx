@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from 'react-dom/server';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { flowStages, unlockCopy } from '@/components/estimator/builder-progress';
 import { previewAnswers } from '@/components/estimator/builder';
 import { getTradeBuilder, resolveExampleMedia, TRADE_META, tradeMeta } from '@/components/estimator/builders';
@@ -214,6 +214,11 @@ describe('network shell', () => {
     const page = async () => renderToStaticMarkup(await EstimatorPage({ params: Promise.resolve({ slug: 'bathroom-remodel' }) }));
 
     it('renders the bathroom builder with network copy, and promises the photo only with renders on', async () => {
+      // The page runs the simple funnel now (tests/estimator-bath-funnel.test.tsx); the builder is kept working behind experience 'builder'.
+      BC.experience = 'builder';
+      onTestFinished(() => {
+        BC.experience = 'funnel';
+      });
       delete process.env.KIE_API_KEY;
       const off = await page();
       expect(off).toContain('data-estimator="bathroom"');
