@@ -41,6 +41,19 @@ vi.mock('@/lib/sms/service', () => ({ startSmsForLead: vi.fn() }));
 vi.mock('@/lib/meta/lead-ids', () => ({ rememberLeadMetaIds: vi.fn() }));
 vi.mock('@/lib/meta/audit.server', () => ({ directSendAudit: () => ({ reserve: async () => 'ok', finish: async () => {} }) }));
 vi.mock('@/lib/meta/capi', async (orig) => ({ ...(await orig<typeof import('@/lib/meta/capi')>()), sendMetaEvent: vi.fn() }));
+// Pool Masters now runs the simple funnel (revealRange 'after_contact'); this file covers the
+// configurator lead path, which stays supported, so the route sees Pool Masters as a configurator contractor.
+vi.mock('@/lib/estimator/registry', async (orig) => {
+  const real = await orig<typeof import('@/lib/estimator/registry')>();
+  return {
+    ...real,
+    getEstimator: (slug: string) => {
+      const found = real.getEstimator(slug);
+      if (!found || slug !== 'pool-masters') return found;
+      return { ...found, contractor: { ...found.contractor, experience: 'configurator' as const, revealRange: 'immediately' as const } };
+    },
+  };
+});
 
 import { POST } from '@/app/api/estimator/[slug]/lead/route';
 import { estimateSelection, defaultSelection, selectionToAnswers } from '@/lib/estimator/configurator/engine';

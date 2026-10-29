@@ -1,0 +1,202 @@
+/*
+ * The simple funnel's look (landing + steps), matched to the Buildoly mobile
+ * funnel the owner asked for: warm off-white page, white cards with a light
+ * grey hairline, one blue for every action, a single geometric grotesk.
+ * Scoped to .es-fn so the configurator and the step-by-step builder are untouched.
+ *
+ * Type: Buildoly sets articulat-cf (paid). Inter Tight (app/(estimator)/layout.tsx,
+ * --font-funnel) is the closest free match: same neutral grotesk skeleton,
+ * double-storey a, straight-tailed y and the tight default spacing that keeps
+ * the big headline compact. Loaded as a variable font, so weights sit a little
+ * under the nominal 500 Buildoly sets (articulat runs light). Its cap height is lower (0.73 vs about 0.79), so
+ * sizes here are about 8% over the measured Buildoly px to match on screen.
+ */
+.es-fn {
+  --fn-bg: #f6f4f0;
+  --fn-card: #ffffff;
+  --fn-ink: #0a0a0a;
+  --fn-text: #1f1e1c;
+  --fn-muted: #6f6b64;
+  --fn-muted-strong: #6a665f;
+  --fn-line: #d0d0d0;
+  --fn-hair: #e4e1db;
+  --fn-track: #e5e3de;
+  --fn-blue: #0071e3;
+  --fn-blue-hover: #0068d1;
+  --fn-blue-press: #005fbf;
+  --fn-focus: rgb(0 113 227 / 0.35);
+  --fn-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  color-scheme: light;
+  background: var(--fn-bg);
+  color: var(--fn-ink);
+  /* Without the variable (the embed layout does not load it) the system face, SF Pro on iPhone, is the closest stand-in. */
+  font-family: var(--font-funnel, -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/*
+ * Component classes live in the components layer so Tailwind utilities on the
+ * element (lg:text-[30px], w-auto, lg:inline-flex) still win over them.
+ */
+@layer components {
+  /* One face for everything (the site's base layer sets Sora on headings). */
+  .es-fn :where(h1, h2, h3) {
+    font-family: inherit;
+  }
+
+  /* The one question per screen. */
+  .es-fn .fn-h1 {
+    font-size: 24px;
+    line-height: 1.15;
+    font-weight: 420;
+    letter-spacing: -0.012em;
+    color: var(--fn-ink);
+  }
+
+  /* "STEP 1 OF 3" */
+  .es-fn .fn-eyebrow {
+    font-size: 13px;
+    line-height: 16px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--fn-blue);
+  }
+
+  /* Primary action: full width, square-ish corners, soft drop. */
+  .es-fn .fn-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    background: var(--fn-blue);
+    color: #fff;
+    font-weight: 460;
+    letter-spacing: -0.005em;
+    box-shadow: 0 4px 5.5px rgb(0 0 0 / 0.07);
+    touch-action: manipulation;
+    user-select: none;
+    transition-property: background-color, scale;
+    transition-duration: 150ms;
+    transition-timing-function: ease;
+  }
+  .es-fn .fn-btn:active {
+    background: var(--fn-blue-press);
+    scale: 0.985;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .es-fn .fn-btn:hover {
+      background: var(--fn-blue-hover);
+    }
+  }
+  .es-fn .fn-btn:focus-visible {
+    outline: 3px solid var(--fn-focus);
+    outline-offset: 2px;
+  }
+
+  /* Option card: hairline border; selected = 2px blue drawn with an inset ring so the text never moves. */
+  .es-fn .fn-option {
+    position: relative;
+    display: block;
+    cursor: pointer;
+    border-radius: 8px;
+    border: 1px solid var(--fn-line);
+    background: var(--fn-card);
+    touch-action: manipulation;
+    user-select: none;
+    transition-property: border-color, box-shadow, scale;
+    transition-duration: 120ms;
+    transition-timing-function: ease;
+  }
+  .es-fn .fn-option:active {
+    scale: 0.99;
+  }
+  .es-fn .fn-option[data-selected] {
+    border-color: var(--fn-blue);
+    box-shadow: inset 0 0 0 1px var(--fn-blue);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .es-fn .fn-option:not([data-selected]):hover {
+      border-color: #b9b6b0;
+    }
+  }
+  .es-fn .fn-option:has(input:focus-visible) {
+    outline: 3px solid var(--fn-focus);
+    outline-offset: 2px;
+  }
+
+  /* Step bar fill: transform only. */
+  .es-fn .fn-bar-fill {
+    transform-origin: left center;
+    transition: transform 260ms var(--fn-ease-out);
+  }
+
+  /* Photo layers: the picked one fades in over the others (all loaded, so a tap swaps instantly). */
+  .es-fn .fn-layer {
+    transition: opacity 180ms ease-out;
+  }
+
+  /* Screen change: a short fade and 8 px slide in the direction of travel. Never on first paint. */
+  @keyframes fn-in-fwd {
+    from {
+      opacity: 0;
+      transform: translate3d(12px, 0, 0);
+    }
+  }
+  @keyframes fn-in-back {
+    from {
+      opacity: 0;
+      transform: translate3d(-12px, 0, 0);
+    }
+  }
+  .es-fn .fn-enter-fwd {
+    animation: fn-in-fwd 200ms var(--fn-ease-out) both;
+  }
+  .es-fn .fn-enter-back {
+    animation: fn-in-back 200ms var(--fn-ease-out) both;
+  }
+
+  /* Landing: the photo rises out of the sky behind the button. */
+  .es-fn .fn-hero-photo {
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 26%);
+    mask-image: linear-gradient(to bottom, transparent 0, #000 26%);
+  }
+  @media (min-width: 1024px) {
+    .es-fn .fn-hero-photo {
+      -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16%);
+      mask-image: linear-gradient(to bottom, transparent 0, #000 16%);
+    }
+  }
+
+  /* Header menu panel. */
+  @keyframes fn-pop {
+    from {
+      opacity: 0;
+      transform: translate3d(0, -4px, 0) scale(0.98);
+    }
+  }
+  .es-fn .fn-pop {
+    transform-origin: top right;
+    animation: fn-pop 160ms var(--fn-ease-out) both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .es-fn .fn-btn,
+    .es-fn .fn-option,
+    .es-fn .fn-bar-fill,
+    .es-fn .fn-layer {
+      transition: none;
+    }
+    .es-fn .fn-btn:active,
+    .es-fn .fn-option:active {
+      scale: none;
+    }
+    .es-fn .fn-enter-fwd,
+    .es-fn .fn-enter-back,
+    .es-fn .fn-pop {
+      animation: none;
+    }
+  }
+}

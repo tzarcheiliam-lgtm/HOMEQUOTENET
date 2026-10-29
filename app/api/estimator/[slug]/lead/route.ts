@@ -14,9 +14,10 @@ import { rememberLeadMetaIds } from '@/lib/meta/lead-ids';
 import { directSendAudit } from '@/lib/meta/audit.server';
 import { computeEstimate } from '@/lib/estimator/engine';
 import { configuratorSpecFor } from '@/lib/estimator/configurator/engine';
+import { funnelSpecFor } from '@/lib/estimator/funnel/engine';
 import { getEstimator } from '@/lib/estimator/registry';
 import {
-  ReplayCache, acceptedConsent, bookingUrl, buildLeadPayload, configuratorLeadDesign, isHoneypot, originAllowed, parseLeadRequest, pickLikedLooks,
+  ReplayCache, acceptedConsent, bookingUrl, buildLeadPayload, configuratorLeadDesign, funnelLeadDesign, isHoneypot, originAllowed, parseLeadRequest, pickLikedLooks,
   sanitizeEstimatorAnswers, type ConfiguratorLeadDesign,
 } from '@/lib/estimator/lead';
 import { estimatorConsentText, type EstimatorLeadResponse } from '@/lib/estimator/lead-client';
@@ -111,15 +112,18 @@ async function handle(request: Request, context: Context): Promise<Response> {
   if (replayed) return reply(replayed);
 
   // Never trust the browser: the answers are cut down to what the template allows and the
-  // range is computed here. A configurator design is re-derived from the selection alone.
+  // range is computed here. A funnel or configurator design is re-derived from the picks alone.
   const origin = new URL(request.url).origin;
+  const where = { origin: request.headers.get('origin') && originAllowed(request) ? request.headers.get('origin')! : origin, slug };
   const spec = configuratorSpecFor(contractor);
+  const funnelSpec = funnelSpecFor(contractor);
   let answers = sanitizeEstimatorAnswers(template, lead.answers);
   let estimate = computeEstimate(template, { answers, dimensions: lead.dimensions });
   let design: ConfiguratorLeadDesign | undefined;
-  if (spec && lead.configurator) {
-    const derived = configuratorLeadDesign(spec, template, lead.configurator, { origin: request.headers.get('origin') && originAllowed(request) ? request.headers.get('origin')! : origin, slug });
-    ({ answers, estimate, design } = derived);
+  if (funnelSpec && lead.funnel) {
+    ({ answers, estimate, design } = funnelLeadDesign(funnelSpec, template, lead.funnel, where));
+  } else if (spec && lead.configurator) {
+    ({ answers, estimate, design } = configuratorLeadDesign(spec, template, lead.configurator, where));
   }
 
   // Honeypot: look like a success, save nothing.

@@ -208,8 +208,9 @@ describe('/estimator/[slug] page', () => {
     delete process.env.KIE_API_KEY;
     const html = await page();
     expect(html).toContain('tel:+18186436888');
-    expect(html).toContain('Reimagine your pool');
-    expect(html).toContain('Powered by');
+    // Pool Masters runs the simple funnel: this page is its landing (tests/estimator-funnel-ui.test.tsx).
+    expect(html).toContain('Backyard pools,');
+    expect(html).toContain('href="/estimator/pool-masters/design"');
     expect(html).toContain('id="main"');
     expect(text(html)).not.toMatch(/Partner login|Check Availability|How it works/);
   });

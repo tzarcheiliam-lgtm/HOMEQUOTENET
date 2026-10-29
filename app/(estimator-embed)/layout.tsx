@@ -1,10 +1,14 @@
 import type { Metadata } from 'next';
+import { Inter_Tight } from 'next/font/google';
 import '../(marketing)/marketing.css';
 
 // Embedded inside a contractor's own site: never indexed, whatever the prices status.
 export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
+
+// Same funnel face as app/(estimator)/layout.tsx; only .es-fn uses it.
+const funnelFont = Inter_Tight({ subsets: ['latin'], variable: '--font-funnel', display: 'swap' });
 
 /**
  * Bare shell for the iframe embed: no site header or footer, but the same
@@ -17,7 +21,7 @@ export const metadata: Metadata = {
  */
 export default function EstimatorEmbedLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="hq min-h-[100dvh] [--es-aqua:#2ec5d3]">
+    <div className={`hq ${funnelFont.variable} min-h-[100dvh] [--es-aqua:#2ec5d3]`}>
       <main id="main">{children}</main>
     </div>
   );

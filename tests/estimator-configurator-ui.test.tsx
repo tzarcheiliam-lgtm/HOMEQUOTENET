@@ -23,7 +23,10 @@ import { getEstimator } from '@/lib/estimator/registry';
 
 vi.mock('server-only', () => ({}));
 
-const { template: FULL, contractor } = getEstimator('pool-masters')!;
+// Pool Masters now runs the simple funnel; the configurator stays available, so test it as a configurator contractor.
+const registered = getEstimator('pool-masters')!;
+const FULL = registered.template;
+const contractor = { ...registered.contractor, experience: 'configurator' as const, revealRange: 'immediately' as const };
 const T = publicTemplate(FULL, contractor);
 const base = defaultSelection(SPEC);
 const render = (props: Partial<Parameters<typeof Configurator>[0]> = {}) =>

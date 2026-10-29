@@ -11,6 +11,7 @@
  */
 
 import type { ConfiguratorSpec } from './configurator/types.ts';
+import type { FunnelSpec } from './funnel/types.ts';
 
 /* ------------------------------------------------------------------ */
 /* Prices                                                              */
@@ -305,9 +306,17 @@ export type ContractorEstimatorConfig = {
    * Which homeowner page to show. 'builder' (default): the step-by-step builder
    * (components/estimator/estimator-flow.tsx). 'configurator': the one-page
    * size / finish / upgrades configurator driven by `configurator`
-   * (lib/estimator/configurator); needs revealRange 'immediately'.
+   * (lib/estimator/configurator); needs revealRange 'immediately'. 'funnel':
+   * the simple mobile funnel driven by `funnel` (lib/estimator/funnel): landing,
+   * one question per screen, contact, then the range and booking; meant for
+   * revealRange 'after_contact' (the lead route returns the estimate).
    */
-  experience?: 'builder' | 'configurator';
-  /** The configurator spec (required when experience is 'configurator'). */
+  experience?: 'builder' | 'configurator' | 'funnel';
+  /**
+   * The configurator spec (required when experience is 'configurator'; a funnel
+   * may reuse it through FunnelSpec.configurator).
+   */
   configurator?: ConfiguratorSpec;
+  /** The funnel spec (required when experience is 'funnel'). */
+  funnel?: FunnelSpec;
 };

@@ -3,7 +3,11 @@ import { consentText, contactSchema, inServiceArea, matches, qualify, serviceAre
 import { encodeSelection, estimateSelection, normalizeSelection, photoFor, photoSrc, selectionToAnswers } from './configurator/engine.ts';
 import type { ConfiguratorSelection, ConfiguratorSpec, Range } from './configurator/types.ts';
 import { formatRange, picksFor, visibleQuestions } from './engine.ts';
-import { LEAD_TIMELINES, describeConfiguratorDesign, estimatorConsentText, normalizeZip, usPhoneDigits, type EstimatorLeadRequest } from './lead-client.ts';
+import { encodeFunnelSelection, estimateFunnel, funnelAnswers, funnelPhoto, normalizeFunnelSelection, photoKey, pickedTitles, toConfiguratorSelection } from './funnel/engine.ts';
+import type { FunnelSelection, FunnelSpec } from './funnel/types.ts';
+import {
+  LEAD_TIMELINES, describeConfiguratorDesign, describeFunnelDesign, estimatorConsentText, normalizeZip, usPhoneDigits, type EstimatorLeadRequest,
+} from './lead-client.ts';
 import type { Answers, ContractorEstimatorConfig, Estimate, EstimatorTemplate, GalleryImage } from './types.ts';
 
 /**
@@ -74,6 +78,8 @@ export const leadRequestSchema = z.object({
   measurement: z.boolean().default(false),
   tracking,
   configurator: selection.optional(),
+  // The funnel's picks (step id -> option id); unknown steps and options fall back to the defaults.
+  funnel: z.record(z.string().max(50), z.string().max(50)).refine((f) => Object.keys(f).length <= 20, 'Too many steps').optional(),
   submissionId: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/).optional().catch(undefined),
 });
 export type ParsedLeadRequest = z.infer<typeof leadRequestSchema>;
@@ -403,10 +409,13 @@ export function describeSize(template: Pick<EstimatorTemplate, 'trade'>, geometr
 /* ------------------------------------------------------------------ */
 
 export type ConfiguratorLeadDesign = {
-  selection: ConfiguratorSelection;
-  /** The design in plain words, one line per group (describeConfiguratorDesign). */
+  /** The configurator design (for a funnel lead: the one its picks stand for; absent for a funnel without a configurator). */
+  selection?: ConfiguratorSelection;
+  /** The simple funnel's picks (experience 'funnel'), with the option titles in step order. */
+  funnel?: { selection: FunnelSelection; titles: string[] };
+  /** The design in plain words, one line per group (describeConfiguratorDesign) or per funnel step. */
   summary: string[];
-  /** The exact pictures the homeowner saw, one per view, as absolute URLs. */
+  /** The exact pictures the homeowner saw, one per view (funnel: per step), as absolute URLs. */
   photos: { view: string; label: string; key: string; url: string; alt: string }[];
   /** The page that reopens this design. */
   designUrl: string;
@@ -454,6 +463,53 @@ export function configuratorLeadDesign(
       designUrl: absolute(`/estimator/${encodeURIComponent(where.slug)}?${encodeSelection(spec, selection)}`),
       total: quote.total,
       bundleSaving: quote.bundleSaving,
+    },
+  };
+}
+
+/**
+ * Everything the server needs for a funnel lead (experience 'funnel'), derived
+ * from the picks only: the template answers (funnelAnswers, sanitised), the
+ * estimate (estimateFunnel: the configurator's pricing with the Go Luxe bundle
+ * off, so it matches the range the booking screen shows), the design in plain
+ * words (one line per step, then what the configurator design includes), the
+ * photo shown on each step and the link that reopens the design.
+ */
+export function funnelLeadDesign(
+  spec: FunnelSpec,
+  template: EstimatorTemplate,
+  raw: unknown,
+  where: { origin: string; slug: string },
+): { answers: Answers; estimate: Estimate; design: ConfiguratorLeadDesign } {
+  const selection = normalizeFunnelSelection(spec, raw);
+  const answers = sanitizeEstimatorAnswers(template, funnelAnswers(spec, selection));
+  const quote = estimateFunnel(spec, template, selection);
+  const absolute = (src: string) => {
+    try {
+      return new URL(src, where.origin).toString();
+    } catch {
+      return src;
+    }
+  };
+  const cfgSel = toConfiguratorSelection(spec, selection) ?? undefined;
+  // What "Standard" / "Luxe" really include, from the configurator (its size line repeats the first step).
+  const includes = spec.configurator && cfgSel ? describeConfiguratorDesign(spec.configurator, cfgSel).filter((l) => !l.startsWith('Size:')) : [];
+  const photos = spec.steps.map((s) => {
+    const photo = funnelPhoto(spec, s.id, selection);
+    return { view: s.id, label: s.label.replace(/[.?!]$/, ''), key: photoKey(spec, s.id, selection), url: absolute(photo.src), alt: photo.alt };
+  });
+  const total = quote.total ?? (quote.estimate.low !== null && quote.estimate.high !== null ? { low: quote.estimate.low, high: quote.estimate.high } : { low: 0, high: 0 });
+  return {
+    answers,
+    estimate: quote.total ? { ...quote.estimate, low: quote.total.low, high: quote.total.high } : quote.estimate,
+    design: {
+      ...(cfgSel ? { selection: cfgSel } : {}),
+      funnel: { selection, titles: pickedTitles(spec, selection) },
+      summary: [...describeFunnelDesign(spec, selection), ...includes],
+      photos,
+      designUrl: absolute(`/estimator/${encodeURIComponent(where.slug)}/design?${encodeFunnelSelection(spec, selection)}`),
+      total,
+      bundleSaving: null,
     },
   };
 }
@@ -545,8 +601,9 @@ export function buildLeadPayload(input: LeadPayloadInput): LeadPayload {
           homeowner: request.homeowner,
           ...(design
             ? {
+                ...(design.funnel ? { funnel: design.funnel } : {}),
                 configurator: {
-                  selection: design.selection,
+                  selection: design.selection ?? null,
                   summary: design.summary,
                   photos: design.photos,
                   designUrl: design.designUrl,

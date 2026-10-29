@@ -37,8 +37,8 @@ describe('estimator registry', () => {
       licenseLabel: 'CSLB #1112793',
       phone: '(818) 643-6888',
       funnelSlug: 'pool-masters',
-      revealRange: 'immediately',
-      experience: 'configurator',
+      revealRange: 'after_contact',
+      experience: 'funnel',
       pricesConfirmed: false,
     });
     expect(template.pricesConfirmed).toBe(false);

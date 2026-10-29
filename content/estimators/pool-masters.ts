@@ -1,5 +1,6 @@
 import type { ContractorEstimatorConfig } from '@/lib/estimator/types';
 import { POOL_MASTERS_CONFIGURATOR } from './pool-masters-configurator';
+import { POOL_MASTERS_FUNNEL } from './pool-masters-funnel';
 import { POOL_MASTERS_GALLERY, POOL_MASTERS_OPTION_IMAGES } from './pool-masters-photos';
 
 /**
@@ -26,9 +27,12 @@ export const POOL_MASTERS_ESTIMATOR: ContractorEstimatorConfig = {
   funnelSlug: 'pool-masters',
   // Same booking link as content/funnels/clients/pool-masters-la.json.
   calendarUrl: 'https://calendly.com/homequotenetwork/30min',
-  // The one-page configurator shows the range from the first click (no form first).
-  revealRange: 'immediately',
-  experience: 'configurator',
+  // The simple mobile funnel (landing, three taps, contact, then the range and booking):
+  // prices never reach the browser before the contact step. The one-page
+  // configurator spec stays attached (the funnel reuses its rows and photos).
+  revealRange: 'after_contact',
+  experience: 'funnel',
+  funnel: POOL_MASTERS_FUNNEL,
   configurator: POOL_MASTERS_CONFIGURATOR,
   // Mirrors the funnel's trackingPixels.consentMode.
   adMeasurement: 'opt_out',

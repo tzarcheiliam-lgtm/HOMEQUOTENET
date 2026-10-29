@@ -1,6 +1,8 @@
 import { consentText, type FunnelConfig } from '../funnels/schema.ts';
 import { normalizeSelection, selectedRows } from './configurator/engine.ts';
 import type { ConfiguratorSelection, ConfiguratorSpec } from './configurator/types.ts';
+import { normalizeFunnelSelection, pickedOptions } from './funnel/engine.ts';
+import type { FunnelSelection, FunnelSpec } from './funnel/types.ts';
 import type { Answers, Estimate, PoolDimensions } from './types.ts';
 
 /**
@@ -50,6 +52,13 @@ export type EstimatorLeadRequest = {
    * summary and the photo links from it; `answers` is then ignored.
    */
   configurator?: ConfiguratorSelection;
+  /**
+   * The simple funnel's picks (experience 'funnel'): option id per step id,
+   * e.g. { size: 'classic', finish: 'luxe', extras: 'spa' }. The server
+   * re-derives the answers, the price, the plain-words summary and the photo
+   * links from it; `answers` and `configurator` are then ignored.
+   */
+  funnel?: FunnelSelection;
   /**
    * One id per submission, reused by the automatic retry, so a retry after a
    * lost response gets the first reply back instead of saving the lead twice.
@@ -139,6 +148,62 @@ export function leadFieldErrors(input: LeadContactInput): Record<string, string>
   if (!input.homeowner) errors.homeowner = 'Tell us whether you own the home.';
   if (!input.consent) errors.consent = 'Please tick the box so we can contact you about your design.';
   return errors;
+}
+
+/* ------------------------------------------------------------------ */
+/* Funnel contact step (one "Name" field)                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * "Jane Doe" -> { firstName: "Jane", lastName: "Doe" }; "Mary Ann van der Berg" ->
+ * { "Mary", "Ann van der Berg" }. Null without at least two words (the lead
+ * needs a first and a last name).
+ */
+export function splitFullName(value: string): { firstName: string; lastName: string } | null {
+  const words = value.trim().split(/\s+/).filter(Boolean);
+  if (words.length < 2) return null;
+  return { firstName: words[0], lastName: words.slice(1).join(' ') };
+}
+
+export type FunnelContactInput = {
+  name: string;
+  email: string;
+  phone: string;
+  zip: string;
+  homeowner: '' | 'yes' | 'no';
+  consent: boolean;
+};
+
+/** On-screen order of the funnel contact form: the first field with a problem gets focus. */
+export const FUNNEL_FIELD_ORDER = ['name', 'email', 'phone', 'zip', 'homeowner', 'consent'] as const;
+
+/**
+ * The same rules as leadFieldErrors (and the server), for the funnel's single
+ * name field. Server errors on firstName / lastName belong to "name" too
+ * (funnelErrorKey).
+ */
+export function funnelContactErrors(input: FunnelContactInput): Record<string, string> {
+  const split = splitFullName(input.name);
+  const errors = leadFieldErrors({ ...input, firstName: split?.firstName ?? input.name.trim(), lastName: split?.lastName ?? '' });
+  const out: Record<string, string> = {};
+  if (!input.name.trim()) out.name = 'Enter your name.';
+  else if (!split) out.name = 'Enter your first and last name, like Jane Smith.';
+  else if (errors.firstName || errors.lastName) out.name = 'Use 80 characters or fewer for each name.';
+  for (const key of ['email', 'phone', 'zip', 'homeowner', 'consent'] as const) if (errors[key]) out[key] = errors[key];
+  return out;
+}
+
+/** A server error key as the funnel form shows it (firstName / lastName -> name). */
+export const funnelErrorKey = (key: string) => (key === 'firstName' || key === 'lastName' ? 'name' : key);
+
+/**
+ * The funnel design in plain words, one line per step, e.g.
+ * "Select your pool size: Classic (About 30 × 15 ft)".
+ */
+export function describeFunnelDesign(spec: FunnelSpec, selection: FunnelSelection): string[] {
+  const sel = normalizeFunnelSelection(spec, selection);
+  const picked = pickedOptions(spec, sel);
+  return spec.steps.map((s, i) => `${s.label.replace(/[.?!]$/, '')}: ${picked[i].title} (${picked[i].subtitle})`);
 }
 
 /* ------------------------------------------------------------------ */
