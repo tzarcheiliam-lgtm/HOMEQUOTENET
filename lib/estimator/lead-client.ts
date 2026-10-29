@@ -1,6 +1,9 @@
 import { consentText, type FunnelConfig } from '../funnels/schema.ts';
 import { normalizeSelection, selectedRows } from './configurator/engine.ts';
 import type { ConfiguratorSelection, ConfiguratorSpec } from './configurator/types.ts';
+import { normalizeFunnelSelection, pickedOptions } from './funnel/engine.ts';
+import type { FunnelSelection, FunnelSpec } from './funnel/types.ts';
+import { addressZip, currentPlace, type AddressPlace } from './address-client.ts';
 import type { Answers, Estimate, PoolDimensions } from './types.ts';
 
 /**
@@ -26,6 +29,14 @@ export type EstimatorLeadRequest = {
   /** "Anything else we should know?" */
   note?: string;
   zip: string;
+  /**
+   * The home's full address (the funnel's "Home address" field), with what the
+   * picked Google place adds when there is one. The ZIP above is still the one
+   * the server validates and the service area uses.
+   */
+  address?: string;
+  addressDetails?: { city?: string; state?: string; lat?: number; lng?: number; verified: boolean };
+  /** Always asked (the funnel's qualification rules read it); never assumed. */
   homeowner: 'yes' | 'no';
   /** Optional: the one-page configurator does not ask it (the funnel's timeline question then stays open). */
   timeline?: LeadTimeline;
@@ -51,6 +62,13 @@ export type EstimatorLeadRequest = {
    */
   configurator?: ConfiguratorSelection;
   /**
+   * The simple funnel's picks (experience 'funnel'): option id per step id,
+   * e.g. { size: 'classic', finish: 'luxe', extras: 'spa' }. The server
+   * re-derives the answers, the price, the plain-words summary and the photo
+   * links from it; `answers` and `configurator` are then ignored.
+   */
+  funnel?: FunnelSelection;
+  /**
    * One id per submission, reused by the automatic retry, so a retry after a
    * lost response gets the first reply back instead of saving the lead twice.
    */
@@ -67,6 +85,8 @@ export type EstimatorLeadResponse =
       calendarUrl?: string;
       /** Short-lived token for the optional photoreal render (absent when renders are off). */
       renderToken?: string;
+      /** false when nothing was saved (an unqualified visitor on a funnel set to 'stop'). */
+      saved?: boolean;
     }
   | {
       ok: false;
@@ -139,6 +159,85 @@ export function leadFieldErrors(input: LeadContactInput): Record<string, string>
   if (!input.homeowner) errors.homeowner = 'Tell us whether you own the home.';
   if (!input.consent) errors.consent = 'Please tick the box so we can contact you about your design.';
   return errors;
+}
+
+/* ------------------------------------------------------------------ */
+/* Funnel contact step (one "Name" field)                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * "Jane Doe" -> { firstName: "Jane", lastName: "Doe" }; "Mary Ann van der Berg" ->
+ * { "Mary", "Ann van der Berg" }. Null without at least two words (the lead
+ * needs a first and a last name).
+ */
+export function splitFullName(value: string): { firstName: string; lastName: string } | null {
+  const words = value.trim().split(/\s+/).filter(Boolean);
+  if (words.length < 2) return null;
+  return { firstName: words[0], lastName: words.slice(1).join(' ') };
+}
+
+export type FunnelContactInput = {
+  name: string;
+  email: string;
+  phone: string;
+  /** "Home address": picked from Google's suggestions or typed. */
+  address: string;
+  /** The picked Google place (its ZIP wins while the field still shows its address). */
+  place?: AddressPlace | null;
+  homeowner: '' | 'yes' | 'no';
+  consent: boolean;
+};
+
+/** On-screen order of the funnel contact form: the first field with a problem gets focus. */
+export const FUNNEL_FIELD_ORDER = ['name', 'email', 'phone', 'address', 'homeowner', 'consent'] as const;
+
+export const ADDRESS_NEEDS_ZIP = 'Add your ZIP code to the address';
+
+/**
+ * The same rules as leadFieldErrors (and the server), for the funnel's single
+ * name field and its address field (the ZIP comes from the picked place or the
+ * typed address). Server errors on firstName / lastName belong to "name", on
+ * zip to "address" (funnelErrorKey).
+ */
+export function funnelContactErrors(
+  input: FunnelContactInput,
+  /**
+   * consentOnSubmit: the consent wording sits under the button and tapping it is the
+   * agreement (no checkbox), so there is no box to tick.
+   */
+  opts: { consentOnSubmit?: boolean } = {},
+): Record<string, string> {
+  const { consentOnSubmit = false } = opts;
+  const split = splitFullName(input.name);
+  const zip = addressZip(input.address, input.place) ?? '';
+  const errors = leadFieldErrors({ ...input, zip, firstName: split?.firstName ?? input.name.trim(), lastName: split?.lastName ?? '' });
+  const out: Record<string, string> = {};
+  if (!input.name.trim()) out.name = 'Enter your name.';
+  else if (!split) out.name = 'Enter your first and last name, like Jane Smith.';
+  else if (errors.firstName || errors.lastName) out.name = 'Use 80 characters or fewer for each name.';
+  for (const key of ['email', 'phone'] as const) if (errors[key]) out[key] = errors[key];
+  const address = input.address.trim();
+  if (!address) out.address = 'Enter the address of the home.';
+  else if (address.length > 300) out.address = 'Use 300 characters or fewer.';
+  else if (!currentPlace(input.address, input.place) && !/[A-Za-z]/.test(address)) out.address = 'Enter the street address, like 12 Elm St, Calabasas, CA 91302.';
+  else if (!zip) out.address = ADDRESS_NEEDS_ZIP;
+  if (errors.homeowner) out.homeowner = 'Tell us whether this pool is at your home.';
+  if (!consentOnSubmit && errors.consent) out.consent = errors.consent;
+  return out;
+}
+
+/** A server error key as the funnel form shows it (firstName / lastName -> name, zip -> address). */
+export const funnelErrorKey = (key: string) =>
+  key === 'firstName' || key === 'lastName' ? 'name' : key === 'zip' || key === 'addressDetails' ? 'address' : key;
+
+/**
+ * The funnel design in plain words, one line per step, e.g.
+ * "Select your pool size: Classic (About 30 × 15 ft)".
+ */
+export function describeFunnelDesign(spec: FunnelSpec, selection: FunnelSelection): string[] {
+  const sel = normalizeFunnelSelection(spec, selection);
+  const picked = pickedOptions(spec, sel);
+  return spec.steps.map((s, i) => `${s.label.replace(/[.?!]$/, '')}: ${picked[i].title} (${picked[i].subtitle})`);
 }
 
 /* ------------------------------------------------------------------ */

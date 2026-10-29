@@ -66,10 +66,10 @@ describe('configurator spec: structure', () => {
     expect(validateTemplate(T)).toEqual([]);
   });
 
-  it('pool masters opts into the configurator with prices shown immediately', () => {
-    expect(POOL_MASTERS_ESTIMATOR.experience).toBe('configurator');
+  it('pool masters keeps the configurator spec attached (the funnel reuses it; prices after contact)', () => {
+    expect(POOL_MASTERS_ESTIMATOR.experience).toBe('funnel');
     expect(POOL_MASTERS_ESTIMATOR.configurator).toBe(SPEC);
-    expect(POOL_MASTERS_ESTIMATOR.revealRange).toBe('immediately');
+    expect(POOL_MASTERS_ESTIMATOR.revealRange).toBe('after_contact');
     expect(POOL_MASTERS_ESTIMATOR.pricesConfirmed).toBe(false);
   });
 
@@ -288,9 +288,12 @@ describe('configurator: shareable URL', () => {
 
 describe('configurator opt-in', () => {
   it('is used only with revealRange immediately (else prices are stripped): the pages fall back to the builder', () => {
-    expect(configuratorSpecFor(POOL_MASTERS_ESTIMATOR)).toBe(SPEC);
-    expect(configuratorSpecFor({ ...POOL_MASTERS_ESTIMATOR, revealRange: 'after_contact' })).toBeNull();
-    expect(configuratorSpecFor({ ...POOL_MASTERS_ESTIMATOR, configurator: undefined })).toBeNull();
-    expect(configuratorSpecFor({ ...POOL_MASTERS_ESTIMATOR, experience: 'builder' })).toBeNull();
+    const asConfigurator = { ...POOL_MASTERS_ESTIMATOR, experience: 'configurator' as const, revealRange: 'immediately' as const };
+    expect(configuratorSpecFor(asConfigurator)).toBe(SPEC);
+    expect(configuratorSpecFor({ ...asConfigurator, revealRange: 'after_contact' })).toBeNull();
+    // Pool Masters now runs the funnel: the configurator page is not used.
+    expect(configuratorSpecFor(POOL_MASTERS_ESTIMATOR)).toBeNull();
+    expect(configuratorSpecFor({ ...asConfigurator, configurator: undefined })).toBeNull();
+    expect(configuratorSpecFor({ ...asConfigurator, experience: 'builder' })).toBeNull();
   });
 });

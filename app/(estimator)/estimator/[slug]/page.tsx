@@ -8,9 +8,11 @@ import { Estimator } from '@/components/estimator/estimator';
 import { EstimatorFooter } from '@/components/estimator/shell/estimator-footer';
 import { EstimatorHeader } from '@/components/estimator/shell/estimator-header';
 import { EstimatorHero } from '@/components/estimator/shell/estimator-hero';
+import { FunnelLanding } from '@/components/estimator/funnel/landing';
 import { contractorFacts } from '@/components/estimator/shell/facts';
 import { publicTemplate } from '@/lib/estimator/config';
 import { configuratorSpecFor } from '@/lib/estimator/configurator/engine';
+import { funnelSpecFor } from '@/lib/estimator/funnel/engine';
 import { ESTIMATOR_SLUGS, getEstimator } from '@/lib/estimator/registry';
 import { rendersEnabled } from '@/lib/estimator/render';
 
@@ -69,6 +71,9 @@ export default async function EstimatorPage({ params }: Props) {
   const found = getEstimator(slug);
   if (!found) notFound();
   const { template, contractor } = found;
+  // Opt-in simple funnel: this page is its landing; the questions live at /estimator/[slug]/design.
+  const funnel = funnelSpecFor(contractor);
+  if (funnel) return <FunnelLanding spec={funnel} contractor={contractor} designHref={`/estimator/${contractor.slug}/design`} />;
   // Opt-in one-page configurator (size / finish / upgrades over pre-rendered photos): its own light page, header and footer.
   const spec = configuratorSpecFor(contractor);
   if (spec) {

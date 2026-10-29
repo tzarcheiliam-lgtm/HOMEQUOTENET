@@ -3,7 +3,11 @@ import { consentText, contactSchema, inServiceArea, matches, qualify, serviceAre
 import { encodeSelection, estimateSelection, normalizeSelection, photoFor, photoSrc, selectionToAnswers } from './configurator/engine.ts';
 import type { ConfiguratorSelection, ConfiguratorSpec, Range } from './configurator/types.ts';
 import { formatRange, picksFor, visibleQuestions } from './engine.ts';
-import { LEAD_TIMELINES, describeConfiguratorDesign, estimatorConsentText, normalizeZip, usPhoneDigits, type EstimatorLeadRequest } from './lead-client.ts';
+import { encodeFunnelSelection, estimateFunnel, funnelAnswers, funnelPhoto, normalizeFunnelSelection, photoKey, pickedTitles, toConfiguratorSelection } from './funnel/engine.ts';
+import type { FunnelSelection, FunnelSpec } from './funnel/types.ts';
+import {
+  LEAD_TIMELINES, describeConfiguratorDesign, describeFunnelDesign, estimatorConsentText, normalizeZip, usPhoneDigits, type EstimatorLeadRequest,
+} from './lead-client.ts';
 import type { Answers, ContractorEstimatorConfig, Estimate, EstimatorTemplate, GalleryImage } from './types.ts';
 
 /**
@@ -66,7 +70,19 @@ export const leadRequestSchema = z.object({
     (v) => (typeof v === 'string' ? normalizeZip(v) ?? v : v),
     z.string({ required_error: 'Enter the property’s 5-digit ZIP code.' }).regex(/^\d{5}$/, 'Enter a valid five-digit ZIP code.'),
   ),
+  // Always required: the funnel's qualification rules read it (never assumed).
   homeowner: z.enum(['yes', 'no'], { errorMap: () => ({ message: 'Tell us whether you own the home.' }) }),
+  // The home's full address (funnel "Home address"); the ZIP above stays the validated one.
+  address: z.string().max(300, 'Use 300 characters or fewer for the address.').optional()
+    .transform((v) => v?.replace(/[\u0000-\u001F\u007F]/g, ' ').replace(/\s+/g, ' ').trim() || undefined),
+  // What a picked Google place adds; nice to have, so a bad value is dropped, never a failed lead.
+  addressDetails: z.object({
+    city: z.string().trim().max(80).optional(),
+    state: z.string().regex(/^[A-Z]{2}$/).optional(),
+    lat: z.number().finite().min(-90).max(90).optional(),
+    lng: z.number().finite().min(-180).max(180).optional(),
+    verified: z.boolean().default(false),
+  }).optional().catch(undefined),
   // Optional: the configurator does not ask it (the funnel's timeline question then stays open).
   timeline: z.enum(LEAD_TIMELINES.map((t) => t.id) as [string, ...string[]], { errorMap: () => ({ message: 'Choose when you want to start.' }) }).optional(),
   contact,
@@ -74,6 +90,8 @@ export const leadRequestSchema = z.object({
   measurement: z.boolean().default(false),
   tracking,
   configurator: selection.optional(),
+  // The funnel's picks (step id -> option id); unknown steps and options fall back to the defaults.
+  funnel: z.record(z.string().max(50), z.string().max(50)).refine((f) => Object.keys(f).length <= 20, 'Too many steps').optional(),
   submissionId: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/).optional().catch(undefined),
 });
 export type ParsedLeadRequest = z.infer<typeof leadRequestSchema>;
@@ -298,13 +316,13 @@ function projectAliases(trade: string, project: string | undefined): string[] {
 
 /**
  * Fills the funnel's own questions from the estimator answers: the ZIP question,
- * the homeowner and timeline questions by id, and any choice question whose
+ * an address question (with the home address), the homeowner and timeline questions by id, and any choice question whose
  * option matches the project pick. Optional typed questions are skipped (''),
  * anything else stays unanswered (qualifyLead then decides on what is known).
  */
 export function funnelAnswersFor(
   config: FunnelConfig,
-  input: { zip: string; homeowner: string; timeline?: string; project?: string; trade?: string },
+  input: { zip: string; homeowner: string; timeline?: string; project?: string; trade?: string; address?: string },
 ): Record<string, string> {
   const answers: Record<string, string> = {};
   const aliases = projectAliases(input.trade ?? 'pool', input.project);
@@ -312,6 +330,8 @@ export function funnelAnswersFor(
     if (!q.showWhen.every((c) => matches(c, answers))) continue;
     const has = (value: string) => q.options.some((o) => o.value === value);
     if (q.type === 'zip') answers[q.id] = input.zip;
+    // The funnel's own Address question (if any) also fills leads.address (save_funnel_session).
+    else if (q.type === 'address' && input.address) answers[q.id] = input.address;
     else if (q.type !== 'choice') {
       if (q.required === false) answers[q.id] = '';
     } else if (q.id === 'homeowner' && has(input.homeowner)) answers[q.id] = input.homeowner;
@@ -403,10 +423,13 @@ export function describeSize(template: Pick<EstimatorTemplate, 'trade'>, geometr
 /* ------------------------------------------------------------------ */
 
 export type ConfiguratorLeadDesign = {
-  selection: ConfiguratorSelection;
-  /** The design in plain words, one line per group (describeConfiguratorDesign). */
+  /** The configurator design (for a funnel lead: the one its picks stand for; absent for a funnel without a configurator). */
+  selection?: ConfiguratorSelection;
+  /** The simple funnel's picks (experience 'funnel'), with the option titles in step order. */
+  funnel?: { selection: FunnelSelection; titles: string[] };
+  /** The design in plain words, one line per group (describeConfiguratorDesign) or per funnel step. */
   summary: string[];
-  /** The exact pictures the homeowner saw, one per view, as absolute URLs. */
+  /** The exact pictures the homeowner saw, one per view (funnel: per step), as absolute URLs. */
   photos: { view: string; label: string; key: string; url: string; alt: string }[];
   /** The page that reopens this design. */
   designUrl: string;
@@ -458,12 +481,69 @@ export function configuratorLeadDesign(
   };
 }
 
+/**
+ * Everything the server needs for a funnel lead (experience 'funnel'), derived
+ * from the picks only: the template answers (funnelAnswers, sanitised), the
+ * estimate (estimateFunnel: the configurator's pricing with the Go Luxe bundle
+ * off, so it matches the range the booking screen shows), the design in plain
+ * words (one line per step, then what the configurator design includes), the
+ * photo shown on each step and the link that reopens the design.
+ */
+export function funnelLeadDesign(
+  spec: FunnelSpec,
+  template: EstimatorTemplate,
+  raw: unknown,
+  where: { origin: string; slug: string },
+): { answers: Answers; estimate: Estimate; design: ConfiguratorLeadDesign } {
+  const selection = normalizeFunnelSelection(spec, raw);
+  const answers = sanitizeEstimatorAnswers(template, funnelAnswers(spec, selection));
+  const quote = estimateFunnel(spec, template, selection);
+  const absolute = (src: string) => {
+    try {
+      return new URL(src, where.origin).toString();
+    } catch {
+      return src;
+    }
+  };
+  const cfgSel = toConfiguratorSelection(spec, selection) ?? undefined;
+  // What "Standard" / "Luxe" really include, from the configurator (its size line repeats the first step).
+  const includes = spec.configurator && cfgSel ? describeConfiguratorDesign(spec.configurator, cfgSel).filter((l) => !l.startsWith('Size:')) : [];
+  const photos = spec.steps.map((s) => {
+    const photo = funnelPhoto(spec, s.id, selection);
+    return { view: s.id, label: s.label.replace(/[.?!]$/, ''), key: photoKey(spec, s.id, selection), url: absolute(photo.src), alt: photo.alt };
+  });
+  const total = quote.total ?? (quote.estimate.low !== null && quote.estimate.high !== null ? { low: quote.estimate.low, high: quote.estimate.high } : { low: 0, high: 0 });
+  return {
+    answers,
+    estimate: quote.total ? { ...quote.estimate, low: quote.total.low, high: quote.total.high } : quote.estimate,
+    design: {
+      ...(cfgSel ? { selection: cfgSel } : {}),
+      funnel: { selection, titles: pickedTitles(spec, selection) },
+      summary: [...describeFunnelDesign(spec, selection), ...includes],
+      photos,
+      designUrl: absolute(`/estimator/${encodeURIComponent(where.slug)}/design?${encodeFunnelSelection(spec, selection)}`),
+      total,
+      bundleSaving: null,
+    },
+  };
+}
+
+/**
+ * The address as the contractor reads it, always with the ZIP the lead was
+ * validated and gated on ("12 Elm St, Calabasas, CA" + 91302 -> "..., CA 91302").
+ */
+export function addressLine(address: string, zip: string): string {
+  const line = address.replace(/,\s*(USA|United States)$/i, '').trim();
+  return new RegExp(`\\b${zip}\\b`).test(line) ? line : `${line} ${zip}`;
+}
+
 export function buildLeadPayload(input: LeadPayloadInput): LeadPayload {
   const { template, contractor, funnel, request, answers, estimate, likedLooks, design } = input;
   const projectQ = template.questions.find((q) => q.role === 'project');
   const project = projectQ ? picksFor(projectQ, answers)[0] : undefined;
 
-  const base = funnelAnswersFor(funnel.config, { zip: request.zip, homeowner: request.homeowner, timeline: request.timeline, project, trade: template.trade });
+  const address = request.address ? addressLine(request.address, request.zip) : undefined;
+  const base = funnelAnswersFor(funnel.config, { zip: request.zip, homeowner: request.homeowner, timeline: request.timeline, project, trade: template.trade, address });
   const qualified = qualifyLead(funnel.config, base);
   const areaValid = areaValidFor(funnel.config, base);
 
@@ -471,7 +551,11 @@ export function buildLeadPayload(input: LeadPayloadInput): LeadPayload {
   const picks = describePicks(template, answers);
   const siteVisit = estimate.siteVisitItems.map((i) => i.label);
   // Questions the page never asked (the configurator skips the property questions): check them on site.
-  const notAsked = estimate.unanswered.map((id) => template.questions.find((q) => q.id === id)).filter((q) => q !== undefined).map((q) => q.summaryLabel ?? q.label);
+  const notAsked = [
+    ...estimate.unanswered.map((id) => template.questions.find((q) => q.id === id)).filter((q) => q !== undefined).map((q) => q.summaryLabel ?? q.label),
+  ];
+  const details = request.addressDetails;
+  const mapUrl = details?.lat !== undefined && details?.lng !== undefined ? `https://www.google.com/maps/search/?api=1&query=${details.lat.toFixed(6)},${details.lng.toFixed(6)}` : undefined;
   const geometry = estimate.geometry;
   const [sizeKey, sizeText] = describeSize(template, geometry);
   const source = estimatorSourceLabel(template);
@@ -483,6 +567,8 @@ export function buildLeadPayload(input: LeadPayloadInput): LeadPayload {
     estimator_source: source,
     estimator_range: range,
     estimator_status: estimate.status,
+    ...(address ? { estimator_address: clip(address, 300) } : {}),
+    ...(mapUrl ? { estimator_address_map: mapUrl } : {}),
     [sizeKey]: sizeText,
     ...(picks.length ? { estimator_picks: clip(picks.join('; ')) } : {}),
     ...(siteVisit.length ? { estimator_site_visit: clip(siteVisit.join('; ')) } : {}),
@@ -505,6 +591,9 @@ export function buildLeadPayload(input: LeadPayloadInput): LeadPayload {
 
   const lines = [
     `${source}: ballpark ${range} (not a quote${template.pricesConfirmed ? '' : '; example prices'})`,
+    ...(address ? [`Home address: ${address}${details?.verified ? ' (picked from Google suggestions)' : ' (typed)'}`] : []),
+    ...(mapUrl ? [`Map: ${mapUrl}`] : []),
+    `Homeowner: ${request.homeowner === 'yes' ? 'yes, the pool is at their home' : 'no, they rent'}`,
     ...(design ? ['Their design:', ...design.summary.map((d) => `- ${d}`)] : []),
     ...(design ? ['Price lines:'] : []),
     ...estimate.lines.map((l) => `- ${l.label}: ${formatRange(l.low, l.high)}`),
@@ -543,10 +632,14 @@ export function buildLeadPayload(input: LeadPayloadInput): LeadPayload {
           note: request.note ?? null,
           timeline: request.timeline ?? null,
           homeowner: request.homeowner,
+          address: address
+            ? { line: address, zip: request.zip, city: details?.city ?? null, state: details?.state ?? null, lat: details?.lat ?? null, lng: details?.lng ?? null, verified: details?.verified ?? false }
+            : null,
           ...(design
             ? {
+                ...(design.funnel ? { funnel: design.funnel } : {}),
                 configurator: {
-                  selection: design.selection,
+                  selection: design.selection ?? null,
                   summary: design.summary,
                   photos: design.photos,
                   designUrl: design.designUrl,
