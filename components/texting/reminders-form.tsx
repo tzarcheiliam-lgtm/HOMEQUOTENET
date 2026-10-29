@@ -12,7 +12,7 @@ type Templates<K extends string> = Record<K, string>;
 export interface ReminderFormValue {
   contractor: { enabled: boolean; host: string; brand: string; templates: Templates<MeetingStep> };
   homeowner: { enabled: boolean; templates: Templates<MeetingStep> };
-  followups: { enabled: boolean; days: number[]; templates: Templates<FollowUpStep> };
+  followups: { enabled: boolean; days: number[]; keepGoing: boolean; everyDays: number; templates: Templates<FollowUpStep> };
   unconfirmedAlert: boolean;
 }
 
@@ -72,7 +72,8 @@ export function RemindersForm({ value }: { value: ReminderFormValue }) {
   const days = daysText.split(/[\s,]+/).filter(Boolean).map(Number);
   const daysProblem = days.some((n) => !Number.isInteger(n) || n < 1 || n > 30) ? 'Use whole days from 1 to 30.' : new Set(days).size !== days.length || days.length < 1 || days.length > 3 ? 'Pick one to three different days.' : null;
   const templates = [...Object.values(cfg.contractor.templates), ...Object.values(cfg.homeowner.templates), ...Object.values(cfg.followups.templates)];
-  const anyProblem = !!daysProblem || templates.some((t) => !!reminderTemplateProblem(t));
+  const everyProblem = cfg.followups.keepGoing && (!Number.isInteger(cfg.followups.everyDays) || cfg.followups.everyDays < 2 || cfg.followups.everyDays > 30) ? 'Use 2 to 30 days.' : null;
+  const anyProblem = !!daysProblem || !!everyProblem || templates.some((t) => !!reminderTemplateProblem(t));
   const payload = JSON.stringify({ ...cfg, followups: { ...cfg.followups, days } });
   const set = <K extends keyof ReminderFormValue>(k: K, v: Partial<ReminderFormValue[K]>) => setCfg((c) => ({ ...c, [k]: typeof c[k] === 'object' ? { ...(c[k] as object), ...v } : v }));
   const host = cfg.contractor.host.trim() || d.contractor.host;
@@ -117,15 +118,25 @@ export function RemindersForm({ value }: { value: ReminderFormValue }) {
       </section>
 
       <section className="space-y-3 rounded-lg border p-4">
-        <Toggle checked={cfg.followups.enabled} onChange={(v) => set('followups', { enabled: v })} label="Follow up when a homeowner doesn’t reply" hint="Stops as soon as they reply, text STOP, or a person takes over. After the last one the request is closed; a reply opens it again." />
+        <Toggle checked={cfg.followups.enabled} onChange={(v) => set('followups', { enabled: v })} label="Follow up when a homeowner doesn’t reply" hint={cfg.followups.keepGoing ? 'Stops as soon as they reply, book, text STOP, or a person takes over.' : 'Stops as soon as they reply, text STOP, or a person takes over. After the last one the request is closed; a reply opens it again.'} />
         {cfg.followups.enabled && (<>
           <div className="max-w-xs space-y-1.5">
             <Label htmlFor="rem_days">Days after the first text</Label>
             <Input id="rem_days" value={daysText} inputMode="numeric" onChange={(e) => setDaysText(e.target.value)} placeholder="1, 3, 7" aria-invalid={!!daysProblem} />
             {daysProblem ? <p role="alert" className="text-xs text-destructive">{daysProblem}</p> : <p className="text-xs text-muted-foreground">Up to three, e.g. 1, 3, 7.</p>}
           </div>
+          <Toggle checked={cfg.followups.keepGoing} onChange={(v) => set('followups', { keepGoing: v })} label="Keep texting until they reply or text STOP"
+            hint={`After the follow-ups, one text every ${cfg.followups.everyDays} days with no end date: a different line each time, often with real open times, ending “Text STOP to stop these.” The last follow-up below is then not sent. Many texts with no reply can get your number reported as junk.`} />
+          {cfg.followups.keepGoing && (
+            <div className="max-w-xs space-y-1.5">
+              <Label htmlFor="rem_every">Every how many days</Label>
+              <Input id="rem_every" type="number" min={2} max={30} value={cfg.followups.everyDays} onChange={(e) => set('followups', { everyDays: Number(e.target.value) })} aria-invalid={!!everyProblem} />
+              {everyProblem ? <p role="alert" className="text-xs text-destructive">{everyProblem}</p> : null}
+            </div>
+          )}
           <ol className="space-y-4 border-l [&>li]:-ml-[5px]">
-            {[...sortedDays.map((day, i) => ({ step: (i === sortedDays.length - 1 ? 'final' : (['first', 'second'] as const)[i]) as FollowUpStep, when: `Day ${day}, if they never replied` })),
+            {[...sortedDays.map((day, i) => ({ step: (i === sortedDays.length - 1 ? 'final' : (['first', 'second'] as const)[i]) as FollowUpStep, when: `Day ${day}, if they never replied` }))
+              .filter((x) => !(cfg.followups.keepGoing && x.step === 'final')),
               { step: 'nudge' as const, when: 'They replied, then went quiet on our question' }, { step: 'nudge_last' as const, when: 'Still quiet 3 days after their last reply' }].map(({ step: s, when }) => (
               <StepEditor key={s} id={`rem_f_${s}`} label={FOLLOW_LABEL[s]} when={when} value={cfg.followups.templates[s]} fallback={d.followups.templates[s]}
                 vars={{ first_name: 'Sam', project: 'bathroom remodel', sender: 'HomeQuote' }}

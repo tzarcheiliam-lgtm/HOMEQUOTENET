@@ -70,7 +70,7 @@ async function openAssignment(db: Db, leadId: string, contractorId: string | nul
   return ((data ?? [])[0] as { id: string; contractor_id: string } | undefined) ?? null;
 }
 
-async function hasLiveAppointment(db: Db, leadId: string, now: Date): Promise<boolean> {
+export async function hasLiveAppointment(db: Db, leadId: string, now: Date): Promise<boolean> {
   const { data: assigns } = await db.from('lead_assignments').select('id').eq('lead_id', leadId);
   const ids = ((assigns ?? []) as { id: string }[]).map((a) => a.id);
   const upcoming = (q: any) => q.in('status', LIVE_APPOINTMENT).gte('scheduled_at', now.toISOString()).limit(1);

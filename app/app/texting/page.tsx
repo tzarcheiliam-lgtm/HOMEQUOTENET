@@ -24,7 +24,7 @@ function reminderFormValue(raw: unknown): ReminderFormValue {
   return {
     contractor: { enabled: cfg.contractor.enabled, host: String(r(raw_.contractor).host ?? ''), brand: String(r(raw_.contractor).brand ?? ''), templates: custom(r(raw_.contractor).templates, MEETING_STEPS) },
     homeowner: { enabled: cfg.homeowner.enabled, templates: custom(r(raw_.homeowner).templates, MEETING_STEPS) },
-    followups: { enabled: cfg.followups.enabled, days: cfg.followups.days, templates: custom(r(raw_.followups).templates, FOLLOW_UP_STEPS) },
+    followups: { enabled: cfg.followups.enabled, days: cfg.followups.days, keepGoing: cfg.followups.keepGoing, everyDays: cfg.followups.everyDays, templates: custom(r(raw_.followups).templates, FOLLOW_UP_STEPS) },
     unconfirmedAlert: cfg.unconfirmedAlert,
   };
 }

@@ -184,3 +184,30 @@ export function rebookText(step: RebookStep, c: { kind: BookingKind; times: Open
     ? `Hi${name}, still want to get your free estimate on the calendar? I have ${list}. Any of those work?`
     : `Last check-in from ${c.sender}: I can still do ${list} for your free estimate. Just reply with the one that works.`;
 }
+
+/**
+ * The never-ending follow-up (keep texting until they reply or text STOP): a different line each time, some with real
+ * open times, always ending with how to stop them, which keeps people from reporting the number as junk.
+ */
+const KEEP_GOING: { withTimes: boolean; text: string }[] = [
+  { withTimes: true, text: 'Hi {first}, still want a free estimate for your {project}? I have {times}. Want one?' },
+  { withTimes: false, text: "{first}, {sender} here. Happy to set up your free {project} estimate whenever you're ready. Just reply with a day that works." },
+  { withTimes: true, text: 'Hey {first}, openings for your free {project} estimate: {times}. Any of those work?' },
+  { withTimes: false, text: "Hi {first}, no pressure at all. If you still want to get your {project} going, just reply and we'll get you on the calendar." },
+  { withTimes: false, text: '{first}, quick question: are you still planning your {project}? A yes or no is perfect.' },
+  { withTimes: true, text: 'Hi {first}, {sender} again. I can still do {times} for a free {project} estimate. Want me to grab one?' },
+];
+export const KEEP_GOING_STOP = 'Text STOP to stop these.';
+
+export function keepGoingText(n: number, c: { firstName: string | null; project: string | null; sender: string; times: OpenTime[] }): string {
+  let t = KEEP_GOING[(Math.max(1, n) - 1) % KEEP_GOING.length];
+  // No open times to offer: use the next line that doesn't need them.
+  if (t.withTimes && !c.times.length) t = KEEP_GOING.find((x, i) => !x.withTimes && i >= ((Math.max(1, n) - 1) % KEEP_GOING.length)) ?? KEEP_GOING[1];
+  const first = c.firstName?.trim() ? c.firstName.trim().split(/\s+/)[0] : 'there';
+  const body = t.text
+    .replace('{first}', first)
+    .replaceAll('{project}', c.project?.trim() || 'project')
+    .replace('{sender}', c.sender)
+    .replace('{times}', joinTimes(c.times));
+  return `${body.charAt(0).toUpperCase()}${body.slice(1)} ${KEEP_GOING_STOP}`;
+}

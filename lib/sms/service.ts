@@ -10,7 +10,7 @@ import { notifyAdmins } from './health-notify';
 import { DEFAULT_ZONES, MAX_AI_TURNS } from './config';
 import { handleLeadReminderReply, handleProspectReply } from './reminder-replies';
 import { isLive, loadSettings, note, phoneInUse, queue, sentToday, type Db } from './core';
-import { finalizeOutbound, helpReply, isHelp, isOptOut, isStart, openingMessage, optOutConfirmation, projectLabel, SENDER_HOUSE } from './rules';
+import { finalizeOutbound, helpReply, isHelp, isOptOut, isStart, metaProject, openingMessage, optOutConfirmation, projectLabel, SENDER_HOUSE } from './rules';
 
 export interface ContractorTexting { enabled: boolean; senderName: string | null; openingTemplate: string | null; extraInstructions: string | null }
 /** A contractor's texting switch and wording. Tolerates migration 0059 not being applied yet. */
@@ -106,11 +106,7 @@ async function startSmsForLeadInner(db: Db, leadId: string, now: Date): Promise<
   }
 }
 
-/** "kitchen remodel" / "bathroom remodel" when an Instant Form answer mentions one; null otherwise. */
-export function metaProject(answers: Record<string, string>): string | null {
-  const text = Object.entries(answers).map(([k, v]) => `${k} ${v}`).join(' ').toLowerCase();
-  return /kitchen/.test(text) ? 'kitchen remodel' : /bath/.test(text) ? 'bathroom remodel' : null;
-}
+export { metaProject } from './rules';
 
 /**
  * Called right after a Meta Instant Form lead is created. Same queue, texting hours, opt-out, daily cap and AI agent as

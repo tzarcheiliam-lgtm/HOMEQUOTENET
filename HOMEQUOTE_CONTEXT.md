@@ -1476,6 +1476,12 @@ Built-in, always-on (switchable) texting through the Mac bridge, with every text
     - The ordinary no-reply follow-ups skip conversations with a marker in the last 10 days.
   - **Leads from other connected sources:** non-Meta intake leads (`ingestLead`) that arrive with `consent_granted` get the opening text, assistant and follow-ups (`startSmsForConsentedLead`); never without consent.
   - **Still not nurtured automatically:** leads typed in by staff (`createLead`) and leads with no consent and no reply. Email nurture is not built.
+  - **Keep texting until STOP (owner decision 2026-10-29, `followups.keepGoing`, default on, `everyDays` default 3):**
+    - The day-7 "I'll close out your request" text is not sent, and the conversation is never closed. From the last follow-up day (never replied), or from day 3 + every (went quiet after replying), one text every `everyDays` (`planKeepGoing`: `keep_1`, `keep_2`, …).
+    - Wording: `keepGoingText` rotates six lines, three with real open times from `loadBookingOptions`, each ending "Text STOP to stop these." (fewer junk reports on the Apple ID).
+    - Stops on a reply (which moves the anchor), STOP / opt-out, a live appointment, an archived lead, a lead no longer new / contact_attempted / qualified / assigned, or a person taking over (status not active).
+    - Texting hours and the daily cap apply. The conversation query looks back 400 days instead of 30.
+    - Settings: Texting → Reminders & follow-ups → "Keep texting until they reply or text STOP" + "Every how many days". Tests in `tests/sms-reminders.test.ts`.
   - Automation Map entries: `sms_consented_first_text`, `sms_rebook`. Tests in `tests/sms-booking.test.ts` and `tests/booking-reminders-single.test.ts`.
 - **Tests**: `tests/sms-reminders.test.ts` (planner incl. DST, wording, replies, chips; PGlite: contractor texts once per step, YES/R, unconfirmed alert once, DNC/company phone/STOP, reschedule re-arm, cancelled, switches, homeowner reminders + YES, follow-ups 1/3/7 → close → reply reopens, a reply stops them).
 

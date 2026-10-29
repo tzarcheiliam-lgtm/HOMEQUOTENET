@@ -72,3 +72,9 @@ export function projectLabel(industry: string | null | undefined): string | null
   if (!t) return null;
   return t.replace(/remodeling$/, 'remodel').replace(/\s+/g, ' ');
 }
+
+/** "kitchen remodel" / "bathroom remodel" when an Instant Form answer mentions one; null otherwise. */
+export function metaProject(answers: Record<string, string>): string | null {
+  const text = Object.entries(answers).map(([k, v]) => `${k} ${v}`).join(' ').toLowerCase();
+  return /kitchen/.test(text) ? 'kitchen remodel' : /bath/.test(text) ? 'bathroom remodel' : null;
+}
