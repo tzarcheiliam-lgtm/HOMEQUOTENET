@@ -1,4 +1,6 @@
 import { consentText, type FunnelConfig } from '../funnels/schema.ts';
+import { normalizeSelection, selectedRows } from './configurator/engine.ts';
+import type { ConfiguratorSelection, ConfiguratorSpec } from './configurator/types.ts';
 import type { Answers, Estimate, PoolDimensions } from './types.ts';
 
 /**
@@ -25,7 +27,8 @@ export type EstimatorLeadRequest = {
   note?: string;
   zip: string;
   homeowner: 'yes' | 'no';
-  timeline: LeadTimeline;
+  /** Optional: the one-page configurator does not ask it (the funnel's timeline question then stays open). */
+  timeline?: LeadTimeline;
   contact: {
     firstName: string;
     lastName: string;
@@ -41,6 +44,17 @@ export type EstimatorLeadRequest = {
   measurement: boolean;
   /** Browser Meta ids for event deduplication (optional). */
   tracking?: { fbc?: string; fbp?: string; eventId?: string; pageUrl?: string };
+  /**
+   * The one-page configurator's design (experience 'configurator'). The server
+   * re-derives the answers, the price (Go Luxe saving included), the plain-words
+   * summary and the photo links from it; `answers` is then ignored.
+   */
+  configurator?: ConfiguratorSelection;
+  /**
+   * One id per submission, reused by the automatic retry, so a retry after a
+   * lost response gets the first reply back instead of saving the lead twice.
+   */
+  submissionId?: string;
 };
 
 export type EstimatorLeadResponse =
@@ -54,7 +68,12 @@ export type EstimatorLeadResponse =
       /** Short-lived token for the optional photoreal render (absent when renders are off). */
       renderToken?: string;
     }
-  | { ok: false; errors: Record<string, string> };
+  | {
+      ok: false;
+      errors: Record<string, string>;
+      /** With a consent error: the wording the server accepts now (show it, ask for the box again). */
+      consentText?: string;
+    };
 
 /**
  * The consent wording for an estimator whose leads go to `funnelClientName`'s funnel.
@@ -65,20 +84,170 @@ export function estimatorConsentText(funnelClientName: string): string {
   return consentText({ clientName: funnelClientName } as FunnelConfig);
 }
 
-export async function submitEstimatorLead(
-  slug: string,
-  request: EstimatorLeadRequest,
-): Promise<EstimatorLeadResponse> {
+/* ------------------------------------------------------------------ */
+/* Field checks (the same rules as the server, with clearer words)    */
+/* ------------------------------------------------------------------ */
+
+/** "(818) 555-0142", "+1 818-555-0142", "818.555.0142" -> "8185550142"; null when it is not a US number. */
+export function usPhoneDigits(value: string): string | null {
+  let digits = value.replace(/\D/g, '');
+  if (digits.length === 11 && digits.startsWith('1')) digits = digits.slice(1);
+  return /^[2-9]\d{2}[2-9]\d{6}$/.test(digits) ? digits : null;
+}
+
+/** "91301", " 91301 ", "91301-1234" -> "91301"; null otherwise. */
+export function normalizeZip(value: string): string | null {
+  const m = /^\s*(\d{5})(?:[\s-]?\d{4})?\s*$/.exec(value);
+  return m ? m[1] : null;
+}
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+export type LeadContactInput = {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  zip: string;
+  homeowner: '' | 'yes' | 'no';
+  consent: boolean;
+};
+
+/** Order the form shows its fields in: the first one with a problem gets focus. */
+export const LEAD_FIELD_ORDER = ['firstName', 'lastName', 'phone', 'email', 'zip', 'homeowner', 'consent'] as const;
+
+/** Specific, fixable messages per field (empty object = ready to send). */
+export function leadFieldErrors(input: LeadContactInput): Record<string, string> {
+  const errors: Record<string, string> = {};
+  if (!input.firstName.trim()) errors.firstName = 'Enter your first name.';
+  else if (input.firstName.trim().length > 80) errors.firstName = 'Use 80 characters or fewer.';
+  if (!input.lastName.trim()) errors.lastName = 'Enter your last name.';
+  else if (input.lastName.trim().length > 80) errors.lastName = 'Use 80 characters or fewer.';
+  const phoneDigits = input.phone.replace(/\D/g, '');
+  if (!phoneDigits) errors.phone = 'Enter your phone number so we can reach you.';
+  else if (phoneDigits.length < 10) errors.phone = `That number has ${phoneDigits.length} digits. Enter all 10, like (818) 555-0142.`;
+  else if (!usPhoneDigits(input.phone)) {
+    errors.phone = phoneDigits.length > 11 || (phoneDigits.length === 11 && !phoneDigits.startsWith('1'))
+      ? 'Enter a US number: 10 digits, like (818) 555-0142.'
+      : 'Check the number: US area codes and exchanges never start with 0 or 1.';
+  }
+  const email = input.email.trim();
+  if (!email) errors.email = 'Enter your email address.';
+  else if (!EMAIL.test(email) || email.length > 254) errors.email = 'Check your email address, e.g. name@example.com.';
+  if (!input.zip.trim()) errors.zip = 'Enter the ZIP code of the property.';
+  else if (!normalizeZip(input.zip)) errors.zip = 'Enter a 5-digit ZIP code, like 91302.';
+  if (!input.homeowner) errors.homeowner = 'Tell us whether you own the home.';
+  if (!input.consent) errors.consent = 'Please tick the box so we can contact you about your design.';
+  return errors;
+}
+
+/* ------------------------------------------------------------------ */
+/* Configurator design in plain words                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The design as the contractor reads it, one line per group:
+ * "Size: Classic, 30 × 15 ft", "Go Luxe: Pebble, Glass tile, travertine coping, ...",
+ * "Pool finish: Pebble (Go Luxe)", "Pool features: Spa (Go Luxe), Baja shelf".
+ * Groups with nothing picked say "None" only for add-on groups the homeowner skipped.
+ */
+export function describeConfiguratorDesign(spec: ConfiguratorSpec, selection: ConfiguratorSelection): string[] {
+  const sel = normalizeSelection(spec, selection);
+  const model = spec.models.find((m) => m.id === sel.model)!;
+  const rows = selectedRows(spec, sel);
+  const bundle = sel.luxe && spec.bundle ? new Set(spec.bundle.rows) : null;
+  const lines = [`Size: ${model.name}, ${model.dimensions}`];
+  if (bundle && spec.bundle) lines.push(`${spec.bundle.label}: yes (bundle of ${spec.bundle.includes.length || spec.bundle.rows.length} upgrades)`);
+  for (const g of spec.groups) {
+    const picked = g.rows.filter((r) => rows.has(r.id));
+    const words = picked.map((r) => `${r.label}${r.included ? ' (included)' : ''}${bundle?.has(r.id) ? ` (${spec.bundle!.label})` : ''}`);
+    lines.push(`${g.title}: ${words.length ? words.join(', ') : 'None'}`);
+  }
+  return lines;
+}
+
+/* ------------------------------------------------------------------ */
+/* Sending                                                             */
+/* ------------------------------------------------------------------ */
+
+export type SubmitOptions = {
+  /** Injected in tests. */
+  fetch?: typeof fetch;
+  /** Give up on one attempt after this long (default 25 s). */
+  timeoutMs?: number;
+  /** Wait before the single automatic retry (default 900 ms). */
+  retryDelayMs?: number;
+};
+
+/** A random id for one submission (the retry reuses it). */
+export function newSubmissionId(): string {
   try {
-    const res = await fetch(`/api/estimator/${encodeURIComponent(slug)}/lead`, {
+    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
+  } catch {
+    /* fall through */
+  }
+  return `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+/** Message for a reply that carried no JSON (a proxy page, a crash, a cut connection). */
+function statusMessage(status: number): string {
+  if (status === 413) return 'That request was too large to send. Shorten your note and try again.';
+  if (status === 429) return 'Too many requests from this connection in the last hour. Please try again later, or call us.';
+  if (status === 403) return 'Your browser blocked this request. Reload the page and try again.';
+  if (status >= 500) return 'Our server had a problem saving that. Your details are still here: please try again.';
+  return 'Something went wrong sending your request. Your details are still here: please try again.';
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+type Attempt = { kind: 'reply'; data: EstimatorLeadResponse } | { kind: 'network' } | { kind: 'timeout' };
+
+async function attempt(url: string, body: string, fetcher: typeof fetch, timeoutMs: number): Promise<Attempt> {
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
+  try {
+    const res = await fetcher(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(request),
+      body,
+      credentials: 'same-origin',
+      signal: controller?.signal,
     });
     const data = (await res.json().catch(() => null)) as EstimatorLeadResponse | null;
-    if (data && typeof data === 'object' && 'ok' in data) return data;
-    return { ok: false, errors: { form: 'Something went wrong. Please try again.' } };
-  } catch {
-    return { ok: false, errors: { form: 'Could not reach the server. Check your connection and try again.' } };
+    if (data && typeof data === 'object' && 'ok' in data) return { kind: 'reply', data };
+    // A gateway error without our JSON is as good as no answer: worth the one retry.
+    if (res.status === 502 || res.status === 504) return { kind: 'network' };
+    return { kind: 'reply', data: { ok: false, errors: { form: statusMessage(res.status) } } };
+  } catch (error) {
+    return { kind: controller?.signal.aborted || (error as { name?: string })?.name === 'AbortError' ? 'timeout' : 'network' };
+  } finally {
+    clearTimeout(timer);
   }
+}
+
+/**
+ * Posts the lead. A network error or a timeout is retried once automatically
+ * with the same submissionId (the server answers a repeat with its first
+ * reply), then reported with a message that says what to do. Never throws.
+ */
+export async function submitEstimatorLead(slug: string, request: EstimatorLeadRequest, options: SubmitOptions = {}): Promise<EstimatorLeadResponse> {
+  const fetcher = options.fetch ?? fetch;
+  const url = `/api/estimator/${encodeURIComponent(slug)}/lead`;
+  const body = JSON.stringify({ ...request, submissionId: request.submissionId ?? newSubmissionId() });
+  const timeoutMs = options.timeoutMs ?? 25_000;
+  let result = await attempt(url, body, fetcher, timeoutMs);
+  if (result.kind !== 'reply') {
+    await sleep(options.retryDelayMs ?? 900);
+    result = await attempt(url, body, fetcher, timeoutMs);
+  }
+  if (result.kind === 'reply') return result.data;
+  return {
+    ok: false,
+    errors: {
+      form:
+        result.kind === 'timeout'
+          ? 'This is taking too long, probably a slow connection. Your details are still here: please try again.'
+          : 'We couldn’t reach our server. Check your connection, then try again. Your details are still here.',
+    },
+  };
 }

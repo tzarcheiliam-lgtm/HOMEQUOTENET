@@ -10,6 +10,8 @@
  * contractor's saved copy, can be stored as JSON.
  */
 
+import type { ConfiguratorSpec } from './configurator/types.ts';
+
 /* ------------------------------------------------------------------ */
 /* Prices                                                              */
 /* ------------------------------------------------------------------ */
@@ -299,4 +301,13 @@ export type ContractorEstimatorConfig = {
   gallery?: GalleryImage[];
   /** Short trust facts shown in the header and hero; only published, truthful ones. */
   facts?: string[];
+  /**
+   * Which homeowner page to show. 'builder' (default): the step-by-step builder
+   * (components/estimator/estimator-flow.tsx). 'configurator': the one-page
+   * size / finish / upgrades configurator driven by `configurator`
+   * (lib/estimator/configurator); needs revealRange 'immediately'.
+   */
+  experience?: 'builder' | 'configurator';
+  /** The configurator spec (required when experience is 'configurator'). */
+  configurator?: ConfiguratorSpec;
 };

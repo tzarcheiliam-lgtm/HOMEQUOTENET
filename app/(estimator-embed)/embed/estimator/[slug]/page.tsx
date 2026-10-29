@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { resolveExampleMedia, tradeMeta } from '@/components/estimator/builders/meta';
 import { exampleFileExists } from '@/components/estimator/builders/example-files';
+import { Configurator } from '@/components/estimator/configurator/configurator';
+import { configuratorPhotoManifest } from '@/components/estimator/configurator/photo-manifest';
 import { Estimator } from '@/components/estimator/estimator';
 import { publicTemplate } from '@/lib/estimator/config';
 import { ESTIMATOR_SLUGS, getEstimator } from '@/lib/estimator/registry';
@@ -31,6 +33,18 @@ export default async function EstimatorEmbedPage({ params }: Props) {
   const { slug } = await params;
   const found = getEstimator(slug);
   if (!found) notFound();
+  const { contractor } = found;
+  if (contractor.experience === 'configurator' && contractor.configurator) {
+    return (
+      <Configurator
+        spec={contractor.configurator}
+        template={publicTemplate(found.template, contractor)}
+        contractor={contractor}
+        manifest={configuratorPhotoManifest(contractor.configurator)}
+        embedded
+      />
+    );
+  }
   const renders = rendersEnabled();
   const meta = tradeMeta(found.template.trade);
   // The example the builder opens on (renders on), only from files that exist.

@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { resolveExampleMedia, tradeMeta } from '@/components/estimator/builders/meta';
 import { exampleFileExists } from '@/components/estimator/builders/example-files';
+import { Configurator } from '@/components/estimator/configurator/configurator';
+import { configuratorPhotoManifest } from '@/components/estimator/configurator/photo-manifest';
 import { Estimator } from '@/components/estimator/estimator';
 import { EstimatorFooter } from '@/components/estimator/shell/estimator-footer';
 import { EstimatorHeader } from '@/components/estimator/shell/estimator-header';
@@ -66,6 +68,17 @@ export default async function EstimatorPage({ params }: Props) {
   const found = getEstimator(slug);
   if (!found) notFound();
   const { template, contractor } = found;
+  // Opt-in one-page configurator (size / finish / upgrades over pre-rendered photos): its own light page, header and footer.
+  if (contractor.experience === 'configurator' && contractor.configurator) {
+    return (
+      <Configurator
+        spec={contractor.configurator}
+        template={publicTemplate(template, contractor)}
+        contractor={contractor}
+        manifest={configuratorPhotoManifest(contractor.configurator)}
+      />
+    );
+  }
   const meta = tradeMeta(template.trade);
   const builder = meta !== null;
   // Server-only check (kie.ai key + signing secret); copy promising a realistic photo depends on it.
