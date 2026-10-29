@@ -362,6 +362,7 @@ export function describeQuantity(unit: PriceUnit, quantity: number): string {
       return `${n} linear ft`;
     case 'interior_sqft':
     case 'deck_sqft':
+    case 'floor_sqft':
       return `about ${n} sq ft`;
     case 'each':
       return n;
@@ -373,6 +374,7 @@ export function describeQuantity(unit: PriceUnit, quantity: number): string {
 const UNIT_SUFFIX: Record<PriceUnit, string> = {
   interior_sqft: ' per sq ft',
   deck_sqft: ' per sq ft',
+  floor_sqft: ' per sq ft',
   perimeter_lf: ' per linear ft',
   linear_ft: ' per linear ft',
   each: ' each',

@@ -20,11 +20,13 @@
  * - interior_sqft: pool interior surface (floor + walls), e.g. plaster, pebble
  * - perimeter_lf:  pool edge length, e.g. coping, waterline tile
  * - deck_sqft:     deck area from the deck-size answer, e.g. pavers
+ * - floor_sqft:    room floor area, length x width from the size preset or typed
+ *                  dimensions (bathroom), e.g. floor tile
  * - linear_ft:     other run lengths with a default quantity, e.g. seating wall
  * - each:          per item with a default quantity, e.g. LED lights
  * - flat:          one price, e.g. automation, Baja shelf
  */
-export type PriceUnit = 'interior_sqft' | 'perimeter_lf' | 'deck_sqft' | 'linear_ft' | 'each' | 'flat';
+export type PriceUnit = 'interior_sqft' | 'perimeter_lf' | 'deck_sqft' | 'floor_sqft' | 'linear_ft' | 'each' | 'flat';
 
 /** Whole US dollars per unit. `quantity` is the default for `each` and `linear_ft` (1 if absent). */
 export type Price = { unit: PriceUnit; low: number; high: number; quantity?: number };
@@ -41,6 +43,11 @@ export type EstimatorOption = {
   price?: Price;
   /** Picking this flags the estimate for a site visit; the text is shown to the homeowner. */
   siteVisit?: string;
+  /**
+   * Flag siteVisit only when this (visible) question has one of these picks,
+   * e.g. a freestanding tub only in a small bathroom. Absent = always.
+   */
+  siteVisitWhen?: { questionId: string; anyOf: string[] };
   /** Visual for the option: a swatch id from components/estimator/swatches.tsx. */
   swatch?: string;
   /** Optional photo (public path) shown on the option card. */
@@ -235,9 +242,14 @@ export type OptionOverride = {
 /** A look photo; `thumb` is an optional smaller copy the picker tiles load instead of `src`. */
 export type GalleryImage = { src: string; alt: string; caption?: string; thumb?: string };
 
+/** Trades with a template (lib/estimator/registry.ts TEMPLATES). Kitchen slots in here later. */
+export type EstimatorTrade = 'pool' | 'bathroom';
+
 export type ContractorEstimatorConfig = {
   /** URL segment, e.g. "pool-masters". */
   slug: string;
+  /** Which template + catalog the config is merged onto. Default 'pool'. */
+  trade?: EstimatorTrade;
   contractorName: string;
   /** Shown on the page, e.g. "CSLB #1112793". */
   licenseLabel: string;
