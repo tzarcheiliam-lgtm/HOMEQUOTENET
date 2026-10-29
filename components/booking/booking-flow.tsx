@@ -201,7 +201,7 @@ export function BookingFlow({
 
       {/* The picker stays mounted (hidden) while confirming, so going back keeps its place. */}
       {showPicker && cal ? (
-        <div className={heading || intro ? 'mt-5' : ''} hidden={s.view !== 'pick'}>
+        <div className={heading ? 'mt-5' : intro ? 'mt-3' : ''} hidden={s.view !== 'pick'}>
           {!heading ? <span ref={s.view === 'pick' ? headingRef : undefined} tabIndex={-1} className="sr-only">Pick a time</span> : null}
           <SlotPicker
             slots={s.slots}

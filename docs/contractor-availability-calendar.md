@@ -2,6 +2,8 @@
 
 Shipped in migration `0047_contractor_availability_calendar_sync.sql`. Read `HOMEQUOTE_CONTEXT.md` §24 for the technical summary.
 
+> **Two kinds of hours (since migration 0068).** This page is about **on-site visits** that HomeQuote staff schedule for a contractor. The free **30-minute calls homeowners book online** (and contractor prospects book with HomeQuote sales) run on HomeQuote's own **booking calendars**, set up on `/app/calendar/settings`: Mon–Fri 9:00–17:00 Pacific by default, 30-minute calls, 15-minute buffer, 2 hours' notice, 14 days ahead. See `HOMEQUOTE_CONTEXT.md` §43. A contractor's booking calendar treats its on-site visits as busy time, and the same Google connection blocks busy time on both.
+
 ## What contractors get (`/app/availability`)
 - **Booking rules**: time zone, default appointment length, buffer between appointments, minimum notice, max appointments per day, and the switch "only take appointments during my weekly hours".
 - **Weekly hours**: any number of windows per day; a day with none is a day off.
@@ -13,7 +15,8 @@ Shipped in migration `0047_contractor_availability_calendar_sync.sql`. Read `HOM
 - Admins: nav **Availability**, then pick a contractor. Admins and setters: **View availability** on a contractor's page.
 - Scheduling an appointment from a lead (`scheduleAppointment`) checks the contractor's availability **on the server** as the time is typed (live warning) and again on save. Admins and setters can tick **Book anyway**; the override is written to `audit_logs` as `appointment.availability_override`. Contractors scheduling their own work are not blocked by their own rules.
 - Busy times from a connected Google calendar count as unavailable (`calendar_busy`). Only start/end are read — never event titles.
-- Not covered: appointments booked by the external Calendly/GHL calendar inside a funnel, or created by workflows/RPCs, are not checked against availability (they are still synced to calendars).
+- Calls homeowners book in a funnel now go on the booking calendar (§43), which checks its own hours, buffer, notice, existing bookings and the hosts' Google busy time, under a lock. Appointments created by workflows, or by a funnel still on the old Calendly/GHL fallback, are not checked against these on-site hours (they are still synced to calendars).
+- **HomeQuote team and sales hosts** (admins, setters) connect their own Google Calendar on `/app/calendar/settings` → "Your Google Calendar" (same OAuth flow, no contractor on the connection). Their busy time is then never offered to callers, and calls on the calendars they host are added to their calendar.
 
 ## Quick path: no keys needed
 Contractors tap **Add to my calendar** on `/app/availability`, then **Add to Apple Calendar** or **Add to Google Calendar**. It subscribes their calendar to a private link, so no Google Cloud setup is required. It is one-way (HomeQuote → calendar); busy times on their own calendar are not read back, so they block those under "Time off". Calendar apps refresh subscriptions on their own schedule (Apple: hours; Google: up to ~a day).
@@ -43,5 +46,6 @@ Apple offers no OAuth calendar API to web apps, so there is no one-click Apple s
 - Google writes go to the account's **primary** calendar (no calendar picker yet).
 - No push notification when a connection needs reconnecting — it shows on the Availability page only.
 - Disconnecting revokes the token and deletes our credentials but leaves events already written on the calendar.
-- Appointment length is the contractor's default duration (appointments have no end time).
+- On-site visits use the contractor's default duration (they have no end time); booking-calendar calls carry their own `ends_at` (30 minutes by default).
+- Sales meetings (`prospect_sales_appointments`) are not pushed to Google yet (no sync trigger on that table); their busy time is still respected on the sales calendar.
 - `datetime-local` values in the schedule form are now read as the workspace zone (America/Los_Angeles, as every appointment list displays) instead of the server's zone.
