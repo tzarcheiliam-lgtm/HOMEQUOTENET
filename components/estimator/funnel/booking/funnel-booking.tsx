@@ -68,10 +68,10 @@ export function FunnelBookingScreen({ spec, selection, contractor, result, embed
         <p id={`${uid}-price`} className="text-[12px] font-medium uppercase leading-4 tracking-[0.06em] text-[var(--fn-muted)]">
           {priceEyebrow(spec, selection)}
         </p>
-        <p className="mt-2.5 text-[clamp(26px,8vw,34px)] font-medium leading-[1.1] tracking-[-0.02em] text-[var(--fn-ink)] tabular-nums [text-wrap:balance]">
+        <p className="mt-2.5 text-[clamp(26px,7.6vw,31px)] font-medium leading-[1.1] tracking-[-0.02em] text-[var(--fn-ink)] tabular-nums [text-wrap:balance]">
           {range ?? 'Priced at your free on-site visit'}
         </p>
-        <p className="mt-2.5 text-[15px] leading-[22px] text-[var(--fn-text)] [text-wrap:pretty]">
+        <p className="mt-2.5 text-[14.5px] leading-[21px] text-[var(--fn-text)] [text-wrap:pretty]">
           {step.priceNote}
           {/* While prices are unconfirmed: one quiet clause in the same paragraph, not a second notice. */}
           {examplePrices ? <span className="text-[var(--fn-muted)]"> Example prices, not yet confirmed.</span> : null}

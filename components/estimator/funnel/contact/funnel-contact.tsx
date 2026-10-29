@@ -314,7 +314,7 @@ export function FunnelContactScreen({ slug, spec, selection, contractor, heading
           {sending ? <Loader2 aria-hidden="true" className="size-[18px] animate-spin motion-reduce:animate-none" /> : null}
           {sending ? 'Getting your estimate…' : step.cta}
         </button>
-        {step.trustLine ? <p className="mt-3 text-center text-[14px] leading-5 text-[var(--fn-muted)]">{step.trustLine}</p> : null}
+        {step.trustLine ? <p className="mt-3 text-[14px] leading-5 text-[var(--fn-muted)]">{step.trustLine}</p> : null}
 
         {/* Agree-on-submit: the exact wording the server checks, right under the button. */}
         <p id={`${uid}-consent`} className="mt-4 text-[12px] leading-[17px] text-[var(--fn-muted)]" data-funnel-consent="">
