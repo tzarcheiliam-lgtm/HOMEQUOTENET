@@ -1,0 +1,136 @@
+/* [project]/components/estimator/configurator/configurator.css [app-client] (css) */
+.es-cfg {
+  --cfg-accent: #26389a;
+  --cfg-accent-hover: #1d2c7e;
+  --cfg-accent-tint: #f3f5fc;
+  --cfg-accent-line: #cdd4ef;
+  --cfg-sand: #f5f3ef;
+  --hq-accent-bright: var(--cfg-accent);
+  color: #111;
+  background: var(--cfg-sand);
+  --lightningcss-light: initial;
+  --lightningcss-dark: ;
+  color-scheme: light;
+  -webkit-font-smoothing: antialiased;
+  font-family: var(--font-dm-sans), "DM Sans", ui-sans-serif, system-ui, sans-serif;
+}
+
+:is(html:has(.hq .es-cfg), html:has(.es-cfg)) {
+  --lightningcss-light: initial;
+  --lightningcss-dark: ;
+  color-scheme: light;
+}
+
+:is(body:has(.hq .es-cfg), body:has(.es-cfg)) {
+  background-color: #f5f3ef;
+}
+
+.hq .es-cfg :where(h1, h2, h3) {
+  letter-spacing: -.02em;
+  font-family: inherit;
+}
+
+.hq .es-cfg select {
+  --lightningcss-light: initial;
+  --lightningcss-dark: ;
+  color-scheme: light;
+}
+
+.hq .es-cfg ::selection {
+  background: var(--cfg-accent);
+  color: #fff;
+}
+
+@keyframes es-cfg-fade {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.es-cfg-fade {
+  animation: .42s cubic-bezier(.2, .7, .2, 1) both es-cfg-fade;
+}
+
+@keyframes es-cfg-toast {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  12% {
+    opacity: 1;
+    transform: none;
+  }
+
+  78% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+.es-cfg-toast {
+  animation: 1.9s ease-out both es-cfg-toast;
+}
+
+@keyframes es-cfg-rise {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.es-cfg-rise {
+  animation: .36s cubic-bezier(.2, .7, .2, 1) both es-cfg-rise;
+}
+
+.es-cfg-strip {
+  scrollbar-width: thin;
+  scrollbar-color: #cfcac0 transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .es-cfg-fade, .es-cfg-rise {
+    animation: none;
+  }
+
+  @keyframes es-cfg-toast {
+    0%, 85% {
+      opacity: 1;
+    }
+
+    100% {
+      opacity: 0;
+    }
+  }
+}
+
+html:has(.es-cfg-photo) {
+  scroll-padding-top: calc(4rem + 32vh);
+  scroll-padding-bottom: 7rem;
+}
+
+html:has(.es-cfg-embedded .es-cfg-photo) {
+  scroll-padding-top: calc(32vh + .5rem);
+}
+
+@media (width >= 1024px) {
+  html:has(.es-cfg-photo) {
+    scroll-padding-top: 5rem;
+  }
+
+  html:has(.es-cfg-embedded .es-cfg-photo) {
+    scroll-padding-top: 1rem;
+  }
+}
+
+/*# sourceMappingURL=components_estimator_configurator_configurator_css_bad6b30c._.single.css.map*/

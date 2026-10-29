@@ -1,0 +1,7 @@
+{
+  "/(booking)/book/manage/[token]/page": "app/(booking)/book/manage/[token]/page.js",
+  "/(booking)/booking/manage/[token]/page": "app/(booking)/booking/manage/[token]/page.js",
+  "/(estimator)/estimator/[slug]/design/page": "app/(estimator)/estimator/[slug]/design/page.js",
+  "/(estimator)/estimator/[slug]/page": "app/(estimator)/estimator/[slug]/page.js",
+  "/estimate/[slug]/page": "app/estimate/[slug]/page.js"
+}

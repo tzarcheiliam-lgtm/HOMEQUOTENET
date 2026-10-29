@@ -186,7 +186,7 @@ export function ManageBooking({ token, initial }: { token: string; initial: Publ
       ) : null}
 
       {mode === 'cancel' ? (
-        <form className="bk-enter" onSubmit={(e) => { e.preventDefault(); void change({ action: 'cancel', reason: reason.trim() || undefined }, () => 'Your call is cancelled. Nobody will call you at that time.'); }}>
+        <form className="bk-enter" onSubmit={(e) => { e.preventDefault(); void change({ action: 'cancel', reason: reason.trim() || undefined }, () => 'Nobody will call you at that time.'); }}>
           <ViewHeading level={1} headingRef={headingRef}>Cancel this call?</ViewHeading>
           <div className="mt-6">
             <CallTime startsAt={booking.startsAt} endsAt={booking.endsAt} timeZone={shownZone} />
