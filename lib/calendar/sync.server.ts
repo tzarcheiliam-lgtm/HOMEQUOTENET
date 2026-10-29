@@ -60,6 +60,21 @@ async function syncAppointment(db: Db, job: Job): Promise<{ settled: boolean; er
       .eq('status', 'active')
       .eq('push_appointments', true);
     targets = (data ?? []) as ConnectionRow[];
+  } else if (appointment?.calendarId) {
+    // HomeQuote team calendar booking with no contractor yet: its hosts' own connections.
+    const { data: members } = await db.from('booking_calendar_members').select('user_id').eq('calendar_id', appointment.calendarId);
+    const hostIds = ((members ?? []) as { user_id: string }[]).map((m) => m.user_id);
+    if (hostIds.length) {
+      const { data } = await db
+        .from('calendar_connections')
+        .select(CONNECTION_COLUMNS)
+        .in('user_id', hostIds)
+        .is('contractor_id', null)
+        .eq('provider', 'google')
+        .eq('status', 'active')
+        .eq('push_appointments', true);
+      targets = (data ?? []) as ConnectionRow[];
+    }
   }
   const targetIds = new Set(targets.map((t) => t.id));
   for (const t of targets) connectionIds.add(t.id);
@@ -78,9 +93,16 @@ async function syncAppointment(db: Db, job: Job): Promise<{ settled: boolean; er
     try {
       if (wanted && targetIds.has(id) && appointment) {
         const eventId = prior?.external_event_id ?? googleEventId(appointment.id, id);
-        const { data: settings } = await db.from('contractor_availability_settings').select('default_duration_minutes').eq('contractor_id', contractorId!).maybeSingle();
-        const duration = (settings as any)?.default_duration_minutes ?? 60;
         const startMs = new Date(appointment.scheduledAt!).getTime();
+        // A calendar booking carries its own end; an on-site visit uses the company's default length.
+        const endsMs = appointment.endsAt ? new Date(appointment.endsAt).getTime() : NaN;
+        let duration = Number.isFinite(endsMs) && endsMs > startMs ? Math.round((endsMs - startMs) / 60_000) : 0;
+        if (!duration) {
+          const { data: settings } = contractorId
+            ? await db.from('contractor_availability_settings').select('default_duration_minutes').eq('contractor_id', contractorId).maybeSingle()
+            : { data: null };
+          duration = (settings as any)?.default_duration_minutes ?? 60;
+        }
         const token = await accessTokenFor(db, connection);
         await upsertEvent(token, connection.calendar_id, eventId, {
           summary: eventTitle(appointment),

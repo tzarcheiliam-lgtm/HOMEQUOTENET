@@ -136,8 +136,8 @@ describe('bathroom payload mapping', () => {
     expect(payload.funnelAnswers.estimator_picks).toContain('Fixtures: Brushed gold');
     expect(payload.funnelAnswers.estimator_picks).not.toMatch(/pool|coping|plaster/i);
     expect(Object.values(payload.funnelAnswers).every((v) => typeof v === 'string')).toBe(true);
-    // No booking link on this funnel, so never a calendar step.
-    expect(payload).toMatchObject({ qualified: true, nextStep: 'thanks', completed: 'timeline' });
+    // Books the HomeQuote team calendar from the result screen.
+    expect(payload).toMatchObject({ qualified: true, nextStep: 'calendar', completed: 'timeline' });
     expect(payload.activity.metadata).not.toHaveProperty('contractor_id');
     expect(payload.activity.body).toMatch(/^Bathroom estimator: ballpark \$[\d,]+ – \$[\d,]+ \(not a quote; example prices\)/);
     expect(payload.activity.body).toContain('- Shower tile: Zellige: $');

@@ -10,6 +10,7 @@ export const metadata = { title: 'Contractor prospects · HomeQuote Network' };
 export const dynamic = 'force-dynamic';
 
 const SOURCE_TEXT = {
+  homequote: 'HomeQuote sales calendar (set its hours in Calendar → HomeQuote sales); the URL below is only a fallback',
   admin: 'Set here',
   env: 'From CONTRACTOR_SALES_CALENDAR_URL',
   site: 'Site default (the 30-minute contractor call in content/site.ts)',
@@ -52,7 +53,7 @@ export default async function ContractorProspectsPage() {
         <CardHeader>
           <CardTitle>Settings</CardTitle>
           <CardDescription>
-            Calendar in use: <strong>{settings.calendar?.url ?? 'none'}</strong> · {SOURCE_TEXT[withCalendar]}
+            Calendar in use: <strong>{withCalendar === 'homequote' ? 'HomeQuote sales calendar' : settings.calendar?.url ?? 'none'}</strong> · {SOURCE_TEXT[withCalendar]}
           </CardDescription>
         </CardHeader>
         <CardContent>

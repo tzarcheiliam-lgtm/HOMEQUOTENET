@@ -34,6 +34,7 @@ describe('contractor funnel calendar', () => {
   it('uses the HomeQuote sales calendar first, even with a Calendly URL saved', async () => {
     const s = await loadFunnelSettings();
     expect(s.calendar).toEqual({ provider: 'homequote', url: NATIVE_SALES_CALENDAR_URL });
+    expect(s.calendarSource).toBe('homequote');
   });
   it('falls back to the saved URL only while the sales calendar is missing, off, or unreadable', async () => {
     m.sales = null;

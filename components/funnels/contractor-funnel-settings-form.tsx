@@ -21,7 +21,7 @@ export function ContractorFunnelSettingsForm({
   return (
     <form action={action} className="space-y-5">
       <div className="space-y-1.5">
-        <Label htmlFor="sales_calendar_url">HomeQuote contractor-sales calendar URL</Label>
+        <Label htmlFor="sales_calendar_url">Fallback calendar URL (used only while the HomeQuote sales calendar is off)</Label>
         <Input id="sales_calendar_url" name="sales_calendar_url" type="url" defaultValue={calendarUrl} placeholder="https://calendly.com/your-team/contractor-call" />
         <p className="text-xs text-muted-foreground">Used only for contractor prospects. Calendly links embed and report bookings; other https links open in a new tab and are never shown as “booked”. Leave blank to use the environment variable or site default.</p>
       </div>

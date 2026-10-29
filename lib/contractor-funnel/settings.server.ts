@@ -9,7 +9,7 @@ export type FunnelSettings = {
    * Where the sales calendar came from, so the admin page can say so. 'site' is the
    * site default, which is now HomeQuote's own sales calendar (provider 'homequote').
    */
-  calendarSource: 'admin' | 'env' | 'site' | 'none';
+  calendarSource: 'homequote' | 'admin' | 'env' | 'site' | 'none';
   calendar: CalendarInfo | null;
   pixelId: string | null;
   rules: QualificationRules;
@@ -56,7 +56,7 @@ export async function loadFunnelSettings(): Promise<FunnelSettings> {
   }
 
   let calendar: CalendarInfo | null = native ? { url: NATIVE_SALES_CALENDAR_URL, provider: 'homequote' } : parseCalendarUrl(row?.sales_calendar_url);
-  let calendarSource: FunnelSettings['calendarSource'] = native ? 'site' : calendar ? 'admin' : 'none';
+  let calendarSource: FunnelSettings['calendarSource'] = native ? 'homequote' : calendar ? 'admin' : 'none';
   if (!calendar) {
     calendar = parseCalendarUrl(process.env.CONTRACTOR_SALES_CALENDAR_URL);
     if (calendar) calendarSource = 'env';

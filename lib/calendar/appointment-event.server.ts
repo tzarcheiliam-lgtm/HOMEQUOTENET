@@ -11,6 +11,8 @@ export interface AppointmentDetail {
   scheduledAt: string | null;
   /** Set on HomeQuote-calendar bookings (their own length); else the caller's default length applies. */
   endsAt?: string | null;
+  /** HomeQuote booking calendar (0068), when booked through one. */
+  calendarId?: string | null;
   status: string;
   location: string | null;
   notes: string | null;
@@ -24,7 +26,7 @@ export interface AppointmentDetail {
   project: string | null;
 }
 
-export const APPOINTMENT_SELECT = `id, scheduled_at, ends_at, status, location, notes, updated_at, contact_name, contact_phone,
+export const APPOINTMENT_SELECT = `id, calendar_id, scheduled_at, ends_at, status, location, notes, updated_at, contact_name, contact_phone,
   direct_lead:leads(id, first_name, last_name, phone, address, city, state, zip, vertical:verticals(name), sub_service:sub_services(name)),
   assignment:lead_assignments(contractor_id, lead:leads(id, first_name, last_name, phone, address, city, state, zip,
     vertical:verticals(name), sub_service:sub_services(name)))`;
@@ -38,6 +40,7 @@ export function mapAppointment(a: any): AppointmentDetail {
     id: a.id,
     scheduledAt: a.scheduled_at,
     endsAt: a.ends_at ?? null,
+    calendarId: a.calendar_id ?? null,
     status: a.status,
     location: a.location,
     notes: a.notes,
