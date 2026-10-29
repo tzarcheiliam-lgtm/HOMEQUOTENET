@@ -3,9 +3,13 @@ import { POOL_MASTERS_ESTIMATOR } from '@/content/estimators/pool-masters';
 import { BATHROOM_CATALOG } from './catalog/bathroom.ts';
 import { POOL_CATALOG } from './catalog/pool.ts';
 import { applyContractorConfig } from './config.ts';
+
 import { BATHROOM_TEMPLATE } from './templates/bathroom.ts';
 import { POOL_TEMPLATE } from './templates/pool.ts';
 import type { ContractorEstimatorConfig, EstimatorCatalog, EstimatorTemplate, EstimatorTrade } from './types.ts';
+
+/** Re-exported for callers that already import the registry. */
+export { configuratorSpecFor } from './configurator/engine.ts';
 
 export type RegisteredEstimator = {
   /** Template already merged with the contractor's settings. */

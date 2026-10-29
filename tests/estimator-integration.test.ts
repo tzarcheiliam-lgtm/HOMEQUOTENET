@@ -31,8 +31,9 @@ describe('estimator integration: pool-masters', () => {
     expect(validateTemplate(template)).toEqual([]);
   });
 
-  it('reveals the range only after contact, with example prices', () => {
-    expect(registered.contractor.revealRange).toBe('after_contact');
+  it('shows the range from the first click (one-page configurator), with example prices', () => {
+    expect(registered.contractor.revealRange).toBe('immediately');
+    expect(registered.contractor.experience).toBe('configurator');
     expect(registered.contractor.pricesConfirmed).toBe(false);
     expect(template.pricesConfirmed).toBe(false);
     expect(template.disclaimer).toMatch(/ballpark/i);

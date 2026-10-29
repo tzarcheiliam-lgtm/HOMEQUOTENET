@@ -1,6 +1,6 @@
 import { NextResponse, after } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { captureAttribution, consentText } from '@/lib/funnels/schema';
+import { captureAttribution } from '@/lib/funnels/schema';
 import { getFunnel, hash, newToken, readBody, sameOrigin } from '@/lib/funnels/server';
 import { deliverPendingFunnels } from '@/lib/funnels/delivery';
 import { sendLeadEmailsSoon } from '@/lib/leads/notify';
@@ -13,9 +13,13 @@ import { nicheDataFor } from '@/lib/meta/niche';
 import { rememberLeadMetaIds } from '@/lib/meta/lead-ids';
 import { directSendAudit } from '@/lib/meta/audit.server';
 import { computeEstimate } from '@/lib/estimator/engine';
+import { configuratorSpecFor } from '@/lib/estimator/configurator/engine';
 import { getEstimator } from '@/lib/estimator/registry';
-import { bookingUrl, buildLeadPayload, isHoneypot, parseLeadRequest, pickLikedLooks, sanitizeEstimatorAnswers } from '@/lib/estimator/lead';
-import type { EstimatorLeadResponse } from '@/lib/estimator/lead-client';
+import {
+  ReplayCache, acceptedConsent, bookingUrl, buildLeadPayload, configuratorLeadDesign, isHoneypot, originAllowed, parseLeadRequest, pickLikedLooks,
+  sanitizeEstimatorAnswers, type ConfiguratorLeadDesign,
+} from '@/lib/estimator/lead';
+import { estimatorConsentText, type EstimatorLeadResponse } from '@/lib/estimator/lead-client';
 import { signRenderToken } from '@/lib/estimator/render';
 
 /**
@@ -33,6 +37,26 @@ type Context = { params: Promise<{ slug: string }> };
 const reply = (data: EstimatorLeadResponse, status = 200) => NextResponse.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
 const fail = (form: string, status: number) => reply({ ok: false, errors: { form } }, status);
 
+/**
+ * Successful replies by slug + submissionId + the contact's email/phone (hashed): the client's
+ * automatic retry gets the first answer, not a second lead, and nobody else can read it back
+ * with only the id.
+ */
+const replays = new ReplayCache<EstimatorLeadResponse>();
+/** Requests still being saved, by the same key: a retry that arrives while the first is slow waits for it. */
+const inflight = new Map<string, Promise<Response>>();
+
+function replayKeyFor(slug: string, submissionId: unknown, contact: unknown): string | null {
+  if (typeof submissionId !== 'string' || !submissionId) return null;
+  const c = (contact && typeof contact === 'object' ? contact : {}) as { email?: unknown; phone?: unknown };
+  const email = typeof c.email === 'string' ? c.email.trim().toLowerCase() : '';
+  const phone = typeof c.phone === 'string' ? c.phone.replace(/\D/g, '').slice(-10) : '';
+  return `${slug}:${submissionId.slice(0, 80)}:${hash(`${email}|${phone}`).slice(0, 24)}`;
+}
+
+/** " or call (818) 643-6888" when the contractor has a phone. */
+const orCall = (phone: string | undefined) => (phone ? ` or call ${phone}` : '');
+
 /** Vercel overwrites x-forwarded-for; this is the real client IP (never logged/stored raw). */
 function clientIp(request: Request): string | undefined {
   const header = request.headers.get('x-vercel-forwarded-for') ?? request.headers.get('x-forwarded-for');
@@ -45,39 +69,81 @@ function deviceOf(userAgent: string | null): 'mobile' | 'tablet' | 'desktop' {
 }
 
 export async function POST(request: Request, context: Context) {
-  if (!sameOrigin(request)) return fail('Invalid origin', 403);
+  let key: string | null = null;
+  try {
+    const peek = (await request.clone().json()) as { submissionId?: unknown; contact?: unknown };
+    key = replayKeyFor((await context.params).slug, peek?.submissionId, peek?.contact);
+  } catch {
+    key = null;
+  }
+  if (!key) return handle(request, context);
+  const pending = inflight.get(key);
+  // The first copy is still saving: wait for it, then answer from the replay cache (or try again if it failed).
+  if (pending) await pending.catch(() => undefined);
+  else {
+    const first = handle(request, context);
+    inflight.set(key, first);
+    try {
+      return await first;
+    } finally {
+      inflight.delete(key);
+    }
+  }
+  return handle(request, context);
+}
+
+async function handle(request: Request, context: Context): Promise<Response> {
+  // The strict check first; then the www/apex twin, a proxied host and the configured site URL (originAllowed).
+  if (!sameOrigin(request) && !originAllowed(request)) return fail('This page’s address doesn’t match our site. Reload the page and try again.', 403);
   const slug = (await context.params).slug;
   const registered = getEstimator(slug);
   if (!registered) return fail('This estimator is not available.', 404);
   const { template, contractor } = registered;
 
   let body: unknown;
-  try { body = await readBody(request); } catch { return fail('We couldn’t read that request. Please try again.', 400); }
+  try { body = await readBody(request); } catch { return fail('We couldn’t read that request. Shorten any note and try again.', 400); }
   const parsed = parseLeadRequest(body);
   if (!parsed.ok) return reply({ ok: false, errors: parsed.errors }, 422);
   const lead = parsed.data;
 
+  const replayKey = replayKeyFor(slug, lead.submissionId, lead.contact);
+  const replayed = replayKey ? replays.get(replayKey) : undefined;
+  if (replayed) return reply(replayed);
+
   // Never trust the browser: the answers are cut down to what the template allows and the
-  // range is computed here.
-  const answers = sanitizeEstimatorAnswers(template, lead.answers);
-  const estimate = computeEstimate(template, { answers, dimensions: lead.dimensions });
+  // range is computed here. A configurator design is re-derived from the selection alone.
+  const origin = new URL(request.url).origin;
+  const spec = configuratorSpecFor(contractor);
+  let answers = sanitizeEstimatorAnswers(template, lead.answers);
+  let estimate = computeEstimate(template, { answers, dimensions: lead.dimensions });
+  let design: ConfiguratorLeadDesign | undefined;
+  if (spec && lead.configurator) {
+    const derived = configuratorLeadDesign(spec, template, lead.configurator, { origin: request.headers.get('origin') && originAllowed(request) ? request.headers.get('origin')! : origin, slug });
+    ({ answers, estimate, design } = derived);
+  }
 
   // Honeypot: look like a success, save nothing.
   if (isHoneypot(lead)) return reply({ ok: true, estimate, qualified: false });
 
   try {
     const funnel = await getFunnel(contractor.funnelSlug);
-    if (!funnel) return fail('This estimator is not accepting requests right now.', 503);
+    if (!funnel) return fail(`We can’t take requests online for a moment. Please try again shortly${orCall(contractor.phone)}.`, 503);
 
-    // The stored disclosure must be exactly what the homeowner saw next to the checkbox.
-    if (lead.consentText !== consentText(funnel.config)) {
-      return reply({ ok: false, errors: { consent: 'The consent wording was updated. Please read it and check the box again.' } }, 409);
+    // The stored disclosure must be exactly what the homeowner saw next to the checkbox: the funnel's
+    // wording or the estimator page's (contractor display name), whichever the page showed.
+    const consent = acceptedConsent(lead.consentText, funnel.config, contractor);
+    if (!consent) {
+      return reply({
+        ok: false,
+        errors: { consent: 'We updated the consent wording. Please read it again and tick the box to continue.' },
+        consentText: estimatorConsentText(contractor.contractorName),
+      }, 409);
     }
 
     const likedLooks = pickLikedLooks(contractor, lead.likedLooks);
     const payload = buildLeadPayload({
       template, contractor, funnel: { slug: funnel.slug, contractorId: funnel.contractor_id, config: funnel.config },
-      request: lead, answers, estimate, likedLooks,
+      request: lead, answers, estimate, likedLooks, design,
     });
     // A funnel set to stop unqualified visitors keeps its rule: they see the range, nothing is saved.
     if (!payload.qualified && funnel.config.unqualifiedAction === 'stop') return reply({ ok: true, estimate, qualified: false });
@@ -89,14 +155,13 @@ export async function POST(request: Request, context: Context) {
     const { count, error: rateError } = await db.from('funnel_sessions').select('id', { count: 'exact', head: true })
       .eq('rate_key', rateKey).gte('created_at', new Date(Date.now() - 3600000).toISOString());
     if (rateError) throw rateError;
-    if ((count ?? 0) >= 30) return fail('Too many requests. Please try again later.', 429);
+    if ((count ?? 0) >= 30) return fail(`Too many requests from this connection in the last hour. Please try again later${orCall(contractor.phone)}.`, 429);
 
     // The visitor's own "Allow optional advertising measurement" choice; without it nothing
     // goes to Meta from the server and no browser ids are kept.
     const measurementAllowed = lead.measurement;
     const tracking = measurementAllowed ? lead.tracking : { pageUrl: lead.tracking?.pageUrl };
 
-    const origin = new URL(request.url).origin;
     const attribution = captureAttribution(tracking?.pageUrl ?? request.headers.get('referer') ?? `${origin}/`, request.headers.get('referer') ?? '', deviceOf(request.headers.get('user-agent')));
     const token = newToken();
     const { data: session, error: sessionError } = await db.from('funnel_sessions').insert({
@@ -110,7 +175,7 @@ export async function POST(request: Request, context: Context) {
     const { data, error } = await db.rpc('save_funnel_session', {
       p_id: session.id, p_hash: session.token_hash, p_version: session.version, p_answers: payload.funnelAnswers, p_step: payload.nextStep,
       p_completed: payload.completed, p_contact: payload.contact, p_qualified: payload.qualified,
-      p_consent: consentText(funnel.config), p_service_area_valid: payload.areaValid,
+      p_consent: consent, p_service_area_valid: payload.areaValid,
     });
     if (error) throw error;
     const leadId = typeof data?.lead_id === 'string' ? data.lead_id : null;
@@ -154,13 +219,15 @@ export async function POST(request: Request, context: Context) {
 
     // Optional photoreal render of their design: only for a lead that was really saved (null when renders are off).
     const renderToken = leadId ? signRenderToken(slug, leadId) ?? undefined : undefined;
-    return reply({
+    const done: EstimatorLeadResponse = {
       ok: true, estimate, qualified: payload.qualified,
       calendarUrl: payload.qualified ? bookingUrl(contractor.calendarUrl ?? funnel.config.calendarUrl, payload.contact, attribution) : undefined,
       renderToken,
-    });
+    };
+    if (replayKey) replays.set(replayKey, done);
+    return reply(done);
   } catch (error) {
     console.error('[estimator-lead] Save failed', error instanceof Error ? error.name : (error as { code?: string })?.code ?? 'unknown');
-    return fail('We couldn’t save that. Please try again.', 503);
+    return fail(`We couldn’t save your request just now. Your details are still on the page: please try again${orCall(contractor.phone)}.`, 503);
   }
 }

@@ -1,7 +1,9 @@
 import { z } from 'zod';
-import { contactSchema, inServiceArea, matches, qualify, serviceAreaValid, type FunnelConfig } from '@/lib/funnels/schema';
+import { consentText, contactSchema, inServiceArea, matches, qualify, serviceAreaValid, type FunnelConfig } from '@/lib/funnels/schema';
+import { encodeSelection, estimateSelection, normalizeSelection, photoFor, photoSrc, selectionToAnswers } from './configurator/engine.ts';
+import type { ConfiguratorSelection, ConfiguratorSpec, Range } from './configurator/types.ts';
 import { formatRange, picksFor, visibleQuestions } from './engine.ts';
-import { LEAD_TIMELINES, type EstimatorLeadRequest } from './lead-client.ts';
+import { LEAD_TIMELINES, describeConfiguratorDesign, estimatorConsentText, normalizeZip, usPhoneDigits, type EstimatorLeadRequest } from './lead-client.ts';
 import type { Answers, ContractorEstimatorConfig, Estimate, EstimatorTemplate, GalleryImage } from './types.ts';
 
 /**
@@ -18,8 +20,40 @@ import type { Answers, ContractorEstimatorConfig, Estimate, EstimatorTemplate, G
 const pickId = z.string().min(1).max(50);
 const dimension = z.number().finite().positive().max(1000);
 // Same shape as funnels' contact rules, but a filled honeypot is a silent drop (see isHoneypot),
-// not a validation error, so bots learn nothing from the response.
-const contact = contactSchema.extend({ website: z.string().max(500).default('') });
+// not a validation error, so bots learn nothing from the response. Missing names/consent read
+// as the field's own message (not zod's "Required"), so the form can point at the field.
+const contact = contactSchema.extend({
+  firstName: z.string({ required_error: 'Enter your first name' }).trim().min(1, 'Enter your first name').max(80, 'Use 80 characters or fewer'),
+  lastName: z.string({ required_error: 'Enter your last name' }).trim().min(1, 'Enter your last name').max(80, 'Use 80 characters or fewer'),
+  email: z.string({ required_error: 'Enter your email address' }).trim().email('Enter a valid email address, e.g. name@example.com').max(254),
+  phone: z.string({ required_error: 'Enter your phone number' }).trim().refine((v) => usPhoneDigits(v) !== null, 'Enter a valid US phone number, like (818) 555-0142'),
+  consent: z.literal(true, { errorMap: () => ({ message: 'Please agree to be contacted about your project' }) }),
+  website: z.string().max(500).default(''),
+});
+function isHttpUrl(value: string): boolean {
+  try {
+    return /^https?:$/.test(new URL(value).protocol);
+  } catch {
+    return false;
+  }
+}
+const optionalText = (max: number) => z.string().max(max).optional().catch(undefined);
+/**
+ * Browser ids and the page URL are nice to have, never a reason to lose a lead:
+ * a value the server cannot use is dropped instead of failing the request.
+ */
+const tracking = z.object({
+  fbc: optionalText(256),
+  fbp: optionalText(100),
+  eventId: optionalText(100),
+  // zod runs the refinement even after .url() failed, so it must not throw on a bad URL (it used to: a 500).
+  pageUrl: z.string().url().max(4000).refine(isHttpUrl).optional().catch(undefined),
+}).optional().catch(undefined);
+const selection = z.object({
+  model: z.string().min(1).max(50),
+  picks: z.record(z.string().max(50), z.array(pickId).max(20)).refine((p) => Object.keys(p).length <= 30, 'Too many groups'),
+  luxe: z.boolean().default(false),
+});
 
 export const leadRequestSchema = z.object({
   answers: z.record(z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,49}$/), z.array(pickId).max(20))
@@ -27,18 +61,20 @@ export const leadRequestSchema = z.object({
   dimensions: z.object({ lengthFt: dimension, widthFt: dimension, avgDepthFt: dimension.optional() }).optional(),
   likedLooks: z.array(z.string().max(300)).max(24).optional(),
   note: z.string().max(1000, 'Please keep this under 1,000 characters.').optional(),
-  zip: z.string().regex(/^\d{5}$/, 'Enter a valid five-digit ZIP code.'),
+  // ZIP+4 and stray spaces (autofill) are fine: only the first five digits are used.
+  zip: z.preprocess(
+    (v) => (typeof v === 'string' ? normalizeZip(v) ?? v : v),
+    z.string({ required_error: 'Enter the property’s 5-digit ZIP code.' }).regex(/^\d{5}$/, 'Enter a valid five-digit ZIP code.'),
+  ),
   homeowner: z.enum(['yes', 'no'], { errorMap: () => ({ message: 'Tell us whether you own the home.' }) }),
-  timeline: z.enum(LEAD_TIMELINES.map((t) => t.id) as [string, ...string[]], { errorMap: () => ({ message: 'Choose when you want to start.' }) }),
+  // Optional: the configurator does not ask it (the funnel's timeline question then stays open).
+  timeline: z.enum(LEAD_TIMELINES.map((t) => t.id) as [string, ...string[]], { errorMap: () => ({ message: 'Choose when you want to start.' }) }).optional(),
   contact,
-  consentText: z.string().max(1000),
+  consentText: z.string().max(1000).default(''),
   measurement: z.boolean().default(false),
-  tracking: z.object({
-    fbc: z.string().max(256).optional(),
-    fbp: z.string().max(100).optional(),
-    eventId: z.string().max(100).optional(),
-    pageUrl: z.string().url().max(4000).refine((u) => /^https?:$/.test(new URL(u).protocol), 'Use an http(s) URL').optional(),
-  }).optional(),
+  tracking,
+  configurator: selection.optional(),
+  submissionId: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/).optional().catch(undefined),
 });
 export type ParsedLeadRequest = z.infer<typeof leadRequestSchema>;
 
@@ -66,6 +102,124 @@ export function parseLeadRequest(input: unknown): LeadParseResult {
 function cleanNote(note: string | undefined): string | undefined {
   const value = note?.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').trim();
   return value || undefined;
+}
+
+/* ------------------------------------------------------------------ */
+/* Origin and consent (the two checks that used to fail real people)   */
+/* ------------------------------------------------------------------ */
+
+/** "https://www.example.com" <-> "https://example.com". */
+function wwwTwin(origin: string): string | null {
+  try {
+    const url = new URL(origin);
+    url.hostname = url.hostname.startsWith('www.') ? url.hostname.slice(4) : `www.${url.hostname}`;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Is this POST from our own page? The strict check compares the Origin header
+ * with request.url, which breaks behind a proxy that rewrites the host and on
+ * the www / apex twin of the site. Also accepted: the forwarded host the
+ * browser really used, the configured site URL and its www twin, and a browser
+ * that sent no Origin but says the request is same-origin (Sec-Fetch-Site).
+ * Anything cross-site (another domain, a sandboxed "null" origin) is refused.
+ */
+export function originAllowed(request: Request, siteUrl: string | undefined = process.env.NEXT_PUBLIC_SITE_URL): boolean {
+  const origin = request.headers.get('origin');
+  if (!origin) return request.headers.get('sec-fetch-site') === 'same-origin';
+  if (origin === 'null') return false;
+  const allowed = new Set<string>();
+  const add = (o: string | null | undefined) => {
+    if (!o) return;
+    allowed.add(o);
+    const twin = wwwTwin(o);
+    if (twin) allowed.add(twin);
+  };
+  try {
+    add(new URL(request.url).origin);
+  } catch {
+    /* ignore */
+  }
+  const host = request.headers.get('x-forwarded-host')?.split(',')[0]?.trim() || request.headers.get('host');
+  if (host) {
+    const proto = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim() || new URL(request.url).protocol.replace(':', '');
+    try {
+      add(new URL(`${proto}://${host}`).origin);
+    } catch {
+      /* ignore */
+    }
+  }
+  if (siteUrl) {
+    try {
+      add(new URL(siteUrl).origin);
+    } catch {
+      /* ignore */
+    }
+  }
+  return allowed.has(origin);
+}
+
+/** Whitespace, curly quotes and dashes never make two consent wordings different. */
+export function normalizeConsent(text: string): string {
+  return text
+    .normalize('NFKC')
+    .replace(/[\u2018\u2019\u201B\u2032]/g, "'")
+    .replace(/[\u201C\u201D\u2033]/g, '"')
+    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * The stored wording for what the homeowner agreed to, or null when it is not
+ * a wording we show. Accepted: the funnel's own text, and the estimator page's
+ * text (built from the contractor's display name, which can differ from the
+ * funnel's clientName, e.g. "Pool Masters LA" vs "Pool Masters"). Both name
+ * HomeQuote Network and the contractor; the one the page showed is the one stored,
+ * so the disclosure on file is always exactly what was next to the checkbox.
+ */
+export function acceptedConsent(sent: string, funnel: Pick<FunnelConfig, 'clientName'>, contractor: Pick<ContractorEstimatorConfig, 'contractorName'>): string | null {
+  const wanted = normalizeConsent(sent);
+  if (!wanted) return null;
+  for (const text of [consentText(funnel as FunnelConfig), estimatorConsentText(contractor.contractorName)]) {
+    if (normalizeConsent(text) === wanted) return text;
+  }
+  return null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Repeat submissions                                                  */
+/* ------------------------------------------------------------------ */
+
+const REPLAY_MS = 15 * 60 * 1000;
+const REPLAY_MAX = 500;
+
+/**
+ * Remembers recent successful replies by submissionId (per server instance),
+ * so the client's automatic retry after a lost response gets the first reply
+ * back instead of a second lead. Bounded and short-lived; the database's own
+ * contact dedupe covers a retry that lands on another instance.
+ */
+export class ReplayCache<T> {
+  private items = new Map<string, { at: number; value: T }>();
+  constructor(private ttl = REPLAY_MS, private max = REPLAY_MAX) {}
+  get(key: string, now = Date.now()): T | undefined {
+    const hit = this.items.get(key);
+    if (!hit) return undefined;
+    if (now - hit.at > this.ttl) {
+      this.items.delete(key);
+      return undefined;
+    }
+    return hit.value;
+  }
+  set(key: string, value: T, now = Date.now()) {
+    this.items.delete(key);
+    this.items.set(key, { at: now, value });
+    while (this.items.size > this.max) this.items.delete(this.items.keys().next().value as string);
+  }
 }
 
 /** A filled honeypot: respond like a success but save nothing. */
@@ -150,7 +304,7 @@ function projectAliases(trade: string, project: string | undefined): string[] {
  */
 export function funnelAnswersFor(
   config: FunnelConfig,
-  input: { zip: string; homeowner: string; timeline: string; project?: string; trade?: string },
+  input: { zip: string; homeowner: string; timeline?: string; project?: string; trade?: string },
 ): Record<string, string> {
   const answers: Record<string, string> = {};
   const aliases = projectAliases(input.trade ?? 'pool', input.project);
@@ -161,7 +315,7 @@ export function funnelAnswersFor(
     else if (q.type !== 'choice') {
       if (q.required === false) answers[q.id] = '';
     } else if (q.id === 'homeowner' && has(input.homeowner)) answers[q.id] = input.homeowner;
-    else if (q.id === 'timeline' && has(input.timeline)) answers[q.id] = input.timeline;
+    else if (q.id === 'timeline' && input.timeline && has(input.timeline)) answers[q.id] = input.timeline;
     else {
       const match = aliases.find(has);
       if (match) answers[q.id] = match;
@@ -205,6 +359,8 @@ export type LeadPayloadInput = {
   /** Computed on the server from `answers`. */
   estimate: Estimate;
   likedLooks: GalleryImage[];
+  /** The configurator's design (experience 'configurator'), from configuratorLeadDesign. */
+  design?: ConfiguratorLeadDesign;
 };
 
 export type LeadPayload = {
@@ -242,8 +398,68 @@ export function describeSize(template: Pick<EstimatorTemplate, 'trade'>, geometr
   return ['estimator_room', geometry.source === 'preset' && geometry.size === 'unsure' ? `${floor} assumed (size to be measured)` : `${floor} (${how})`];
 }
 
+/* ------------------------------------------------------------------ */
+/* Configurator design                                                 */
+/* ------------------------------------------------------------------ */
+
+export type ConfiguratorLeadDesign = {
+  selection: ConfiguratorSelection;
+  /** The design in plain words, one line per group (describeConfiguratorDesign). */
+  summary: string[];
+  /** The exact pictures the homeowner saw, one per view, as absolute URLs. */
+  photos: { view: string; label: string; key: string; url: string; alt: string }[];
+  /** The page that reopens this design. */
+  designUrl: string;
+  /** The total the page showed (whole design, Go Luxe saving applied). */
+  total: Range;
+  /** The Go Luxe saving inside `total`, or null. */
+  bundleSaving: Range | null;
+};
+
+/**
+ * Everything the server needs for a configurator lead, derived from the
+ * selection only (never from browser-sent prices, labels or URLs): the
+ * template answers, the estimate (estimateSelection, so the Go Luxe saving the
+ * page showed is honoured), the design in plain words and the photo links.
+ */
+export function configuratorLeadDesign(
+  spec: ConfiguratorSpec,
+  template: EstimatorTemplate,
+  raw: ConfiguratorSelection,
+  where: { origin: string; slug: string },
+): { answers: Answers; estimate: Estimate; design: ConfiguratorLeadDesign } {
+  const selection = normalizeSelection(spec, raw);
+  const answers = sanitizeEstimatorAnswers(template, selectionToAnswers(spec, selection));
+  const quote = estimateSelection(spec, template, selection);
+  const absolute = (src: string) => {
+    try {
+      return new URL(src, where.origin).toString();
+    } catch {
+      return src;
+    }
+  };
+  const photos = spec.views.map((v) => {
+    const key = photoFor(spec, v.id, selection);
+    const photo = photoSrc(spec, key);
+    return { view: v.id, label: v.label, key, url: absolute(photo.src), alt: photo.alt };
+  });
+  return {
+    answers,
+    // The figure the homeowner saw is the total (bundle saving included); the lines stay the engine's.
+    estimate: { ...quote.estimate, low: quote.total.low, high: quote.total.high },
+    design: {
+      selection,
+      summary: describeConfiguratorDesign(spec, selection),
+      photos,
+      designUrl: absolute(`/estimator/${encodeURIComponent(where.slug)}?${encodeSelection(spec, selection)}`),
+      total: quote.total,
+      bundleSaving: quote.bundleSaving,
+    },
+  };
+}
+
 export function buildLeadPayload(input: LeadPayloadInput): LeadPayload {
-  const { template, contractor, funnel, request, answers, estimate, likedLooks } = input;
+  const { template, contractor, funnel, request, answers, estimate, likedLooks, design } = input;
   const projectQ = template.questions.find((q) => q.role === 'project');
   const project = projectQ ? picksFor(projectQ, answers)[0] : undefined;
 
@@ -254,6 +470,8 @@ export function buildLeadPayload(input: LeadPayloadInput): LeadPayload {
   const range = estimate.low !== null && estimate.high !== null ? formatRange(estimate.low, estimate.high) : 'To be confirmed on site';
   const picks = describePicks(template, answers);
   const siteVisit = estimate.siteVisitItems.map((i) => i.label);
+  // Questions the page never asked (the configurator skips the property questions): check them on site.
+  const notAsked = estimate.unanswered.map((id) => template.questions.find((q) => q.id === id)).filter((q) => q !== undefined).map((q) => q.summaryLabel ?? q.label);
   const geometry = estimate.geometry;
   const [sizeKey, sizeText] = describeSize(template, geometry);
   const source = estimatorSourceLabel(template);
@@ -269,6 +487,14 @@ export function buildLeadPayload(input: LeadPayloadInput): LeadPayload {
     ...(picks.length ? { estimator_picks: clip(picks.join('; ')) } : {}),
     ...(siteVisit.length ? { estimator_site_visit: clip(siteVisit.join('; ')) } : {}),
     ...(likedLooks.length ? { estimator_looks: clip(likedLooks.map((l) => l.caption ?? l.alt).join('; ')) } : {}),
+    ...(design
+      ? {
+          estimator_design: clip(design.summary.join('; ')),
+          estimator_photos: clip(design.photos.map((p) => `${p.label}: ${p.url}`).join(' ; ')),
+          estimator_design_url: clip(design.designUrl),
+        }
+      : {}),
+    ...(notAsked.length ? { estimator_check_on_site: clip(notAsked.join('; ')) } : {}),
     ...(request.note ? { [taken.has('notes') ? 'estimator_note' : 'notes']: request.note } : {}),
   };
   const funnelAnswers = { ...base };
@@ -279,7 +505,12 @@ export function buildLeadPayload(input: LeadPayloadInput): LeadPayload {
 
   const lines = [
     `${source}: ballpark ${range} (not a quote${template.pricesConfirmed ? '' : '; example prices'})`,
+    ...(design ? ['Their design:', ...design.summary.map((d) => `- ${d}`)] : []),
+    ...(design ? ['Price lines:'] : []),
     ...estimate.lines.map((l) => `- ${l.label}: ${formatRange(l.low, l.high)}`),
+    ...(design?.bundleSaving ? [`- Go Luxe bundle saving: -${formatRange(design.bundleSaving.low, design.bundleSaving.high)}`] : []),
+    ...(design ? ['Photos they saw (example designs, AI-assisted):', ...design.photos.map((p) => `- ${p.label}: ${p.url}`), `Reopen their design: ${design.designUrl}`] : []),
+    ...(notAsked.length ? ['Not asked online, check on site:', ...notAsked.map((q) => `- ${q}`)] : []),
     ...(siteVisit.length ? ['Needs a site visit:', ...siteVisit.map((s) => `- ${s}`)] : []),
     ...(likedLooks.length ? [`Liked looks: ${likedLooks.map((l) => l.caption ?? l.alt).join('; ')}`] : []),
     ...(request.note ? [`Note: ${request.note}`] : []),
@@ -310,8 +541,20 @@ export function buildLeadPayload(input: LeadPayloadInput): LeadPayload {
           siteVisitItems: estimate.siteVisitItems,
           likedLooks: likedLooks.map((l) => l.src),
           note: request.note ?? null,
-          timeline: request.timeline,
+          timeline: request.timeline ?? null,
           homeowner: request.homeowner,
+          ...(design
+            ? {
+                configurator: {
+                  selection: design.selection,
+                  summary: design.summary,
+                  photos: design.photos,
+                  designUrl: design.designUrl,
+                  total: design.total,
+                  bundleSaving: design.bundleSaving,
+                },
+              }
+            : {}),
         },
       },
     },

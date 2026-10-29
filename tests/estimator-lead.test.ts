@@ -123,7 +123,9 @@ describe('POST /api/estimator/[slug]/lead', () => {
   });
   it('403s for a foreign origin', async () => {
     m.sameOrigin = false;
-    expect((await post(valid)).status).toBe(403);
+    const res = await POST(new Request('https://pool.example/api/estimator/x/lead', { method: 'POST', headers: { origin: 'https://evil.example' }, body: JSON.stringify(valid) }), { params: Promise.resolve({ slug: 'fixture-pools' }) });
+    expect(res.status).toBe(403);
+    expect(m.rpc).not.toHaveBeenCalled();
   });
   it('422s with field errors for a bad request and saves nothing', async () => {
     const res = await post({ ...valid, zip: 'abc', contact: { ...contact, email: 'bad' } });

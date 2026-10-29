@@ -208,20 +208,31 @@ describe('/estimator/[slug] page', () => {
     delete process.env.KIE_API_KEY;
     const html = await page();
     expect(html).toContain('tel:+18186436888');
-    expect(html).toContain('Design your pool');
+    expect(html).toContain('Reimagine your pool');
     expect(html).toContain('Powered by');
     expect(html).toContain('id="main"');
     expect(text(html)).not.toMatch(/Partner login|Check Availability|How it works/);
   });
 
-  it('promises a realistic photo only when the server can make one', async () => {
+  it('promises a realistic photo only when the server can make one (step-by-step builder)', async () => {
+    const bathroom = async () => renderToStaticMarkup(await EstimatorPage({ params: Promise.resolve({ slug: 'bathroom-remodel' }) }));
     delete process.env.KIE_API_KEY;
-    expect(text(await page())).not.toMatch(/realistic photo/i);
-    expect(await page()).not.toContain('data-example-compare');
+    const off = await bathroom();
+    expect(text(off)).not.toMatch(/realistic photo/i);
+    expect(off).not.toContain('data-example-compare');
     process.env.KIE_API_KEY = 'test-key';
     process.env.ESTIMATOR_RENDER_SECRET = 'test-secret';
-    const on = await page();
+    const on = await bathroom();
     expect(text(on)).toMatch(/Get a realistic photo/);
     expect(on).toContain('data-example-compare');
+  });
+
+  it('never makes the pool configurator wait for a render: the photos are pre-rendered', async () => {
+    process.env.KIE_API_KEY = 'test-key';
+    process.env.ESTIMATOR_RENDER_SECRET = 'test-secret';
+    const html = await page();
+    expect(text(html)).not.toMatch(/realistic photo/i);
+    expect(html).not.toContain('data-example-compare');
+    expect(html).toContain('/estimator/pool-masters/configurator/');
   });
 });

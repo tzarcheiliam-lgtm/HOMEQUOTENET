@@ -1,0 +1,139 @@
+/*
+  One-page configurator (components/estimator/configurator). A light page:
+  white, warm grey, ink, and the contractor's blue as the only accent. It sits
+  inside the estimator layout's dark `.hq` scope, so the few rules that scope
+  sets on the document are turned back here (selectors carry .hq to win).
+*/
+
+.es-cfg {
+  --cfg-accent: #26389a; /* Pool Masters' deep wave blue; white text on it is ~10:1 */
+  --cfg-accent-hover: #1d2c7e;
+  --cfg-accent-tint: #f3f5fc;
+  --cfg-accent-line: #cdd4ef;
+  --cfg-sand: #f5f3ef;
+  --hq-accent-bright: var(--cfg-accent);
+  color: #111;
+  background: var(--cfg-sand);
+  color-scheme: light;
+  -webkit-font-smoothing: antialiased;
+  font-family: var(--font-dm-sans), 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+}
+
+html:has(.hq .es-cfg),
+html:has(.es-cfg) {
+  color-scheme: light;
+}
+
+body:has(.hq .es-cfg),
+body:has(.es-cfg) {
+  background-color: #f5f3ef;
+}
+
+/* One grotesk throughout (the site's headings default to Sora). */
+.hq .es-cfg :where(h1, h2, h3) {
+  font-family: inherit;
+  letter-spacing: -0.02em;
+}
+
+.hq .es-cfg select {
+  color-scheme: light;
+}
+
+.hq .es-cfg ::selection {
+  background: var(--cfg-accent);
+  color: #fff;
+}
+
+/* Photo swaps: the new variant fades in over the old one. */
+@keyframes es-cfg-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.es-cfg-fade {
+  animation: es-cfg-fade 420ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+/* "Spa added": rises a touch, rests, fades. */
+@keyframes es-cfg-toast {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  12% {
+    opacity: 1;
+    transform: none;
+  }
+  78% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.es-cfg-toast {
+  animation: es-cfg-toast 1900ms ease-out both;
+}
+
+/* Step changes fade in place (no movement: nothing shifts under the reader). */
+@keyframes es-cfg-rise {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.es-cfg-rise {
+  animation: es-cfg-rise 360ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+/* Thin, quiet scrollbar for the project strip. */
+.es-cfg-strip {
+  scrollbar-width: thin;
+  scrollbar-color: #cfcac0 transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .es-cfg-fade,
+  .es-cfg-rise {
+    animation: none;
+  }
+  @keyframes es-cfg-toast {
+    0%,
+    85% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+}
+
+/*
+  Keyboard focus never lands under the fixed photo (phones) or the sticky total
+  bar: scrolling into view leaves room for both.
+*/
+html:has(.es-cfg-photo) {
+  scroll-padding-top: calc(3.5rem + 32vh + 0.5rem);
+  scroll-padding-bottom: 7rem;
+}
+
+html:has(.es-cfg-embedded .es-cfg-photo) {
+  scroll-padding-top: calc(32vh + 0.5rem);
+}
+
+@media (min-width: 1024px) {
+  html:has(.es-cfg-photo) {
+    scroll-padding-top: 5rem;
+  }
+  html:has(.es-cfg-embedded .es-cfg-photo) {
+    scroll-padding-top: 1rem;
+  }
+}
