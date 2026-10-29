@@ -42,6 +42,7 @@ const projects: { label: string; category: string; also?: string }[] = [
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, ' ');
 
+/** Search box with live suggestions. Each match opens its category's flow. */
 export function ProjectFinder({ categories }: { categories: FinderCategory[] }) {
   const router = useRouter();
   const [q, setQ] = useState('');
@@ -80,7 +81,7 @@ export function ProjectFinder({ categories }: { categories: FinderCategory[] }) 
             type="search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search your project, like “tub to shower”"
+            placeholder="Search: tub to shower, cabinets, pool…"
             autoComplete="off"
             enterKeyHint="go"
           />
@@ -112,32 +113,37 @@ export function ProjectFinder({ categories }: { categories: FinderCategory[] }) 
           )
         ) : null}
       </div>
-
-      <ul className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4 lg:gap-6">
-        {categories.map((c, i) => (
-          <li key={c.id}>
-            <Link href={c.href} className="ho-pick" style={{ ['--i' as string]: i }}>
-              <Image
-                src={c.photo.src}
-                alt=""
-                width={c.photo.width}
-                height={c.photo.height}
-                sizes="(min-width: 1024px) 270px, (min-width: 640px) 45vw, 100vw"
-                priority={i === 0}
-              />
-              <span className="ho-pick-label">
-                <span>
-                  <span className="block text-2xl font-semibold tracking-tight">{c.name}</span>
-                  <span className="mt-1 block text-sm text-white/90">{c.note}</span>
-                </span>
-                <span className="ho-pick-go">
-                  <ArrowUpRight className="size-5" aria-hidden="true" />
-                </span>
-              </span>
-            </Link>
-          </li>
-        ))}
-      </ul>
     </div>
+  );
+}
+
+/** The four project categories as photo cards. */
+export function ProjectCards({ categories }: { categories: FinderCategory[] }) {
+  return (
+    <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4 lg:gap-6">
+      {categories.map((c, i) => (
+        <li key={c.id}>
+          <Link href={c.href} className="ho-pick" style={{ ['--i' as string]: i }}>
+            <Image
+              src={c.photo.src}
+              alt=""
+              width={c.photo.width}
+              height={c.photo.height}
+              sizes="(min-width: 1024px) 270px, (min-width: 640px) 45vw, 100vw"
+              priority={i === 0}
+            />
+            <span className="ho-pick-label">
+              <span>
+                <span className="block text-2xl font-semibold tracking-tight">{c.name}</span>
+                <span className="mt-1 block text-sm text-white/90">{c.note}</span>
+              </span>
+              <span className="ho-pick-go">
+                <ArrowUpRight className="size-5" aria-hidden="true" />
+              </span>
+            </span>
+          </Link>
+        </li>
+      ))}
+    </ul>
   );
 }

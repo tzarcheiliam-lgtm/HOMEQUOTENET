@@ -1,9 +1,10 @@
 import type { Metadata } from 'next';
-import { Check } from 'lucide-react';
+import Image from 'next/image';
+import { ArrowUpRight } from 'lucide-react';
 import { site } from '@/content/site';
 import { generalContractorPhotos as photos } from '@/content/industry-photos';
 import { photos as poolPhotos } from '@/content/photos';
-import { ProjectFinder, type FinderCategory } from '@/components/marketing/project-finder';
+import { ProjectCards, ProjectFinder, type FinderCategory } from '@/components/marketing/project-finder';
 import { baseOpenGraph } from '@/lib/site-metadata';
 import './home.css';
 
@@ -32,6 +33,19 @@ const categories: FinderCategory[] = [
 
 const headline = 'Book your remodeling appointment.'.split(' ');
 
+const included = [
+  { title: 'Free in-home consultation', body: 'A licensed local contractor comes to you, looks at the space and talks through your project.' },
+  { title: 'No obligation', body: 'Ask questions, compare, and decide in your own time. Whether to hire anyone is up to you.' },
+  { title: 'Your price up front', body: 'Start with a ballpark price range where available, so nothing about the budget is a surprise.' },
+];
+
+const steps = [
+  { title: 'Choose your project', body: 'Search or pick bathroom, kitchen, ADU or pool.' },
+  { title: 'Answer a few questions', body: 'Short, one at a time, and easy on a phone.' },
+  { title: 'Book a time', body: 'Choose a day that works for you.' },
+  { title: 'Meet at your home', body: 'A free, no-obligation visit with a licensed local contractor.' },
+];
+
 export default function HomePage() {
   return (
     <div className="ho">
@@ -49,33 +63,97 @@ export default function HomePage() {
         }}
       />
 
-      <section className="mx-auto w-full max-w-6xl px-5 pb-16 pt-14 sm:px-8 sm:pb-24 sm:pt-20">
-        <h1 className="ho-display ho-words max-w-4xl text-[clamp(2.5rem,6vw,4.75rem)]">
+      {/* Hero */}
+      <section id="start" className="mx-auto w-full max-w-6xl scroll-mt-20 px-5 pt-14 sm:px-8 sm:pt-20">
+        <h1 className="ho-display ho-words max-w-4xl text-[clamp(2.5rem,6.4vw,5rem)]">
           {headline.map((w, i) => (
             <span key={i} style={{ ['--w' as string]: i }}>
               {w}
             </span>
           ))}
         </h1>
-        <p className="ho-fade mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-base font-medium text-[var(--ho-ink-soft)]" style={{ ['--w' as string]: headline.length }}>
-          {['Free', 'No obligation', 'Find your project in seconds'].map((t) => (
-            <span key={t} className="inline-flex items-center gap-2">
-              <Check className="size-4 text-[var(--ho-blue)]" aria-hidden="true" />
-              {t}
-            </span>
-          ))}
+        <p
+          className="ho-fade mt-6 max-w-xl text-lg leading-8 text-[var(--ho-ink-soft)]"
+          style={{ ['--w' as string]: headline.length }}
+        >
+          Pick your project, get your price and book a free in-home visit, all in a few taps.
         </p>
 
-        <div className="mt-10">
+        <div className="ho-fade mt-9" style={{ ['--w' as string]: headline.length + 1 }}>
           <ProjectFinder categories={categories} />
         </div>
 
-        <p className="mt-12 text-base text-[var(--ho-ink-soft)]">
-          Prefer to talk?{' '}
-          <a href={`tel:${site.contact.phoneHref}`} className="font-semibold text-[var(--ho-navy)] underline decoration-[var(--ho-rule)] underline-offset-4 hover:decoration-[var(--ho-blue)]">
+        <div className="ho-hero-photo mt-14">
+          <Image
+            src={photos.livingKitchen.src}
+            alt={photos.livingKitchen.alt}
+            width={photos.livingKitchen.width}
+            height={photos.livingKitchen.height}
+            sizes="(min-width: 1152px) 1088px, 100vw"
+            priority
+          />
+        </div>
+        <p className="mt-4 text-sm text-[var(--ho-ink-soft)]">
+          Serving Los Angeles, Orange, Ventura, Riverside and San Bernardino counties.
+        </p>
+      </section>
+
+      {/* Projects */}
+      <section id="projects" className="mx-auto w-full max-w-6xl scroll-mt-20 px-5 py-24 sm:px-8 sm:py-32">
+        <h2 className="ho-display max-w-2xl text-[clamp(2rem,4.6vw,3.5rem)]">Explore projects</h2>
+        <p className="mt-4 max-w-xl text-lg leading-8 text-[var(--ho-ink-soft)]">
+          Choose the closest match. The first question narrows it down.
+        </p>
+        <div className="mt-12">
+          <ProjectCards categories={categories} />
+        </div>
+      </section>
+
+      {/* Included */}
+      <section className="border-t border-[var(--ho-rule)]">
+        <div className="mx-auto w-full max-w-6xl px-5 py-24 sm:px-8 sm:py-32">
+          <h2 className="ho-display max-w-2xl text-[clamp(2rem,4.6vw,3.5rem)]">
+            With every appointment
+          </h2>
+          <ul className="mt-12 grid gap-10 md:grid-cols-3 md:gap-8">
+            {included.map((f) => (
+              <li key={f.title} className="border-t-2 border-[var(--ho-navy)] pt-5">
+                <h3 className="ho-display text-2xl">{f.title}</h3>
+                <p className="mt-3 text-lg leading-8 text-[var(--ho-ink-soft)]">{f.body}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      {/* Process */}
+      <section id="how" className="scroll-mt-20 bg-[var(--ho-mist)]">
+        <div className="mx-auto w-full max-w-6xl px-5 py-24 sm:px-8 sm:py-32">
+          <h2 className="ho-display max-w-2xl text-[clamp(2rem,4.6vw,3.5rem)]">How it works</h2>
+          <ol className="ho-steps mt-14 grid gap-10 md:grid-cols-4 md:gap-6">
+            {steps.map((st, i) => (
+              <li key={st.title}>
+                <span className="ho-step-n">{i + 1}</span>
+                <h3 className="ho-display mt-6 text-2xl">{st.title}</h3>
+                <p className="mt-3 text-lg leading-8 text-[var(--ho-ink-soft)]">{st.body}</p>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      {/* Close */}
+      <section className="mx-auto w-full max-w-6xl px-5 py-24 sm:px-8 sm:py-36">
+        <h2 className="ho-display max-w-3xl text-[clamp(2.5rem,6.4vw,5rem)]">Ready when you are.</h2>
+        <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <a href="#start" className="ho-btn ho-btn-dark">
+            Get your price
+            <ArrowUpRight className="size-5" aria-hidden="true" />
+          </a>
+          <a href={`tel:${site.contact.phoneHref}`} className="ho-btn ho-btn-line">
             Call {site.contact.phone}
           </a>
-        </p>
+        </div>
       </section>
     </div>
   );
