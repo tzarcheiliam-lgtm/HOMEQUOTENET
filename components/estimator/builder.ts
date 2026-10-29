@@ -138,9 +138,16 @@ export function isVisualQuestion(q: Pick<EstimatorQuestion, 'id' | 'role'>): boo
  * visual question, the option is already picked, or (multi) already included.
  * A package previews its whole look (applyPackage); a multi option previews
  * being added.
+ * `isVisual` is the trade's rule (TradeBuilder.isVisual); the pool's by default.
  */
-export function previewAnswers(template: EstimatorTemplate, answers: Answers, q: EstimatorQuestion, optionId: string): Answers | null {
-  if (!isVisualQuestion(q) || !q.options.some((o) => o.id === optionId)) return null;
+export function previewAnswers(
+  template: EstimatorTemplate,
+  answers: Answers,
+  q: EstimatorQuestion,
+  optionId: string,
+  isVisual: (q: Pick<EstimatorQuestion, 'id' | 'role'>) => boolean = isVisualQuestion,
+): Answers | null {
+  if (!isVisual(q) || !q.options.some((o) => o.id === optionId)) return null;
   const current = picksFor(q, answers);
   if (current.includes(optionId)) return null;
   if (q.role === 'package') return applyPackage(template, answers, optionId);
@@ -202,14 +209,21 @@ export function sceneChanges(
  * ("Signature package applied", which stands in for its many material
  * changes) and newly ticked options of non-visual multi-choice questions
  * ("Equipment upgrade added to your plan"), so every pick still answers back.
- * `package` is null unless a package was just applied.
+ * `package` is null unless a package was just applied. `phrase` and
+ * `isVisual` are the trade's (the pool's by default).
  */
 export function answerChanges(
   template: EstimatorTemplate,
   prev: Answers,
   next: Answers,
   label: OptionLabeler = () => undefined,
+  trade: {
+    phrase?: (questionId: string, optionId: string, label: OptionLabeler) => string;
+    isVisual?: (q: Pick<EstimatorQuestion, 'id' | 'role'>) => boolean;
+  } = {},
 ): { package: string | null; added: string[] } {
+  const phrase = trade.phrase ?? optionPhrase;
+  const isVisual = trade.isVisual ?? isVisualQuestion;
   let pkg: string | null = null;
   const added: string[] = [];
   for (const q of template.questions) {
@@ -217,10 +231,10 @@ export function answerChanges(
     const after = picksFor(q, next);
     if (q.role === 'package') {
       const id = after[0];
-      if (id && id !== before[0] && id !== CUSTOM_PACKAGE_ID) pkg = `${optionPhrase('package', id, label)} applied`;
+      if (id && id !== before[0] && id !== CUSTOM_PACKAGE_ID) pkg = `${phrase('package', id, label)} applied`;
       continue;
     }
-    if (q.kind !== 'multi' || isVisualQuestion(q)) continue;
+    if (q.kind !== 'multi' || isVisual(q)) continue;
     for (const id of after) if (!before.includes(id)) added.push(`${label(q.id, id) ?? humanize(id)} added to your plan`);
   }
   return { package: pkg, added };
@@ -329,22 +343,26 @@ export function renderProgress(elapsedMs: number): number {
   return Math.max(3, Math.min(95, Math.round(p)));
 }
 
+/** Who shows them the look in person, and where (TradeCopy.helper / visit). */
+export type RenderHelp = { helper: string; visit: string };
+const POOL_HELP: RenderHelp = { helper: 'Your designer', visit: 'free on-site visit' };
+
 /**
  * What to tell the homeowner when a render cannot start. `retry` false hides
- * the button for good (renders switched off or the limit reached).
+ * the button for good (renders switched off or the limit reached). `help`
+ * names who shows them the look instead (the pool's designer by default).
  */
-export function renderStartProblem(result: Extract<RenderStart, { ok: false }>): { message: string; retry: boolean } {
+export function renderStartProblem(result: Extract<RenderStart, { ok: false }>, help: RenderHelp = POOL_HELP): { message: string; retry: boolean } {
+  const walk = `${help.helper} will walk you through the look at the ${help.visit}.`;
   switch (result.reason) {
     case 'disabled':
-      return { message: 'Realistic previews are not available right now. Your designer will walk you through the look at the free on-site visit.', retry: false };
+      return { message: `Realistic previews are not available right now. ${walk}`, retry: false };
     case 'limit':
-      return { message: 'You have reached the number of realistic previews for now. Your designer can show you more at the free on-site visit.', retry: false };
+      return { message: `You have reached the number of realistic previews for now. ${help.helper} can show you more at the ${help.visit}.`, retry: false };
     case 'invalid':
       // Expired session (401), a picture too big (413) or unreadable (422): clicking again cannot fix these.
       return {
-        message: result.message
-          ? `${result.message.replace(/\s+$/, '')} Your designer will walk you through the look at the free on-site visit.`
-          : 'This design session has ended. Your designer will walk you through the look at the free on-site visit.',
+        message: result.message ? `${result.message.replace(/\s+$/, '')} ${walk}` : `This design session has ended. ${walk}`,
         retry: false,
       };
     default:

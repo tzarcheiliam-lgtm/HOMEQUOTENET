@@ -1,5 +1,5 @@
 import Image from 'next/image';
-import { Phone } from 'lucide-react';
+import { ArrowDown, Phone } from 'lucide-react';
 import type { ContractorEstimatorConfig } from '@/lib/estimator/types';
 import { telHref } from './facts';
 
@@ -13,8 +13,21 @@ type HeaderContractor = Pick<ContractorEstimatorConfig, 'contractorName' | 'lice
  * Heights are h-16 / sm:h-20 on purpose: the live builder pins its picture
  * just below a 64 px / 80 px header (estimator-flow.tsx), and the page exposes
  * the same value as --estimator-header-h.
+ *
+ * Without a phone number (HomeQuote Network's own builders) the button is a
+ * "Start my design" link to the builder (`startHref`) instead, so the bar
+ * still has one clear next step.
  */
-export function EstimatorHeader({ contractor, facts = [] }: { contractor: HeaderContractor; facts?: readonly string[] }) {
+export function EstimatorHeader({
+  contractor,
+  facts = [],
+  startHref,
+}: {
+  contractor: HeaderContractor;
+  facts?: readonly string[];
+  /** In-page link to the builder, shown when there is no phone number to call. */
+  startHref?: string;
+}) {
   const tel = telHref(contractor.phone);
   // The first fact (licensed & insured) rides with the license; the rest live in the hero.
   const credential = facts[0];
@@ -50,6 +63,15 @@ export function EstimatorHeader({ contractor, facts = [] }: { contractor: Header
             <Phone aria-hidden="true" className="size-4" strokeWidth={2.4} />
             <span className="sm:hidden">Call</span>
             <span className="hidden tabular-nums sm:inline">{contractor.phone}</span>
+          </a>
+        ) : startHref ? (
+          <a
+            href={startHref}
+            className="ml-auto inline-flex h-11 shrink-0 touch-manipulation items-center gap-2 rounded-full bg-[var(--hq-accent)] pl-3.5 pr-4 text-sm font-semibold text-white shadow-[0_1px_0_rgba(255,255,255,0.18)_inset,0_6px_16px_-6px_rgba(0,56,184,0.7)] [transition:background-color_150ms_ease,scale_120ms_ease-out] hover:bg-[#0a46d6] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--hq-accent)] active:scale-[.97] motion-reduce:transition-none"
+          >
+            <ArrowDown aria-hidden="true" className="size-4" strokeWidth={2.4} />
+            <span className="sm:hidden">Start</span>
+            <span className="hidden sm:inline">Start my design</span>
           </a>
         ) : null}
       </div>

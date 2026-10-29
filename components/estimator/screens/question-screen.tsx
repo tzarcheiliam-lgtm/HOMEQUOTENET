@@ -1,6 +1,6 @@
 'use client';
 
-import { useId } from 'react';
+import { useId, type ReactNode } from 'react';
 import { formatRange, picksFor } from '@/lib/estimator/engine';
 import type { Answers, EstimatorOption, EstimatorQuestion, PoolShape } from '@/lib/estimator/types';
 import { PoolShapeIcon } from '../pool-shapes';
@@ -10,18 +10,25 @@ import { ChoiceTile, QuestionFieldset } from '../ui';
 import { optionPriceHint, type FlowScreen } from '../use-estimator-flow';
 import { cn } from '@/lib/utils';
 
+/** The trade's own option picture (TradeBuilder.optionVisual), or null. */
+type OptionVisual = (questionId: string, optionId: string) => ReactNode | null;
+
 /**
- * What an option shows above its label: a shape drawing, a photo of a real
- * job, a crop of the real material (the texture the live picture paints, a
- * finish shown under water), or the drawn swatch for anything else.
+ * What an option shows above its label: a shape drawing, a photo (a real job,
+ * or a labelled style idea), the trade's own material sample (bathroom tile,
+ * paint, fixture finish), a crop of the real pool material (the texture the
+ * live picture paints, a finish shown under water), or the drawn swatch for
+ * anything else.
  */
-function visualFor(q: EstimatorQuestion, o: EstimatorOption) {
+function visualFor(q: EstimatorQuestion, o: EstimatorOption, tradeVisual?: OptionVisual) {
   if (q.role === 'shape') return <PoolShapeIcon shape={o.id as PoolShape} className="h-full w-full" />;
   if (o.image) {
     // Plain img: contractor photos are public paths of unknown size, and the card crops them to a fixed height.
     // eslint-disable-next-line @next/next/no-img-element
     return <img src={o.image} alt="" loading="lazy" className="h-full w-full object-cover" />;
   }
+  const own = tradeVisual?.(q.id, o.id);
+  if (own) return own;
   if (optionMaterial(q.id, o.id)) return <MaterialSample questionId={q.id} optionId={o.id} swatch={o.swatch} className="h-full w-full" />;
   if (o.swatch) return <Swatch id={o.swatch} className="h-full w-full" />;
   if (o.id === 'unsure') {
@@ -42,6 +49,7 @@ export function QuestionScreen({
   onPick,
   showPrices,
   onPreview,
+  optionVisual,
 }: {
   screen: FlowScreen;
   answers: Answers;
@@ -50,6 +58,8 @@ export function QuestionScreen({
   showPrices: boolean;
   /** Live builder: hover / keyboard focus on an option (null when it ends). */
   onPreview?: (q: EstimatorQuestion, optionId: string | null) => void;
+  /** The trade's material samples for option tiles (live builder). */
+  optionVisual?: OptionVisual;
 }) {
   const uid = useId();
   const single = screen.questions.length === 1;
@@ -57,7 +67,8 @@ export function QuestionScreen({
     <div className="space-y-7">
       {screen.questions.map((q) => {
         const picks = picksFor(q, answers);
-        const hasVisual = q.role === 'shape' || q.options.some((o) => o.swatch || o.image || optionMaterial(q.id, o.id));
+        const hasVisual =
+          q.role === 'shape' || q.options.some((o) => o.swatch || o.image || optionMaterial(q.id, o.id) || optionVisual?.(q.id, o.id));
         // Container queries (the form card is an @container), so tiles fit both the full-width
         // card and the narrower question column beside the live picture (~500 px: two across,
         // so labels like "Resurface existing" never break mid-word).
@@ -85,7 +96,7 @@ export function QuestionScreen({
                   label={o.label}
                   note={o.note}
                   hint={showPrices ? optionPriceHint(o.price, formatRange) : undefined}
-                  visual={visualFor(q, o)}
+                  visual={visualFor(q, o, optionVisual)}
                   onPreview={onPreview ? (on) => onPreview(q, on ? o.id : null) : undefined}
                 />
               ))}

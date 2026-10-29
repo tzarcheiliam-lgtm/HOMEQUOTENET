@@ -7,7 +7,7 @@
  */
 
 import type { RenderStart, RenderStatus } from '@/lib/estimator/render-client';
-import { RENDER_POLL_MS, RENDER_TIMEOUT_MS, renderStartProblem } from './builder';
+import { RENDER_POLL_MS, RENDER_TIMEOUT_MS, renderStartProblem, type RenderHelp } from './builder';
 
 /* ------------------------------------------------------------------ */
 /* Render session                                                      */
@@ -56,7 +56,8 @@ export const RENDER_MESSAGES = {
 export async function runRenderSession(
   deps: RenderDeps,
   onPhase: (phase: RenderPhase) => void,
-  opts: { pollMs?: number; timeoutMs?: number } = {},
+  /** `help`: who shows the look in person, for the "cannot make a photo" messages (pool wording by default). */
+  opts: { pollMs?: number; timeoutMs?: number; help?: RenderHelp } = {},
 ): Promise<RenderPhase> {
   const pollMs = opts.pollMs ?? RENDER_POLL_MS;
   const timeoutMs = opts.timeoutMs ?? RENDER_TIMEOUT_MS;
@@ -79,7 +80,7 @@ export async function runRenderSession(
 
   const res = await deps.start(png).catch((): RenderStart => ({ ok: false, reason: 'error', message: '' }));
   if (!res.ok) {
-    const problem = renderStartProblem(res);
+    const problem = renderStartProblem(res, opts.help);
     return problem.retry ? failed(problem.message) : emit({ kind: 'off', message: problem.message });
   }
   const startedAt = deps.now();

@@ -1,4 +1,5 @@
 import type { ContractorEstimatorConfig } from '@/lib/estimator/types';
+import { BATH_GALLERY, BATH_OPTION_IMAGES } from './homequote-bathroom-photos';
 
 /**
  * HomeQuote Network's own instant bathroom builder (/estimator/bathroom-remodel).
@@ -23,4 +24,9 @@ export const HOMEQUOTE_BATHROOM_ESTIMATOR: ContractorEstimatorConfig = {
   // Mirrors the funnel's trackingPixels.consentMode.
   adMeasurement: 'opt_out',
   pricesConfirmed: false,
+  // About the service only: no license, years or reviews of the network's own.
+  facts: ['Free in-home consultation', 'Licensed local contractors', 'No obligation'],
+  // AI-generated style ideas (labelled as such), never presented as finished jobs.
+  options: Object.fromEntries(Object.entries(BATH_OPTION_IMAGES).map(([key, image]) => [key, { image }])),
+  gallery: BATH_GALLERY,
 };

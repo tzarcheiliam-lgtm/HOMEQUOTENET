@@ -281,4 +281,6 @@ export type ContractorEstimatorConfig = {
   packages?: EstimatorPackage[];
   /** "Which look do you like?" photos (not priced). */
   gallery?: GalleryImage[];
+  /** Short trust facts shown in the header and hero; only published, truthful ones. */
+  facts?: string[];
 };

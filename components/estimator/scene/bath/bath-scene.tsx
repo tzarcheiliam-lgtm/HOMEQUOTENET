@@ -106,11 +106,10 @@ export function BathScene({ scene, mood = 'day', label, className, onCanvas, foc
       prev.getContext('2d')?.drawImage(canvas, 0, 0);
       prev.classList.remove('bs-fading');
       prev.style.opacity = '1';
-      // Next frame: let the transition run to transparent.
-      requestAnimationFrame(() => {
-        prev.classList.add('bs-fading');
-        prev.style.opacity = '0';
-      });
+      // Commit the opaque state, then let the transition run to transparent.
+      void prev.offsetWidth;
+      prev.classList.add('bs-fading');
+      prev.style.opacity = '0';
     }
     if (canvas.width !== w || canvas.height !== h) {
       canvas.width = w;
@@ -119,15 +118,17 @@ export function BathScene({ scene, mood = 'day', label, className, onCanvas, foc
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     const t0 = performance.now();
+    const now = latest.current;
     try {
-      paintBathScene(ctx, scene, { scale, mood, focus });
+      paintBathScene(ctx, now.scene, { scale, mood: now.mood, focus: now.focus });
     } catch {
       // A drawing failure must never break the flow: the wall colour stays.
     }
     painted.current = key;
     if (performance.now() - t0 > SLOW_PAINT_MS && scale > 1) setCap(1);
-    // assetTick: repaint when a file has loaded.
-  }, [key, scale, assetTick, scene, mood, focus, still]);
+    // `key` stands for scene / mood / focus (a new but equal spec object does not repaint);
+    // assetTick repaints when a file has loaded.
+  }, [key, scale, assetTick, still]);
 
   // Hand the canvas out, and register a painter so exports are sharp and settled.
   const painter = useCallback(async (width: number, height: number) => {

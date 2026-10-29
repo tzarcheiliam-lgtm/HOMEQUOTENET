@@ -6,6 +6,8 @@ import { formatRange } from '@/lib/estimator/engine';
 import type { EstimatorLeadResponse } from '@/lib/estimator/lead-client';
 import type { ContractorEstimatorConfig, EstimatorTemplate } from '@/lib/estimator/types';
 import { cn } from '@/lib/utils';
+import type { TradeCopy } from '../builders/types';
+import { POOL_COPY } from '../builders/pool';
 import { card, eyebrow, primaryButton } from '../ui';
 import { describeQuantity, safeHttpUrl } from '../use-estimator-flow';
 import { COUNT_DELAY_MS, COUNT_MS, RevealStyles } from './reveal-styles';
@@ -113,6 +115,7 @@ export function ResultScreen({
   embedded,
   design,
   builder,
+  copy,
 }: {
   template: EstimatorTemplate;
   contractor: ContractorEstimatorConfig;
@@ -123,8 +126,11 @@ export function ResultScreen({
   design?: ReactNode;
   /** Live builder: count-up reveal, booking button right under the range. */
   builder?: boolean;
+  /** The trade's words for the next step (TradeCopy); the pool's on-site wording when omitted. */
+  copy?: Pick<TradeCopy, 'bookLabel' | 'contactLine' | 'siteVisitHeading' | 'priceOnSite'>;
 }) {
   const rangeId = useId();
+  const words = copy ?? POOL_COPY;
   const { estimate, qualified } = result;
   const hasRange = estimate.low !== null && estimate.high !== null;
   const bookingUrl = safeHttpUrl(result.calendarUrl ?? contractor.calendarUrl);
@@ -138,11 +144,11 @@ export function ResultScreen({
         rel="noopener"
         className={`${primaryButton} w-full sm:w-auto`}
       >
-        Book your free on-site consultation
+        {words.bookLabel}
       </a>
     ) : (
       <p role="status" className="text-sm text-[var(--hq-text)]">
-        {contractor.contractorName} will contact you to set up your free on-site consultation.
+        {words.contactLine(contractor.contractorName)}
       </p>
     )
   ) : (
@@ -177,7 +183,7 @@ export function ResultScreen({
           </p>
         ) : (
           <p id={rangeId} className="mt-3 text-2xl font-semibold text-[var(--hq-text)]">
-            We will price this with you on site
+            {words.priceOnSite}
           </p>
         )}
         <p className="mt-2 text-sm font-semibold text-[var(--hq-text)]">Ballpark, not a quote</p>
@@ -208,7 +214,7 @@ export function ResultScreen({
 
       {estimate.siteVisitItems.length ? (
         <section className="rounded-xl border border-[var(--hq-warn)]/60 bg-[var(--hq-warn)]/10 p-4 text-sm leading-6">
-          <h3 className="font-semibold text-[var(--hq-text)]">We will confirm these on site</h3>
+          <h3 className="font-semibold text-[var(--hq-text)]">{words.siteVisitHeading}</h3>
           <ul className="mt-2 list-disc space-y-0.5 pl-5 text-[var(--hq-text)]">
             {estimate.siteVisitItems.map((item) => (
               <li key={item.label}>{item.label}</li>

@@ -3,7 +3,8 @@ import { BATH_BUILDER } from './bath';
 import { POOL_BUILDER } from './pool';
 import type { TradeBuilder } from './types';
 
-export type { BuilderMode, ExampleImages, HeroCopy, TradeBuilder, TradeSceneProps } from './types';
+export { resolveExampleMedia, TRADE_META, tradeMeta, type TradeMeta } from './meta';
+export type { BuilderMode, ExampleImages, ExampleMedia, ExampleVideo, HeroCopy, TradeBuilder, TradeCopy, TradeSceneProps } from './types';
 
 /** The live-builder adapter per trade (kitchen slots in here). */
 const BUILDERS: Record<EstimatorTrade, TradeBuilder<never>> = {
@@ -20,3 +21,4 @@ const BUILDERS: Record<EstimatorTrade, TradeBuilder<never>> = {
 export function getTradeBuilder(trade: string): TradeBuilder<unknown> | null {
   return Object.hasOwn(BUILDERS, trade) ? (BUILDERS[trade as EstimatorTrade] as unknown as TradeBuilder<unknown>) : null;
 }
+

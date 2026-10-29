@@ -548,7 +548,8 @@ async function webp(input, out, maxEdge, maxKb, quality = 82) {
 }
 
 async function postPhoto(job) {
-  if (job.id === 'hero') return webp(rawFile('hero'), path.join(HERO, 'bath-hero.webp'), 1280, 160);
+  // The hero still only feeds the clip; the poster is the clip's first frame (postPoster).
+  if (job.id === 'hero') return 'hero: still kept raw (poster comes from the clip)';
   const big = await webp(rawFile(job.id), path.join(PHOTOS, `${job.id}.webp`), GALLERY_MAX, 255);
   const small = await webp(rawFile(job.id), path.join(PHOTOS, 'thumbs', `${job.id}.webp`), THUMB_MAX, 90);
   return `${big}\n${small}`;
@@ -570,7 +571,9 @@ function postVideo() {
   const raw = path.join(RAW_DIR, 'raw', 'hero.mp4');
   if (!existsSync(raw)) return 'hero video: no raw clip, run video first';
   mkdirSync(HERO, { recursive: true });
-  const common = ['-y', '-i', raw, '-an', '-map_metadata', '-1', '-vf', 'scale=1280:-2:flags=lanczos,fps=24'];
+  // Ping-pong (push in, then ease back out) so the loop has no jump cut: about 10 s.
+  const vf = 'scale=1280:-2:flags=lanczos,fps=24,split[a][b];[b]reverse,trim=start_frame=1,setpts=PTS-STARTPTS[r];[a][r]concat=n=2:v=1:a=0';
+  const common = ['-y', '-i', raw, '-an', '-map_metadata', '-1', '-fflags', '+bitexact', '-flags:v', '+bitexact', '-filter_complex', vf];
   const mp4 = path.join(HERO, 'bath-hero.mp4');
   const webm = path.join(HERO, 'bath-hero.webm');
   for (const args of [
@@ -581,6 +584,16 @@ function postVideo() {
     if (r.status !== 0) throw new Error(`ffmpeg failed:\n${r.stderr.slice(-800)}`);
   }
   return `hero video: ${path.relative(ROOT, mp4)}, ${path.relative(ROOT, webm)}`;
+}
+
+/** Poster = the clip's first frame, so nothing jumps when playback starts. */
+async function postPoster() {
+  const raw = path.join(RAW_DIR, 'raw', 'hero.mp4');
+  if (!existsSync(raw)) return 'hero poster: no raw clip';
+  const frame = path.join(RAW_DIR, 'hero-frame0.png');
+  const r = spawnSync('ffmpeg', ['-y', '-i', raw, '-frames:v', '1', frame], { encoding: 'utf8' });
+  if (r.status !== 0) throw new Error(`ffmpeg failed:\n${r.stderr.slice(-800)}`);
+  return webp(frame, path.join(HERO, 'bath-hero.webp'), 1280, 160);
 }
 
 async function post(job) {
@@ -654,7 +667,7 @@ if (cmd === 'credits') {
 } else if (cmd === 'post') {
   for (const job of selected) console.log(await post(job));
   if (!ids.length || ids.includes('options')) console.log(await postOptions());
-  if (!ids.length || ids.includes('video')) console.log(postVideo());
+  if (!ids.length || ids.includes('video')) console.log(postVideo(), '\n' + await postPoster());
 } else if (cmd === 'preview') {
   preview();
 } else {

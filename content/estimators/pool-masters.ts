@@ -31,4 +31,6 @@ export const POOL_MASTERS_ESTIMATOR: ContractorEstimatorConfig = {
   pricesConfirmed: false,
   options: Object.fromEntries(Object.entries(POOL_MASTERS_OPTION_IMAGES).map(([key, image]) => [key, { image }])),
   gallery: POOL_MASTERS_GALLERY,
+  // From the brochure (V3): licensed & insured, serving SoCal since 2010, complimentary on-site estimates.
+  facts: ['Licensed & insured', 'Serving SoCal since 2010', 'Free on-site estimate'],
 };

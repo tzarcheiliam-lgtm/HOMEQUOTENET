@@ -118,11 +118,28 @@ export function describePicks(template: EstimatorTemplate, answers: Answers): st
 /* Mapping onto the funnel                                             */
 /* ------------------------------------------------------------------ */
 
-/** Estimator project ids and the funnel option values that mean the same thing. */
-const PROJECT_ALIASES: Record<string, string[]> = {
-  remodel: ['full_remodel', 'pool_remodel', 'remodel'],
-  backyard: ['backyard', 'backyard_renovation', 'backyard_remodel'],
+/**
+ * Estimator project ids and the funnel option values that mean the same thing,
+ * per trade (EstimatorTemplate.trade). A bathroom refresh files as a full
+ * remodel: the bathroom funnel has no "update the look" service, and its
+ * closest small option ("repair") does not qualify.
+ */
+const PROJECT_ALIASES: Record<string, Record<string, string[]>> = {
+  pool: {
+    remodel: ['full_remodel', 'pool_remodel', 'remodel'],
+    backyard: ['backyard', 'backyard_renovation', 'backyard_remodel'],
+  },
+  bathroom: {
+    full: ['full_remodel'],
+    refresh: ['full_remodel'],
+  },
 };
+
+function projectAliases(trade: string, project: string | undefined): string[] {
+  if (!project) return [];
+  const byTrade = Object.hasOwn(PROJECT_ALIASES, trade) ? PROJECT_ALIASES[trade]! : {};
+  return [project, ...(Object.hasOwn(byTrade, project) ? byTrade[project]! : [])];
+}
 
 /**
  * Fills the funnel's own questions from the estimator answers: the ZIP question,
@@ -132,10 +149,10 @@ const PROJECT_ALIASES: Record<string, string[]> = {
  */
 export function funnelAnswersFor(
   config: FunnelConfig,
-  input: { zip: string; homeowner: string; timeline: string; project?: string },
+  input: { zip: string; homeowner: string; timeline: string; project?: string; trade?: string },
 ): Record<string, string> {
   const answers: Record<string, string> = {};
-  const aliases = input.project ? [input.project, ...(PROJECT_ALIASES[input.project] ?? [])] : [];
+  const aliases = projectAliases(input.trade ?? 'pool', input.project);
   for (const q of config.questions) {
     if (!q.showWhen.every((c) => matches(c, answers))) continue;
     const has = (value: string) => q.options.some((o) => o.value === value);
@@ -210,12 +227,26 @@ const capitalize = (value: string) => value.charAt(0).toUpperCase() + value.slic
 /** Source label shown on the lead, e.g. "Pool estimator". */
 export const estimatorSourceLabel = (template: Pick<EstimatorTemplate, 'trade'>) => `${capitalize(template.trade)} estimator`;
 
+/**
+ * The size line the contractor reads, keyed per trade: a pool's shape and
+ * footprint ("estimator_pool"), or a room's floor ("estimator_room") for the
+ * room trades, which have no shape question.
+ */
+export function describeSize(template: Pick<EstimatorTemplate, 'trade'>, geometry: Estimate['geometry']): [key: string, text: string] {
+  const how = geometry.source === 'dimensions' ? 'typed dimensions' : `${geometry.size} preset`;
+  if (template.trade === 'pool') {
+    return ['estimator_pool', `${geometry.shape.replace('_', '-')}, about ${geometry.lengthFt} x ${geometry.widthFt} ft (${how})`];
+  }
+  const floor = `about ${geometry.lengthFt} x ${geometry.widthFt} ft, ${Math.round(geometry.lengthFt * geometry.widthFt)} sq ft of floor`;
+  return ['estimator_room', geometry.source === 'preset' && geometry.size === 'unsure' ? `${floor} assumed (size to be measured)` : `${floor} (${how})`];
+}
+
 export function buildLeadPayload(input: LeadPayloadInput): LeadPayload {
   const { template, contractor, funnel, request, answers, estimate, likedLooks } = input;
   const projectQ = template.questions.find((q) => q.role === 'project');
   const project = projectQ ? picksFor(projectQ, answers)[0] : undefined;
 
-  const base = funnelAnswersFor(funnel.config, { zip: request.zip, homeowner: request.homeowner, timeline: request.timeline, project });
+  const base = funnelAnswersFor(funnel.config, { zip: request.zip, homeowner: request.homeowner, timeline: request.timeline, project, trade: template.trade });
   const qualified = qualifyLead(funnel.config, base);
   const areaValid = areaValidFor(funnel.config, base);
 
@@ -223,7 +254,7 @@ export function buildLeadPayload(input: LeadPayloadInput): LeadPayload {
   const picks = describePicks(template, answers);
   const siteVisit = estimate.siteVisitItems.map((i) => i.label);
   const geometry = estimate.geometry;
-  const pool = `${geometry.shape.replace('_', '-')}, about ${geometry.lengthFt} x ${geometry.widthFt} ft (${geometry.source === 'dimensions' ? 'typed dimensions' : `${geometry.size} preset`})`;
+  const [sizeKey, sizeText] = describeSize(template, geometry);
   const source = estimatorSourceLabel(template);
 
   // Readable strings only: these land in the lead's project description and the GHL/webhook
@@ -233,7 +264,7 @@ export function buildLeadPayload(input: LeadPayloadInput): LeadPayload {
     estimator_source: source,
     estimator_range: range,
     estimator_status: estimate.status,
-    estimator_pool: pool,
+    [sizeKey]: sizeText,
     ...(picks.length ? { estimator_picks: clip(picks.join('; ')) } : {}),
     ...(siteVisit.length ? { estimator_site_visit: clip(siteVisit.join('; ')) } : {}),
     ...(likedLooks.length ? { estimator_looks: clip(likedLooks.map((l) => l.caption ?? l.alt).join('; ')) } : {}),

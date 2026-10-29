@@ -371,7 +371,7 @@ function focusPoint(L: BathLayout): Pt {
 // ---------------------------------------------------------------------------
 
 function drawRoom(ctx: Ctx, k: Look) {
-  const { cam, L, P, step } = k;
+  const { cam, P, step } = k;
   const edges = frameEdgeDepths(cam);
   const zl = Math.max(0.5, Math.min(edges.left, cam.zBack - 0.5));
   const zr = Math.max(0.5, Math.min(edges.right, cam.zBack - 0.5));
@@ -563,11 +563,11 @@ function floorPlane(k: Look, depth: number): HTMLCanvasElement {
     softShape(ctx, 0.08 * P, 'rgba(0,0,0,0.25)', (s) => roundRect(s, X(matX), V(matZ), matW * P, 1.7 * P, 0.12 * P));
     ctx.beginPath();
     roundRect(ctx, X(matX), V(matZ), matW * P, 1.7 * P, 0.12 * P);
-    ctx.fillStyle = k.dark ? '#d7d2c6' : '#efebe2';
+    ctx.fillStyle = k.dark ? '#e2ddd2' : '#f6f2ea';
     ctx.fill();
     ctx.save();
     ctx.clip();
-    ctx.globalAlpha = 0.5;
+    ctx.globalAlpha = 0.22;
     ctx.globalCompositeOperation = 'multiply';
     const pat = ctx.createPattern(grain(), 'repeat');
     if (pat) {
@@ -789,10 +789,27 @@ function mirror(ctx: Ctx, k: Look, m: Rect, X: Map1, Y: Map1) {
   }
 }
 
+/**
+ * A generated sprite for trim that only exists in a silver finish: used when
+ * the picked metal is silver too, otherwise the vector drawing (which takes
+ * any finish) is drawn instead.
+ */
+function silverSprite(k: Look, id: BathSpriteId): HTMLImageElement | null {
+  const metal = k.spec.metal ?? BATH_DEFAULT_METAL;
+  return metal === 'chrome' || metal === 'brushed_nickel' ? spriteImage(id) : null;
+}
+
 function sconce(ctx: Ctx, k: Look, s: Pt, X: Map1, Y: Map1) {
   const P = k.P;
   const x = X(s.x);
   const y = Y(s.y);
+  const img = !k.dark ? silverSprite(k, 'sconce') : null;
+  if (img) {
+    const e = BATH_SPRITES.sconce;
+    softShape(ctx, 0.12 * P, 'rgba(0,0,0,0.28)', (c) => roundRect(c, x - 0.12 * P, y - 0.5 * P + 0.08 * P, 0.24 * P, 1.0 * P, 0.05 * P));
+    ctx.drawImage(img, x - (e.widthFt * P) / 2, y - (e.heightFt * P) / 2, e.widthFt * P, e.heightFt * P);
+    return;
+  }
   softShape(ctx, 0.1 * P, 'rgba(0,0,0,0.3)', (c) => roundRect(c, x - 0.1 * P, y - 0.45 * P + 0.06 * P, 0.2 * P, 0.95 * P, 0.03 * P));
   // Backplate.
   ctx.beginPath();
@@ -834,6 +851,12 @@ function valveTrim(ctx: Ctx, k: Look, x: number, y: number) {
 
 function wallHead(ctx: Ctx, k: Look, x: number, y: number) {
   const P = k.P;
+  const img = silverSprite(k, 'shower_head');
+  if (img) {
+    const e = BATH_SPRITES.shower_head;
+    ctx.drawImage(img, x - (e.widthFt * P) / 2, y - 0.1 * P, e.widthFt * P, e.heightFt * P);
+    return;
+  }
   ctx.fillStyle = shade(k.metalRgb, -15);
   ctx.fillRect(x - 0.035 * P, y - 0.02 * P, 0.07 * P, 0.4 * P);
   ctx.beginPath();
@@ -1008,6 +1031,16 @@ function rainHead(ctx: Ctx, k: Look) {
   const head = k.L.showerHead!;
   const zb = k.cam.zBack;
   const m = k.metalRgb;
+  const img = silverSprite(k, 'rain_head');
+  if (img) {
+    // Ceiling-mounted: the sprite hangs from the ceiling over the shower.
+    const e = BATH_SPRITES.rain_head;
+    const z = zb - 1.2;
+    const sc = k.cam.f / z;
+    const top = pt(k, head.x, C, z);
+    ctx.drawImage(img, top.x - (e.widthFt * sc) / 2, top.y, e.widthFt * sc, e.heightFt * sc);
+    return;
+  }
   // Arm out of the wall, then a 12" square plate seen from below.
   const a0 = pt(k, head.x, head.y + 0.25, zb);
   const a1 = pt(k, head.x, head.y + 0.25, zb - 1.1);
@@ -1303,7 +1336,8 @@ function freestandingTub(ctx: Ctx, k: Look) {
   ctx.beginPath();
   ctx.ellipse(f0.x, f0.y, 0.16 * s, 0.05 * s, 0, 0, Math.PI * 2);
   ctx.fill();
-  // A towel draped over the far end.
+  // A towel draped over the far end (the generated tub has its own styling).
+  if (sprite) return;
   const tx = pt(k, t.cx - t.width / 2 + 0.6, t.height, zMid);
   const ts = k.cam.f / zMid;
   ctx.beginPath();
@@ -1365,6 +1399,13 @@ function toilet(ctx: Ctx, k: Look) {
     const z = zb - 1.4;
     const s = k.cam.f / z;
     const b = pt(k, t.cx, 0, z);
+    // Contact shadow right under the foot, so it sits on the floor.
+    ctx.fillStyle = radial(ctx, 0, 0, 1, [[0, 'rgba(20,14,10,0.45)'], [1, 'rgba(20,14,10,0)']]);
+    ctx.save();
+    ctx.translate(b.x, b.y - 0.04 * s);
+    ctx.scale(0.55 * s, 0.12 * s);
+    ctx.fillRect(-1, -1, 2, 2);
+    ctx.restore();
     ctx.drawImage(sprite, b.x - (e.widthFt * s) / 2, b.y - e.heightFt * s, e.widthFt * s, e.heightFt * s);
     return;
   }
@@ -1759,7 +1800,7 @@ function drawLight(ctx: Ctx, k: Look) {
     lc.fillRect(-50, -50, FW + 100, FH + 100);
     // Under the counter overhang and inside the toe kick it is darker.
   } else {
-    lc.fillStyle = '#3b3a4a';
+    lc.fillStyle = '#4c4a5c';
     lc.fillRect(-50, -50, FW + 100, FH + 100);
     lc.globalCompositeOperation = 'lighter';
     const glow = (x: number, y: number, rx: number, ry: number, colour: string, a: number) => {

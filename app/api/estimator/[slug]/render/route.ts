@@ -4,7 +4,7 @@ import { hash, sameOrigin } from '@/lib/funnels/server';
 import { getEstimator } from '@/lib/estimator/registry';
 import {
   MAX_RENDER_BODY_BYTES, RENDER_ACTIVITY_KIND, RENDERS_PER_IP_HOUR, RENDERS_PER_LEAD, createRenderTask, dailyRenderCap, parseRenderImage,
-  rendersEnabled, signTaskRef, uploadRenderImage, verifyRenderToken,
+  renderPromptFor, rendersEnabled, signTaskRef, uploadRenderImage, verifyRenderToken,
 } from '@/lib/estimator/render';
 import type { RenderStart } from '@/lib/estimator/render-client';
 
@@ -51,7 +51,8 @@ async function readJson(request: Request, max: number): Promise<unknown> {
 export async function POST(request: Request, context: Context) {
   if (!sameOrigin(request)) return refuse('invalid', 'Invalid origin.', 403);
   const slug = (await context.params).slug;
-  if (!getEstimator(slug)) return refuse('invalid', 'This estimator is not available.', 404);
+  const registered = getEstimator(slug);
+  if (!registered) return refuse('invalid', 'This estimator is not available.', 404);
   if (!rendersEnabled()) return refuse('disabled', 'Realistic renders are not switched on.', 200);
 
   let body: unknown;
@@ -119,7 +120,7 @@ export async function POST(request: Request, context: Context) {
     }
 
     const imageUrl = await uploadRenderImage(picture, `${slug}-${activityId}`);
-    const taskId = await createRenderTask(imageUrl);
+    const taskId = await createRenderTask(imageUrl, renderPromptFor(registered.template.trade));
     const taskRef = signTaskRef(slug, grant.leadId, taskId);
     if (!taskRef) throw new Error('Could not sign the task');
 

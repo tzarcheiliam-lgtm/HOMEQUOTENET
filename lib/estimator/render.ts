@@ -18,8 +18,10 @@ import type { RenderStatus } from './render-client.ts';
  *   (default 100) across all estimators per 24 h. The row is inserted BEFORE
  *   counting, so parallel requests always see each other (see the POST route).
  * - kie.ai. The PNG is uploaded (file-stream-upload on kie.ai's upload host), then an image-edit
- *   task (nano-banana-pro, image_input) turns it into a drone photo that keeps
- *   the layout. Renders are on only when env KIE_API_KEY is set.
+ *   task (nano-banana-pro, image_input) turns it into a photo that keeps the
+ *   layout: a drone photo for a pool, an eye-level interior photo for a
+ *   bathroom (renderPromptFor picks by the template's trade). Renders are on
+ *   only when env KIE_API_KEY is set.
  *
  * Never log the key, the secret, a token or image data.
  */
@@ -57,6 +59,23 @@ export const RENDER_PROMPT = [
   'Soft natural shadows, bright midday Southern California light, true-to-life colours, sharp detail.',
   'No text, no labels, no watermark, no people.',
 ].join(' ');
+
+/** The bathroom builder's scene is a front-on elevation, so the photo is shot straight-on at eye level. */
+export const BATHROOM_RENDER_PROMPT = [
+  'Turn this bathroom design illustration into a photorealistic interior photograph of a newly remodeled bathroom,',
+  'shot straight-on at eye level with a wide-angle lens.',
+  'Keep exactly the same layout, fixtures, tile patterns, materials, colours and finishes;',
+  'realistic grout lines, glass reflections, soft natural window light and warm accent lighting.',
+  'No text, no people, no logos.',
+].join(' ');
+
+/** Edit prompt per trade (EstimatorTemplate.trade); anything unknown keeps the pool prompt. Kitchen slots in here. */
+const RENDER_PROMPTS: Record<string, string> = { pool: RENDER_PROMPT, bathroom: BATHROOM_RENDER_PROMPT };
+
+/** The render prompt for an estimator's trade. */
+export function renderPromptFor(trade: string): string {
+  return Object.hasOwn(RENDER_PROMPTS, trade) ? RENDER_PROMPTS[trade]! : RENDER_PROMPT;
+}
 
 /** True when the server can run renders (kie.ai key and a signing secret). */
 export function rendersEnabled(): boolean {
@@ -184,14 +203,14 @@ export async function uploadRenderImage(image: RenderImage, name: string): Promi
   return url;
 }
 
-/** Start the image-edit task; returns kie.ai's task id. */
-export async function createRenderTask(imageUrl: string): Promise<string> {
+/** Start the image-edit task (prompt from renderPromptFor; the pool prompt by default); returns kie.ai's task id. */
+export async function createRenderTask(imageUrl: string, prompt: string = RENDER_PROMPT): Promise<string> {
   const res = await fetch(`${KIE_BASE}/api/v1/jobs/createTask`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${kieKey()}` },
     body: JSON.stringify({
       model: renderModel(),
-      input: { prompt: RENDER_PROMPT, image_input: [imageUrl], aspect_ratio: '3:2', resolution: '2K', output_format: 'jpg' },
+      input: { prompt, image_input: [imageUrl], aspect_ratio: '3:2', resolution: '2K', output_format: 'jpg' },
     }),
     signal: AbortSignal.timeout(20_000),
   });

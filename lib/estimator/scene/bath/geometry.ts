@@ -34,6 +34,8 @@ const BACK_WALL_FRAC = 0.74;
 /** Drawn room limits (typed dimensions beyond these still draw a sensible room). */
 const ROOM_W_MAX = 20;
 const ROOM_D_MAX = 16;
+/** Floor space right of a freestanding tub for its filler. */
+const FILLER_ROOM = 0.45;
 
 export type Pt = { x: number; y: number };
 
@@ -227,13 +229,14 @@ export function bathLayout(spec: BathSceneSpec): BathLayout {
   const tubGap = separate ? 0.6 : 0;
   const vanityKind: BathVanity = spec.vanity ?? 'single';
   const vanityW = VANITY_W[vanityKind][size];
-  const toiletW = 2.3;
+  const toiletW = 2.2;
   const rightGap = 0.35;
   const minGap = 0.25;
 
-  const bathingW = showerW + alcoveW + partitionW + (separate ? tubGap + tubW + tubGap : 0);
+  const bathingW = showerW + alcoveW + partitionW + (separate ? tubGap + tubW + tubGap + FILLER_ROOM : 0);
   const core = bathingW + minGap + vanityW + rightGap;
-  const withToilet = !separate && core + toiletW <= wallW + 1e-9;
+  // The toilet comes along when it (nearly) fits: up to a foot of extra width is drawn rather than drop it.
+  const withToilet = !separate && core + toiletW <= wallW + 1;
   const needed = core + (withToilet ? toiletW : 0);
   const roomW = Math.max(wallW, needed);
 
@@ -252,15 +255,16 @@ export function bathLayout(spec: BathSceneSpec): BathLayout {
   if (walkIn) {
     shower = { x0: 0, x1: showerW, depth: showerDepth, tileTop: C, glass: true, curb: separate ? 0.15 : 0.12 };
     const mid = showerW / 2;
-    if (spec.extras.niche) niche = { x0: mid - 0.75, x1: mid + 0.75, y0: 3.7, y1: 4.75 };
+    if (spec.extras.niche) niche = { x0: mid - 0.75, x1: mid + 0.75, y0: 4.45, y1: 5.45 };
     if (spec.extras.bench) bench = { x1: 1.25, height: 1.5, zFromBack0: 0, zFromBack1: showerDepth - 0.35 };
     showerHead = spec.extras.rainHead ? { x: mid, y: 7.25, kind: 'rain' } : { x: mid + 0.2, y: 6.6, kind: 'wall' };
-    valve = { x: mid + 0.2, y: 4.1 };
+    valve = { x: mid + 0.2, y: 3.6 };
     cursor = showerW;
     if (separate) {
       const cx = cursor + tubGap + tubW / 2;
       freestanding = { cx, width: tubW, depth: 2.6, height: 1.95, zFront: camera.zBack - 0.45 - 2.6 };
-      cursor = cx + tubW / 2 + tubGap;
+      // Room on the right for the floor-mounted filler.
+      cursor = cx + tubW / 2 + tubGap + FILLER_ROOM;
     }
   } else {
     const glass = spec.glass;
@@ -275,7 +279,7 @@ export function bathLayout(spec: BathSceneSpec): BathLayout {
     };
     if (spec.extras.niche) niche = { x0: 1.6, x1: 3.0, y0: 3.4, y1: 4.4 };
     showerHead = spec.extras.rainHead ? { x: 2.5, y: 7.2, kind: 'rain' } : { x: 2.5, y: 6.4, kind: 'wall' };
-    valve = { x: 2.5, y: 3.0 };
+    valve = { x: 2.5, y: 2.8 };
     cursor = alcoveW + partitionW;
   }
 

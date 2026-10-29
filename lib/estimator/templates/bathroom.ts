@@ -28,6 +28,14 @@ import { DEFAULT_LIMITS, type EstimatorQuestion, type EstimatorTemplate } from '
  * ../catalog/bathroom.ts.
  */
 
+/**
+ * Help line for the questions whose option tiles show pictures. The only
+ * bathroom pictures today are AI-generated style ideas (HomeQuote Network has
+ * no jobs of its own), so the tiles say so; a contractor using photos of real
+ * jobs would drop this line.
+ */
+const AI_PICTURES = 'Pictures are AI-generated style ideas.';
+
 /** The three "not sure / no / yes" site questions share these options. */
 const siteQuestion = (id: string, label: string, flag: string, extra: Partial<EstimatorQuestion> = {}): EstimatorQuestion => ({
   id,
@@ -119,6 +127,7 @@ export const BATHROOM_TEMPLATE: EstimatorTemplate = {
     {
       id: 'bathing',
       label: 'Shower or tub?',
+      help: AI_PICTURES,
       kind: 'single',
       summaryLabel: 'Shower/tub',
       showWhen: { questionId: 'scope', anyOf: ['bathing'] },
@@ -152,6 +161,7 @@ export const BATHROOM_TEMPLATE: EstimatorTemplate = {
     {
       id: 'vanity',
       label: 'Which vanity?',
+      help: AI_PICTURES,
       kind: 'single',
       summaryLabel: 'Vanity',
       screen: 'vanity',
@@ -233,7 +243,7 @@ export const BATHROOM_TEMPLATE: EstimatorTemplate = {
     {
       id: 'extras',
       label: 'Any upgrades?',
-      help: 'Optional. Pick any you would like.',
+      help: `Optional. Pick any you would like. ${AI_PICTURES}`,
       kind: 'multi',
       summaryLabel: 'Upgrade',
       showWhen: { questionId: 'scope', anyOf: ['extras'] },
@@ -301,7 +311,7 @@ export const BATHROOM_TEMPLATE: EstimatorTemplate = {
       includes: [
         'Freestanding tub and separate glass shower',
         'Marble shower walls and large stone floor',
-        'Floating double-sink vanity',
+        'Floating vanity in navy or green, marble-look top',
         'Heated floor, rain head and LED mirror',
         'Shower bench and niche',
       ],

@@ -1,5 +1,5 @@
 /**
- * Pure helpers for the live pool builder's sense of progress: the named
+ * Pure helpers for the live builder's sense of progress: the named
  * stages above the questions (Pool, Style, Details, Unlock), the rewards being
  * earned (Design, Price, Realistic photo) and the wording of the unlock step.
  * No React and no DOM, so they are unit-tested directly
@@ -55,8 +55,11 @@ function ownStage(screen: FlowScreen): StageId | undefined {
  * gallery placed after the property questions stays in Details), so the bar
  * only moves forward. Opening "Build my own" adds screens inside Style rather
  * than adding stages, so the number of stages does not jump mid-way.
+ * `firstLabel` names the first stage for the trade ("Pool", "Bathroom"; the
+ * stage id stays 'pool').
  */
-export function flowStages(screens: readonly FlowScreen[]): { stages: Stage[]; stageOf: Record<string, StageId> } {
+export function flowStages(screens: readonly FlowScreen[], firstLabel = STAGE_LABEL.pool): { stages: Stage[]; stageOf: Record<string, StageId> } {
+  const labels: Record<StageId, string> = { ...STAGE_LABEL, pool: firstLabel };
   const stages: Stage[] = [];
   const stageOf: Record<string, StageId> = {};
   let current: StageId | undefined;
@@ -65,7 +68,7 @@ export function flowStages(screens: readonly FlowScreen[]): { stages: Stage[]; s
     const next = own && (!current || ORDER.indexOf(own) > ORDER.indexOf(current)) ? own : (current ?? own ?? 'pool');
     if (next !== current) {
       current = next;
-      stages.push(next === 'unlock' ? { id: next, label: STAGE_LABEL[next], prize: true } : { id: next, label: STAGE_LABEL[next] });
+      stages.push(next === 'unlock' ? { id: next, label: labels[next], prize: true } : { id: next, label: labels[next] });
     }
     stageOf[screen.id] = current;
   }
@@ -136,14 +139,14 @@ export type UnlockCopy = {
  * Words for the unlock step (ZIP and contact screens). Only promises the
  * realistic photo when renders are on, never says anything will be sent to
  * them (the price and photo appear on the page), and never calls the design
- * locked: they can already see it.
+ * locked: they can already see it. `subject` is the trade's ("pool", "bathroom").
  */
-export function unlockCopy(rendersEnabled: boolean): UnlockCopy {
+export function unlockCopy(rendersEnabled: boolean, subject = 'pool'): UnlockCopy {
   return rendersEnabled
     ? {
         zipTitle: 'Unlock your realistic photo and price',
         contactTitle: 'One last step to unlock your photo and price',
-        promise: 'Your design is ready. Unlock your ballpark price now, and a realistic photo of your pool about a minute later.',
+        promise: `Your design is ready. Unlock your ballpark price now, and a realistic photo of your ${subject} about a minute later.`,
         submit: 'Unlock my photo and price',
         submitting: 'Crunching numbers…',
       }

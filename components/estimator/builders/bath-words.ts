@@ -62,6 +62,8 @@ export function bathIsVisual(q: Pick<EstimatorQuestion, 'id' | 'role'>): boolean
 
 /** "Marble shower tile", "Sage green walls", "Brushed gold fixtures", "Signature package". */
 export function bathOptionPhrase(questionId: string, optionId: string, label: OptionLabeler): string {
+  // "Preview: Not sure bathroom" reads broken.
+  if (questionId === 'size' && optionId === 'unsure') return 'Typical-size bathroom';
   const name = label(questionId, optionId) ?? humanize(optionId);
   switch (questionId) {
     case 'size':
@@ -149,4 +151,27 @@ export function bathDescription(scene: BathSceneSpec, label: OptionLabeler = () 
   const extras = EXTRAS.filter((x) => scene.extras[x.key]).map((x) => lower(label('extras', x.optionId) ?? x.name));
   if (extras.length) text += ` Upgrades: ${listWords(extras)}.`;
   return text;
+}
+
+/** Upgrades switched on between two pictures, as template option refs (the chip shows the option's photo when it has one). */
+export function bathAddedOptions(prev: BathSceneSpec, next: BathSceneSpec): { questionId: string; optionId: string }[] {
+  const added = EXTRAS.filter((x) => next.extras[x.key] && !prev.extras[x.key]).map((x) => ({ questionId: 'extras', optionId: x.optionId }));
+  if (next.bathing !== prev.bathing && next.bathing !== 'existing') added.unshift({ questionId: 'bathing', optionId: next.bathing });
+  if (next.vanity && next.vanity !== prev.vanity) added.push({ questionId: 'vanity', optionId: next.vanity });
+  return added;
+}
+
+/** What the result heading calls their bathroom, from the picture they made. */
+function bathNoun(scene: BathSceneSpec): string {
+  if (scene.bathing === 'walk_in') return 'walk-in shower bathroom';
+  if (scene.bathing === 'tub_and_shower') return 'spa-style bathroom';
+  if (scene.project === 'refresh') return 'refreshed bathroom';
+  return 'new bathroom';
+}
+
+/** "Sam, here’s your walk-in shower bathroom" (or "Here’s your new bathroom" without a name). */
+export function bathResultHeading(firstName: string, scene: BathSceneSpec): string {
+  const noun = bathNoun(scene);
+  const name = firstName.trim();
+  return name ? `${name}, here’s your ${noun}` : `Here’s your ${noun}`;
 }

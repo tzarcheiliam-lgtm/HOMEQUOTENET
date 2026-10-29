@@ -9,7 +9,8 @@ import type { DimensionsInput } from '../use-estimator-flow';
 /**
  * "I know my dimensions": optional length / width (and depth) in feet. Values
  * outside the template limits are ignored and the size preset is used; the
- * hint says so instead of silently changing the number.
+ * hint says so instead of silently changing the number. A template without
+ * depth (a room: maxDepthFt 0) asks for length and width only.
  */
 export function SizeDimensions({
   template,
@@ -28,6 +29,7 @@ export function SizeDimensions({
 }) {
   const uid = useId();
   const lim = template.geometry.limits;
+  const depth = lim.maxDepthFt > 0;
   // Tabular figures: the digits do not jiggle as the picture resizes with each keystroke.
   const numberInput = cn(inputClass, 'tabular-nums');
   const set = (key: keyof DimensionsInput) => (e: { target: { value: string } }) => onChange({ ...value, [key]: e.target.value });
@@ -46,7 +48,7 @@ export function SizeDimensions({
       <div id={`${uid}-dims`} hidden={!enabled}>
         {enabled ? (
           <>
-            <div className="mt-2 grid grid-cols-3 gap-3">
+            <div className={cn('mt-2 grid gap-3', depth ? 'grid-cols-3' : 'grid-cols-2')}>
               <Field label="Length (ft)">
                 {(p) => (
                   <input {...p} type="number" inputMode="decimal" min={lim.minFt} max={lim.maxLengthFt} step="any" value={value.length} onChange={set('length')} className={numberInput} />
@@ -57,11 +59,13 @@ export function SizeDimensions({
                   <input {...p} type="number" inputMode="decimal" min={lim.minFt} max={lim.maxWidthFt} step="any" value={value.width} onChange={set('width')} className={numberInput} />
                 )}
               </Field>
-              <Field label="Avg depth (ft)" hint="Optional">
-                {(p) => (
-                  <input {...p} type="number" inputMode="decimal" min={lim.minDepthFt} max={lim.maxDepthFt} step="any" value={value.depth} onChange={set('depth')} className={numberInput} />
-                )}
-              </Field>
+              {depth ? (
+                <Field label="Avg depth (ft)" hint="Optional">
+                  {(p) => (
+                    <input {...p} type="number" inputMode="decimal" min={lim.minDepthFt} max={lim.maxDepthFt} step="any" value={value.depth} onChange={set('depth')} className={numberInput} />
+                  )}
+                </Field>
+              ) : null}
             </div>
             <p role="status" className="mt-2 min-h-5 text-sm text-[var(--hq-warn)]">
               {hint ?? ''}

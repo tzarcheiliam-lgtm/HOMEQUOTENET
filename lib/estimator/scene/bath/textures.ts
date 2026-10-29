@@ -1,64 +1,92 @@
 import type { BathSpriteEntry, BathSpriteId, BathTextureEntry, BathTextureId } from './types.ts';
 
 /**
- * Texture and sprite manifest for the live bathroom scene. src null = not
- * generated yet: the renderer uses `fallback` (textures) or its vector
- * drawing (sprites). Generated files go in public/estimator/scene/bath/
- * (textures/ and sprites/), made with kie.ai or procedurally, never taken
- * from the web. When a file lands, set its src and make `fallback` the
- * file's mean colour so the loading state matches the finished picture.
+ * Texture and sprite manifest for the live bathroom scene. Every file in
+ * public/estimator/scene/bath/ (textures/ and sprites/) was made with kie.ai
+ * or procedurally by scripts/generate-bath-assets.mjs, never taken from the
+ * web; that script holds the prompts, crops and post-processing. src null =
+ * no file: the renderer uses `fallback` (textures) or its vector drawing
+ * (sprites). `fallback` is each file's mean colour, so the loading state
+ * matches the finished picture.
+ *
+ * Textures are square WebP, seamless (tested 3x3). Wall tile, paint and
+ * cabinet fronts are shot straight-on; floors and counters straight down.
+ * Sprites are front-on (eye-level) cut-outs with soft alpha edges; their
+ * footprints keep the trimmed image's proportions. Vanity sprites are plain
+ * satin white, so the renderer can multiply the chosen vanity_* finish over
+ * the cabinet body. Faucets come per metal finish; the shower head, rain
+ * head, towel bar and sconce are chrome / brushed nickel only (tint or draw
+ * small metal with BATH_METAL_COLORS). shower_glass is a mostly transparent
+ * procedural panel (clear glass cannot be chroma-keyed).
  */
 export const BATH_TEXTURE_DIR = '/estimator/scene/bath/textures/';
 export const BATH_SPRITE_DIR = '/estimator/scene/bath/sprites/';
 
+const tex = (id: BathTextureId) => `${BATH_TEXTURE_DIR}${id}.webp`;
+const sprite = (id: BathSpriteId) => `${BATH_SPRITE_DIR}${id}.webp`;
+
 export const BATH_TEXTURES: Record<BathTextureId, BathTextureEntry> = {
-  // 3 x 6" subway, 8 courses per image.
-  tile_subway: { src: null, realFt: 2, fallback: '#f1f0ec' },
-  // 24 x 48" slabs, 2 across.
-  tile_large_porcelain: { src: null, realFt: 4, fallback: '#e4e1db' },
-  // 4 x 4" handmade squares.
-  tile_zellige: { src: null, realFt: 2, fallback: '#cfe0d8' },
-  tile_marble: { src: null, realFt: 4, fallback: '#ecebe8' },
-  tile_plain: { src: null, realFt: 2, fallback: '#e9e6df' },
-  floor_porcelain_wood: { src: null, realFt: 6, fallback: '#b08a64' },
-  floor_large_stone: { src: null, realFt: 4, fallback: '#cfcac1' },
+  // 3 x 6" subway in running bond: 3 tiles across, 6 courses.
+  tile_subway: { src: tex('tile_subway'), realFt: 1.5, fallback: '#ebebe5' },
+  // 24 x 48" slabs, 2 across (joints every 2 ft; the slab ends sit off-frame).
+  tile_large_porcelain: { src: tex('tile_large_porcelain'), realFt: 4, fallback: '#d4cec2' },
+  // 4 x 4" handmade squares, about 6 x 6.
+  tile_zellige: { src: tex('tile_zellige'), realFt: 2, fallback: '#a6baa7' },
+  tile_marble: { src: tex('tile_marble'), realFt: 4, fallback: '#e0dedb' },
+  // One 12" tile, joints through the middle.
+  tile_plain: { src: tex('tile_plain'), realFt: 1, fallback: '#e6e4d9' },
+  // 8 x 48" wood-look planks.
+  floor_porcelain_wood: { src: tex('floor_porcelain_wood'), realFt: 6, fallback: '#b59571' },
+  // One 24" tile, joints through the middle.
+  floor_large_stone: { src: tex('floor_large_stone'), realFt: 2, fallback: '#c2bdb1' },
   // 2" hex.
-  floor_hex_mosaic: { src: null, realFt: 1.5, fallback: '#efefec' },
-  floor_lvp: { src: null, realFt: 6, fallback: '#a9927a' },
-  floor_plain: { src: null, realFt: 2, fallback: '#d8d2c6' },
-  paint_soft_white: { src: null, realFt: 4, fallback: '#f3f0e8' },
-  paint_greige: { src: null, realFt: 4, fallback: '#d6cdbf' },
-  paint_sage: { src: null, realFt: 4, fallback: '#b5c0a6' },
-  paint_navy: { src: null, realFt: 4, fallback: '#2d3a52' },
-  counter_quartz_white: { src: null, realFt: 3, fallback: '#f4f3f0' },
-  counter_marble_look: { src: null, realFt: 3, fallback: '#ebe9e4' },
-  counter_concrete: { src: null, realFt: 3, fallback: '#a8a6a1' },
-  vanity_white: { src: null, realFt: 3, fallback: '#f2f1ee' },
-  vanity_wood: { src: null, realFt: 3, fallback: '#a87b52' },
-  vanity_navy_green: { src: null, realFt: 3, fallback: '#2f4a4a' },
-  vanity_black: { src: null, realFt: 3, fallback: '#26262a' },
+  floor_hex_mosaic: { src: tex('floor_hex_mosaic'), realFt: 1.5, fallback: '#ecebe5' },
+  floor_lvp: { src: tex('floor_lvp'), realFt: 6, fallback: '#a48664' },
+  // tile_plain recoloured beige: one 12" tile.
+  floor_plain: { src: tex('floor_plain'), realFt: 1, fallback: '#d6cfc1' },
+  // Greige, sage and navy are recolours of the soft-white roller texture.
+  paint_soft_white: { src: tex('paint_soft_white'), realFt: 4, fallback: '#efeee5' },
+  paint_greige: { src: tex('paint_greige'), realFt: 4, fallback: '#d1c8b8' },
+  paint_sage: { src: tex('paint_sage'), realFt: 4, fallback: '#b3bea4' },
+  paint_navy: { src: tex('paint_navy'), realFt: 4, fallback: '#2d3a52' },
+  counter_quartz_white: { src: tex('counter_quartz_white'), realFt: 2.5, fallback: '#efeeec' },
+  counter_marble_look: { src: tex('counter_marble_look'), realFt: 2.4, fallback: '#ebe9e4' },
+  counter_concrete: { src: tex('counter_concrete'), realFt: 3, fallback: '#9c9a94' },
+  vanity_white: { src: tex('vanity_white'), realFt: 3, fallback: '#efeee9' },
+  vanity_wood: { src: tex('vanity_wood'), realFt: 3, fallback: '#b38b63' },
+  // Recolour of the white satin finish.
+  vanity_navy_green: { src: tex('vanity_navy_green'), realFt: 3, fallback: '#2e494b' },
+  vanity_black: { src: tex('vanity_black'), realFt: 3, fallback: '#29282b' },
 };
 
-/** Front-on footprints in feet (width x height of the image). */
+/** Front-on footprints in feet (width x height of the trimmed image). */
 export const BATH_SPRITES: Record<BathSpriteId, BathSpriteEntry> = {
-  tub_alcove: { src: null, widthFt: 5, heightFt: 1.8 },
-  tub_freestanding: { src: null, widthFt: 5.5, heightFt: 2 },
-  shower_glass: { src: null, widthFt: 3, heightFt: 6.5 },
-  shower_head: { src: null, widthFt: 0.6, heightFt: 0.8 },
-  rain_head: { src: null, widthFt: 1, heightFt: 1.2 },
-  toilet: { src: null, widthFt: 1.6, heightFt: 2.6 },
-  vanity_single: { src: null, widthFt: 3, heightFt: 2.9 },
-  vanity_double: { src: null, widthFt: 6, heightFt: 2.9 },
-  vanity_floating: { src: null, widthFt: 4, heightFt: 1.8 },
-  mirror: { src: null, widthFt: 2.2, heightFt: 3 },
-  mirror_led: { src: null, widthFt: 2.4, heightFt: 3.2 },
-  sconce: { src: null, widthFt: 0.5, heightFt: 1.2 },
-  faucet_chrome: { src: null, widthFt: 0.6, heightFt: 0.7 },
-  faucet_matte_black: { src: null, widthFt: 0.6, heightFt: 0.7 },
-  faucet_brushed_gold: { src: null, widthFt: 0.6, heightFt: 0.7 },
-  faucet_brushed_nickel: { src: null, widthFt: 0.6, heightFt: 0.7 },
-  towel: { src: null, widthFt: 1.6, heightFt: 2.2 },
-  plant: { src: null, widthFt: 1.2, heightFt: 2 },
+  // Apron-front 60" tub (front face only).
+  tub_alcove: { src: sprite('tub_alcove'), widthFt: 5, heightFt: 1.54 },
+  tub_freestanding: { src: sprite('tub_freestanding'), widthFt: 5.5, heightFt: 2.13 },
+  // Procedural frameless panel, clamps on the left edge.
+  shower_glass: { src: sprite('shower_glass'), widthFt: 3, heightFt: 6.5 },
+  // Wall arm + head, seen face-on.
+  shower_head: { src: sprite('shower_head'), widthFt: 0.6, heightFt: 0.84 },
+  // 12" disc on a ceiling drop arm (arm included).
+  rain_head: { src: sprite('rain_head'), widthFt: 1, heightFt: 0.81 },
+  toilet: { src: sprite('toilet'), widthFt: 1.12, heightFt: 2.6 },
+  // 36" shaker with a 4" backsplash on the white quartz top.
+  vanity_single: { src: sprite('vanity_single'), widthFt: 3, heightFt: 3.39 },
+  // 72"-style double, drawn a little low: kept to the image's proportions.
+  vanity_double: { src: sprite('vanity_double'), widthFt: 6.5, heightFt: 2.26 },
+  vanity_floating: { src: sprite('vanity_floating'), widthFt: 4, heightFt: 1.43 },
+  mirror: { src: sprite('mirror'), widthFt: 2.2, heightFt: 3.19 },
+  mirror_led: { src: sprite('mirror_led'), widthFt: 2.4, heightFt: 3.39 },
+  sconce: { src: sprite('sconce'), widthFt: 0.69, heightFt: 1.2 },
+  // Side elevation, spout pointing right (flip with scaleX(-1) for the other way).
+  faucet_chrome: { src: sprite('faucet_chrome'), widthFt: 0.47, heightFt: 0.7 },
+  faucet_matte_black: { src: sprite('faucet_matte_black'), widthFt: 0.47, heightFt: 0.7 },
+  faucet_brushed_gold: { src: sprite('faucet_brushed_gold'), widthFt: 0.47, heightFt: 0.7 },
+  faucet_brushed_nickel: { src: sprite('faucet_brushed_nickel'), widthFt: 0.47, heightFt: 0.7 },
+  // White towel on a chrome bar.
+  towel: { src: sprite('towel'), widthFt: 1.6, heightFt: 1.93 },
+  plant: { src: sprite('plant'), widthFt: 0.93, heightFt: 2 },
 };
 
 /** Fixture finish colours for small vector metal (trim, bars, sconce arms). */

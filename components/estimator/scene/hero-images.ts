@@ -9,3 +9,22 @@ export const HERO_IMAGES = {
   illustration: '/estimator/hero/pool-design-illustration.webp',
   photo: '/estimator/hero/pool-design-photo.webp',
 } as const;
+
+/**
+ * Bathroom builder examples. The pair (a <BathScene> design and its kie.ai
+ * render, same 1200 x 800 WebP format) is made by the integration step; the
+ * clip is an AI-rendered remodeled bathroom (scripts/generate-bath-assets.mjs).
+ * Either may be missing: the page only shows the files that exist
+ * (resolveExampleMedia).
+ */
+export const BATH_EXAMPLE_IMAGES = {
+  illustration: '/estimator/hero/bath-example-design.webp',
+  photo: '/estimator/hero/bath-example-photo.webp',
+} as const;
+
+export const BATH_HERO_VIDEO = {
+  mp4: '/estimator/hero/bath-hero.mp4',
+  webm: '/estimator/hero/bath-hero.webm',
+  poster: '/estimator/hero/bath-hero.webp',
+  alt: 'AI-rendered example of a remodeled bathroom with a glass walk-in shower, a floating oak vanity and a freestanding tub',
+} as const;

@@ -2,10 +2,10 @@
 
 import { memo, useMemo } from 'react';
 import { Check, Lock, Sparkles } from 'lucide-react';
-import { buildScene } from '@/lib/estimator/scene/scene';
 import type { Answers, EstimatorTemplate, PoolDimensions } from '@/lib/estimator/types';
 import { PHOTO_REWARD_LABEL } from '../builder-progress';
-import { PoolScene } from '../scene/pool-scene';
+import type { TradeBuilder } from '../builders';
+import { builderFor } from '../scene/scene-panel';
 
 /**
  * A frosted bar standing in for hidden figures. Deliberately no digits and no
@@ -40,25 +40,30 @@ const row = 'flex items-center gap-1.5 text-xs font-semibold sm:text-sm';
  */
 export const UnlockPreview = memo(function UnlockPreview({
   template,
+  builder: builderProp,
   answers,
   dimensions,
   rendersEnabled,
   promise,
 }: {
   template: EstimatorTemplate;
+  /** The trade adapter; picked from template.trade when omitted. */
+  builder?: TradeBuilder<unknown>;
   answers: Answers;
   dimensions?: PoolDimensions;
   rendersEnabled: boolean;
   /** unlockCopy(rendersEnabled).promise */
   promise: string;
 }) {
-  const scene = useMemo(() => buildScene(template, { answers, dimensions }), [template, answers, dimensions]);
+  const builder = builderProp ?? builderFor(template);
+  const { Scene } = builder;
+  const scene = useMemo(() => builder.buildSpec(template, { answers, dimensions }), [builder, template, answers, dimensions]);
   return (
     <div data-unlock-preview="" className="mb-6">
       {rendersEnabled ? <style>{CSS}</style> : null}
       <div className="relative flex items-stretch gap-3.5 overflow-hidden rounded-[18px] border border-[var(--es-aqua,#2ec5d3)]/30 bg-[#06122b]/55 p-2.5 shadow-[0_18px_40px_-24px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.06)]">
         <div aria-hidden="true" className="relative aspect-[3/2] w-[44%] max-w-52 shrink-0 self-center overflow-hidden rounded-[10px] bg-[#d8d2c3] outline-1 -outline-offset-1 outline-white/10">
-          <PoolScene scene={scene} label="" still className="absolute inset-0 block size-full" />
+          <Scene scene={scene} mode={builder.modes[0].id} label="" still className="absolute inset-0 block size-full" />
           {rendersEnabled ? (
             // The photo still to come: the right half "developing" (a frost with one slow shine), not their design hidden.
             <span className="absolute inset-y-0 right-0 w-1/2 overflow-hidden bg-[linear-gradient(90deg,rgba(226,240,255,0.35),rgba(226,240,255,0.72))] shadow-[inset_1px_0_0_rgba(255,255,255,0.9)]">

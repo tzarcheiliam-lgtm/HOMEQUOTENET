@@ -20,13 +20,25 @@ export function heroCopy(rendersEnabled: boolean): { headline: string; subline: 
 
 /**
  * Compact hero above the live builder: the outcome as the headline, one line
- * of how it works, and the contractor's facts (tablet and up; phones carry the
+ * of how it works, and the business's facts (tablet and up; phones carry the
  * license in the header). No pictures of its own: the builder's frame right
  * under it is the picture, so a phone shows the first question on the first
  * screen. Nothing here changes after the result, so it never contradicts it.
+ * `copy` is the trade's (TradeBuilder.hero, already picked for rendersEnabled);
+ * the pool's heroCopy when omitted.
  */
-export function EstimatorHero({ rendersEnabled, facts = [] }: { rendersEnabled: boolean; facts?: readonly string[] }) {
-  const copy = heroCopy(rendersEnabled);
+export function EstimatorHero({
+  rendersEnabled,
+  facts = [],
+  copy: copyProp,
+  factsLabel = 'About this contractor',
+}: {
+  rendersEnabled: boolean;
+  facts?: readonly string[];
+  copy?: { headline: string; subline: string };
+  factsLabel?: string;
+}) {
+  const copy = copyProp ?? heroCopy(rendersEnabled);
   return (
     <div className="relative mx-auto w-full max-w-7xl px-5 pt-3 sm:px-8 sm:pt-8 lg:flex lg:items-end lg:justify-between lg:gap-12 lg:pt-10">
       <div className="min-w-0 lg:max-w-[44rem]">
@@ -34,7 +46,7 @@ export function EstimatorHero({ rendersEnabled, facts = [] }: { rendersEnabled: 
         <p className="mt-2 max-w-xl text-pretty text-sm leading-6 text-[var(--hq-text-muted)] sm:mt-3 sm:text-base sm:leading-7">{copy.subline}</p>
       </div>
       {facts.length ? (
-        <ul aria-label="About this contractor" className="mt-4 hidden flex-wrap gap-x-5 gap-y-2 text-sm text-[var(--hq-text)] sm:flex lg:mt-0 lg:shrink-0 lg:flex-col lg:pb-1">
+        <ul aria-label={factsLabel} className="mt-4 hidden flex-wrap gap-x-5 gap-y-2 text-sm text-[var(--hq-text)] sm:flex lg:mt-0 lg:shrink-0 lg:flex-col lg:pb-1">
           {facts.map((fact) => (
             <li key={fact} className="inline-flex items-center gap-2">
               <span aria-hidden="true" className="grid size-[18px] place-items-center rounded-full bg-[var(--es-aqua,#2ec5d3)]/15 text-[var(--es-aqua,#2ec5d3)]">
