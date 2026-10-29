@@ -12,7 +12,12 @@ type Filter = { col: string; op: 'eq' | 'in' | 'is' | 'ilike' | 'neq' | 'gte' | 
 const SET_RETURNING = new Set(['signing_claim_auto_reminders', 'claim_workflow_runs', 'claim_workflow_events', 'claim_ai_call_jobs', 'claim_sms_outbound']);
 /** Columns that are jsonb arrays (an empty or all-string array would otherwise be sent as text[]). */
 const JSONB_ARRAY_COLUMNS = new Set(['sections', 'signers', 'signer_roles']);
-const ident = (s: string) => `"${s.replace(/"/g, '""')}"`;
+const ident = (s: string) => {
+  // PostgREST JSON paths in filters, e.g. .not('metadata->estimator', 'is', null).
+  const path = /^(\w+)->(>?)(\w+)$/.exec(s);
+  if (path) return `"${path[1]}"->${path[2]}'${path[3]}'`;
+  return `"${s.replace(/"/g, '""')}"`;
+};
 
 class Builder {
   private filters: Filter[] = [];

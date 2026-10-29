@@ -16,6 +16,12 @@ import { mapHostFields } from '@/lib/booking/types';
 import { callMinutes, prettyPhone } from '@/lib/emails/booking';
 import { AWAIT_BOOKING_STEP, keepGoingText, planRebook, rebookText, threeSpread } from './scheduling';
 import { hasLiveAppointment, loadBookingOptions } from './scheduling.server';
+import { queueRecoveryText } from './recovery';
+import { callNames, noShowText, unbookedText } from '@/lib/booking/recovery-copy';
+import { findUnbookedLeads, leadCalendar, UNBOOKED_AFTER_MS, UNBOOKED_WINDOW_MS, unbookedBlocker } from '@/lib/booking/unbooked.server';
+import { loadLeadDesign } from '@/lib/leads/design.server';
+import { callLengthPhrase } from '@/lib/booking/host-contact';
+import { DEFAULT_REMINDER_CONFIG } from './reminder-config';
 
 /**
  * Reminder texts and follow-ups through the Mac bridge (no-show prevention). Runs every 5 minutes from the workflow
@@ -31,7 +37,11 @@ import { hasLiveAppointment, loadBookingOptions } from './scheduling.server';
  *   3. homeowner conversations that went quiet: follow-ups on the configured days, then either the request is closed
  *      or (keepGoing, the default) a text every few days until they reply, book or text STOP;
  *   4. homeowner conversations handed to a person to book a time and still not booked a day later: the assistant
- *      re-offers three real open times (then once more on day 3) and takes the conversation back so it can book.
+ *      re-offers three real open times (then once more on day 3) and takes the conversation back so it can book;
+ *   5. funnel / estimator leads who gave their details but didn't book a call within 2 hours: one text (their design
+ *      is ready, want a quick call?), the email with the booking link comes from lib/booking/recovery.server.ts.
+ *      Once per lead (sms_reminders no_reply / <lead id> / unbooked); never once they booked, opted out, or a person
+ *      texted or called them. The ordinary follow-ups (3) still run on their own days for an assistant conversation.
  * Every step is claimed in sms_reminders before its text is queued (unique per meeting time), so nothing is sent
  * twice and a rescheduled meeting gets its reminders again. All texting rules apply: texting on, opt-outs,
  * do-not-call, the daily limit and texting hours.
@@ -45,7 +55,7 @@ const OPEN_SALES = ['scheduled', 'confirmed', 'rescheduled'];
 const OPEN_HOME = ['scheduled', 'rescheduled'];
 const PHONE_RE = /(\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/;
 const HOME_BASE = 'id,assignment_id,scheduled_at,status,created_at,updated_at';
-const HOME_NATIVE = 'lead_id,calendar_id,ends_at,time_zone,invitee_time_zone,meeting_type';
+const HOME_NATIVE = 'lead_id,calendar_id,ends_at,time_zone,invitee_time_zone,meeting_type,contact_email';
 const CALENDAR_COLS = 'id,kind,contractor_id,name,host_display_name,host_first_name,host_org,host_phone,host_email,host_photo_path,host_note';
 
 /** {how} in homeowner reminders: an on-site "free estimate visit", or the call booked on a HomeQuote calendar. */
@@ -186,7 +196,7 @@ export async function runTextReminders(db: Db, deps: ReminderDeps = {}): Promise
     const leadIds = [...new Set([...(assigns ?? []).map((a: any) => a.lead_id), ...list.map((a) => a.lead_id)].filter(Boolean))];
     const coIds = [...new Set([...(assigns ?? []).map((a: any) => a.contractor_id), ...(cals ?? []).map((c: any) => (c.kind === 'contractor' ? c.contractor_id : null))].filter(Boolean))];
     const [{ data: leads }, { data: cos }] = await Promise.all([
-      leadIds.length ? db.from('leads').select('id,first_name,phone,state,zip,archived_at,consent_granted').in('id', leadIds) : Promise.resolve({ data: [] }),
+      leadIds.length ? db.from('leads').select('id,first_name,phone,email,state,zip,archived_at,consent_granted').in('id', leadIds) : Promise.resolve({ data: [] }),
       coIds.length ? db.from('contractors').select('*').in('id', coIds) : Promise.resolve({ data: [] }),
     ]);
     const leadById = new Map((leads ?? []).map((l: any) => [l.id, l]));
@@ -211,6 +221,8 @@ export async function runTextReminders(db: Db, deps: ReminderDeps = {}): Promise
       const zones = resolveZones({ state: lead.state, zip: lead.zip }) ?? DEFAULT_ZONES;
       const ownTz = [a.invitee_time_zone, a.time_zone].find((z) => typeof z === 'string' && isValidTimeZone(z));
       const tz = (native && ownTz) || resolveZones({ state: lead.state, zip: lead.zip })?.[0] || LA;
+      // The no-show text is part of lead recovery (Reminders & follow-ups → Lead recovery); the email goes from lib/booking/recovery.server.ts.
+      if (a.status === 'no_show' && !cfg.recovery.noShow) continue;
       let steps = a.status === 'no_show' ? [planNoShow({ scheduledAt, markedAt: new Date(a.updated_at) })] : planMeetingReminders({ scheduledAt, bookedAt: new Date(a.created_at), timeZone: tz });
       if (native) steps = steps.filter((s) => s.step !== 'booked'); // the booking confirmation text already went out
       const confirmedKey = `${a.id}|confirmed|${scheduledAt.getTime()}`;
@@ -241,6 +253,13 @@ export async function runTextReminders(db: Db, deps: ReminderDeps = {}): Promise
       if (!convo) continue;
       const w = describeWhen(scheduledAt, sendAfter, tz);
       let body = renderReminder(cfg.homeowner.templates[step.step], { first_name: lead.first_name, host, brand: host, how: homeownerHow(a), ...w });
+      if (step.step === 'no_show' && cfg.homeowner.templates.no_show === DEFAULT_REMINDER_CONFIG.homeowner.templates.no_show) {
+        // "Sorry we missed you, Jordan! Want to pick a new time for your free pool design call? Check your email for a
+        // link to pick a new time, or reply R." (the email with the link comes from lib/booking/recovery.server.ts).
+        const design = await loadLeadDesign(db as any, lead.id).catch(() => null);
+        const hasEmail = !!(lead.email || (a as any).contact_email);
+        body = noShowText({ firstName: lead.first_name, call: callNames({ visit: !native, noun: design?.noun ?? null }).long, hasEmail });
+      }
       // Who calls, and from which number, so they pick up (links are stripped from texts; the email has the manage link).
       const from = native && a.meeting_type !== 'video' && step.step !== 'no_show' && hostContact?.phone ? prettyPhone(hostContact.phone) : null;
       if (from) body = finalizeOutbound(`${body} ${hostContact!.firstName ?? hostContact!.displayName} will call you from ${from}.`);
@@ -301,6 +320,41 @@ export async function runTextReminders(db: Db, deps: ReminderDeps = {}): Promise
       // The assistant takes the conversation back so it can book the time they reply with.
       await db.from('sms_conversations').update({ status: 'active', mode: pool.kind === 'call' ? 'call' : 'text', updated_at: now.toISOString() }).eq('id', c.id);
       await note(db, c.lead_id, `Still not booked ${step.step === 'rebook_1' ? 'a day' : 'three days'} after the handoff, so the texting assistant re-offered times: ${times.map((t) => t.label).join(', ')}.`, { followup: true });
+    }
+  }
+
+  // ---------------------------------------------------------------- 5. gave their details, never booked a call
+  if (cfg.recovery.unbooked) {
+    for (const u of await findUnbookedLeads(db as any, now)) {
+      const anchor = new Date(0); // once per lead
+      const { data: done } = await db.from('sms_reminders').select('id').eq('kind', 'no_reply').eq('ref_id', u.leadId).eq('step', 'unbooked').limit(1);
+      if (done?.length) continue;
+      const skip = (why: string) => claim('no_reply', u.leadId, 'unbooked', anchor, 'skipped', why);
+      const blocker = await unbookedBlocker(db as any, u);
+      if (blocker) { await skip(blocker); continue; }
+      // Already talking with the texting assistant (they replied): it is booking them; don't talk over it.
+      const { data: replied } = await db.from('sms_messages').select('id').eq('lead_id', u.leadId).eq('direction', 'in').limit(1);
+      if (replied?.length) { await skip('They are already texting with us.'); continue; }
+      if (await dailyCapReached()) continue;
+      const { data: lead } = await db.from('leads').select('id,first_name,email').eq('id', u.leadId).maybeSingle();
+      if (!lead) continue;
+      const calendar = await leadCalendar(db as any, u.contractorId);
+      const host = calendar ? resolveHostContact(calendar)?.displayName ?? null : null;
+      const { data: co } = u.contractorId ? await db.from('contractors').select('name').eq('id', u.contractorId).maybeSingle() : { data: null };
+      const design = await loadLeadDesign(db as any, u.leadId).catch(() => null);
+      const body = unbookedText({
+        firstName: (lead as any).first_name, design, project: projectLabel(u.industry),
+        callLength: calendar ? callLengthPhrase(calendar.durationMinutes, calendar.meetingType === 'video').replace(/^A /, 'a ') : 'a quick call',
+        host: host ?? (co as any)?.name ?? houseName, hasEmail: !!(lead as any).email,
+      });
+      if (!(await claim('no_reply', u.leadId, 'unbooked', anchor, 'queued'))) continue;
+      const r = await queueRecoveryText(db, {
+        leadId: u.leadId, body, contractorId: u.contractorId, now, label: 'Not-booked follow-up text',
+        until: new Date(u.submittedAt.getTime() + UNBOOKED_AFTER_MS + UNBOOKED_WINDOW_MS),
+        reminder: { kind: 'no_reply', ref: u.leadId, step: 'unbooked' },
+      });
+      if (r.ok) await db.from('sms_reminders').update({ message_id: r.messageId }).eq('kind', 'no_reply').eq('ref_id', u.leadId).eq('step', 'unbooked');
+      else { await db.from('sms_reminders').update({ status: 'skipped', detail: `Not sent: ${r.reason}` }).eq('kind', 'no_reply').eq('ref_id', u.leadId).eq('step', 'unbooked'); out.queued--; out.skipped++; }
     }
   }
 

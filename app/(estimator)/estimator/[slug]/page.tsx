@@ -14,6 +14,7 @@ import { publicTemplate } from '@/lib/estimator/config';
 import { configuratorSpecFor } from '@/lib/estimator/configurator/engine';
 import { funnelSpecFor } from '@/lib/estimator/funnel/engine';
 import { ESTIMATOR_SLUGS, getEstimator } from '@/lib/estimator/registry';
+import { funnelReviewsFor } from '@/lib/estimator/reviews.server';
 import { rendersEnabled } from '@/lib/estimator/render';
 
 /** "Pool remodel" -> "Pool Remodel" for page titles. */
@@ -23,6 +24,9 @@ const titleCase = (s: string) => s.replace(/\b[a-z]/g, (c) => c.toUpperCase());
 const BUILDER_ANCHOR = 'design';
 
 type Props = { params: Promise<{ slug: string }> };
+
+// Static, refreshed daily: the funnel landing's Google reviews (lib/estimator/reviews.server.ts, cached 24 h) stay current.
+export const revalidate = 86400;
 
 export function generateStaticParams() {
   return ESTIMATOR_SLUGS.map((slug) => ({ slug }));
@@ -73,7 +77,8 @@ export default async function EstimatorPage({ params }: Props) {
   const { template, contractor } = found;
   // Opt-in simple funnel: this page is its landing; the questions live at /estimator/[slug]/design.
   const funnel = funnelSpecFor(contractor);
-  if (funnel) return <FunnelLanding spec={funnel} contractor={contractor} designHref={`/estimator/${contractor.slug}/design`} />;
+  // Its Google reviews (5-star only, cached 24 h server-side; null -> nothing renders).
+  if (funnel) return <FunnelLanding spec={funnel} contractor={contractor} designHref={`/estimator/${contractor.slug}/design`} reviews={await funnelReviewsFor(contractor)} />;
   // Opt-in one-page configurator (size / finish / upgrades over pre-rendered photos): its own light page, header and footer.
   const spec = configuratorSpecFor(contractor);
   if (spec) {

@@ -86,10 +86,14 @@ describe('pool masters funnel: config', () => {
     for (const o of finish.options) expect(o.subtitle).not.toMatch(/travertine/i);
   });
 
-  it('copy is truthful: no reviews, ratings or monthly payments', () => {
+  it('copy is truthful: no written reviews, ratings or monthly payments', () => {
     // The example payment is DEMO ONLY (shown only with ?demo=financing; tests/estimator-demo-financing.test.tsx).
-    const text = JSON.stringify({ ...SPEC, configurator: undefined, bookingStep: { ...SPEC.bookingStep, exampleFinancing: undefined } });
+    // landing.reviews is only the switch + Google place lookup for real Google reviews (tests/estimator-reviews.test.tsx).
+    const text = JSON.stringify({ ...SPEC, landing: { ...SPEC.landing, reviews: undefined }, configurator: undefined, bookingStep: { ...SPEC.bookingStep, exampleFinancing: undefined } });
     expect(text).not.toMatch(/★|review|\/mo\b|per month|guarantee/i);
+    // Its heading never claims a rating or that these are all the reviews.
+    expect(SPEC.landing.reviews?.heading).toBe('What Pool Masters customers say');
+    expect(JSON.stringify(SPEC.landing.reviews)).not.toMatch(/★|rated|stars?\b|our reviews|\d\.\d/i);
     expect(SPEC.contactStep.trustLine).toContain(POOL_MASTERS_ESTIMATOR.licenseLabel);
     expect(SPEC.landing.headline.length).toBeLessThanOrEqual(42);
   });

@@ -91,6 +91,8 @@ export type EstimatorLeadResponse =
       bookingTicket?: string;
       /** Short-lived token for the optional photoreal render (absent when renders are off). */
       renderToken?: string;
+      /** "Send my design": the signed read-only design page path (funnel estimators only; picks only, nothing personal). */
+      shareUrl?: string;
       /** false when nothing was saved (an unqualified visitor on a funnel set to 'stop'). */
       saved?: boolean;
     }

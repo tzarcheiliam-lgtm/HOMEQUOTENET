@@ -23,6 +23,8 @@ import {
 import { estimatorConsentText, type EstimatorLeadResponse } from '@/lib/estimator/lead-client';
 import { signRenderToken } from '@/lib/estimator/render';
 import { signBookingTicket } from '@/app/api/booking/_lib/grant';
+import { speedAlertSoon } from '@/lib/booking/recovery.server';
+import { signedSharePath } from '@/lib/estimator/share.server';
 
 /**
  * Instant estimator lead capture. One request = one finished estimate + contact.
@@ -207,6 +209,8 @@ async function handle(request: Request, context: Context): Promise<Response> {
       after(async () => { try { await runAiCallQueue({ limit: 3 }); } catch { /* the scheduled tick retries */ } });
       if (smsConfigured() && leadId) after(async () => { try { await startSmsForLead(db, leadId); } catch { /* never blocks the submission */ } });
       if (funnel.integration_id) after(async () => { try { await deliverPendingFunnels(); } catch { /* the durable queue retains the job */ } });
+      // Speed-to-lead: push + email the owner and the calendar's hosts right away (once per lead; a switch in Texting).
+      if (leadId) speedAlertSoon({ leadId, event: 'submitted' });
 
       // Meta Lead: the funnel's event, never for an out-of-state ZIP, deduplicated against the
       // browser event through the id the page sent.
@@ -250,6 +254,8 @@ async function handle(request: Request, context: Context): Promise<Response> {
       ok: true, estimate, qualified: payload.qualified,
       calendarUrl: payload.qualified && booking === 'link' ? bookingUrl(contractor.calendarUrl ?? funnel.config.calendarUrl, payload.contact, attribution) : undefined,
       ...(bookingTicket ? { bookingTicket } : {}),
+      // "Send my design to my partner": the signed read-only design page (picks only, nothing personal).
+      ...(funnelSpec && design?.funnel ? { shareUrl: signedSharePath(slug, funnelSpec, design.funnel.selection) } : {}),
       renderToken,
     };
     if (replayKey) replays.set(replayKey, done);

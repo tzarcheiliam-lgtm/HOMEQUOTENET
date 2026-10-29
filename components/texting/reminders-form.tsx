@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { saveReminderSettings, type SmsActionState } from '@/lib/actions/sms';
-import { DEFAULT_REMINDER_CONFIG, MAX_REMINDER_TEMPLATE, REMINDER_PLACEHOLDERS, reminderTemplateProblem, renderReminder, type ReminderVars } from '@/lib/sms/reminder-config';
+import { DEFAULT_REMINDER_CONFIG, MAX_REMINDER_TEMPLATE, REMINDER_PLACEHOLDERS, reminderTemplateProblem, renderReminder, type RecoveryConfig, type ReminderVars } from '@/lib/sms/reminder-config';
 import { MEETING_STEPS, type FollowUpStep, type MeetingStep } from '@/lib/sms/reminder-plan';
 
 type Templates<K extends string> = Record<K, string>;
@@ -14,7 +14,17 @@ export interface ReminderFormValue {
   homeowner: { enabled: boolean; templates: Templates<MeetingStep> };
   followups: { enabled: boolean; days: number[]; keepGoing: boolean; everyDays: number; templates: Templates<FollowUpStep> };
   unconfirmedAlert: boolean;
+  recovery: RecoveryConfig;
 }
+
+/** Lead recovery switches (lib/booking/recovery.server.ts), with what each one sends. */
+const RECOVERY_ITEMS: { key: keyof RecoveryConfig; label: string; hint: string }[] = [
+  { key: 'speedAlert', label: 'Speed-to-lead alert', hint: 'The moment a funnel or estimator lead comes in, and again when they book: a push to you and the calendar’s hosts and an email with their picks, ballpark, a tap-to-call link and the lead.' },
+  { key: 'noShow', label: 'No-show follow-up', hint: '30 minutes after a call or visit is marked no-show: “Sorry we missed you! Want to pick a new time?” by text (reply R) and email (with the link). Once per appointment.' },
+  { key: 'heldPrompt', label: 'Ask me if a call happened', hint: 'A push to the host 30 minutes after a calendar call ends if it’s still “scheduled”, to mark it held or no-show. Never changes it by itself.' },
+  { key: 'missedCall', label: '“Couldn’t reach them” button', hint: 'On a call in the Calendar: texts and emails them a link to pick a new time, at most once every 6 hours.' },
+  { key: 'unbooked', label: 'Follow up when they don’t book a call', hint: '2 hours after they give their details without booking: one text (“your design and ballpark are ready, want a quick call?”) and one email with their design and a link to pick a time. Never once they booked, opted out, or someone texted or called them.' },
+];
 
 const MEETING_WHEN: Record<MeetingStep, { label: string; when: string; sampleWhen: string }> = {
   booked: { label: 'Booked', when: 'Right after it’s booked', sampleWhen: 'Thursday, Nov 6 at 2:00 PM' },
@@ -144,6 +154,14 @@ export function RemindersForm({ value }: { value: ReminderFormValue }) {
             ))}
           </ol>
         </>)}
+      </section>
+
+      <section className="space-y-3 rounded-lg border p-4" aria-labelledby="rem_recovery">
+        <h3 id="rem_recovery" className="text-sm font-semibold">Lead recovery</h3>
+        <p className="text-xs text-muted-foreground">Texts follow the same texting rules and never carry links (the emails do). Each one goes out once.</p>
+        {RECOVERY_ITEMS.map((item) => (
+          <Toggle key={item.key} checked={cfg.recovery[item.key]} onChange={(v) => setCfg((c) => ({ ...c, recovery: { ...c.recovery, [item.key]: v } }))} label={item.label} hint={item.hint} />
+        ))}
       </section>
 
       <p className="text-xs text-muted-foreground">Fill-ins: {REMINDER_PLACEHOLDERS.map((p) => <code key={p} className="mx-0.5 rounded bg-muted px-1">{p}</code>)}. Links are removed.</p>

@@ -34,6 +34,8 @@ export type FunnelLeadResult = {
   saved?: boolean;
   /** Their answer to "Are you the homeowner?" ('no' = not the owner): picks the honest unqualified wording. */
   homeowner?: 'yes' | 'no';
+  /** "Send my design to my partner": the signed read-only design page path the lead route returned. */
+  shareUrl?: string;
 };
 
 export type FunnelContactScreenProps = {

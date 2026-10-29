@@ -42,6 +42,28 @@ export interface GuestMessageContext {
    * vCard link. Null = the wording names hostName.
    */
   host?: GuestHost | null;
+  /**
+   * Their estimator design ("Your design" block on the confirmation: photo,
+   * picks, ballpark and the read-only share link). Texts can't carry links or
+   * pictures through the Mac bridge, so the email carries it.
+   */
+  design?: EmailDesign | null;
+}
+
+/** The "Your design" block (lib/leads/design.server.ts LeadDesign, as the email shows it). */
+export interface EmailDesign {
+  /** "Your Luxe pool design" */
+  heading: string;
+  /** "Classic · Luxe · Zero-edge spa" */
+  recap: string | null;
+  /** "$85,000 – $110,000" */
+  range: string | null;
+  examplePrices: boolean;
+  /** Absolute photo URL (http(s) only). */
+  photoUrl: string | null;
+  photoAlt: string;
+  /** Absolute read-only design page. */
+  url: string | null;
 }
 
 export interface GuestHost {
@@ -78,6 +100,9 @@ export interface HostMessageContext {
 function escapeHtml(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 }
+
+/** HTML-escape plain text (for other email builders). */
+export const escapeHtmlText = escapeHtml;
 
 /** Only http(s) links are ever written into an email. */
 export function safeLink(url: string | null | undefined): string | null {
@@ -123,10 +148,10 @@ export function howLine(c: Pick<GuestMessageContext, 'meetingType' | 'phone' | '
   return phone ? `We'll call you at ${phone}.` : `${c.hostName} will call you.`;
 }
 
-interface Button { label: string; url: string }
+export interface Button { label: string; url: string }
 
 /** The host's card under the buttons: name, number, "Save Liam's number". */
-interface ContactBlock { name: string; phone: string | null; label: string; url: string }
+export interface ContactBlock { name: string; phone: string | null; label: string; url: string }
 
 function contactHtml(b: ContactBlock): string {
   return [
@@ -139,7 +164,36 @@ function contactHtml(b: ContactBlock): string {
   ].join('');
 }
 
-function shell(paragraphs: string[], buttons: Button[], footer: string, contact: ContactBlock | null = null): string {
+/** "Your design": the photo, the picks, the ballpark and a link to the read-only design page. */
+export function designHtml(d: EmailDesign): string {
+  const photo = safeLink(d.photoUrl);
+  const url = safeLink(d.url);
+  const img = photo
+    ? `<img src="${escapeHtml(photo)}" alt="${escapeHtml(d.photoAlt)}" width="420" style="display:block;width:100%;max-width:420px;height:auto;border-radius:10px;border:0;margin:0 0 12px 0;">`
+    : '';
+  const pic = img && url ? `<a href="${escapeHtml(url)}" style="text-decoration:none;">${img}</a>` : img;
+  return [
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px 0;width:100%;max-width:420px;"><tr><td style="font-family:Arial,Helvetica,sans-serif;">',
+    `<div style="font-size:13px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#5B6B8C;margin:0 0 8px 0;">${escapeHtml(d.heading)}</div>`,
+    pic,
+    d.recap ? `<div style="font-size:16px;font-weight:700;color:#0A1B3D;">${escapeHtml(d.recap)}</div>` : '',
+    d.range ? `<div style="font-size:15px;color:#0A1B3D;margin-top:2px;">Ballpark ${escapeHtml(d.range)}<span style="color:#5B6B8C;"> · not a quote${d.examplePrices ? ', example prices' : ''}</span></div>` : '',
+    url ? `<div style="margin-top:10px;"><a href="${escapeHtml(url)}" style="font-size:15px;font-weight:700;color:#0038B8;">See your design</a></div>` : '',
+    '</td></tr></table>',
+  ].join('');
+}
+
+export function designText(d: EmailDesign): string {
+  const url = safeLink(d.url);
+  return [
+    `${d.heading}:`,
+    d.recap,
+    d.range ? `Ballpark ${d.range} (not a quote${d.examplePrices ? ', example prices' : ''})` : null,
+    url ? `See your design: ${url}` : null,
+  ].filter(Boolean).join('\n');
+}
+
+export function shell(paragraphs: string[], buttons: Button[], footer: string, contact: ContactBlock | null = null, design: EmailDesign | null = null): string {
   const body = paragraphs.map((p) => `<p style="margin:0 0 16px 0;">${escapeHtml(p).replace(/\n/g, '<br>')}</p>`).join('');
   const cells = buttons
     .map((b, i) => `<td style="border-radius:8px;background:${i === 0 ? '#0038B8' : '#EEF3FC'};"><a href="${escapeHtml(b.url)}" style="display:inline-block;padding:12px 20px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;color:${i === 0 ? '#ffffff' : '#0038B8'};text-decoration:none;border-radius:8px;">${escapeHtml(b.label)}</a></td>`)
@@ -150,6 +204,7 @@ function shell(paragraphs: string[], buttons: Button[], footer: string, contact:
     '<div style="max-width:600px;margin:0;padding:4px 0;">',
     body,
     row,
+    design ? designHtml(design) : '',
     contact ? contactHtml(contact) : '',
     '<div style="margin-top:16px;border-top:1px solid #DCE4F2;padding-top:12px;font-size:13px;color:#5B6B8C;">',
     escapeHtml(footer),
@@ -157,9 +212,10 @@ function shell(paragraphs: string[], buttons: Button[], footer: string, contact:
   ].join('');
 }
 
-function textOf(paragraphs: string[], buttons: Button[], footer: string, contact: ContactBlock | null = null): string {
+export function textOf(paragraphs: string[], buttons: Button[], footer: string, contact: ContactBlock | null = null, design: EmailDesign | null = null): string {
   const card = contact ? [`${contact.label}: ${contact.url}`] : [];
-  return [...paragraphs, ...buttons.map((b) => `${b.label}: ${b.url}`), ...card, `—\n${footer}`].join('\n\n');
+  const block = design ? [designText(design)] : [];
+  return [...paragraphs, ...buttons.map((b) => `${b.label}: ${b.url}`), ...block, ...card, `—\n${footer}`].join('\n\n');
 }
 
 /** The guest's email for one notice. */
@@ -212,7 +268,9 @@ export function buildGuestBookingEmail(notice: HomeownerNotice, c: GuestMessageC
   }
   if (notice !== 'cancelled' && change) lines.push(change);
   const footer = c.hostName.toLowerCase().includes('homequote') ? 'HomeQuote Network · homequotenet.com' : `${c.hostName} · booked through HomeQuote Network`;
-  return { subject, html: shell(lines, buttons, footer, contact), text: textOf(lines, buttons, footer, contact) };
+  // Their design on the confirmation (and a reschedule's new confirmation), never on reminders or a cancellation.
+  const design = (notice === 'confirmed' || notice === 'rescheduled') && c.design ? c.design : null;
+  return { subject, html: shell(lines, buttons, footer, contact, design), text: textOf(lines, buttons, footer, contact, design) };
 }
 
 /** The host's (calendar member's) email for one change. */

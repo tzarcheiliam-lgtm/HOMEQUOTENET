@@ -65,6 +65,24 @@ export const POOL_MASTERS_FUNNEL: FunnelSpec = {
     projects: POOL_MASTERS_CONFIGURATOR.projects?.filter((p) =>
       ['hilltop-pool-spa-baja-shelf', 'long-pool-raised-spa', 'covered-outdoor-kitchen'].some((name) => p.src.includes(name)),
     ),
+    // Real 5-star Google reviews under the button (lib/estimator/reviews.ts). The heading must not
+    // imply these are all the reviews (FTC 16 CFR 465); no average or count is ever shown.
+    // googlePlaceId: not pinned yet. Until it is, the strict lookup below finds it (there are other
+    // "Pool Masters" in other states: name + CA + poolmastersla.com or a Sherman Oaks address only).
+    // Once GET /api/estimator/pool-masters/reviews/health (admin) reports placeIdSource 'lookup',
+    // paste its placeId here.
+    reviews: {
+      enabled: true,
+      heading: 'What Pool Masters customers say',
+      lookup: {
+        query: 'Pool Masters LA Sherman Oaks CA',
+        name: 'Pool Masters',
+        websiteHost: 'poolmastersla.com',
+        state: 'CA',
+        places: ['Sherman Oaks'],
+        postalCodes: ['91403', '91413', '91423', '91495'],
+      },
+    },
   },
   steps: [
     {

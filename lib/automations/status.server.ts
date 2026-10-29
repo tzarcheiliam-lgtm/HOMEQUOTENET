@@ -117,13 +117,14 @@ export async function automationStatuses(db: Db = createAdminClient(), now = new
       if (!textingOn) return { off: 'Texting is switched off on the Texting page.' };
       if (id === 'sms_bridge') return bridgeUp ? { note: 'Connected.' } : { attention: bridgeSeen ? `Not connected. Last check-in ${ago(bridgeSeen, now)}.` : 'The Mac bridge has never checked in.' };
       if (id === 'sms_first_text' && waiting > 0 && !bridgeUp) return { attention: `${waiting} text${waiting === 1 ? '' : 's'} waiting for the Mac bridge.` };
-      if (id.startsWith('sms_reminders') || id === 'sms_followups' || id === 'sms_unconfirmed_alert') {
+      if (id.startsWith('sms_reminders') || id === 'sms_followups' || id === 'sms_unconfirmed_alert' || id === 'sms_unbooked_followup') {
         if (!rem) return { off: 'Run database migration 0068 to turn this on.' };
         if (id === 'sms_reminders_contractor' && !rem.contractor.enabled) return { off: 'Switched off under Reminders & follow-ups.' };
         if (id === 'sms_reminders_homeowner' && !rem.homeowner.enabled) return { off: 'Switched off under Reminders & follow-ups.' };
         if (id === 'sms_followups' && !rem.followups.enabled) return { off: 'Switched off under Reminders & follow-ups.' };
         if (id === 'sms_followups') return { note: `Days ${rem.followups.days.join(', ')} after the first text.` };
         if (id === 'sms_unconfirmed_alert' && (!rem.unconfirmedAlert || !rem.contractor.enabled)) return { off: 'Switched off under Reminders & follow-ups.' };
+        if (id === 'sms_unbooked_followup' && !rem.recovery.unbooked) return { off: 'Switched off under Reminders & follow-ups → Lead recovery.' };
       }
       return {};
     }
@@ -146,6 +147,12 @@ export async function automationStatuses(db: Db = createAdminClient(), now = new
     }
     if (id === 'workflows') return liveWorkflows ? { note: `${liveWorkflows} live workflow${liveWorkflows === 1 ? '' : 's'}.` } : { off: 'No workflows are live.' };
     if (id === 'sms_bridge_alert') return textingOn ? {} : { off: 'Texting is switched off.' };
+    if (id === 'speed_to_lead_alert' || id === 'no_show_recovery') {
+      if (!rem) return { off: 'Run database migration 0068 to turn this on.' };
+      if (id === 'speed_to_lead_alert' && !rem.recovery.speedAlert) return { off: 'Switched off under Reminders & follow-ups → Lead recovery.' };
+      if (id === 'no_show_recovery' && !rem.recovery.noShow && !rem.recovery.heldPrompt) return { off: 'Switched off under Reminders & follow-ups → Lead recovery.' };
+      return {};
+    }
     return {};
   };
 

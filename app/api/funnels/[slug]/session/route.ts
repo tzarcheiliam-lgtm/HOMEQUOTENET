@@ -11,6 +11,7 @@ import { cookieName, getFunnel, getSession, hash, newToken, publicSession, readB
 import { after } from 'next/server';
 import { deliverPendingFunnels } from '@/lib/funnels/delivery';
 import { sendLeadEmailsSoon } from '@/lib/leads/notify';
+import { speedAlertSoon } from '@/lib/booking/recovery.server';
 import { flushNotificationsSoon } from '@/lib/notifications/outbox';
 import { runAiCallQueue } from '@/lib/ai-calling/run.server';
 import { buildFbc, sendMetaEvent } from '@/lib/meta/capi';
@@ -190,6 +191,8 @@ export async function PATCH(request: Request, context: Context) {
     if (body.contact && !funnel.is_demo) {
       sendLeadEmailsSoon();
       flushNotificationsSoon();
+      // Speed-to-lead: push + email the owner and the calendar's hosts right away (once per lead; a switch in Texting).
+      if (typeof data?.lead_id === 'string') speedAlertSoon({ leadId: data.lead_id, event: 'submitted' });
     }
     // AI calling: the lead's assignment already enqueued a job (DB trigger). This only nudges the worker
     // after the response is sent; it is a no-op unless calling is enabled, and the scheduled tick is the backstop.

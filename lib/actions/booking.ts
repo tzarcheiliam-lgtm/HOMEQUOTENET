@@ -16,6 +16,8 @@ import {
   rescheduleSalesAppointment,
 } from '@/lib/booking/book.server';
 import { notifyBookingSoon } from '@/lib/booking/notify.server';
+import { sendMissedCallRecovery } from '@/lib/booking/recovery.server';
+import { missedCallNotice } from '@/lib/booking/recovery-copy';
 import { BOOKING_ERROR_MESSAGES, mapCalendar, PICK_ANOTHER_TIME, type BookingCalendar, type BookingError } from '@/lib/booking/types';
 import { isValidTimeZone } from '@/lib/availability/time';
 import { vcardPhone } from '@/lib/funnels/vcard';
@@ -419,6 +421,26 @@ export async function setCalendarEventStatus(input: { kind: EventKindInput; id: 
   afterChange(ref.leadId);
   if (ref.kind === 'sales_appointment') revalidatePath('/app/calls/appointments');
   return { ok: true };
+}
+
+/**
+ * "Couldn't reach them": the host called at the booked time and nobody picked up. Texts the homeowner
+ * (Mac bridge, every texting rule) and emails them a link to pick a new time, and logs a contact attempt on
+ * the lead. At most once per call every 6 hours (lib/booking/recovery.server.ts sendMissedCallRecovery).
+ */
+export async function reportMissedCall(input: { kind: EventKindInput; id: string }): Promise<ActionResult<{ message: string }>> {
+  const ctx = await context();
+  if (!ctx) return denied;
+  const parsed = changeInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'Pick a call' };
+  const ref = await workableBooking(ctx, parsed.data.kind, parsed.data.id);
+  if (!ref) return denied;
+  if (ref.kind !== 'appointment' || !ref.calendar || !ref.leadId) return { ok: false, error: 'Only a homeowner’s booked call can be followed up this way.' };
+  if (ref.status !== 'scheduled') return { ok: false, error: 'Only a call that is still scheduled can be followed up this way.' };
+  const r = await sendMissedCallRecovery({ appointmentId: ref.id, actorId: ctx.profile.id });
+  if (!r.ok) return { ok: false, error: r.error };
+  refreshCalendar(ref.leadId);
+  return { ok: true, message: missedCallNotice(r.sms, r.email) };
 }
 
 /* ------------------------------------------------------------------ */

@@ -6,6 +6,7 @@ import { runNotificationMaintenance } from '@/lib/notifications/outbox';
 import { signingMaintenance } from '@/lib/signing/service';
 import { retryPendingAduQuizLeads } from '@/lib/adu-quiz/leads.server';
 import { runBookingNotifications } from '@/lib/booking/reminders.server';
+import { runRecovery } from '@/lib/booking/recovery.server';
 import { checkBridgeHealth } from '@/lib/sms/health';
 import { notifyAdmins } from '@/lib/sms/health-notify';
 import { runTextReminders } from '@/lib/sms/reminders';
@@ -57,6 +58,10 @@ export async function POST(request: Request) {
     // and follow-ups when homeowners don't reply. Best effort.
     let reminders: unknown = null;
     try { reminders = await runTextReminders(createAdminClient()); } catch { reminders = { error: 'text reminders failed' }; }
+    // Lead recovery: "did you reach them?" pushes, no-show and never-booked follow-up EMAILS (their texts are in the
+    // reminder texts above). Best effort.
+    let recovery: unknown = null;
+    try { recovery = await runRecovery(); } catch { recovery = { error: 'lead recovery failed' }; }
     // ADU quiz leads whose webhook delivery failed. Best effort; a failure never affects the tick.
     let aduQuiz: unknown = null;
     try {
@@ -64,7 +69,7 @@ export async function POST(request: Request) {
     } catch {
       aduQuiz = { error: 'adu quiz retry failed' };
     }
-    const body = { ...result, retention, notifications, calendar, signing, sms, reminders, bookings, aduQuiz };
+    const body = { ...result, retention, notifications, calendar, signing, sms, reminders, recovery, bookings, aduQuiz };
     await recordAutomationRun('workflow_tick', startedAt, !result.failures, body);
     return NextResponse.json(body, { status: result.failures ? 207 : 200 });
   } catch {
