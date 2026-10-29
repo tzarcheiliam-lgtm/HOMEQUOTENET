@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- rows come from the untyped Supabase client, as elsewhere in lib/data */
 import 'server-only';
 import { createClient } from '@/lib/supabase/server';
 

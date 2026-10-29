@@ -243,3 +243,32 @@ describe('role-aware links', () => {
     expect(out.find((m) => m.userIds.includes(ACME_OWNER))?.url).toBe('/app/appointments');
   });
 });
+
+describe('HomeQuote booking calendar hosts (0068 booking_calendar_members)', () => {
+  const booked = (calendarId: string, over: Partial<NotificationEvent> = {}) =>
+    event({ type: 'appointment_booked', entity_type: 'appointment', entity_id: 'appt-1', lead_id: 'lead-1', contractor_id: null, payload: { appointmentId: 'appt-1', calendarId, scheduledAt: '2026-10-30T17:00:00Z' }, ...over });
+  beforeEach(() => {
+    tables.booking_calendar_members = [
+      { calendar_id: 'cal-team', user_id: SETTER_OTHER, notify: true },
+      { calendar_id: 'cal-team', user_id: CALLER, notify: false },
+      { calendar_id: 'cal-team', user_id: RIVAL, notify: true }, // a contractor on the team calendar: never reachable
+      { calendar_id: 'cal-acme', user_id: ACME_OWNER, notify: true },
+    ];
+  });
+  it('a team-calendar booking reaches its staff hosts with notify on, never a contractor', async () => {
+    const ids = recipients(await buildNotifications(booked('cal-team'), db()));
+    expect(ids).toContain(SETTER_OTHER);
+    expect(ids).not.toContain(CALLER);
+    expect(ids).not.toContain(RIVAL);
+    expect(ids).not.toContain(ACME_OWNER);
+  });
+  it('a contractor host is reached only for its own company holding the lead', async () => {
+    const ids = recipients(await buildNotifications(booked('cal-acme', { contractor_id: ACME }), db()));
+    expect(ids).toContain(ACME_OWNER);
+    expect(ids).not.toContain(RIVAL);
+  });
+  it('no calendarId, no hosts (the old routing only)', async () => {
+    const ids = recipients(await buildNotifications(booked(''), db()));
+    expect(ids).not.toContain(SETTER_OTHER);
+  });
+});
