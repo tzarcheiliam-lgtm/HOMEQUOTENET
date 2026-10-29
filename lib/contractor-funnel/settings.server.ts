@@ -1,10 +1,14 @@
 import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { site } from '@/content/site';
-import { mergeRules, type CalendarInfo, type QualificationRules } from './schema';
+import { calendarForContractorFunnel } from '@/lib/booking/calendars.server';
+import { NATIVE_SALES_CALENDAR_URL, mergeRules, type CalendarInfo, type QualificationRules } from './schema';
 
 export type FunnelSettings = {
-  /** Where the sales calendar URL came from, so the admin page can say so. */
+  /**
+   * Where the sales calendar came from, so the admin page can say so. 'site' is the
+   * site default, which is now HomeQuote's own sales calendar (provider 'homequote').
+   */
   calendarSource: 'admin' | 'env' | 'site' | 'none';
   calendar: CalendarInfo | null;
   pixelId: string | null;
@@ -24,8 +28,11 @@ export function parseCalendarUrl(raw: string | null | undefined): CalendarInfo |
 }
 
 /**
- * Calendar precedence: admin setting -> CONTRACTOR_SALES_CALENDAR_URL ->
- * the site's documented 30-minute contractor call (content/site.ts). Never a
+ * Calendar precedence: HomeQuote's own sales calendar (booking_calendars kind
+ * 'sales', when active) -> admin URL setting -> CONTRACTOR_SALES_CALENDAR_URL ->
+ * the site's link when it is an https URL (content/site.ts; today an in-site
+ * page, so no external calendar). The external URLs are fallbacks only, used
+ * while the sales calendar is missing or switched off. Never a
  * homeowner/client calendar, never invented.
  */
 export async function loadFunnelSettings(): Promise<FunnelSettings> {
@@ -41,8 +48,15 @@ export async function loadFunnelSettings(): Promise<FunnelSettings> {
     row = null; // Table missing / DB unreachable: fall through to env + site defaults.
   }
 
-  let calendar = parseCalendarUrl(row?.sales_calendar_url);
-  let calendarSource: FunnelSettings['calendarSource'] = calendar ? 'admin' : 'none';
+  let native = false;
+  try {
+    native = (await calendarForContractorFunnel()) !== null;
+  } catch {
+    native = false; // Booking tables missing / DB unreachable: the URL fallbacks below.
+  }
+
+  let calendar: CalendarInfo | null = native ? { url: NATIVE_SALES_CALENDAR_URL, provider: 'homequote' } : parseCalendarUrl(row?.sales_calendar_url);
+  let calendarSource: FunnelSettings['calendarSource'] = native ? 'site' : calendar ? 'admin' : 'none';
   if (!calendar) {
     calendar = parseCalendarUrl(process.env.CONTRACTOR_SALES_CALENDAR_URL);
     if (calendar) calendarSource = 'env';

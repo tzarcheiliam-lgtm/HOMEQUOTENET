@@ -118,11 +118,11 @@ export const POOL_MASTERS_FUNNEL: FunnelSpec = {
     trustLine: 'Licensed & insured · CSLB #1112793',
   },
   bookingStep: {
-    headline: 'Book your free on-site estimate',
+    headline: 'Book your free call',
     priceEyebrow: '{options}',
     priceNote: 'Ballpark price, not a quote. Your firm price is set at your free on-site visit.',
     financingLabel: 'Financing available',
-    bookingTitle: 'Pick a time that works for you.',
+    bookingTitle: 'Pick a time for a free 30-minute call.',
     callPrompt: 'Prefer to talk now? Call',
   },
   configurator: POOL_MASTERS_CONFIGURATOR,

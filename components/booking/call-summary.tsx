@@ -12,7 +12,7 @@ import './booking.css';
  * block, how the call happens, and "Add to calendar".
  */
 
-/** "Tuesday, November 3" over "9:30 – 10:00 AM PST", in the viewer's zone. */
+/** "Tuesday, November 3" over "9:30 AM – 10:00 AM PST", in the viewer's zone. */
 export function CallTime({ startsAt, endsAt, timeZone, struck = false }: { startsAt: string; endsAt: string; timeZone: string; struck?: boolean }) {
   const start = Date.parse(startsAt);
   return (
@@ -51,14 +51,14 @@ export function AddToCalendar({ booking }: { booking: PublicBooking }) {
   useEffect(() => setOrigin(window.location.origin), []);
   if (!booking.icsUrl || booking.status !== 'scheduled') return null;
   return (
-    <div className="flex flex-col gap-2.5 min-[380px]:flex-row" data-booking-add-to-calendar="">
-      <a className="bk-secondary flex-1" href={googleCalendarLink(booking, origin)} target="_blank" rel="noreferrer">
+    <div className="flex flex-col gap-2.5" data-booking-add-to-calendar="">
+      <a className="bk-secondary w-full" href={googleCalendarLink(booking, origin)} target="_blank" rel="noreferrer">
         <CalendarPlus aria-hidden className="size-[17px]" strokeWidth={2} />
-        Google Calendar
+        Add to Google Calendar
       </a>
-      <a className="bk-secondary flex-1" href={booking.icsUrl} download="call.ics">
+      <a className="bk-secondary w-full" href={booking.icsUrl} download="call.ics">
         <CalendarPlus aria-hidden className="size-[17px]" strokeWidth={2} />
-        Apple or Outlook
+        Add to Apple or Outlook
       </a>
     </div>
   );

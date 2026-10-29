@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { cancelByManageToken, rescheduleByManageToken } from '@/lib/booking/book.server';
 import { isManageTokenShape } from '@/lib/booking/tokens';
 import { flushNotificationsSoon } from '@/lib/notifications/outbox';
+import { notifyBookingSoon } from '@/lib/booking/notify.server';
 import type { ManageResponse } from '@/components/booking/types';
 import { fail, limited, originOk, readJson, reply } from '../../_lib/http';
 import { loadManaged } from '../../_lib/manage';
@@ -13,7 +14,8 @@ import { loadManaged } from '../../_lib/manage';
  *   POST { action: 'reschedule', startsAt } -> moves it (same re-check + lock as booking)
  *   POST { action: 'cancel', reason? }      -> cancels it (idempotent)
  * A call in the past, already held or cancelled is read-only (the RPCs refuse
- * too: not_active / too_soon).
+ * too: not_active / too_soon). Each change sends the homeowner's and the
+ * hosts' notices after the response (notifyBookingSoon).
  */
 export const dynamic = 'force-dynamic';
 type Context = { params: Promise<{ token: string }> };
@@ -54,10 +56,14 @@ export async function POST(request: Request, context: Context) {
       if (!m.booking.canChange) return fail('not_active');
       const result = await cancelByManageToken(token, parsed.data.reason?.trim() || null, db);
       if (!result.ok) return fail(result.error);
+      if (!result.already) notifyBookingSoon({ kind: m.managed.kind, id: m.managed.id, change: 'cancelled', actorKind: 'homeowner' });
     } else {
       if (!m.booking.canChange) return fail('not_active');
       const result = await rescheduleByManageToken(token, parsed.data.startsAt, db);
       if (!result.ok) return fail(result.error);
+      if (!result.unchanged) {
+        notifyBookingSoon({ kind: m.managed.kind, id: m.managed.id, change: 'rescheduled', previousStartsAt: result.previousStartsAt ?? m.booking.startsAt, actorKind: 'homeowner' });
+      }
     }
     flushNotificationsSoon();
     const after = await loadManaged(db, token);

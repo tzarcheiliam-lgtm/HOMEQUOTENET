@@ -8,6 +8,8 @@ import {
   answersSchema, contactSchema, type Answers, type CalendarInfo,
 } from '@/lib/contractor-funnel/schema';
 import { calendlyEmbedUrl } from '@/lib/funnels/schema';
+import { BookingFlow } from '@/components/booking/booking-flow';
+import { contractorFunnelGrant } from '@/components/booking/types';
 import { loadAttribution } from './attribution';
 import { MeasurementToggle, readMeasurementChoice, trackContractor } from './tracking';
 
@@ -344,6 +346,7 @@ function Result({ outcome, contact, submissionId, pixelId, headingRef, fallbackC
   const [booking, setBooking] = useState<BookingState>('idle');
   const [bookingVerified, setBookingVerified] = useState(false);
   const [calendarSlow, setCalendarSlow] = useState(false);
+  const [nativeBooked, setNativeBooked] = useState(false);
   const calendarSeen = useRef(false);
   const cal = outcome.calendar;
   const embedSrc = useMemo(() => {
@@ -412,7 +415,32 @@ function Result({ outcome, contact, submissionId, pixelId, headingRef, fallbackC
     );
   }
 
-  if (!cal) {
+  // HomeQuote's own sales calendar: pick a time right here, recorded on our side with the submission's grant.
+  if (cal?.provider === 'homequote' && outcome.token) {
+    return (
+      <div data-contractor-booking="homequote">
+        <h1 ref={headingRef} tabIndex={-1} className="text-balance text-2xl font-semibold tracking-tight outline-none">
+          {nativeBooked ? 'Your call is booked.' : 'Your details are saved. Pick a time for your call.'}
+        </h1>
+        {!nativeBooked && (
+          <p className="mt-2 text-sm leading-6 text-[var(--hq-text-muted)]">A free 30-minute call with HomeQuote. Times show in your time zone.</p>
+        )}
+        <div className="mt-5">
+          <BookingFlow
+            grant={contractorFunnelGrant(submissionId, outcome.token)}
+            heading={null}
+            headingLevel={2}
+            onBooked={() => {
+              setNativeBooked(true);
+              trackContractor('Schedule', `${submissionId}:Schedule`, pixelId);
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (!cal || cal.provider === 'homequote') {
     return (
       <div className="text-center">
         <CheckCircle2 className="mx-auto size-10 text-[var(--hq-good)]" aria-hidden="true" />

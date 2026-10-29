@@ -52,9 +52,13 @@ export const funnelSchema = z.object({
   unqualifiedAction: z.enum(['review', 'stop']).default('review'),
   calendarUrl: httpsUrl.optional(),
   calendarId: z.string().max(100).optional(),
-  // ghl: embedded GHL calendar confirmed by a server callback. calendly: Calendly
-  // inline embed, prefilled with name/email, booking reported by the embed.
-  calendarProvider: z.enum(['ghl', 'calendly']).default('ghl'),
+  // homequote: HomeQuote's own calendar (lib/booking): a funnel tied to a contractor books
+  // that contractor's calendar, a network funnel the HomeQuote team's; no URL, the calendar
+  // step is always on. ghl: embedded GHL calendar confirmed by a server callback. calendly:
+  // Calendly inline embed, prefilled with name/email, booking reported by the embed. The
+  // default stays 'ghl' so stored configs without the key keep their meaning (GHL with a
+  // calendarUrl, or no calendar step without one); new calendar steps use 'homequote'.
+  calendarProvider: z.enum(['homequote', 'ghl', 'calendly']).default('ghl'),
   calendarHeadline: text.optional(),
   thankYouPage: z.object({ headline: text, message: text }),
   // Optional. When a phone is set, the thank-you screen offers a "Save to contacts" button (vCard)
@@ -89,6 +93,16 @@ export const funnelSchema = z.object({
   if (config.calendarProvider === 'calendly' && config.calendarUrl && new URL(config.calendarUrl).hostname !== 'calendly.com') ctx.addIssue({ code: 'custom', message: 'Calendly URLs must be on calendly.com' });
 });
 export type FunnelConfig = z.infer<typeof funnelSchema>;
+export type CalendarProvider = FunnelConfig['calendarProvider'];
+/** The provider a new calendar step starts with (the builder's "+ Add calendar step"). */
+export const DEFAULT_CALENDAR_PROVIDER: CalendarProvider = 'homequote';
+/** HomeQuote's own calendar books this funnel (no external embed). */
+export const usesNativeCalendar = (config: Pick<FunnelConfig, 'calendarProvider'>) => config.calendarProvider === 'homequote';
+/**
+ * Whether qualified visitors get the calendar step: always on the HomeQuote calendar,
+ * only with a URL for the GHL / Calendly fallbacks.
+ */
+export const hasCalendarStep = (config: Pick<FunnelConfig, 'calendarProvider' | 'calendarUrl'>) => usesNativeCalendar(config) || !!config.calendarUrl;
 export type Question = FunnelConfig['questions'][number];
 export type Answers = Record<string, string>;
 export const contactSchema = z.object({
@@ -110,6 +124,10 @@ export type Session = {
   service_area_valid: boolean | null;
   // Only for the session owner on the Calendly step, to prefill the booking form.
   prefill?: { name: string; email: string };
+  // Only for the session owner on a HomeQuote-calendar step: the signed, short-lived grant
+  // the public booking API (/api/booking/**) takes, since the session cookie is scoped to
+  // /api/funnels/<slug>. Never stored.
+  bookingTicket?: string;
 };
 
 export function matches(condition: z.infer<typeof conditionSchema>, answers: Answers) {

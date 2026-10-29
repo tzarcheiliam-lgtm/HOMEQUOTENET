@@ -203,7 +203,7 @@ export function ManageBooking({ token, initial }: { token: string; initial: Publ
             className="mt-2 w-full resize-none rounded-[8px] bg-white px-3.5 py-3 text-[16px] leading-[23px] text-[var(--bk-ink)] shadow-[inset_0_0_0_1px_var(--bk-hair)] outline-none focus-visible:shadow-[inset_0_0_0_1px_var(--bk-accent),0_0_0_3px_var(--bk-focus)]"
           />
           {message ? <p role="alert" className="bk-copy mt-4 rounded-[8px] bg-[#fdf3e7] px-4 py-3 text-[15px] leading-[22px] text-[#6b3d07]">{message}</p> : null}
-          <button type="submit" className="bk-secondary mt-6 w-full text-[#a3271b]" disabled={busy} aria-disabled={busy || undefined} data-booking-cancel-confirm="">
+          <button type="submit" className="bk-secondary bk-danger mt-6 w-full" disabled={busy} aria-disabled={busy || undefined} data-booking-cancel-confirm="">
             {busy ? <><Loader2 aria-hidden className="size-[18px] motion-safe:animate-spin" />Cancelling…</> : 'Cancel call'}
           </button>
           <button type="button" className="bk-link mt-2 w-full justify-center" disabled={busy} onClick={() => go('view')}>Keep my call</button>

@@ -3,18 +3,23 @@
 import { useEffect, useId, useState } from 'react';
 import { CalendarCheck, Check, ExternalLink, Phone } from 'lucide-react';
 import { telHref } from '@/components/estimator/shell/facts';
+import { BookingFlow } from '@/components/booking/booking-flow';
 import type { FunnelBookingScreenProps } from '../screens';
 import { bookingFrameUrl, priceEyebrow, priceRange, readCalendlyMessage } from './state';
 
 /**
- * The funnel's last screen: "Book your free on-site estimate".
+ * The funnel's last screen: "Book your free call".
  * 1. The price card: the picks on one line, the ballpark range from the server,
  *    one sentence of ballpark wording (plus "example prices" while prices are unconfirmed) and
  *    "Financing available" with the lender disclosure behind "See details".
  *    Never a monthly payment.
- * 2. The booking card: the contractor's Calendly inline (name / email
- *    prefilled by the server), sized to its content, with a button that opens
- *    it in a new tab (also the only option inside the /embed iframe). An
+ * 2. The booking card: a free 30-minute call on HomeQuote's own calendar
+ *    (<BookingFlow>, the contractor's calendar, or the HomeQuote team's for a
+ *    network funnel), booked and recorded server-side with the ticket the lead
+ *    route returned; confirmation, reminders and the reschedule / cancel link
+ *    go out automatically. Fallback (an estimator still set to an external
+ *    link): the Calendly inline, sized to its content, with a button that
+ *    opens it in a new tab (the only option inside the /embed iframe). An
  *    unqualified lead outside the service area is told we will call; a renter
  *    ("No" to "Are you the homeowner?") that the funnel saved for review is told the project needs
  *    a personal review (the funnel's own review wording, no promised call);
@@ -38,7 +43,9 @@ export function FunnelBookingScreen({ spec, selection, contractor, result, embed
   const [booked, setBooked] = useState(false);
 
   const range = priceRange(result.estimate);
-  const calendarUrl = result.qualified ? result.calendarUrl : undefined;
+  // HomeQuote calendar (the lead route's booking ticket) first; an external link only without one.
+  const ticket = result.qualified ? result.bookingTicket : undefined;
+  const calendarUrl = result.qualified && !ticket ? result.calendarUrl : undefined;
   // "No" (not the homeowner): the funnel's homeowner rule did not pass (never a booking, never a promised call).
   const renter = !result.qualified && result.homeowner === 'no';
   const frame = !embedded && calendarUrl && host ? bookingFrameUrl(calendarUrl, host) : null;
@@ -113,8 +120,16 @@ export function FunnelBookingScreen({ spec, selection, contractor, result, embed
       </section>
 
       {/* Booking card */}
-      <section aria-labelledby={`${uid}-book`} className="mt-4 rounded-[16px] bg-white p-5 shadow-[0_0_0_1px_rgba(0,0,0,0.08)]" data-funnel-calendar="">
-        {booked ? (
+      <section
+        aria-labelledby={ticket ? undefined : `${uid}-book`}
+        aria-label={ticket ? 'Book your call' : undefined}
+        className="mt-4 rounded-[16px] bg-white p-5 shadow-[0_0_0_1px_rgba(0,0,0,0.08)]"
+        data-funnel-calendar={ticket ? 'homequote' : ''}
+      >
+        {ticket ? (
+          // Loads the open times, books under the calendar lock and shows "You're booked" (also after a refresh).
+          <BookingFlow grant={ticket} heading={step.bookingTitle} headingLevel={2} />
+        ) : booked ? (
           <div className="flex items-start gap-3 motion-safe:animate-[funnel-fade_180ms_ease-out]" role="status">
             <span className="mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-[color:var(--fn-blue)] text-white" aria-hidden="true">
               <CalendarCheck className="size-4" strokeWidth={2.4} />

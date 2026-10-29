@@ -108,7 +108,7 @@ export const firstNameOf = (name: unknown): string | null => {
 
 /** The homeowner's manage page and its .ics (canonical route; /book/manage/<token> redirects here). */
 export const manageUrl = (token: string) => `/booking/manage/${encodeURIComponent(token)}`;
-export const icsUrl = (token: string) => `/api/booking/manage/${encodeURIComponent(token)}/ics`;
+export const icsUrl = (token: string) => `${manageUrl(token)}/calendar.ics`;
 
 const meeting = (v: unknown): PublicMeetingType => (v === 'video' || v === 'in_person' ? v : 'phone');
 

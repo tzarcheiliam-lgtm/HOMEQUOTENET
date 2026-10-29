@@ -114,9 +114,11 @@ let sent: OutgoingEmail[] = [];
 const deps = () => ({ db: sb, sendEmail: async (m: OutgoingEmail) => { sent.push(m); }, siteUrl: SITE, linkSecret: SECRET });
 const daysOut = (d: number, hourUtc = 18) => { const t = new Date(Date.now() + d * 86_400_000); t.setUTCHours(hourUtc, 0, 0, 0); return t.toISOString(); };
 
+let phoneSeq = 100;
+/** One text conversation per number: each lead gets its own phone. */
 async function lead(o: { consent?: boolean; email?: string | null } = {}): Promise<string> {
-  return (await one(`insert into public.leads(first_name, last_name, phone, email, state, consent_granted) values ('Pat','Doe','+13105550100',$1,'CA',$2) returning id`,
-    [o.email === undefined ? `pat-${randomUUID().slice(0, 6)}@example.test` : o.email, o.consent ?? true])).id;
+  return (await one(`insert into public.leads(first_name, last_name, phone, email, state, consent_granted) values ('Pat','Doe',$3,$1,'CA',$2) returning id`,
+    [o.email === undefined ? `pat-${randomUUID().slice(0, 6)}@example.test` : o.email, o.consent ?? true, `+1310555${String(phoneSeq++).padStart(4, '0')}`])).id;
 }
 async function appt(leadId: string, calendarId: string, startsAt: string, extra: Record<string, unknown> = {}): Promise<string> {
   const cols = { lead_id: leadId, calendar_id: calendarId, scheduled_at: startsAt, ends_at: new Date(Date.parse(startsAt) + 1_800_000).toISOString(),
@@ -168,7 +170,7 @@ describe('confirmation', () => {
     const t = await texts(l);
     expect(t).toHaveLength(1);
     expect(t[0]).toMatchObject({ status: 'queued', workflow_step_run_id: bookingTextKey('appointment', a, 'confirm', 0) });
-    expect(t[0].body).toMatch(/^Hi Pat, your call with HomeQuote is booked for .* E[SD]T\. We’ll call you at \(310\) 555-0100\./);
+    expect(t[0].body).toMatch(/^Hi Pat, your call with HomeQuote is booked for .* E[SD]T\. We’ll call you at \(310\) 555-\d{4}\./);
 
     sent = [];
     expect(await sendBookingConfirmation('appointment', a, deps())).toBeNull();
@@ -204,11 +206,11 @@ describe('confirmation', () => {
   it('does not queue a text that texting hours would hold until after the call', async () => {
     await q(`update public.sms_settings set window_start_hour=$1, window_end_hour=$2`, [0, 1]);
     const l = await lead();
-    // Starts 3 hours from now: unless "now" is midnight–1am in California, the window opens after it.
+    // Starts 3 hours from now: between 1am and 9pm in California, the next midnight–1am window opens after it.
     const start = new Date(Date.now() + 3 * 3_600_000).toISOString();
     const hourLa = Number(new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: 'numeric', hourCycle: 'h23' }).format(new Date()));
     const r = await sendBookingConfirmation('appointment', await appt(l, team, start), deps());
-    if (hourLa !== 0) expect(r!.sms).toBe('outside_texting_hours');
+    if (hourLa >= 1 && hourLa <= 20) expect(r!.sms).toBe('outside_texting_hours');
     await q(`update public.sms_settings set window_start_hour=0, window_end_hour=24`);
   });
 });

@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { CalendarDays, Check, ExternalLink, Loader2, Phone } from 'lucide-react';
 import { telHref } from '@/components/estimator/shell/facts';
+import { BookingFlow } from '@/components/booking/booking-flow';
 import {
   estimatorConsentText,
   leadFieldErrors,
@@ -25,7 +26,9 @@ import {
  * The configurator's booking step: contact details (first and last name,
  * phone, email, ZIP, "do you own the home", the funnel consent wording and the
  * optional measurement box, exactly as the old flow), then the lead POST with
- * the design, then the free consultation calendar.
+ * the design, then a free 30-minute call on HomeQuote's own calendar
+ * (<BookingFlow>, booked and recorded server-side with the lead route's
+ * ticket), or the external calendar link when the estimator still uses one.
  *
  * Built so a first submit goes through: specific messages per field, focus on
  * the first one to fix, everything typed is kept, one automatic retry on a
@@ -33,7 +36,7 @@ import {
  * while sending, and a changed consent wording shown in place.
  */
 
-type Success = { qualified: boolean; calendarUrl?: string; firstName: string };
+type Success = { qualified: boolean; calendarUrl?: string; bookingTicket?: string; firstName: string };
 
 const prefersReducedMotion = () =>
   typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -118,7 +121,7 @@ export function ConfiguratorBooking({ slug, contractor, selection, answers, embe
     setSending(false);
     if (res.ok) {
       setKeepHeight(formRef.current?.offsetHeight ?? null);
-      setDone({ qualified: res.qualified, calendarUrl: res.calendarUrl, firstName: fields.firstName.trim() });
+      setDone({ qualified: res.qualified, calendarUrl: res.calendarUrl, bookingTicket: res.bookingTicket, firstName: fields.firstName.trim() });
       onSent?.();
       return;
     }
@@ -306,7 +309,10 @@ function FieldError({ id, children, className = '' }: { id: string; children?: R
   );
 }
 
-/** After a saved lead: thanks, the calendar (inline on our own page, a button in the iframe), and the phone. */
+/**
+ * After a saved lead: thanks, the booking (the HomeQuote calendar's times; or the external
+ * calendar, inline on our own page and a button in the iframe), and the phone.
+ */
 function BookingDone({
   done,
   contractor,
@@ -320,7 +326,9 @@ function BookingDone({
 }) {
   const [host, setHost] = useState<string | null>(null);
   useEffect(() => setHost(window.location.hostname), []);
-  const frame = !embedded && done.calendarUrl && host ? calendarFrameUrl(done.calendarUrl, host) : null;
+  const ticket = done.qualified ? done.bookingTicket : undefined;
+  const link = done.qualified && !ticket ? done.calendarUrl : undefined;
+  const frame = !embedded && link && host ? calendarFrameUrl(link, host) : null;
   const tel = telHref(contractor.phone);
   return (
     <div data-booking-done="">
@@ -334,12 +342,16 @@ function BookingDone({
           </h3>
           <p className="mt-1.5 text-[14.5px] leading-[22px] text-[#4a463f]">
             We&rsquo;ll call you within one business day
-            {done.qualified && done.calendarUrl ? ', or pick a time for your free on-site consultation now.' : ' to talk through your design and next steps.'}
+            {ticket ? ', or pick a time for a free 30-minute call now.' : link ? ', or pick a time for your free on-site consultation now.' : ' to talk through your design and next steps.'}
           </p>
         </div>
       </div>
 
-      {done.qualified && done.calendarUrl ? (
+      {ticket ? (
+        <div className="mt-5" data-booking-native="">
+          <BookingFlow grant={ticket} heading="Book your free call" headingLevel={3} />
+        </div>
+      ) : link ? (
         <div className="mt-5">
           {frame ? (
             <div className="overflow-hidden rounded-xl border border-[#e4e0d8] bg-white">
@@ -353,7 +365,7 @@ function BookingDone({
             </div>
           ) : null}
           <a
-            href={done.calendarUrl}
+            href={link}
             target="_blank"
             rel="noopener"
             className={`inline-flex h-[52px] w-full items-center justify-center gap-2 rounded-xl px-6 text-[16px] font-semibold transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--cfg-accent)] motion-reduce:transition-none ${

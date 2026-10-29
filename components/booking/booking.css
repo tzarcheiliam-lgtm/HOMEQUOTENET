@@ -124,3 +124,6 @@
 
 .bk-heading { text-wrap: balance; }
 .bk-copy { text-wrap: pretty; }
+
+/* Destructive confirm (cancel a call): same quiet outline, red text (7.1:1 on white). */
+.bk-secondary.bk-danger { color: #a3271b; }

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { bookAppointment, bookSalesAppointment } from '@/lib/booking/book.server';
 import { getCalendar } from '@/lib/booking/calendars.server';
+import { ensureManageToken, notifyBookingSoon } from '@/lib/booking/notify.server';
 import { safeTimeZone } from '@/lib/booking/format';
 import { flushNotificationsSoon } from '@/lib/notifications/outbox';
 import { funnelSchema } from '@/lib/funnels/schema';
@@ -22,7 +23,9 @@ import { existingBooking, publicBooking, resolveGrant, type Resolved } from '../
  * writes every funnel side effect. Contractor funnel grant ->
  * book_sales_appointment on the sales calendar. Both re-check the slot under the
  * calendar lock: two people racing for one time get one booking and one
- * "pick another time". The manage token is returned once, inside the links.
+ * "pick another time". The manage link shown here is the same one the
+ * confirmation / reminder texts and emails carry (ensureManageToken), and those
+ * notices go out right after the response (notifyBookingSoon).
  */
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
@@ -57,6 +60,8 @@ export async function POST(request: Request) {
         if (result.error === 'already_booked') return fail('already_booked', { booking: await existingBooking(db, r) });
         return fail(result.error);
       }
+      const token = (await ensureManageToken(db, 'appointment', result.appointmentId)) ?? result.manageToken;
+      notifyBookingSoon({ kind: 'appointment', id: result.appointmentId, change: 'booked', actorKind: 'homeowner' });
       flushNotificationsSoon();
       const c = r.session.contact ?? {};
       const cal = (await getCalendar(result.calendarId, db)) ?? calendar;
@@ -64,7 +69,7 @@ export async function POST(request: Request) {
       const body: BookResponse = {
         ok: true,
         booking: publicBooking({ status: 'scheduled', startsAt: result.startsAt, endsAt: result.endsAt, timeZone: result.timeZone, inviteeTimeZone: timeZone,
-          meetingType: cal.meetingType, name: c.firstName, phone: c.phone, calendar: cal, token: result.manageToken }),
+          meetingType: cal.meetingType, name: c.firstName, phone: c.phone, calendar: cal, token }),
         metaEventId,
       };
       return reply(body);
@@ -78,11 +83,13 @@ export async function POST(request: Request) {
       if (result.error === 'already_booked') return fail('already_booked', { booking: await existingBooking(db, r) });
       return fail(result.error);
     }
+    const token = (await ensureManageToken(db, 'sales_appointment', result.salesAppointmentId)) ?? result.manageToken;
+    notifyBookingSoon({ kind: 'sales_appointment', id: result.salesAppointmentId, change: 'booked', actorKind: 'homeowner' });
     flushNotificationsSoon();
     const body: BookResponse = {
       ok: true,
       booking: publicBooking({ status: 'scheduled', startsAt: result.startsAt, endsAt: result.endsAt, timeZone: result.timeZone, inviteeTimeZone: timeZone,
-        meetingType: calendar.meetingType, name: r.submission.name, phone: r.submission.phone, calendar, token: result.manageToken }),
+        meetingType: calendar.meetingType, name: r.submission.name, phone: r.submission.phone, calendar, token, sales: true }),
       metaEventId: null,
     };
     return reply(body);

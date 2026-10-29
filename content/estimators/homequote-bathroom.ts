@@ -7,8 +7,11 @@ import { BATH_GALLERY, BATH_OPTION_IMAGES } from './homequote-bathroom-photos';
  * claims a license, years in business or reviews of its own, and says
  * homeowners are connected with a licensed local bathroom contractor for a free
  * in-home consultation. Leads file under the published "bathroom-remodel"
- * funnel (content/funnels/bathroom-remodel.json), which takes any service area
- * and has no booking link, so there is no calendarUrl and no financing note.
+ * funnel (content/funnels/bathroom-remodel.json), which takes any service area.
+ * That funnel books a call on the HomeQuote team calendar, but this builder's
+ * result screen (components/estimator/screens/result-screen.tsx) cannot book
+ * natively yet, so the estimator stays without a booking step (calendarProvider
+ * 'none': we call them), with no calendarUrl and no financing note.
  *
  * pricesConfirmed stays false while the template's prices are examples.
  */
@@ -21,6 +24,7 @@ export const HOMEQUOTE_BATHROOM_ESTIMATOR: ContractorEstimatorConfig = {
   network: true,
   logoUrl: '/images/brand/homequote-network-logo.webp',
   funnelSlug: 'bathroom-remodel',
+  calendarProvider: 'none',
   revealRange: 'after_contact',
   // Mirrors the funnel's trackingPixels.consentMode.
   adMeasurement: 'opt_out',
