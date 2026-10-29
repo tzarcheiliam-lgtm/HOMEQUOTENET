@@ -31,7 +31,7 @@ describe('pool template: structure', () => {
   it('has exactly the fixed question ids, in order', () => {
     expect(T.questions.map((x) => x.id)).toEqual([
       'project', 'shape', 'size', 'package', 'scope', 'surface', 'tile', 'coping', 'deck', 'deckSize',
-      'features', 'equipment', 'extras', 'cracks', 'access', 'hillside',
+      'features', 'spaStyle', 'equipment', 'extras', 'kitchenStyle', 'coverStyle', 'cracks', 'access', 'hillside',
     ]);
   });
 
@@ -48,9 +48,16 @@ describe('pool template: structure', () => {
     expect(ids('deckSize')).toEqual(['small', 'medium', 'large']);
     expect(ids('features')).toEqual(['baja', 'spa', 'water', 'fire', 'lighting']);
     expect(ids('equipment')).toEqual(['pump_filter', 'heater', 'automation', 'salt']);
-    expect(ids('extras')).toEqual(['kitchen', 'patio_cover', 'turf_planting', 'fire_pit']);
-    // Backyard extras can be skipped; every other question needs an answer.
-    expect(POOL_TEMPLATE.questions.filter((q) => q.optional).map((q) => q.id)).toEqual(['extras']);
+    expect(ids('extras')).toEqual(['kitchen', 'patio_cover', 'turf_planting', 'fire_pit', 'fireplace']);
+    // The Pool Masters funnel's follow-up design steps (optional refinements anywhere else).
+    expect(ids('spaStyle')).toEqual(['flush', 'raised', 'zero_edge']);
+    expect(ids('kitchenStyle')).toEqual(['grill', 'full', 'chef']);
+    expect(ids('coverStyle')).toEqual(['pergola', 'cabana', 'covered_lounge']);
+    expect(q('spaStyle').showWhen).toEqual({ questionId: 'features', anyOf: ['spa'] });
+    expect(q('kitchenStyle').showWhen).toEqual({ questionId: 'extras', anyOf: ['kitchen'] });
+    expect(q('coverStyle').showWhen).toEqual({ questionId: 'extras', anyOf: ['patio_cover'] });
+    // Backyard extras and the style refinements can be skipped; every other question needs an answer.
+    expect(POOL_TEMPLATE.questions.filter((q) => q.optional).map((q) => q.id)).toEqual(['spaStyle', 'extras', 'kitchenStyle', 'coverStyle']);
     for (const id of ['cracks', 'access', 'hillside']) expect(ids(id)).toEqual(['no', 'yes', 'unsure']);
   });
 
@@ -134,7 +141,7 @@ describe('pool template: prices', () => {
   });
 
   it('only prices the questions that should carry prices, with the right units', () => {
-    expect([...new Set(priced.map(([x]) => x.id))]).toEqual(['surface', 'tile', 'coping', 'deck', 'features', 'equipment', 'extras']);
+    expect([...new Set(priced.map(([x]) => x.id))]).toEqual(['surface', 'tile', 'coping', 'deck', 'features', 'spaStyle', 'equipment', 'extras', 'kitchenStyle', 'coverStyle']);
     for (const [x, o] of priced) {
       const expected: Record<string, string> = { surface: 'interior_sqft', tile: 'perimeter_lf', coping: 'perimeter_lf', deck: 'deck_sqft' };
       if (expected[x.id]) expect(o.price!.unit, `${x.id}.${o.id}`).toBe(expected[x.id]);
@@ -142,7 +149,12 @@ describe('pool template: prices', () => {
     for (const id of ['baja', 'spa']) expect(price('features', id).unit).toBe('flat');
     for (const id of ['water', 'fire', 'lighting']) expect(price('features', id)).toMatchObject({ unit: 'each', quantity: 2 });
     for (const id of ['pump_filter', 'heater', 'automation', 'salt']) expect(price('equipment', id).unit).toBe('flat');
-    for (const id of ['kitchen', 'patio_cover', 'turf_planting', 'fire_pit']) expect(price('extras', id).unit).toBe('flat');
+    for (const id of ['kitchen', 'patio_cover', 'turf_planting', 'fire_pit', 'fireplace']) expect(price('extras', id).unit).toBe('flat');
+    // Style refinements: the base build is unpriced (it is the spa / kitchen / patio cover itself), upgrades add a flat amount.
+    for (const [qid, base] of [['spaStyle', 'flush'], ['kitchenStyle', 'grill'], ['coverStyle', 'pergola']] as const) {
+      expect(opt(qid, base).price, `${qid}.${base}`).toBeUndefined();
+      for (const o of q(qid).options.filter((x) => x.id !== base)) expect(o.price!.unit, `${qid}.${o.id}`).toBe('flat');
+    }
   });
 
   it('makes "unsure" span the cheapest to the priciest option of its question', () => {
@@ -248,7 +260,9 @@ describe('pool catalog', () => {
     const extraIds = (qid: string) => extra(qid).map((o) => o.id);
     expect(extraIds('surface')).toEqual(['colored_plaster', 'mini_pebble', 'polished_pebble', 'glass_bead', 'full_tile']);
     expect(extraIds('tile')).toEqual(['ceramic', 'italian_porcelain', 'glass_mosaic', 'natural_stone']);
-    expect(extraIds('coping')).toEqual(['precast', 'poured_in_place', 'porcelain', 'brick', 'bluestone_limestone']);
+    // The template's concrete coping is precast; porcelain is the Pool Masters funnel's Luxe coping.
+    expect(opt('coping', 'concrete').label).toBe('Precast concrete');
+    expect(extraIds('coping')).toEqual(['poured_in_place', 'porcelain', 'brick', 'bluestone_limestone']);
     expect(extraIds('deck')).toEqual([
       'stamped_concrete', 'exposed_aggregate', 'salt_finish', 'flagstone', 'stepping_stones_turf', 'decomposed_granite', 'wood_composite',
     ]);

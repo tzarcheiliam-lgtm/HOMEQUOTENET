@@ -1,4 +1,4 @@
-import { answeredSteps, decodeFunnelSelection, encodeFunnelSelection, normalizeFunnelSelection } from '@/lib/estimator/funnel/engine';
+import { activeSteps, answeredSteps, decodeFunnelSelection, defaultFunnelSelection, encodeFunnelSelection, normalizeFunnelSelection } from '@/lib/estimator/funnel/engine';
 import type { FunnelPhoto, FunnelPhotoWidths, FunnelSelection, FunnelSpec } from '@/lib/estimator/funnel/types';
 import type { FunnelLeadResult } from './screens';
 
@@ -7,10 +7,13 @@ import type { FunnelLeadResult } from './screens';
  * for, the URL of a screen, the step label and progress, and the
  * sessionStorage copy that lets a refresh keep the picks and the result.
  *
- * Screens, in order: the steps ("?step=1" .. "?step=<n>"), then the contact
- * step ("?step=contact") and the booking step ("?step=book"). The picks ride
- * along in the same query string (size=classic&finish=luxe&extras=spa), so a
- * copied link reopens the same design.
+ * Screens, in order: the steps shown on this path ("?step=1" .. "?step=<n>",
+ * n = 3 for just the pool, 4 with a spa, 7 for the full backyard: follow-up
+ * steps count only when a pick asks for them), then the contact step
+ * ("?step=contact") and the booking step ("?step=book"). The picks ride along
+ * in the same query string (size=classic&finish=luxe&extras=spa&spa=flush), so
+ * a copied link reopens the same design. Every helper that depends on the
+ * path takes the selection (default: every step on its default).
  */
 
 export type FunnelScreen = { kind: 'step'; index: number } | { kind: 'contact' } | { kind: 'book' };
@@ -18,13 +21,25 @@ export type FunnelScreen = { kind: 'step'; index: number } | { kind: 'contact' }
 export const CONTACT_PARAM = 'contact';
 export const BOOK_PARAM = 'book';
 
-/** The screen a `?step=` value names; anything unknown is step 1. */
-export function parseScreen(spec: FunnelSpec, raw: string | null | undefined): FunnelScreen {
+/** How many steps this path shows. */
+export function stepCount(spec: FunnelSpec, selection: FunnelSelection = defaultFunnelSelection(spec)): number {
+  return activeSteps(spec, selection).length;
+}
+
+/** The screen a `?step=` value names (for these picks); anything unknown is step 1. */
+export function parseScreen(spec: FunnelSpec, raw: string | null | undefined, selection?: FunnelSelection): FunnelScreen {
   if (raw === CONTACT_PARAM) return { kind: 'contact' };
   if (raw === BOOK_PARAM) return { kind: 'book' };
   const n = Number(raw);
-  if (Number.isInteger(n) && n >= 1 && n <= spec.steps.length) return { kind: 'step', index: n - 1 };
+  if (Number.isInteger(n) && n >= 1 && n <= stepCount(spec, selection)) return { kind: 'step', index: n - 1 };
   return { kind: 'step', index: 0 };
+}
+
+/** A step screen past the end of this path (the picks changed under it) becomes the path's last step. */
+export function clampScreen(spec: FunnelSpec, screen: FunnelScreen, selection?: FunnelSelection): FunnelScreen {
+  if (screen.kind !== 'step') return screen;
+  const last = stepCount(spec, selection) - 1;
+  return screen.index > last ? { kind: 'step', index: last } : screen;
 }
 
 /** The `?step=` value of a screen. */
@@ -41,7 +56,8 @@ export function sameScreen(a: FunnelScreen, b: FunnelScreen): boolean {
 
 /**
  * "<pathname>?step=2&size=classic&finish=luxe&extras=pool". Any other param
- * already in `search` (UTMs, fbclid) is kept after them, for attribution.
+ * already in `search` (UTMs, fbclid) is kept after them, for attribution; a
+ * stale follow-up param (e.g. spa= after "Just the pool") is dropped.
  */
 export function screenUrl(spec: FunnelSpec, pathname: string, screen: FunnelScreen, selection: FunnelSelection, search = ''): string {
   const own = new Set(['step', ...spec.steps.map((s) => s.id)]);
@@ -50,40 +66,44 @@ export function screenUrl(spec: FunnelSpec, pathname: string, screen: FunnelScre
   return `${pathname}?step=${screenParam(screen)}&${encodeFunnelSelection(spec, selection)}${tail}`;
 }
 
-export function nextScreen(spec: FunnelSpec, screen: FunnelScreen): FunnelScreen {
-  if (screen.kind === 'step') return screen.index + 1 < spec.steps.length ? { kind: 'step', index: screen.index + 1 } : { kind: 'contact' };
+export function nextScreen(spec: FunnelSpec, screen: FunnelScreen, selection?: FunnelSelection): FunnelScreen {
+  if (screen.kind === 'step') return screen.index + 1 < stepCount(spec, selection) ? { kind: 'step', index: screen.index + 1 } : { kind: 'contact' };
   return { kind: 'book' };
 }
 
 /** The screen the back arrow goes to; null on step 1 (no arrow there). */
-export function prevScreen(spec: FunnelSpec, screen: FunnelScreen): FunnelScreen | null {
-  if (screen.kind === 'contact') return { kind: 'step', index: spec.steps.length - 1 };
+export function prevScreen(spec: FunnelSpec, screen: FunnelScreen, selection?: FunnelSelection): FunnelScreen | null {
+  if (screen.kind === 'contact') return { kind: 'step', index: stepCount(spec, selection) - 1 };
   if (screen.kind === 'book') return { kind: 'contact' };
   return screen.index > 0 ? { kind: 'step', index: screen.index - 1 } : null;
 }
 
 /** Position for transitions: steps 0..n-1, contact n, book n+1. */
-export function screenOrder(spec: FunnelSpec, screen: FunnelScreen): number {
+export function screenOrder(spec: FunnelSpec, screen: FunnelScreen, selection?: FunnelSelection): number {
   if (screen.kind === 'step') return screen.index;
-  return screen.kind === 'contact' ? spec.steps.length : spec.steps.length + 1;
+  const n = stepCount(spec, selection);
+  return screen.kind === 'contact' ? n : n + 1;
 }
 
-/** The small label over the bar: "Step 1 of 3", or the contact eyebrow ("Last step"). Null on booking (no bar). */
-export function stepLabel(spec: FunnelSpec, screen: FunnelScreen): string | null {
-  if (screen.kind === 'step') return `Step ${screen.index + 1} of ${spec.steps.length}`;
+/** The small label over the bar: "Step 1 of 3" (of 4 or 7 when follow-ups show), or the contact eyebrow ("Last step"). Null on booking (no bar). */
+export function stepLabel(spec: FunnelSpec, screen: FunnelScreen, selection?: FunnelSelection): string | null {
+  if (screen.kind === 'step') return `Step ${screen.index + 1} of ${stepCount(spec, selection)}`;
   if (screen.kind === 'contact') return spec.contactStep.eyebrow;
   return null;
 }
 
 /** How full the bar is (0..1): each step is one share, the contact step fills it. */
-export function progress(spec: FunnelSpec, screen: FunnelScreen): number {
-  if (screen.kind === 'step') return (screen.index + 1) / (spec.steps.length + 1);
+export function progress(spec: FunnelSpec, screen: FunnelScreen, selection?: FunnelSelection): number {
+  if (screen.kind === 'step') return (screen.index + 1) / (stepCount(spec, selection) + 1);
   return 1;
 }
 
-/** Text of a step's button: its own cta, else "Continue". */
-export function stepCta(spec: FunnelSpec, index: number): string {
-  return spec.steps[index]?.cta ?? 'Continue';
+/** Text of a step's button: the spec's finalCta on the path's last step, else the step's own cta, else "Continue". */
+export function stepCta(spec: FunnelSpec, index: number, selection?: FunnelSelection): string {
+  const steps = activeSteps(spec, selection ?? defaultFunnelSelection(spec));
+  const step = steps[index];
+  if (index === steps.length - 1 && spec.finalCta) return spec.finalCta;
+  return step?.cta ?? 'Continue';
 }
 
 /* ------------------------------------------------------------------ */
@@ -101,9 +121,10 @@ export function initialFromSearch(spec: FunnelSpec, search: SearchParams | undef
     const value = first(v);
     if (typeof value === 'string') params.set(k, value);
   }
+  const selection = decodeFunnelSelection(spec, params);
   return {
-    screen: parseScreen(spec, params.get('step')),
-    selection: decodeFunnelSelection(spec, params),
+    screen: parseScreen(spec, params.get('step'), selection),
+    selection,
     fromUrl: answeredSteps(spec, params).length > 0,
   };
 }

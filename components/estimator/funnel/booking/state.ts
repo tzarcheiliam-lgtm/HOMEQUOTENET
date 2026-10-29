@@ -9,9 +9,11 @@ import type { Estimate } from '@/lib/estimator/types';
  * tests/estimator-funnel-lead.test.ts.
  */
 
-/** "Classic · Luxe · With spa" (shown in small caps): each pick's short title, or its title. */
+/** "Classic · Luxe · Zero-edge spa" (shown in small caps): each pick's short title, or its title; an empty short is left out. */
 export function priceEyebrow(spec: Pick<FunnelSpec, 'steps' | 'bookingStep'>, selection: FunnelSelection): string {
-  const picks = pickedOptions(spec as FunnelSpec, selection).map((o) => o.short ?? o.title);
+  const picks = pickedOptions(spec as FunnelSpec, selection)
+    .map((o) => o.short ?? o.title)
+    .filter(Boolean);
   return spec.bookingStep.priceEyebrow.replace('{options}', picks.join(' · '));
 }
 

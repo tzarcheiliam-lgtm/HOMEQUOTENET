@@ -7,6 +7,7 @@ import { POOL_MASTERS_FUNNEL as SPEC } from '@/content/estimators/pool-masters-f
 import { estimateSelection } from '@/lib/estimator/configurator/engine';
 import { computeEstimate, validateTemplate } from '@/lib/estimator/engine';
 import {
+  activeSteps,
   allFunnelSelections,
   answeredSteps,
   decodeFunnelSelection,
@@ -43,9 +44,12 @@ describe('pool masters funnel: config', () => {
     expect(validateTemplate(T)).toEqual([]);
   });
 
-  it('asks exactly three questions, ids unique, every option mapped to real configurator models/rows', () => {
-    expect(SPEC.steps.map((s) => s.id)).toEqual(['size', 'finish', 'extras']);
-    expect(SPEC.steps.at(-1)!.cta).toBe('Get my estimate');
+  it('asks three questions plus follow-ups, ids unique, every option mapped to real configurator models/rows or template answers', () => {
+    expect(SPEC.steps.map((s) => s.id)).toEqual(['size', 'finish', 'extras', 'spa', 'kitchen', 'fire', 'cabana']);
+    expect(SPEC.steps.slice(0, 3).every((s) => !s.showWhen)).toBe(true);
+    expect(SPEC.steps.find((s) => s.id === 'spa')!.showWhen).toEqual({ stepId: 'extras', anyOf: ['spa', 'backyard'] });
+    for (const id of ['kitchen', 'fire', 'cabana']) expect(SPEC.steps.find((s) => s.id === id)!.showWhen).toEqual({ stepId: 'extras', anyOf: ['backyard'] });
+    expect(SPEC.finalCta).toBe('Get my estimate');
     const models = new Set(POOL_MASTERS_CONFIGURATOR.models.map((m) => m.id));
     const rows = new Set(POOL_MASTERS_CONFIGURATOR.groups.flatMap((g) => g.rows.map((r) => r.id)));
     for (const s of SPEC.steps) {
@@ -57,8 +61,29 @@ describe('pool masters funnel: config', () => {
         expect(o.title && o.subtitle).toBeTruthy();
         if (o.model) expect(models.has(o.model)).toBe(true);
         for (const r of o.rows ?? []) expect(rows.has(r)).toBe(true);
+        for (const a of [o.answers, o.addAnswers]) {
+          for (const [qid, picks] of Object.entries(a ?? {})) {
+            const q = T.questions.find((x) => x.id === qid);
+            expect(q, `${s.id}.${o.id} -> ${qid}`).toBeDefined();
+            for (const id of picks) expect(q!.options.some((x) => x.id === id), `${s.id}.${o.id} -> ${qid}.${id}`).toBe(true);
+          }
+        }
+      }
+      // Follow-ups: three cards each, every one with its own photo.
+      if (s.showWhen) {
+        expect(s.options).toHaveLength(3);
+        expect(s.photo.kind).toBe('option');
       }
     }
+  });
+
+  it('says what Standard and Luxe include (travertine is gone)', () => {
+    const finish = SPEC.steps.find((s) => s.id === 'finish')!;
+    expect(finish.options.map((o) => [o.title, o.subtitle])).toEqual([
+      ['Standard', 'Plaster, standard tile, precast coping'],
+      ['Luxe', 'Pebble, glass tile, porcelain coping and deck'],
+    ]);
+    for (const o of finish.options) expect(o.subtitle).not.toMatch(/travertine/i);
   });
 
   it('copy is truthful: no reviews, ratings or monthly payments', () => {
@@ -92,7 +117,8 @@ describe('pool masters funnel: photos', () => {
   });
 
   it('the photo swaps with the selected option', () => {
-    const base = defaultFunnelSelection(SPEC);
+    // Every step shown (the full backyard path).
+    const base = normalizeFunnelSelection(SPEC, { extras: 'backyard' });
     for (const s of SPEC.steps) {
       const keys = s.options.map((o) => photoKey(SPEC, s.id, { ...base, [s.id]: o.id }));
       expect(new Set(keys).size, s.id).toBe(keys.length);
@@ -107,6 +133,53 @@ describe('pool masters funnel: photos', () => {
     expect(photoKey(SPEC, 'extras', { finish: 'luxe', extras: 'backyard' })).toBe('aerial-porcelain-pebble-spa-yard');
     expect(smallVariant('/estimator/pool-masters/configurator/aerial-resurface.webp')).toBe('/estimator/pool-masters/configurator/aerial-resurface-sm.webp');
     expect(smallVariant('/estimator/pool-masters/funnel/size-classic.webp')).toBeUndefined();
+    // Follow-ups: one photo per option, the same whatever else was picked.
+    expect(funnelPhoto(SPEC, 'spa', { extras: 'spa', spa: 'flush' }).src).toBe('/estimator/pool-masters/funnel/spa-flush.webp');
+    expect(funnelPhoto(SPEC, 'spa', { extras: 'spa', spa: 'raised' }).src).toBe('/estimator/pool-masters/configurator/poolside-pebble-premium-spa.webp');
+    expect(funnelPhoto(SPEC, 'spa', { extras: 'backyard', spa: 'zero_edge' }).src).toBe('/estimator/pool-masters/funnel/spa-zero-edge.webp');
+    expect(funnelPhoto(SPEC, 'fire', { extras: 'backyard', fire: 'fireplace' }).src).toBe('/estimator/pool-masters/funnel/fire-fireplace.webp');
+    // Photos of a step not shown on this path are still known (the screen preloads them).
+    expect(Object.keys(stepOptionPhotos(SPEC, 'kitchen', { extras: 'pool' }))).toEqual(['grill', 'full', 'chef']);
+  });
+
+  it('every follow-up option photo exists, in both sizes when it has a phone copy', () => {
+    for (const s of SPEC.steps.filter((x) => x.showWhen)) {
+      if (s.photo.kind !== 'option') continue;
+      expect(Object.keys(s.photo.photos)).toEqual(s.options.map((o) => o.id));
+      for (const [id, p] of Object.entries(s.photo.photos)) {
+        expect(exists(p.src), `${s.id}.${id} ${p.src}`).toBe(true);
+        if (p.srcSm) expect(exists(p.srcSm), `${s.id}.${id} ${p.srcSm}`).toBe(true);
+        expect(p.alt.length).toBeGreaterThan(10);
+      }
+    }
+  });
+});
+
+describe('pool masters funnel: conditional follow-up steps', () => {
+  const ids = (sel: Record<string, string>) => activeSteps(SPEC, sel).map((s) => s.id);
+
+  it('shows follow-ups only when the extras ask for them', () => {
+    expect(ids({ extras: 'pool' })).toEqual(['size', 'finish', 'extras']);
+    expect(ids({ extras: 'spa' })).toEqual(['size', 'finish', 'extras', 'spa']);
+    expect(ids({ extras: 'backyard' })).toEqual(['size', 'finish', 'extras', 'spa', 'kitchen', 'fire', 'cabana']);
+    expect(ids({})).toEqual(['size', 'finish', 'extras']);
+  });
+
+  it('drops follow-up picks that no longer apply, and fills in defaults for new ones', () => {
+    const full = { size: 'estate', finish: 'luxe', extras: 'backyard', spa: 'zero_edge', kitchen: 'chef', fire: 'pit', cabana: 'pergola' };
+    expect(normalizeFunnelSelection(SPEC, full)).toEqual(full);
+    expect(normalizeFunnelSelection(SPEC, { ...full, extras: 'spa' })).toEqual({ size: 'estate', finish: 'luxe', extras: 'spa', spa: 'zero_edge' });
+    expect(normalizeFunnelSelection(SPEC, { ...full, extras: 'pool' })).toEqual({ size: 'estate', finish: 'luxe', extras: 'pool' });
+    expect(normalizeFunnelSelection(SPEC, { extras: 'backyard', spa: 'nope' })).toEqual({
+      size: 'classic', finish: 'standard', extras: 'backyard', spa: 'raised', kitchen: 'full', fire: 'bowls', cabana: 'lounge',
+    });
+    expect(encodeFunnelSelection(SPEC, { ...full, extras: 'pool' })).toBe('size=estate&finish=luxe&extras=pool');
+    expect(decodeFunnelSelection(SPEC, 'extras=pool&spa=flush&kitchen=chef')).toEqual({ size: 'classic', finish: 'standard', extras: 'pool' });
+  });
+
+  it('enumerates every path: 6 just-the-pool, 18 spa and 486 full-backyard designs', () => {
+    expect(ALL).toHaveLength(6 + 18 + 486);
+    for (const sel of ALL) expect(normalizeFunnelSelection(SPEC, sel)).toEqual(sel);
   });
 });
 
@@ -129,17 +202,22 @@ describe('pool masters funnel: pricing', () => {
       const direct = computeEstimate(T, { answers });
       expect([direct.low, direct.high]).toEqual([total!.low, total!.high]);
       expect([estimate.low, estimate.high]).toEqual([direct.low, direct.high]);
-      // ...and as the configurator on the same design with Go Luxe off.
-      expect(estimateSelection(POOL_MASTERS_CONFIGURATOR, T, toConfiguratorSelection(SPEC, sel)!).total).toEqual(total);
+      // Nothing the design asks is left open (only the property questions, which the on-site visit answers).
+      expect(direct.unanswered, JSON.stringify(sel)).toEqual(['cracks', 'access', 'hillside']);
+      // ...and as the configurator on the same answers with Go Luxe off.
+      expect(estimateSelection(POOL_MASTERS_CONFIGURATOR, T, toConfiguratorSelection(SPEC, sel)!, answers).total).toEqual(total);
     }
   });
 
-  it('never applies the Go Luxe bundle; luxe maps to its finish rows only', () => {
+  it('never applies the Go Luxe bundle; Standard is precast coping, Luxe porcelain coping', () => {
     for (const sel of ALL) expect(toConfiguratorSelection(SPEC, sel)!.luxe).toBe(false);
+    const std = funnelAnswers(SPEC, { size: 'classic', finish: 'standard', extras: 'pool' });
+    expect([std.surface, std.tile, std.coping, std.deck]).toEqual([['plaster'], ['porcelain'], ['concrete'], ['resurface']]);
+    expect(T.questions.find((q) => q.id === 'coping')!.options.find((o) => o.id === 'concrete')!.label).toBe('Precast concrete');
     const a = funnelAnswers(SPEC, { size: 'classic', finish: 'luxe', extras: 'pool' });
     expect(a.surface).toEqual(['pebble']);
     expect(a.tile).toEqual(['glass']);
-    expect(a.coping).toEqual(['travertine']);
+    expect(a.coping).toEqual(['porcelain']);
     expect(a.deck).toEqual(['porcelain']);
     expect(a.features ?? []).not.toContain('spa');
     const full = funnelAnswers(SPEC, { size: 'classic', finish: 'standard', extras: 'backyard' });
@@ -147,6 +225,46 @@ describe('pool masters funnel: pricing', () => {
     expect(full.extras).toEqual(expect.arrayContaining(['kitchen', 'patio_cover']));
     expect(full.project?.[0]).toBe('backyard');
     expect(funnelAnswers(SPEC, { size: 'classic', finish: 'luxe', extras: 'spa' }).project).toEqual(['remodel']);
+  });
+
+  it('maps every follow-up pick to template answers', () => {
+    const base = { size: 'classic', finish: 'standard', extras: 'backyard' };
+    const pick = (step: string, option: string) => funnelAnswers(SPEC, { ...base, [step]: option });
+    expect(['flush', 'raised', 'zero_edge'].map((o) => pick('spa', o).spaStyle)).toEqual([['flush'], ['raised'], ['zero_edge']]);
+    expect(['grill', 'full', 'chef'].map((o) => pick('kitchen', o).kitchenStyle)).toEqual([['grill'], ['full'], ['chef']]);
+    expect(['pergola', 'cabana', 'lounge'].map((o) => pick('cabana', o).coverStyle)).toEqual([['pergola'], ['cabana'], ['covered_lounge']]);
+    // Fire: exactly one fire feature each.
+    const fire = (o: string) => {
+      const a = pick('fire', o);
+      return [a.features?.includes('fire') ?? false, a.extras?.includes('fire_pit') ?? false, a.extras?.includes('fireplace') ?? false];
+    };
+    expect(fire('pit')).toEqual([false, true, false]);
+    expect(fire('fireplace')).toEqual([false, false, true]);
+    expect(fire('bowls')).toEqual([true, false, false]);
+    // The spa path alone: no kitchen, fire or shade.
+    const spaOnly = funnelAnswers(SPEC, { size: 'classic', finish: 'standard', extras: 'spa', spa: 'flush' });
+    expect(spaOnly.spaStyle).toEqual(['flush']);
+    expect(spaOnly.extras ?? []).toEqual([]);
+    expect(spaOnly.kitchenStyle).toBeUndefined();
+  });
+
+  it('prices the follow-ups in tiers (example prices)', () => {
+    const range = (extra: Record<string, string>) => estimateFunnel(SPEC, T, { size: 'classic', finish: 'standard', ...extra }).total!;
+    const pool = range({ extras: 'pool' });
+    const delta = (extra: Record<string, string>) => {
+      const r = range(extra);
+      return [r.low - pool.low, r.high - pool.high];
+    };
+    // Spa alone: flush $15k-28k, raised $18k-35k, zero-edge $25k-45k over the pool (rounded to $500).
+    expect(delta({ extras: 'spa', spa: 'flush' })).toEqual([15000, 28000]);
+    expect(delta({ extras: 'spa', spa: 'raised' })).toEqual([18000, 35000]);
+    expect(delta({ extras: 'spa', spa: 'zero_edge' })).toEqual([25000, 45000]);
+    const tiers = (step: string, options: string[]) => options.map((o) => range({ extras: 'backyard', [step]: o }).low);
+    const rising = (xs: number[]) => xs.every((x, i) => i === 0 || x > xs[i - 1]);
+    expect(rising(tiers('spa', ['flush', 'raised', 'zero_edge']))).toBe(true);
+    expect(rising(tiers('kitchen', ['grill', 'full', 'chef']))).toBe(true);
+    expect(rising(tiers('cabana', ['pergola', 'cabana', 'lounge']))).toBe(true);
+    expect(rising(tiers('fire', ['pit', 'bowls', 'fireplace']))).toBe(true);
   });
 
   it('prices rise with each choice: Luxe > Standard, bigger > smaller, more extras > fewer', () => {
@@ -165,7 +283,8 @@ describe('pool masters funnel: pricing', () => {
   });
 
   it('price card eyebrow names the picks', () => {
-    expect(pickedTitles(SPEC, { size: 'classic', finish: 'luxe', extras: 'spa' })).toEqual(['Classic', 'Luxe', 'Add a spa']);
+    expect(pickedTitles(SPEC, { size: 'classic', finish: 'luxe', extras: 'spa' })).toEqual(['Classic', 'Luxe', 'Add a spa', 'Raised spa']);
+    expect(pickedTitles(SPEC, { size: 'classic', finish: 'luxe', extras: 'pool', spa: 'flush' })).toEqual(['Classic', 'Luxe', 'Just the pool']);
     expect(SPEC.bookingStep.priceEyebrow).toContain('{options}');
   });
 });
@@ -185,7 +304,10 @@ describe('funnel selection encoding', () => {
       expect(decodeFunnelSelection(SPEC, new URLSearchParams(qs))).toEqual(sel);
       expect(decodeFunnelSelection(SPEC, JSON.parse(JSON.stringify(sel)) as Record<string, unknown>)).toEqual(sel);
     }
-    expect(encodeFunnelSelection(SPEC, { size: 'estate', finish: 'luxe', extras: 'backyard' })).toBe('size=estate&finish=luxe&extras=backyard');
+    expect(encodeFunnelSelection(SPEC, { size: 'estate', finish: 'luxe', extras: 'backyard' })).toBe(
+      'size=estate&finish=luxe&extras=backyard&spa=raised&kitchen=full&fire=bowls&cabana=lounge',
+    );
+    expect(encodeFunnelSelection(SPEC, { size: 'estate', finish: 'luxe', extras: 'spa', spa: 'zero_edge' })).toBe('size=estate&finish=luxe&extras=spa&spa=zero_edge');
     expect(decodeFunnelSelection(SPEC, 'size=<script>&finish=luxe&step=2')).toEqual({ size: 'classic', finish: 'luxe', extras: 'pool' });
     expect(answeredSteps(SPEC, 'step=3&size=estate&finish=nope')).toEqual(['size']);
   });

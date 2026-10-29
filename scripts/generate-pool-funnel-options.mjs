@@ -301,6 +301,7 @@ async function cmdSheet() {
       top: y,
     });
   }
+  mkdirSync(path.join(RAW_DIR, '..'), { recursive: true });
   const out = path.join(RAW_DIR, '..', 'funnel-options-sheet.jpg');
   await sharp({ create: { width: cols * tw, height: Math.ceil(order.length / cols) * (th + label), channels: 3, background: '#ffffff' } })
     .composite(tiles).jpeg({ quality: 85 }).toFile(out);

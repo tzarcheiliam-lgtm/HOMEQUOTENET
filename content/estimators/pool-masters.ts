@@ -38,7 +38,13 @@ export const POOL_MASTERS_ESTIMATOR: ContractorEstimatorConfig = {
   // Mirrors the funnel's trackingPixels.consentMode.
   adMeasurement: 'opt_out',
   pricesConfirmed: false,
-  options: Object.fromEntries(Object.entries(POOL_MASTERS_OPTION_IMAGES).map(([key, image]) => [key, { image }])),
+  options: {
+    ...Object.fromEntries(Object.entries(POOL_MASTERS_OPTION_IMAGES).map(([key, image]) => [key, { image }])),
+    // The funnel's Luxe finish has porcelain coping (from the catalog); "Help me choose" makes room for it
+    // (the coping question allows four options, and the funnel never asks it).
+    'coping.porcelain': { enabled: true },
+    'coping.unsure': { enabled: false },
+  },
   gallery: POOL_MASTERS_GALLERY,
   // From the brochure (V3): licensed & insured, serving SoCal since 2010, complimentary on-site estimates.
   facts: ['Licensed & insured', 'Serving SoCal since 2010', 'Free on-site estimate'],

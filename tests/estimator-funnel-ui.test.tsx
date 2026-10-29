@@ -6,6 +6,7 @@ import { Funnel } from '@/components/estimator/funnel/funnel';
 import { FunnelLanding, headlineLines } from '@/components/estimator/funnel/landing';
 import { missingFunnelPhotos } from '@/components/estimator/funnel/photo-files';
 import {
+  clampScreen,
   initialFromSearch,
   nextScreen,
   parseScreen,
@@ -17,6 +18,7 @@ import {
   resultFor,
   screenParam,
   screenUrl,
+  stepCount,
   stepCta,
   stepLabel,
   storageKey,
@@ -69,7 +71,7 @@ describe('funnel screens and URL', () => {
   });
 
   it('labels "Step n of 3" and fills the bar in quarters, the contact step full', () => {
-    expect(SPEC.steps).toHaveLength(3);
+    expect(stepCount(SPEC)).toBe(3);
     expect(stepLabel(SPEC, { kind: 'step', index: 1 })).toBe('Step 2 of 3');
     expect(stepLabel(SPEC, { kind: 'contact' })).toBe(SPEC.contactStep.eyebrow);
     expect(stepLabel(SPEC, { kind: 'book' })).toBeNull();
@@ -81,9 +83,13 @@ describe('funnel screens and URL', () => {
   it('puts the screen and every pick in the URL and keeps UTMs, dropping stale picks', () => {
     const sel = { size: 'estate', finish: 'luxe', extras: 'backyard' };
     const url = screenUrl(SPEC, '/estimator/pool-masters/design', { kind: 'step', index: 1 }, sel, '?utm_source=fb&size=compact&step=3&fbclid=x');
-    expect(url).toBe('/estimator/pool-masters/design?step=2&size=estate&finish=luxe&extras=backyard&utm_source=fb&fbclid=x');
+    expect(url).toBe('/estimator/pool-masters/design?step=2&size=estate&finish=luxe&extras=backyard&spa=raised&kitchen=full&fire=bowls&cabana=lounge&utm_source=fb&fbclid=x');
     const back = initialFromSearch(SPEC, Object.fromEntries(new URLSearchParams(url.split('?')[1])));
-    expect(back).toEqual({ screen: { kind: 'step', index: 1 }, selection: sel, fromUrl: true });
+    expect(back).toEqual({ screen: { kind: 'step', index: 1 }, selection: { ...sel, spa: 'raised', kitchen: 'full', fire: 'bowls', cabana: 'lounge' }, fromUrl: true });
+    // A follow-up param left over from another path is dropped.
+    expect(screenUrl(SPEC, '/d', { kind: 'step', index: 2 }, { size: 'classic', finish: 'standard', extras: 'pool' }, '?spa=flush&kitchen=chef')).toBe(
+      '/d?step=3&size=classic&finish=standard&extras=pool',
+    );
     expect(initialFromSearch(SPEC, {})).toEqual({ screen: { kind: 'step', index: 0 }, selection: base, fromUrl: false });
     expect(initialFromSearch(SPEC, { step: ['contact', '1'], size: 'nope' }).screen).toEqual({ kind: 'contact' });
   });
@@ -92,8 +98,8 @@ describe('funnel screens and URL', () => {
     const mem = new Map<string, string>();
     const storage = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v) };
     const result = { estimate: { low: 1, high: 2 } as never, qualified: true, contact: { firstName: 'A', lastName: 'B', email: 'a@b.co' } };
-    writeStored('pool-masters', { v: 1, selection: { size: 'compact', finish: 'luxe', extras: 'spa' }, result }, storage);
-    expect(readStored(SPEC, 'pool-masters', storage)).toEqual({ v: 1, selection: { size: 'compact', finish: 'luxe', extras: 'spa' }, result });
+    writeStored('pool-masters', { v: 1, selection: { size: 'compact', finish: 'luxe', extras: 'spa', spa: 'flush' }, result }, storage);
+    expect(readStored(SPEC, 'pool-masters', storage)).toEqual({ v: 1, selection: { size: 'compact', finish: 'luxe', extras: 'spa', spa: 'flush' }, result });
     mem.set(storageKey('pool-masters'), JSON.stringify({ v: 1, selection: { size: 'huge' } }));
     expect(readStored(SPEC, 'pool-masters', storage)).toEqual({ v: 1, selection: base, result: undefined });
     mem.set(storageKey('pool-masters'), '{oops');
@@ -115,9 +121,71 @@ describe('funnel screens and URL', () => {
     const result = { estimate: { low: 1, high: 2 } as never, qualified: true, contact: { firstName: 'A', lastName: 'B', email: 'a@b.co' }, selection: sel };
     expect(resultFor(SPEC, result, { ...sel })).toBe(result);
     expect(resultFor(SPEC, result, { ...sel, extras: 'backyard' })).toBeNull();
+    // A different follow-up pick is a different design too.
+    expect(resultFor(SPEC, { ...result, selection: { ...sel, spa: 'raised' } }, { ...sel, spa: 'raised' })).not.toBeNull();
+    expect(resultFor(SPEC, { ...result, selection: { ...sel, spa: 'raised' } }, { ...sel, spa: 'flush' })).toBeNull();
     // Saved before results carried their picks: stale.
     expect(resultFor(SPEC, { ...result, selection: undefined }, sel)).toBeNull();
     expect(resultFor(SPEC, null, sel)).toBeNull();
+  });
+});
+
+describe('funnel follow-up steps (spa, kitchen, fire, cabana)', () => {
+  const spa = { size: 'classic', finish: 'luxe', extras: 'spa', spa: 'zero_edge' };
+  const full = { size: 'estate', finish: 'standard', extras: 'backyard', spa: 'flush', kitchen: 'chef', fire: 'fireplace', cabana: 'pergola' };
+
+  it('counts only the steps on the path: 3 for just the pool, 4 with a spa, 7 for the full backyard', () => {
+    expect(stepCount(SPEC, base)).toBe(3);
+    expect(stepCount(SPEC, spa)).toBe(4);
+    expect(stepCount(SPEC, full)).toBe(7);
+    expect(stepLabel(SPEC, { kind: 'step', index: 3 }, spa)).toBe('Step 4 of 4');
+    expect(stepLabel(SPEC, { kind: 'step', index: 6 }, full)).toBe('Step 7 of 7');
+    expect(progress(SPEC, { kind: 'step', index: 3 }, spa)).toBe(0.8);
+    expect([0, 1, 2, 3].map((i) => stepCta(SPEC, i, spa))).toEqual(['Continue', 'Continue', 'Continue', 'Get my estimate']);
+    expect([0, 1, 2, 3, 4, 5, 6].map((i) => stepCta(SPEC, i, full)).at(-1)).toBe('Get my estimate');
+    expect([0, 1, 2, 3, 4, 5].every((i) => stepCta(SPEC, i, full) === 'Continue')).toBe(true);
+  });
+
+  it('walks the full backyard path forward and back, the contact step after step 7', () => {
+    const order: FunnelScreen[] = [{ kind: 'step', index: 0 }];
+    while (order.at(-1)!.kind !== 'book') order.push(nextScreen(SPEC, order.at(-1)!, full));
+    expect(order.map(screenParam)).toEqual(['1', '2', '3', '4', '5', '6', '7', 'contact', 'book']);
+    expect(screenParam(prevScreen(SPEC, { kind: 'contact' }, full)!)).toBe('7');
+    expect(screenParam(prevScreen(SPEC, { kind: 'contact' }, spa)!)).toBe('4');
+    expect(screenParam(prevScreen(SPEC, { kind: 'contact' }, base)!)).toBe('3');
+  });
+
+  it('reads ?step=4..7 only when the picks show that many steps, and clamps a screen past the end', () => {
+    expect(parseScreen(SPEC, '7', full)).toEqual({ kind: 'step', index: 6 });
+    expect(parseScreen(SPEC, '4', spa)).toEqual({ kind: 'step', index: 3 });
+    expect(parseScreen(SPEC, '5', spa)).toEqual({ kind: 'step', index: 0 });
+    expect(parseScreen(SPEC, '4', base)).toEqual({ kind: 'step', index: 0 });
+    expect(clampScreen(SPEC, { kind: 'step', index: 6 }, spa)).toEqual({ kind: 'step', index: 3 });
+    expect(clampScreen(SPEC, { kind: 'contact' }, spa)).toEqual({ kind: 'contact' });
+    // A refresh on step 6 of the full backyard comes back to step 6 with every pick.
+    const url = screenUrl(SPEC, '/estimator/pool-masters/design', { kind: 'step', index: 5 }, full);
+    expect(initialFromSearch(SPEC, Object.fromEntries(new URLSearchParams(url.split('?')[1])))).toEqual({ screen: { kind: 'step', index: 5 }, selection: full, fromUrl: true });
+  });
+
+  it('renders each follow-up as one question, three cards, its own photos and the right button', () => {
+    const cases = [
+      { sel: spa, index: 3, title: 'Choose your spa.', label: 'Step 4 of 4', options: ['Flush spa', 'Raised spa', 'Zero-edge spa'], cta: 'Get my estimate' },
+      { sel: full, index: 4, title: 'Choose your outdoor kitchen.', label: 'Step 5 of 7', options: ['Grill island', 'Full kitchen', 'Chef’s kitchen'], cta: 'Continue' },
+      { sel: full, index: 5, title: 'Choose your fire feature.', label: 'Step 6 of 7', options: ['Fire pit', 'Outdoor fireplace', 'Fire bowls'], cta: 'Continue' },
+      { sel: full, index: 6, title: 'Choose your cabana.', label: 'Step 7 of 7', options: ['Pergola', 'Cabana', 'Covered lounge'], cta: 'Get my estimate' },
+    ];
+    for (const c of cases) {
+      const html = render({ kind: 'step', index: c.index }, c.sel);
+      const t = text(html).replace(/&#x27;/g, '’').replace(/'/g, '’');
+      expect(t).toContain(c.label);
+      expect(t).toContain(c.title);
+      for (const o of c.options) expect(t).toContain(o);
+      expect(html.match(/type="radio"/g)).toHaveLength(3);
+      expect(html.match(/class="fn-layer /g)).toHaveLength(3);
+      expect(html).toContain(`>${c.cta}</button>`);
+    }
+    expect(render({ kind: 'step', index: 3 }, spa)).toMatch(/<input[^>]*checked=""[^>]*value="zero_edge"/);
+    expect(render({ kind: 'step', index: 3 }, spa)).toContain('/estimator/pool-masters/funnel/spa-zero-edge');
   });
 });
 
@@ -171,10 +239,14 @@ describe('funnel step markup', () => {
     expect(html).toContain('href="/privacy"');
   });
 
-  it('step 3 shows the picked finish in its photos, a back arrow and "Get my estimate"', () => {
-    const html = render({ kind: 'step', index: 2 }, { size: 'classic', finish: 'luxe', extras: 'spa' });
+  it('step 3 shows the picked finish in its photos, a back arrow and "Get my estimate" when it is the last step', () => {
+    const last = render({ kind: 'step', index: 2 }, { size: 'classic', finish: 'luxe', extras: 'pool' });
+    expect(text(last)).toContain('Step 3 of 3');
+    expect(last).toContain('>Get my estimate</button>');
+    const html = render({ kind: 'step', index: 2 }, { size: 'classic', finish: 'luxe', extras: 'spa', spa: 'raised' });
+    expect(text(html)).toContain('Step 3 of 4');
+    expect(html).toContain('>Continue</button>');
     expect(html).toContain('aria-label="Back"');
-    expect(html).toContain('>Get my estimate</button>');
     expect(html).toContain('aerial-porcelain-pebble-spa');
     // Nothing over the photos: the example-design note is one quiet line in the footer.
     expect(html).not.toContain('Example design');

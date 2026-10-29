@@ -1,7 +1,7 @@
 import { consentText, type FunnelConfig } from '../funnels/schema.ts';
 import { normalizeSelection, selectedRows } from './configurator/engine.ts';
 import type { ConfiguratorSelection, ConfiguratorSpec } from './configurator/types.ts';
-import { normalizeFunnelSelection, pickedOptions } from './funnel/engine.ts';
+import { activeSteps, normalizeFunnelSelection, pickedOptions } from './funnel/engine.ts';
 import type { FunnelSelection, FunnelSpec } from './funnel/types.ts';
 import { addressZip, currentPlace, type AddressPlace } from './address-client.ts';
 import type { Answers, Estimate, PoolDimensions } from './types.ts';
@@ -243,7 +243,8 @@ export const funnelErrorKey = (key: string) =>
 export function describeFunnelDesign(spec: FunnelSpec, selection: FunnelSelection): string[] {
   const sel = normalizeFunnelSelection(spec, selection);
   const picked = pickedOptions(spec, sel);
-  return spec.steps.map((s, i) => `${s.label.replace(/[.?!]$/, '')}: ${picked[i].title} (${picked[i].subtitle})`);
+  // One line per step shown on this path (follow-ups only when picked), e.g. "Choose your spa: Zero-edge spa (Overflows on all four sides)".
+  return activeSteps(spec, sel).map((s, i) => `${s.label.replace(/[.?!]$/, '')}: ${picked[i].title} (${picked[i].subtitle})`);
 }
 
 /* ------------------------------------------------------------------ */
