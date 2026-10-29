@@ -11,7 +11,8 @@ export const MAX_REMINDER_TEMPLATE = 320;
 export interface ReminderConfig {
   contractor: { enabled: boolean; host: string; brand: string; templates: Record<MeetingStep, string> };
   homeowner: { enabled: boolean; templates: Record<MeetingStep, string> };
-  followups: { enabled: boolean; days: number[]; templates: Record<FollowUpStep, string> };
+  /** keepGoing: after the follow-up days, keep texting every `everyDays` until they reply, book or text STOP. */
+  followups: { enabled: boolean; days: number[]; keepGoing: boolean; everyDays: number; templates: Record<FollowUpStep, string> };
   /** Push an alert to call them when a meeting isn't confirmed by 8:00 on the day. */
   unconfirmedAlert: boolean;
 }
@@ -46,6 +47,9 @@ export const DEFAULT_REMINDER_CONFIG: ReminderConfig = {
   followups: {
     enabled: true,
     days: [1, 3, 7],
+    // Owner decision (2026-10-29): keep texting every few days until they reply or text STOP.
+    keepGoing: true,
+    everyDays: 3,
     templates: {
       first: 'Hi {first_name}, just following up on your {project} request. Would a quick call or text be easier?',
       second: '{first_name}, {sender} here. Still thinking about your {project}? Happy to answer questions or set up a free estimate.',
@@ -90,7 +94,12 @@ export function reminderConfig(raw: unknown): ReminderConfig {
   return {
     contractor: { enabled: bool(c.enabled, d.contractor.enabled), host: text(c.host, d.contractor.host, 40), brand: text(c.brand, d.contractor.brand, 40), templates: templates(c.templates, d.contractor.templates) },
     homeowner: { enabled: bool(h.enabled, d.homeowner.enabled), templates: templates(h.templates, d.homeowner.templates) },
-    followups: { enabled: bool(f.enabled, d.followups.enabled), days: sortedDays.length ? sortedDays : d.followups.days, templates: templates(f.templates, d.followups.templates) },
+    followups: {
+      enabled: bool(f.enabled, d.followups.enabled), days: sortedDays.length ? sortedDays : d.followups.days,
+      keepGoing: bool(f.keepGoing, d.followups.keepGoing),
+      everyDays: Number.isInteger(f.everyDays) && (f.everyDays as number) >= 2 && (f.everyDays as number) <= 30 ? (f.everyDays as number) : d.followups.everyDays,
+      templates: templates(f.templates, d.followups.templates),
+    },
     unconfirmedAlert: bool(r.unconfirmedAlert, d.unconfirmedAlert),
   };
 }

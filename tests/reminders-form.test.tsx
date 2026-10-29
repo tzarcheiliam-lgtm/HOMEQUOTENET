@@ -9,7 +9,7 @@ const blank = { booked: '', four_days: '', day_before: '', morning_of: '', two_h
 const value: ReminderFormValue = {
   contractor: { enabled: true, host: '', brand: '', templates: blank },
   homeowner: { enabled: true, templates: { ...blank, booked: 'Hi {first_name}, {host} here. See you {when}.' } },
-  followups: { enabled: true, days: [1, 3, 7], templates: { first: '', second: '', final: '', nudge: '', nudge_last: '' } },
+  followups: { enabled: true, days: [1, 3, 7], keepGoing: false, everyDays: 3, templates: { first: '', second: '', final: '', nudge: '', nudge_last: '' } },
   unconfirmedAlert: true,
 };
 

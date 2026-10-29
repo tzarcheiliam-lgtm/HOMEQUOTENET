@@ -150,10 +150,12 @@ export async function saveReminderSettings(_prev: SmsActionState, fd: FormData):
     const days = Array.isArray(f.days) ? f.days.map(Number) : [];
     if (days.some((d) => !Number.isInteger(d) || d < 1 || d > 30)) throw new Error('Follow-up days must be whole days from 1 to 30.');
     if (new Set(days).size !== days.length || days.length < 1 || days.length > 3) throw new Error('Pick one to three different follow-up days.');
+    const everyDays = Number(f.everyDays ?? 3);
+    if (f.keepGoing !== false && (!Number.isInteger(everyDays) || everyDays < 2 || everyDays > 30)) throw new Error('Keep texting every 2 to 30 days.');
     stored = {
       contractor: { enabled: c.enabled !== false, host: String(c.host ?? '').trim().slice(0, 40), brand: String(c.brand ?? '').trim().slice(0, 40), templates: cleanTemplates(c.templates, MEETING_STEPS) },
       homeowner: { enabled: h.enabled !== false, templates: cleanTemplates(h.templates, MEETING_STEPS) },
-      followups: { enabled: f.enabled !== false, days: [...days].sort((a, b) => a - b), templates: cleanTemplates(f.templates, FOLLOW_UP_STEPS) },
+      followups: { enabled: f.enabled !== false, days: [...days].sort((a, b) => a - b), keepGoing: f.keepGoing !== false, everyDays: Number.isInteger(everyDays) ? everyDays : 3, templates: cleanTemplates(f.templates, FOLLOW_UP_STEPS) },
       unconfirmedAlert: raw.unconfirmedAlert !== false,
     };
   } catch (e) {
