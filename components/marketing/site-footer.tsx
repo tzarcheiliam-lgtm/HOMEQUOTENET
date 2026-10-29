@@ -106,7 +106,7 @@ export function SiteFooter() {
                 Founder:{' '}
                 <span className="text-[var(--hq-text)]">{site.founder}</span>
               </li>
-              <li>Operated by {site.operator}</li>
+              <li>{site.legalName}, DBA {site.name}</li>
               <li>
                 <Link
                   href="/sign-in"
@@ -128,9 +128,11 @@ export function SiteFooter() {
           <p className="text-xs leading-6 text-[var(--hq-text-dim)]">
             {disclaimers.agreementGoverns}
           </p>
+          <p className="text-xs leading-6 text-[var(--hq-text-dim)]">
+            {site.tradeNameLine}
+          </p>
           <p className="text-xs text-[var(--hq-text-dim)]">
-            &copy; {year} {site.name}. Operated by {site.operator}. All rights
-            reserved.
+            &copy; {year} {site.legalName}. All rights reserved.
           </p>
         </div>
       </Container>

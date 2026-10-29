@@ -121,7 +121,7 @@ export const generalContractorsIndustry: IndustryPage = {
   seo: {
     title: 'General Contractor Lead Generation & Remodeling Appointments',
     description:
-      'HomeQuote Network finds, qualifies and books homeowners planning kitchens, baths, additions, ADUs and whole-home remodels onto general contractors’ calendars. Pay per qualified booked appointment.',
+      'Remodeling leads for general contractors. We qualify homeowners planning kitchens, baths and ADUs and book them. Pay per qualified appointment.',
     ogHeadline: 'More Remodeling Projects',
     ogSubline: 'Less time chasing leads',
   },

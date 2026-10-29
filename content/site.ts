@@ -12,6 +12,11 @@ export const site = {
   url: 'https://homequotenet.com',
   founder: 'Liam Tzarchei',
   operator: 'Tzarchei Investments',
+  /** Registered entity. HomeQuote Network is its trade name (DBA). */
+  legalName: 'Tzarchei Investments LLC',
+  /** Sitewide referral-service disclosure (footer, homeowner pages). */
+  tradeNameLine:
+    'HomeQuote Network is a trade name of Tzarchei Investments LLC. We are a referral service, not a contractor.',
   tagline:
     'Qualified booked appointments for home-service contractors. Pay per appointment we set on your calendar.',
 
@@ -47,6 +52,7 @@ export const site = {
 
   footerLinks: {
     company: [
+      { label: 'About', href: '/about' },
       { label: 'Appointment standards', href: '/lead-standards' },
       { label: 'Contractor application', href: '/apply' },
     ],

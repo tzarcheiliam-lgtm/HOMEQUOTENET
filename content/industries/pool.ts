@@ -106,7 +106,7 @@ export const poolIndustry: IndustryPage = {
   seo: {
     title: 'Pool Contractor Lead Generation & Booked Appointments',
     description:
-      'HomeQuote Network generates, qualifies and books pool remodeling homeowners into your calendar across Southern California. Pay per qualified booked appointment, no retainer to start.',
+      'Pool remodeling appointments for contractors across Southern California. We qualify and book homeowners. Pay per qualified booked appointment.',
     ogHeadline: 'Booked Pool Remodeling Appointments',
     ogSubline: 'Qualified homeowners, on your calendar',
   },

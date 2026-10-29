@@ -120,7 +120,7 @@ export const fencingIndustry: IndustryPage = {
   seo: {
     title: 'Fence Contractor Lead Generation & Booked Estimates',
     description:
-      'HomeQuote Network generates, qualifies and books homeowners planning fence installation, replacement and gates onto fencing companies’ calendars. Pay per qualified booked appointment.',
+      'Fence contractor leads, pay per appointment. We qualify homeowners planning fences and gates and book them on your Southern California calendar.',
     ogHeadline: 'More Fence Installation Jobs',
     ogSubline: 'More booked estimates',
   },

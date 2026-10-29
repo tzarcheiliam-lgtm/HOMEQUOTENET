@@ -41,21 +41,52 @@ export const metadata: Metadata = {
   },
 };
 
-/** Organization schema. Only verifiable facts — no ratings, no counts. */
+/**
+ * Organization + founder as one linked graph. Only verifiable facts: no
+ * ratings, counts or social profiles until real URLs exist (`sameAs`).
+ */
 function OrganizationJsonLd() {
+  const orgId = `${site.url}/#organization`;
+  const personId = `${site.url}/about#liam`;
   const json = {
     '@context': 'https://schema.org',
-    '@type': 'Organization',
-    name: site.name,
-    url: site.url,
-    logo: `${site.url}/brand/homequote-logo-primary-horizontal-transparent.png`,
-    founder: { '@type': 'Person', name: site.founder },
-    parentOrganization: { '@type': 'Organization', name: site.operator },
-    areaServed: homeContent.markets.areas.map((area) => ({
-      '@type': 'AdministrativeArea',
-      name: area,
-    })),
-    description: site.tagline,
+    '@graph': [
+      {
+        '@type': 'Organization',
+        '@id': orgId,
+        name: site.name,
+        legalName: site.legalName,
+        alternateName: [site.name, 'HomeQuoteNet', `${site.legalName} dba ${site.name}`],
+        url: site.url,
+        logo: `${site.url}/brand/homequote-logo-primary-horizontal-transparent.png`,
+        description:
+          'HomeQuote Network is a lead-generation and appointment-setting service that books qualified homeowner appointments for remodeling, ADU, roofing, fencing, HVAC and pool contractors in Southern California. It is a referral service, not a contractor.',
+        email: site.contact.email,
+        telephone: `+1-${site.contact.phone}`,
+        founder: { '@type': 'Person', '@id': personId, name: site.founder },
+        areaServed: homeContent.markets.areas.map((area) => ({
+          '@type': 'AdministrativeArea',
+          name: `${area}, California`,
+        })),
+        contactPoint: [
+          {
+            '@type': 'ContactPoint',
+            contactType: 'customer support',
+            telephone: `+1-${site.contact.phone}`,
+            email: site.contact.email,
+            areaServed: 'US-CA',
+            availableLanguage: 'English',
+          },
+        ],
+      },
+      {
+        '@type': 'Person',
+        '@id': personId,
+        name: site.founder,
+        jobTitle: 'Founder',
+        worksFor: { '@id': orgId },
+      },
+    ],
   };
 
   return (
@@ -71,6 +102,7 @@ function WebSiteJsonLd() {
   const json = {
     '@context': 'https://schema.org',
     '@type': 'WebSite',
+    '@id': `${site.url}/#website`,
     name: site.name,
     url: site.url,
   };

@@ -114,7 +114,7 @@ export const roofingIndustry: IndustryPage = {
   seo: {
     title: 'Roofing Lead Generation & Booked Roofing Estimates',
     description:
-      'HomeQuote Network generates, qualifies and books homeowners asking for roof replacement, repair and inspections onto roofing companies’ calendars. Pay per qualified booked appointment.',
+      'Roofing leads, pay per appointment. We qualify homeowners needing a new roof or repair and book them on your Southern California calendar.',
     ogHeadline: 'Booked Roofing Appointments',
     ogSubline: 'Estimates on your calendar, not phone numbers',
   },

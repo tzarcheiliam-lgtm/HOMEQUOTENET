@@ -125,7 +125,7 @@ export const hvacIndustry: IndustryPage = {
   seo: {
     title: 'HVAC Lead Generation & Booked Appointments',
     description:
-      'HomeQuote Network generates, qualifies and books homeowners asking about AC and heating replacement, heat pumps and mini splits onto HVAC companies’ calendars. Pay per qualified booked appointment.',
+      'HVAC leads, pay per appointment. We qualify homeowners replacing AC or heating and book them on your Southern California calendar.',
     ogHeadline: 'Keep Your HVAC Calendar Full',
     ogSubline: 'Booked replacement and install appointments',
   },
