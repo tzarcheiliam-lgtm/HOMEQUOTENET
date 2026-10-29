@@ -1,5 +1,5 @@
 import { computeEstimate } from '../engine.ts';
-import type { Answers, Estimate, EstimatorTemplate } from '../types.ts';
+import type { Answers, ContractorEstimatorConfig, Estimate, EstimatorTemplate } from '../types.ts';
 import type { ConfiguratorGroup, ConfiguratorSelection, ConfiguratorSpec, Range } from './types.ts';
 
 /*
@@ -194,10 +194,30 @@ export function bundleQuote(spec: ConfiguratorSpec, template: EstimatorTemplate,
 /* Photos                                                              */
 /* ------------------------------------------------------------------ */
 
-/** The view a row's photo lives in (switch to it when the row is clicked). */
-export function viewForRow(spec: ConfiguratorSpec, rowId: string): string | undefined {
+/** True when a view's photos change with this row (the row is in one of its dimensions). */
+export function viewShowsRow(spec: ConfiguratorSpec, viewId: string, rowId: string): boolean {
+  const view = spec.views.find((v) => v.id === viewId);
+  return Boolean(view?.dimensions.some((d) => d.options.some((o) => o.rows.includes(rowId) || o.allOf?.includes(rowId))));
+}
+
+/** Every view whose photos show this row ([] for a price-only row: "not pictured"). */
+export function viewsShowingRow(spec: ConfiguratorSpec, rowId: string): string[] {
+  return spec.views.filter((v) => viewShowsRow(spec, v.id, rowId)).map((v) => v.id);
+}
+
+/**
+ * The view to show a row in: the current view when it already pictures the
+ * row (no jump), else the row's (or its group's) preferred view when that one
+ * pictures it, else the first view that does. Undefined for a row no photo
+ * shows (keep the current view).
+ */
+export function viewForRow(spec: ConfiguratorSpec, rowId: string, currentView?: string): string | undefined {
+  const showing = viewsShowingRow(spec, rowId);
+  if (!showing.length) return undefined;
+  if (currentView && showing.includes(currentView)) return currentView;
   const g = groupOf(spec, rowId);
-  return g?.rows.find((r) => r.id === rowId)?.view ?? g?.view;
+  const preferred = g?.rows.find((r) => r.id === rowId)?.view ?? g?.view;
+  return preferred && showing.includes(preferred) ? preferred : showing[0];
 }
 
 function keyOf(viewId: string, tokens: string[]): string {
@@ -209,7 +229,9 @@ export function photoFor(spec: ConfiguratorSpec, viewId: string, selection: Conf
   const view = spec.views.find((v) => v.id === viewId) ?? spec.views[0];
   const rows = selectedRows(spec, selection);
   const tokens = view.dimensions.map((d) => {
-    const hit = d.options.find((o) => o.rows.length === 0 || o.rows.some((r) => rows.has(r)));
+    const hit = d.options.find(
+      (o) => (o.rows.length === 0 || o.rows.some((r) => rows.has(r))) && (!o.allOf?.length || o.allOf.every((r) => rows.has(r))),
+    );
     return hit?.token ?? '';
   });
   return keyOf(view.id, tokens);
@@ -267,4 +289,15 @@ export function decodeSelection(spec: ConfiguratorSpec, query: string | URLSearc
   }
   sel.luxe = params.get('lx') === '1';
   return normalizeSelection(spec, sel);
+}
+
+/**
+ * The configurator spec when a contractor opts in to the one-page configurator
+ * AND its prices may reach the browser (revealRange 'immediately'), else null.
+ * With 'after_contact', publicTemplate strips the prices and the configurator
+ * would show "$0" everywhere, so the pages fall back to the step-by-step builder.
+ */
+export function configuratorSpecFor(contractor: ContractorEstimatorConfig): ConfiguratorSpec | null {
+  if (contractor.experience !== 'configurator' || !contractor.configurator) return null;
+  return contractor.revealRange === 'immediately' ? contractor.configurator : null;
 }

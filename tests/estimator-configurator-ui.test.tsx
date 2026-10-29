@@ -6,6 +6,8 @@ import { configuratorPhotoManifest } from '@/components/estimator/configurator/p
 import { stagePhoto } from '@/components/estimator/configurator/photos';
 import {
   compactRange,
+  deltaLabel,
+  fromLabel,
   costBreakdown,
   designUrl,
   hasSavedDesign,
@@ -30,7 +32,8 @@ const render = (props: Partial<Parameters<typeof Configurator>[0]> = {}) =>
 describe('configurator page markup', () => {
   it('renders the photo, sizes, Go Luxe, every group and the total range with no form', () => {
     const html = render();
-    expect(html).toContain('Design your pool');
+    expect(html).toContain(SPEC.title);
+    expect(html).toContain('Remodel pricing');
     for (const m of SPEC.models) expect(html).toContain(m.name);
     expect(html).toContain('role="switch"');
     expect(html).toContain('aria-checked="false"');
@@ -69,7 +72,7 @@ describe('configurator page markup', () => {
     expect(p.src).toBe(SPEC.views[0].fallback.src);
     const ok = stagePhoto(SPEC, 'aerial-resurface', { ...manifest, 'aerial-resurface': { full: true, sm: true } });
     expect(ok.src).toBe(SPEC.photos['aerial-resurface'].src);
-    expect(ok.srcSet).toContain('aerial-resurface-sm.webp 900w');
+    expect(ok.srcSet).toContain('aerial-resurface-sm.webp 1200w');
     expect(render({ manifest })).toContain(SPEC.views[0].fallback.src);
     expect(configuratorPhotoManifest(SPEC, '/no/such/dir')).toBeNull();
   });
@@ -87,7 +90,15 @@ describe('selecting', () => {
     expect(viewAfter(SPEC, { type: 'row', rowId: 'pebble' })).toBe('poolside');
     expect(viewAfter(SPEC, { type: 'row', rowId: 'fire_bowls' })).toBe('evening');
     expect(viewAfter(SPEC, { type: 'row', rowId: 'heater' })).toBeUndefined();
+    // No jump to a view where nothing changes: water bowls are priced, not pictured; the spa shows in every view.
+    expect(viewAfter(SPEC, { type: 'row', rowId: 'water_bowls' }, 'evening')).toBeUndefined();
+    expect(viewAfter(SPEC, { type: 'row', rowId: 'spa' }, 'evening')).toBeUndefined();
+    expect(viewAfter(SPEC, { type: 'row', rowId: 'deck_pavers' }, 'evening')).toBe('aerial');
+    expect(viewAfter(SPEC, { type: 'luxe', on: true }, 'poolside')).toBeUndefined();
     expect(toastFor(SPEC, base, reduceSelection(SPEC, base, { type: 'row', rowId: 'spa' }), { type: 'row', rowId: 'spa' })).toBe('Spa added');
+    const bowls = reduceSelection(SPEC, base, { type: 'row', rowId: 'water_bowls' });
+    expect(toastFor(SPEC, base, bowls, { type: 'row', rowId: 'water_bowls' })).toBe('Water bowls added · priced, not pictured');
+    expect(toastFor(SPEC, base, { ...base, model: 'large' }, { type: 'model', model: 'large' })).toBe('Estate · 36 × 18 ft');
   });
 
   it('updates the total as rows and sizes change', () => {
@@ -117,10 +128,10 @@ describe('selecting', () => {
     expect(off.picks.finish).toEqual(['quartz']);
   });
 
-  it('formats compact deltas', () => {
+  it('formats row figures in full dollars ("from" the low end) and totals as ranges', () => {
+    expect(deltaLabel({ low: 11400, high: 17400 })).toBe('+$11,400');
+    expect(fromLabel({ low: 14500, high: 24000 })).toBe('from $14,500');
     expect(compactRange({ low: 1800, high: 2700 })).toBe('$1.8k–2.7k');
-    expect(compactRange({ low: 18000, high: 35000 })).toBe('$18k–35k');
-    expect(compactRange({ low: 900, high: 1200 })).toBe('$900–1.2k');
     expect(moneyRange({ low: 64000, high: 105500 })).toBe('$64,000 – $105,500');
   });
 });

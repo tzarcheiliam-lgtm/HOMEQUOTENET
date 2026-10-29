@@ -35,6 +35,9 @@ import {
 
 type Success = { qualified: boolean; calendarUrl?: string; firstName: string };
 
+const prefersReducedMotion = () =>
+  typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
 /** Page URL (UTMs for attribution) and, only with measurement allowed, the Meta browser ids. */
 function readTracking(measurement: boolean): EstimatorLeadRequest['tracking'] {
   try {
@@ -52,10 +55,11 @@ const input =
 const okBorder = 'border-[#d9d4ca] hover:border-[#bdb7ab]';
 const badBorder = 'border-[#b42318]';
 
-export function ConfiguratorBooking({ slug, contractor, selection, answers, embedded }: ConfiguratorBookingProps) {
+export function ConfiguratorBooking({ slug, contractor, selection, answers, embedded, onSent }: ConfiguratorBookingProps) {
   const uid = useId();
   const [fields, setFields] = useState<BookingFields>(emptyBookingFields);
-  const [measurement, setMeasurement] = useState(contractor.adMeasurement === 'opt_out');
+  // Off until the homeowner ticks it (an opt-in, never pre-ticked).
+  const [measurement, setMeasurement] = useState(false);
   const [consentWording, setConsentWording] = useState(() => estimatorConsentText(contractor.contractorName));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [sending, setSending] = useState(false);
@@ -64,6 +68,8 @@ export function ConfiguratorBooking({ slug, contractor, selection, answers, embe
   const sendingRef = useRef(false);
   const formRef = useRef<HTMLFormElement>(null);
   const doneRef = useRef<HTMLHeadingElement>(null);
+  // The form's height when it turns into the thank-you, kept as a minimum so nothing below jumps.
+  const [keepHeight, setKeepHeight] = useState<number | null>(null);
   // One id per design + details: a retry (ours or theirs) of the same submission is answered once.
   const submission = useRef<{ id: string; body: string } | null>(null);
 
@@ -76,7 +82,9 @@ export function ConfiguratorBooking({ slug, contractor, selection, answers, embe
   }, [focusTick]);
 
   useEffect(() => {
-    if (done) doneRef.current?.focus();
+    if (!done) return;
+    doneRef.current?.focus({ preventScroll: true });
+    doneRef.current?.scrollIntoView({ block: 'nearest', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
   }, [done]);
 
   const set = <K extends keyof BookingFields>(key: K, value: BookingFields[K]) => {
@@ -109,7 +117,9 @@ export function ConfiguratorBooking({ slug, contractor, selection, answers, embe
     sendingRef.current = false;
     setSending(false);
     if (res.ok) {
+      setKeepHeight(formRef.current?.offsetHeight ?? null);
       setDone({ qualified: res.qualified, calendarUrl: res.calendarUrl, firstName: fields.firstName.trim() });
+      onSent?.();
       return;
     }
     if (res.consentText) {
@@ -121,7 +131,13 @@ export function ConfiguratorBooking({ slug, contractor, selection, answers, embe
     setFocusTick((n) => n + 1);
   };
 
-  if (done) return <BookingDone done={done} contractor={contractor} embedded={embedded} headingRef={doneRef} />;
+  if (done) {
+    return (
+      <div style={keepHeight ? { minHeight: keepHeight } : undefined}>
+        <BookingDone done={done} contractor={contractor} embedded={embedded} headingRef={doneRef} />
+      </div>
+    );
+  }
 
   const general = generalErrors(errors);
   const fieldCount = Object.keys(errors).length - general.length;
@@ -347,7 +363,7 @@ function BookingDone({
             }`}
           >
             {frame ? <ExternalLink aria-hidden="true" className="size-4" /> : <CalendarDays aria-hidden="true" className="size-4" />}
-            {frame ? 'Open the calendar in a new tab' : 'Pick a time for your free consultation'}
+            {frame ? 'Open the calendar in a new tab' : 'Pick a time'}
           </a>
         </div>
       ) : null}

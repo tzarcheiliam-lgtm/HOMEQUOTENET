@@ -230,7 +230,7 @@ describe('configurator lead', () => {
     expect(answers.estimator_design).toContain('Go Luxe: yes');
     expect(answers.estimator_design).toContain('Outdoor kitchen');
     expect(answers.estimator_design).toContain('Heater');
-    expect(answers.estimator_photos).toMatch(/Aerial: https:\/\/homequote\.example\/estimator\/pool-masters\/configurator\/aerial-porcelain-spa-yard\.webp/);
+    expect(answers.estimator_photos).toMatch(/Aerial: https:\/\/homequote\.example\/estimator\/pool-masters\/configurator\/aerial-porcelain-pebble-spa-kitchen\.webp/);
     expect(answers.estimator_design_url).toBe('https://homequote.example/estimator/pool-masters?m=large&o=outdoor_kitchen,heater&lx=1');
     expect(answers.estimator_check_on_site).toBeTruthy();
     expect(answers.service).toBe('backyard');

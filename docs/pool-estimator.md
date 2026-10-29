@@ -7,7 +7,12 @@ Pool Masters specifics live in one config file.
 
 Always labeled "ballpark, not a quote". No AI pricing. No monthly payment amounts anywhere (lending disclosure rules).
 
-## Homeowner flow
+**Pool Masters now uses the one-page configurator** (`experience: 'configurator'`, see "Pool Masters configurator"
+below): pick a size, a finish and the upgrades on one page over pre-rendered photos, the range is visible from the
+first click (`revealRange: 'immediately'`), and contact details are asked only at the booking step. The step-by-step
+flow described next is still the engine and the fallback, and is what `/estimator/bathroom-remodel` uses.
+
+## Homeowner flow (step-by-step builder)
 
 Under about two minutes. One screen at a time (order and rules in `components/estimator/use-estimator-flow.ts`):
 
@@ -16,8 +21,8 @@ Under about two minutes. One screen at a time (order and rules in `components/es
    detail questions (surface, tile + coping, deck, features, equipment, backyard extras)
 3. Property questions (cracks, access, hillside): "Yes" or "Not sure" flags the estimate for a site visit
 4. "Which look do you like?" photos (not priced), then ZIP, homeowner, timeline and contact
-5. The range appears after the contact step (`revealRange: 'after_contact'`), with the breakdown, the financing note and
-   disclosure (plain text, no payment amounts) and a booking button
+5. With `revealRange: 'after_contact'` the range appears after the contact step, with the breakdown, the financing
+   note and disclosure (plain text, no payment amounts) and a booking button
 
 Limits: at most 4 options on a single question and 5 on a multi (`DEFAULT_LIMITS`).
 
@@ -34,8 +39,10 @@ Limits: at most 4 options on a single question and 5 on a multi (`DEFAULT_LIMITS
 Both pages and the lead route are public: `lib/supabase/middleware.ts` only guards `/app` (and `/studio`) and returns
 early for `/estimator/`, `/embed/estimator/` and `/api/estimator/` (no Auth refresh). Unknown slugs return 404.
 
-With `revealRange: 'after_contact'` (Pool Masters) the pages pass `publicTemplate(...)` to the browser: every option price
-and the minimum job/rounding are stripped, so the range cannot be read from the page source before the contact step.
+The pages pass `publicTemplate(...)` to the browser. With `revealRange: 'after_contact'` (bathroom-remodel) every option
+price and the minimum job/rounding are stripped, so the range cannot be read from the page source before the contact
+step. With `'immediately'` (Pool Masters, configurator) the prices ship, which is what lets the configurator price every
+click in the browser; they are still example prices, the page says so and stays `noindex`.
 
 ## File map
 
@@ -132,8 +139,9 @@ rate limiting, internal alerts and delivery are the same as a funnel lead.
   Network and the contractor) with Privacy and Terms links. The request carries the wording that was shown, and the route
   rejects it (409) if it differs from what the funnel stores, so the saved disclosure always matches the screen.
   `contractorName` in the contractor config must equal the funnel's `clientName`.
-- **Advertising measurement.** An "Allow optional advertising measurement" checkbox (checked by default for Pool Masters,
-  mirroring the funnel's `opt_out` mode). Only when it is on are Meta browser ids sent and the server Lead event fired.
+- **Advertising measurement.** An "Allow optional advertising measurement" checkbox. The step-by-step flow ticks it by
+  default for an `adMeasurement: 'opt_out'` contractor (mirroring the funnel's mode); the configurator's booking form
+  never pre-ticks it (an explicit opt-in). Only when it is on are Meta browser ids sent and the server Lead event fired.
 - **Attribution.** The full page URL (with UTMs and click ids) is recorded, as on funnel leads. Self-serve estimator leads for
 other contractors must never enter the network `leads` pipeline.
 
@@ -197,7 +205,73 @@ contractor). Full technical summary: `HOMEQUOTE_CONTEXT.md` §33, "Live bathroom
 - **Images**: all generated with kie.ai or drawn procedurally (`scripts/generate-bath-assets.mjs`), labelled as AI style
   ideas or AI-rendered; never photos from the web.
 
+## Pool Masters configurator
+
+`/estimator/pool-masters` and `/embed/estimator/pool-masters` render `components/estimator/configurator/` instead of the
+builder when `configuratorSpecFor(contractor)` returns a spec: `experience: 'configurator'`, a `configurator` spec, and
+`revealRange: 'immediately'` (with `after_contact` the prices would be stripped, so the pages fall back to the builder).
+The lead route uses the same check.
+
+**Page.** One page, Buildoly-style, light theme (white, warm grey, ink, one blue). Desktop: the photo fills the left
+column with pill tabs for the views (Aerial / Poolside / Evening), a strip of the design's other views under it, and a
+small to-scale plan of the chosen size on the photo; the options column on the right; a sticky bar with the total
+range, a breakdown drop-up and "Review my design". Phone: the photo is fixed under the header (32vh, shrinks to 20vh
+once the options are scrolled, opens again for a moment when a pick changes it; a spacer keeps its place so nothing
+moves), options below, the same sticky bar. Then a cost summary (`#summary`), then the result and booking step
+(`#book`): the design in every view, "Here's your pool.", the design in plain words with the total range (breakdown
+in a "See the cost breakdown" disclosure), the booking form, financing in words, real projects.
+
+**Spec** (`lib/estimator/configurator/types.ts`, plain JSON; Pool Masters' is
+`content/estimators/pool-masters-configurator.ts`): `models` (size cards: Compact 24 x 12, Classic 30 x 15, Estate
+36 x 18 ft, described as the size of the existing pool: prices are remodel prices), `groups` of radio or checkbox rows
+mapped to template answers, `bundle` (Go Luxe: pebble, glass tile + travertine coping, porcelain deck, spa, fire bowls
+for 10% off the summed row deltas, an example figure), `views` with photo `dimensions`, `photos` (every key),
+`photoNote`, `projects` (real job photos). Pricing is `computeEstimate` on `selectionToAnswers(...)` with the bundle
+saving taken off (`estimateSelection` in `lib/estimator/configurator/engine.ts`); the total is always a range. Rows show
+the low end of their example range ("from +$5,400"), size cards "from $14,500", Go Luxe "from +$44,100", the struck-out
+sum and "Save $4,800+" with "Example prices and saving" while `pricesConfirmed` is false.
+
+**Photos.** 78 pre-rendered keys (`public/estimator/pool-masters/configurator/<key>.webp` 1800 px and `<key>-sm.webp`
+1200 px), all of one real Pool Masters job (`034` aerial and `039` poolside of the same house, used with permission):
+
+| View | Key | Shows |
+| --- | --- | --- |
+| Aerial (48) | `aerial-<resurface/pavers/porcelain>[-pebble][-spa][-yard/-kitchen/-cover]` | deck, pebble water, spa, outdoor kitchen and/or patio cover (`yard` = both) |
+| Poolside (18) | `poolside-<plaster/quartz/pebble>-<classic/premium/stone>[-spa]` | finish, tile + coping (premium = glass + travertine, stone = natural stone), spa |
+| Evening (12) | `evening[-led/-pebble][-fire][-spa]` | LED lights (wins over the finish at night), pebble water, fire bowls, spa |
+
+A dimension option may need several rows at once (`allOf`, used for kitchen + cover). Each view shows the picks it can;
+Baja shelf, water bowls, fire pit, turf and equipment are priced, not pictured (their rows say "Not pictured", the toast
+says "priced, not pictured", and the result gallery names them). A click only switches the view when the current view
+does not picture the row. Made by `scripts/generate-pool-configurator-photos.mjs` (kie.ai `nano-banana-pro` edits, one
+per visible change: prompts in `STEPS`) and `scripts/pool-configurator-composite.py` (numpy + Pillow: spa, fire bowls,
+yard corner, landscaped slope and stone edge pasted in; pebble/quartz water recoloured from the poolside edits;
+softer LED blue), then `export`. The page labels them once: "Photos show example designs (AI-assisted, based on Pool
+Masters projects), not your yard." Loading: the other views' current photos are fetched at once, the one-click
+neighbours when idle and only without Save-Data or a 2G/3G connection; `sizes` gives phones and 1x desktops the 1200 px
+file.
+
+**URL.** The design is the query string (`?m=large&o=pebble,spa&lx=1`, `replaceState` on every change, decoded after
+hydration); steps are hashes so Back works.
+
+**Booking.** First and last name, mobile, email, ZIP, "do you own the home", the funnel consent wording and the optional
+measurement box (never pre-ticked). The request carries `configurator` (the selection), `answers`
+(`selectionToAnswers`, for logs), `submissionId` and an optional timeline; the server re-prices from the selection only
+(`configuratorLeadDesign`) and stores `estimator_design`, `estimator_photos`, `estimator_design_url` and
+`estimator_check_on_site` (the property questions the page never asked). Reliability: one automatic retry on a network
+error or a 65 s timeout (longer than the route's 60 s `maxDuration`) with the same `submissionId`; the route answers a
+retry from an in-memory replay cache keyed by slug + submissionId + a hash of the contact's email and phone, and a retry
+that arrives while the first copy is still saving waits for it (per server instance). The consent check also accepts the
+estimator page's own wording and stores the funnel's canonical text. After a saved lead: the thank-you (same height as
+the form, so nothing jumps), then the Calendly link from `calendarUrl`, prefilled with name and email (inline on our own
+page, a new tab in the iframe).
+
 ## Open items
+
+- **Pool Masters calendar.** `calendarUrl` is `https://calendly.com/homequotenetwork/30min` (HomeQuote's account). Swap
+  in a Pool Masters calendar when they have one.
+- **Configurator photo size.** The pool's size is shown by the size cards and the to-scale plan on the photo, not in the
+  photos (one example pool). Deck, kitchen and cover show only from above; the stone edge and glass tile only poolside.
 
 - **Real prices.** All prices are examples until the owner fills in the price sheet.
 - **Site access for the embed.** Someone with access to poolmastersla.com has to paste the iframe; auto-height is not built.

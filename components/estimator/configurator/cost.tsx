@@ -117,7 +117,7 @@ export function TotalBar({
       <div
         id="cfg-breakdown"
         hidden={!open}
-        className="max-h-[min(60vh,520px)] overflow-y-auto border-b border-[#efece6] px-5 pb-3 pt-4 sm:px-6"
+        className="max-h-[calc(100dvh-3.5rem-20vh-6rem)] overflow-y-auto overscroll-contain border-b border-[#efece6] px-5 pb-3 pt-4 sm:px-6 lg:max-h-[min(60vh,520px)]"
       >
         <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6d675d]">Cost breakdown</p>
         <BreakdownLines breakdown={breakdown} siteNote="At your free on-site visit" />
@@ -206,9 +206,9 @@ export function CostSummary({
         onClick={onContinue}
         className="mt-5 inline-flex h-13 w-full touch-manipulation items-center justify-center rounded-xl bg-[var(--cfg-accent)] py-3.5 text-[16px] font-semibold text-white transition-[background-color,scale] duration-150 hover:bg-[var(--cfg-accent-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--cfg-accent)] active:scale-[.99] motion-reduce:transition-none"
       >
-        Continue
+        Book my free consultation
       </button>
-      <p className="mt-3 text-center text-[13px] text-[#6d675d]">Next: book your free consultation. No obligation.</p>
+      <p className="mt-3 text-center text-[13px] text-[#6d675d]">Free on-site visit, no obligation. You&rsquo;ll pick a time next.</p>
     </div>
   );
 }

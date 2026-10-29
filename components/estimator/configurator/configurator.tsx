@@ -23,7 +23,7 @@ import type { ContractorEstimatorConfig, EstimatorTemplate } from '@/lib/estimat
 import { CostSummary, TotalBar } from './cost';
 import { LuxeCard, ModelPicker, OptionGroupCard, type RowView } from './options';
 import { PhotoStage } from './photo-stage';
-import { currentPhotos, stagePhoto, viewPhotos, type PhotoManifest, type StagePhoto } from './photos';
+import { currentPhotos, stagePhoto, type PhotoManifest, type StagePhoto } from './photos';
 import { ProjectStrip } from './result';
 import { ConfiguratorResultPage } from './result/result-page';
 import {
@@ -31,6 +31,7 @@ import {
   deltaLabel,
   designUrl,
   hasSavedDesign,
+  notPictured,
   reduceSelection,
   stepFromHash,
   toastFor,
@@ -71,16 +72,25 @@ export function Configurator({ spec, template, contractor, manifest = null, embe
   const [view, setView] = useState(spec.views[0].id);
   const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
   const [barOpen, setBarOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  // Phones: the photo shrinks to a strip once the options are scrolled, and opens again for a pick it shows.
+  // `pinned` is the homeowner's own choice from the chevron (wins over the automatic size).
+  const [scrolled, setScrolled] = useState(false);
+  const [peek, setPeek] = useState(0);
+  const [pinned, setPinned] = useState<boolean | null>(null);
   const [href, setHref] = useState('');
   const toastSeq = useRef(0);
   const restored = useRef(Boolean(initialSelection));
+  // A saved design is decoded after the first paint: skip the one URL write that would show the default design.
+  const skipSync = useRef(false);
 
   /* ---------------- URL <-> state ---------------- */
 
   // Load a saved design and step from the address bar once (client only, so the server markup stays the default design).
   useEffect(() => {
-    if (!restored.current && hasSavedDesign(window.location.search)) setSelection(decodeSelection(spec, window.location.search));
+    if (!restored.current && hasSavedDesign(window.location.search)) {
+      skipSync.current = true;
+      setSelection(decodeSelection(spec, window.location.search));
+    }
     restored.current = true;
     const fromHash = stepFromHash(window.location.hash);
     if (fromHash !== 'design') setStep(fromHash);
@@ -92,6 +102,10 @@ export function Configurator({ spec, template, contractor, manifest = null, embe
   // Every change rewrites the query string in place: the address bar is "Save your design".
   useEffect(() => {
     if (!restored.current) return;
+    if (skipSync.current) {
+      skipSync.current = false;
+      return;
+    }
     const next = designUrl(spec, window.location.href, selection);
     if (next !== `${window.location.pathname}${window.location.search}${window.location.hash}`) window.history.replaceState(window.history.state, '', next);
     setHref(new URL(next, window.location.origin).toString());
@@ -107,8 +121,8 @@ export function Configurator({ spec, template, contractor, manifest = null, embe
     // New content at the top, focus on its heading (keyboard and screen-reader users land where the page changed).
     window.requestAnimationFrame(() => {
       window.scrollTo({ top: 0 });
-      const target = next === 'summary' ? 'cfg-summary-title' : next === 'book' ? 'cfg-result-title' : null;
-      if (target) document.getElementById(target)?.focus({ preventScroll: true });
+      const target = next === 'summary' ? 'cfg-summary-title' : next === 'book' ? 'cfg-result-title' : 'cfg-title';
+      document.getElementById(target)?.focus({ preventScroll: true });
     });
   }, []);
 
@@ -117,6 +131,8 @@ export function Configurator({ spec, template, contractor, manifest = null, embe
   // The latest selection, so a click computes its toast from what is on screen (not inside a state updater).
   const current = useRef(selection);
   current.current = selection;
+  const currentView = useRef(view);
+  currentView.current = view;
 
   const act = useCallback(
     (action: ConfiguratorAction) => {
@@ -126,11 +142,29 @@ export function Configurator({ spec, template, contractor, manifest = null, embe
       setSelection(after);
       const text = toastFor(spec, before, after, action);
       if (text) setToast({ id: ++toastSeq.current, text });
-      const nextView = viewAfter(spec, action);
-      if (nextView) setView(nextView);
+      const nextView = viewAfter(spec, action, currentView.current) ?? currentView.current;
+      if (nextView !== currentView.current) setView(nextView);
+      // The photo changed: let it open up for a moment on phones.
+      if (photoFor(spec, nextView, after) !== photoFor(spec, currentView.current, before) || action.type === 'model') setPeek((n) => n + 1);
     },
     [spec],
   );
+
+  // Phones: the photo shrinks once the options are scrolled (fixed box: nothing below moves).
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 48);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+  const [peeking, setPeeking] = useState(false);
+  useEffect(() => {
+    if (!peek) return;
+    setPeeking(true);
+    const t = window.setTimeout(() => setPeeking(false), 1800);
+    return () => window.clearTimeout(t);
+  }, [peek]);
+  const collapsed = barOpen ? true : pinned ?? (scrolled && !peeking);
 
   useEffect(() => {
     if (!toast) return;
@@ -161,7 +195,7 @@ export function Configurator({ spec, template, contractor, manifest = null, embe
           const d = rowDelta(spec, template, selection, r.id);
           price = d.low === 0 && d.high === 0 ? 'Included' : deltaLabel(d);
         }
-        return { id: r.id, label: r.label, note: r.note, checked, locked, price, included: Boolean(r.included) };
+        return { id: r.id, label: r.label, note: r.note, checked, locked, price, included: Boolean(r.included), notPictured: notPictured(spec, r.id) };
       }),
     }));
   }, [spec, template, selection]);
@@ -174,17 +208,17 @@ export function Configurator({ spec, template, contractor, manifest = null, embe
     const i = all.findIndex((p) => p.view === view);
     return i > 0 ? [all[i], ...all.slice(0, i), ...all.slice(i + 1)] : all;
   }, [spec, selection, manifest, view]);
-  // Next likely: the other views as they are now, and this view one click away (each visual row flipped).
-  const nextPhotos = useMemo(() => {
-    const out: StagePhoto[] = currentPhotos(spec, selection, manifest);
-    const visual = new Set(spec.views.find((v) => v.id === view)?.dimensions.flatMap((d) => d.options.flatMap((o) => o.rows)) ?? []);
-    for (const rowId of visual) {
-      const flipped = reduceSelection(spec, selection, { type: 'row', rowId });
-      out.push(stagePhoto(spec, photoFor(spec, view, flipped), manifest));
-    }
-    return out;
+  // Right away: the other views as they are now. When idle: this view one click away (each visual row flipped, Go Luxe).
+  const nextPhotos = useMemo(() => currentPhotos(spec, selection, manifest), [spec, selection, manifest]);
+  const idlePhotos = useMemo(() => {
+    const out: StagePhoto[] = [];
+    const visual = new Set(spec.views.find((v) => v.id === view)?.dimensions.flatMap((d) => d.options.flatMap((o) => [...o.rows, ...(o.allOf ?? [])])) ?? []);
+    for (const rowId of visual) out.push(stagePhoto(spec, photoFor(spec, view, reduceSelection(spec, selection, { type: 'row', rowId })), manifest));
+    if (spec.bundle) out.push(stagePhoto(spec, photoFor(spec, view, { ...selection, luxe: !selection.luxe }), manifest));
+    const seen = new Set<string>();
+    return out.filter((p) => (seen.has(p.src) ? false : (seen.add(p.src), true)));
   }, [spec, selection, manifest, view]);
-  const idlePhotos = useMemo(() => viewPhotos(spec, view, manifest), [spec, view, manifest]);
+  const model = spec.models.find((m) => m.id === selection.model);
 
   /* ---------------- Render ---------------- */
 
@@ -222,24 +256,40 @@ export function Configurator({ spec, template, contractor, manifest = null, embe
   }
 
   return (
-    <div className="es-cfg flex min-h-[100dvh] flex-1 flex-col">
+    <div className={`es-cfg flex min-h-[100dvh] flex-1 flex-col ${embedded ? 'es-cfg-embedded' : ''}`}>
       {embedded ? null : <ConfiguratorHeader contractor={contractor} />}
       <Main id={embedded ? undefined : 'main'} className="flex flex-1 flex-col lg:flex-row">
-        {/* Photo: sticky on top on phones, the sticky left 2/3 on desktop. */}
-        <div className={`sticky ${top} z-20 lg:min-w-0 lg:flex-1 ${embedded ? 'lg:h-[100dvh]' : 'lg:h-[calc(100dvh-4rem)]'}`}>
-          <PhotoStage
-            spec={spec}
-            view={view}
-            onView={setView}
-            photo={photo}
-            next={nextPhotos}
-            idle={idlePhotos}
-            toast={toast}
-            caption={CAPTION}
-            collapsed={collapsed}
-            onCollapsed={setCollapsed}
-          />
+        {/*
+          Photo. Phones: fixed under the header (a spacer below keeps its place), so shrinking it while
+          scrolling or opening it for a pick never moves the options. Desktop: the sticky left column,
+          the photo over a strip of the design's other views.
+        */}
+        <div
+          className={`es-cfg-photo fixed inset-x-0 ${embedded ? 'top-0' : 'top-14'} z-20 transition-[height] duration-300 ease-out motion-reduce:transition-none ${
+            collapsed ? 'h-[20vh]' : 'h-[32vh]'
+          } lg:sticky lg:inset-x-auto lg:z-auto lg:flex lg:min-w-0 lg:flex-1 lg:flex-col lg:transition-none ${
+            embedded ? 'lg:h-[100dvh]' : 'lg:top-16 lg:h-[calc(100dvh-4rem)]'
+          }`}
+        >
+          <div className="relative h-full lg:min-h-0 lg:flex-1">
+            <PhotoStage
+              spec={spec}
+              view={view}
+              onView={setView}
+              photo={photo}
+              next={nextPhotos}
+              idle={idlePhotos}
+              toast={toast}
+              caption={CAPTION}
+              model={model}
+              models={spec.models}
+              collapsed={collapsed}
+              onCollapsed={(c) => setPinned(c)}
+            />
+          </div>
+          <ViewStrip photos={currentPhotos(spec, selection, manifest)} view={view} onView={setView} />
         </div>
+        <div aria-hidden="true" className="h-[32vh] shrink-0 lg:hidden" />
 
         {/* Options */}
         <div className="relative flex w-full flex-col border-[#e4e0d8] bg-[var(--cfg-sand)] lg:w-[440px] lg:shrink-0 lg:border-l xl:w-[480px]">
@@ -249,13 +299,15 @@ export function Configurator({ spec, template, contractor, manifest = null, embe
             </div>
           ) : (
             <>
-              <div className="flex-1 space-y-3 px-4 pb-8 pt-6 sm:px-6 lg:pt-8">
-                <header className="pb-2">
-                  <h1 className="text-[28px] font-semibold leading-tight tracking-[-0.025em] text-[#111] sm:text-[32px]">{spec.title}</h1>
-                  <p className="mt-1.5 text-pretty text-[15px] leading-[22px] text-[#4a463f]">
-                    Pick a size, a finish and the upgrades you want. The photo and the price change as you go.
-                  </p>
-                  <p className="mt-3 flex flex-wrap items-center gap-2 text-[12.5px] text-[#5f5a52]">
+              <div className="flex-1 space-y-3 px-4 pb-8 pt-4 sm:px-6 lg:pt-8">
+                <header className="pb-1">
+                  <h1 id="cfg-title" tabIndex={-1} className="text-[26px] font-semibold leading-tight tracking-[-0.025em] text-[#111] outline-none sm:text-[32px]">
+                    {spec.title}
+                  </h1>
+                  {spec.intro ? <p className="mt-1.5 hidden text-pretty text-[15px] leading-[22px] text-[#4a463f] sm:block">{spec.intro}</p> : null}
+                  <p className="mt-2 flex flex-wrap items-center gap-2 text-[12.5px] text-[#5f5a52]">
+                    <span className="font-medium text-[#111]">Remodel pricing</span>
+                    <span aria-hidden="true">·</span>
                     <span className="font-medium text-[#111]">Ballpark, not a quote</span>
                     {examplePrices ? <span className="rounded-full border border-[#d9d4ca] bg-white px-2.5 py-0.5">Example prices</span> : null}
                   </p>
@@ -266,7 +318,7 @@ export function Configurator({ spec, template, contractor, manifest = null, embe
                 </div>
 
                 {spec.bundle && luxeQuote ? (
-                  <LuxeCard bundle={spec.bundle} quote={luxeQuote} on={selection.luxe} onChange={(on) => act({ type: 'luxe', on })} />
+                  <LuxeCard bundle={spec.bundle} quote={luxeQuote} on={selection.luxe} examplePrices={examplePrices} onChange={(on) => act({ type: 'luxe', on })} />
                 ) : null}
 
                 {groupRows.map(({ group, rows }) => (
@@ -277,12 +329,47 @@ export function Configurator({ spec, template, contractor, manifest = null, embe
                   <ProjectStrip gallery={projects} title={`Recent ${contractor.contractorName} projects`} className="pt-6" />
                 ) : null}
               </div>
-              <TotalBar breakdown={breakdown} open={barOpen} onOpen={setBarOpen} onContinue={() => go('summary')} examplePrices={examplePrices} />
+              <TotalBar
+                breakdown={breakdown}
+                open={barOpen}
+                onOpen={setBarOpen}
+                onContinue={() => go('summary')}
+                continueLabel="Review my design"
+                examplePrices={examplePrices}
+              />
             </>
           )}
         </div>
       </Main>
       <FinePrint contractor={contractor} examplePrices={examplePrices} photoNote={spec.photoNote} />
+    </div>
+  );
+}
+
+/** Desktop: the design in every view, small, under the photo (one click to switch). */
+function ViewStrip({ photos, view, onView }: { photos: (StagePhoto & { view: string; label: string })[]; view: string; onView: (view: string) => void }) {
+  return (
+    <div className="hidden shrink-0 items-center gap-3 border-t border-[#e4e0d8] bg-white px-5 py-3 lg:flex">
+      <p className="mr-1 w-[118px] shrink-0 text-[12px] leading-4 text-[#5f5a52]">Your design from every angle</p>
+      {photos.map((p) => {
+        const active = p.view === view;
+        return (
+          <button
+            key={p.view}
+            type="button"
+            onClick={() => onView(p.view)}
+            aria-label={`${p.label} view`}
+            aria-pressed={active}
+            className={`group/thumb relative h-[68px] w-[102px] shrink-0 overflow-hidden rounded-lg border-2 transition-[border-color,opacity] duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--cfg-accent)] motion-reduce:transition-none ${
+              active ? 'border-[#111]' : 'border-transparent opacity-80 hover:opacity-100'
+            }`}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element -- the same pre-rendered file as the stage */}
+            <img src={p.srcSet ? p.src.replace(/\.webp$/, '-sm.webp') : p.src} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" />
+            <span className="absolute bottom-1 left-1 rounded bg-white/90 px-1.5 text-[11px] font-medium text-[#111]">{p.label}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }

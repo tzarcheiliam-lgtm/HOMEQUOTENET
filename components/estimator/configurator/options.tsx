@@ -3,7 +3,7 @@
 import { Check, ChevronDown } from 'lucide-react';
 import type { BundleQuote } from '@/lib/estimator/configurator/engine';
 import type { ConfiguratorBundle, ConfiguratorGroup, ConfiguratorModel, Range } from '@/lib/estimator/configurator/types';
-import { compactRange, deltaLabel } from './state';
+import { deltaLabel, fromLabel, money } from './state';
 
 /*
  * The option column's cards: size, Go Luxe and the option groups. Native
@@ -33,27 +33,28 @@ export function ModelPicker({
   const current = models.find((m) => m.id === value);
   return (
     <fieldset>
-      <legend className="mb-3 text-[15px] font-semibold text-[#111]">Size</legend>
+      <legend className="mb-1 text-[15px] font-semibold text-[#111]">Your pool&rsquo;s size</legend>
+      <p className="mb-3 text-[12.5px] leading-[18px] text-[#5f5a52]">Pick the closest. We measure it at the free site visit.</p>
       <div className="grid grid-cols-3 gap-2">
         {models.map((m) => {
           const on = m.id === value;
           return (
             <label
               key={m.id}
-              className={`relative flex cursor-pointer flex-col rounded-2xl border bg-white px-3 pb-3 pt-3.5 transition-[border-color,box-shadow] duration-150 motion-reduce:transition-none ${focusRing} ${
+              className={`relative flex cursor-pointer flex-col rounded-2xl border bg-white px-3 pb-2.5 pt-3 transition-[border-color,box-shadow] duration-150 motion-reduce:transition-none ${focusRing} ${
                 on ? 'border-[#111] shadow-[0_0_0_1px_#111]' : 'border-[#e4e0d8] hover:border-[#bdb7ab]'
               }`}
             >
               <input type="radio" name="cfg-model" value={m.id} checked={on} onChange={() => onChange(m.id)} className="sr-only" />
               <PoolGlyph model={m} models={models} on={on} />
-              <span className="mt-2.5 text-[15px] font-semibold leading-5 text-[#111]">{m.name}</span>
+              <span className="mt-2 text-[15px] font-semibold leading-5 text-[#111]">{m.name}</span>
               <span className="text-[13px] tabular-nums text-[#5f5a52]">{m.dimensions}</span>
-              <span className="mt-1.5 text-[12px] tabular-nums text-[#5f5a52]">{totals[m.id] ? compactRange(totals[m.id]) : ''}</span>
+              <span className="mt-1 text-[12px] tabular-nums text-[#5f5a52]">{totals[m.id] ? fromLabel(totals[m.id]) : ''}</span>
             </label>
           );
         })}
       </div>
-      {current ? <p className="mt-2.5 text-[13px] text-[#5f5a52]">{current.tagline}.</p> : null}
+      {current ? <p className="mt-2.5 hidden text-[13px] text-[#5f5a52] sm:block">{current.tagline}.</p> : null}
     </fieldset>
   );
 }
@@ -83,11 +84,14 @@ export function LuxeCard({
   quote,
   on,
   onChange,
+  examplePrices,
 }: {
   bundle: ConfiguratorBundle;
   quote: BundleQuote;
   on: boolean;
   onChange: (on: boolean) => void;
+  /** Prices not yet confirmed by the contractor: the saving is an example too. */
+  examplePrices: boolean;
 }) {
   const count = bundle.includes.length;
   return (
@@ -119,19 +123,26 @@ export function LuxeCard({
           />
         </button>
       </div>
-      <p className={`mt-1 text-pretty text-[14px] leading-5 ${on ? 'text-white/75' : 'text-[#4a463f]'}`}>
-        Our {count} signature upgrades, bundled. Save {compactRange(quote.saving)} over adding them one by one.
+      <p className={`mt-1 text-pretty text-[14px] leading-5 ${on ? 'text-white/80' : 'text-[#4a463f]'}`}>
+        Our {count} signature upgrades in one package, for less than adding them one by one.
       </p>
-      <p className="mt-3 flex flex-wrap items-baseline gap-x-2.5 tabular-nums">
-        <span className={`text-[20px] font-semibold tracking-[-0.01em] ${on ? 'text-white' : 'text-[var(--cfg-accent)]'}`}>
-          <span className="sr-only">Bundled: </span>
+      <p className="mt-3 flex flex-wrap items-baseline gap-x-2.5 gap-y-1 tabular-nums">
+        <span className={`text-[12px] ${on ? 'text-white/80' : 'text-[#5f5a52]'}`}>from</span>
+        <span className={`text-[22px] font-semibold tracking-[-0.01em] ${on ? 'text-white' : 'text-[var(--cfg-accent)]'}`}>
+          <span className="sr-only">Package price: </span>
           {deltaLabel(quote.price)}
         </span>
-        <span className={`text-[13px] line-through ${on ? 'text-white/50' : 'text-[#8a8478]'}`}>
+        <span className={`text-[14px] line-through ${on ? 'text-white/70' : 'text-[#5f5a52]'}`}>
           <span className="sr-only">instead of </span>
-          {deltaLabel(quote.full)}
+          {money(quote.full.low)}
+        </span>
+        <span className={`rounded-full px-2 py-0.5 text-[12px] font-semibold ${on ? 'bg-white text-[#111]' : 'bg-[#111] text-white'}`}>
+          Save {money(quote.saving.low)}+
         </span>
       </p>
+      {examplePrices ? (
+        <p className={`mt-1.5 text-[12px] ${on ? 'text-white/75' : 'text-[#5f5a52]'}`}>Example prices and saving, confirmed at your site visit.</p>
+      ) : null}
       <details className="group mt-3">
         <summary
           className={`inline-flex cursor-pointer list-none items-center gap-1 rounded text-[13px] font-medium underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 [&::-webkit-details-marker]:hidden ${
@@ -165,9 +176,11 @@ export type RowView = {
   checked: boolean;
   /** Forced by Go Luxe (cannot change while it is on). */
   locked: boolean;
-  /** "Included", "+$1.8k–2.7k", "Luxe selected". */
+  /** "Included", "+$1,800" (shown with a small "from"), "Luxe selected". */
   price: string;
   included: boolean;
+  /** No photo shows this row (it changes the price only). */
+  notPictured?: boolean;
 };
 
 export function OptionGroupCard({
@@ -207,20 +220,28 @@ export function OptionGroupCard({
             />
             <Mark single={single} checked={r.checked} locked={r.locked} />
             <span className="min-w-0 flex-1">
-              <span className={`block text-[15px] leading-5 ${r.checked ? 'font-semibold' : 'font-normal'} ${r.locked && !r.checked ? 'text-[#a9a398]' : 'text-[#111]'}`}>
+              <span className={`block text-[15px] leading-5 ${r.checked ? 'font-semibold' : 'font-normal'} ${r.locked && !r.checked ? 'text-[#8f897e]' : 'text-[#111]'}`}>
                 {r.label}
               </span>
-              {r.note ? <span className={`block text-[12.5px] leading-[18px] ${r.locked && !r.checked ? 'text-[#b9b3a9]' : 'text-[#6d675d]'}`}>{r.note}</span> : null}
+              {r.note || r.notPictured ? (
+                <span className={`block text-[12.5px] leading-[18px] ${r.locked && !r.checked ? 'text-[#8f897e]' : 'text-[#6d675d]'}`}>
+                  {r.note}
+                  {r.notPictured ? <span className="whitespace-nowrap">{r.note ? ' · ' : ''}Not pictured</span> : null}
+                </span>
+              ) : null}
             </span>
             <span
               className={`shrink-0 text-right tabular-nums ${
                 r.locked && r.checked
-                  ? 'text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[#8a8478]'
+                  ? 'text-[11px] font-semibold uppercase tracking-[0.1em] text-[#5f5a52]'
                   : r.included
                     ? 'text-[13px] text-[#6d675d]'
-                    : `text-[14px] ${r.locked ? 'text-[#b9b3a9]' : 'text-[#111]'}`
+                    : `text-[14px] ${r.locked ? 'text-[#8f897e]' : 'text-[#111]'}`
               }`}
             >
+              {!r.included && !(r.locked && r.checked) && r.price.startsWith('+') ? (
+                <span className="mr-1 text-[11.5px] font-normal text-[#6d675d]">from</span>
+              ) : null}
               {r.price}
             </span>
           </label>
@@ -233,16 +254,16 @@ export function OptionGroupCard({
 /** The radio dot / checkbox tick drawn for the visually hidden input. */
 function Mark({ single, checked, locked }: { single: boolean; checked: boolean; locked: boolean }) {
   const base = 'flex size-5 shrink-0 items-center justify-center border transition-colors duration-150 motion-reduce:transition-none';
-  const tone = checked ? (locked ? 'border-[#8a8478] bg-white' : 'border-[#111] bg-white') : locked ? 'border-[#ddd8cf] bg-[#f6f4f0]' : 'border-[#bdb7ab] bg-white group-hover/row:border-[#7a746a]';
+  const tone = checked ? (locked ? 'border-[#6d675d] bg-white' : 'border-[#111] bg-white') : locked ? 'border-[#ddd8cf] bg-[#f6f4f0]' : 'border-[#bdb7ab] bg-white group-hover/row:border-[#7a746a]';
   if (single) {
     return (
       <span aria-hidden="true" className={`${base} ${tone} rounded-full`}>
-        <span className={`size-2.5 rounded-full transition-transform duration-150 motion-reduce:transition-none ${checked ? 'scale-100' : 'scale-0'} ${locked ? 'bg-[#8a8478]' : 'bg-[#111]'}`} />
+        <span className={`size-2.5 rounded-full transition-transform duration-150 motion-reduce:transition-none ${checked ? 'scale-100' : 'scale-0'} ${locked ? 'bg-[#6d675d]' : 'bg-[#111]'}`} />
       </span>
     );
   }
   return (
-    <span aria-hidden="true" className={`${base} rounded-md ${checked ? (locked ? 'border-[#8a8478] bg-[#8a8478]' : 'border-[#111] bg-[#111]') : tone}`}>
+    <span aria-hidden="true" className={`${base} rounded-md ${checked ? (locked ? 'border-[#6d675d] bg-[#6d675d]' : 'border-[#111] bg-[#111]') : tone}`}>
       <Check className={`size-3.5 text-white transition-opacity duration-150 motion-reduce:transition-none ${checked ? 'opacity-100' : 'opacity-0'}`} strokeWidth={3} />
     </span>
   );

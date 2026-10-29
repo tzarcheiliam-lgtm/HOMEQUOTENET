@@ -90,11 +90,12 @@ describe('result page markup', () => {
     expect(custom).toContain('/p/one.webp');
     expect(custom).toContain('Encino');
   });
-  it('measurement starts ticked for an opt-out contractor, as in the old flow', () => {
+  it('measurement is an opt-in: never pre-ticked, even for an opt-out contractor', () => {
     const form = renderToStaticMarkup(<ConfiguratorBooking {...props()} />);
     const box = form.match(/<input type="checkbox"[^>]*\/><span>Allow optional advertising measurement/)?.[0] ?? '';
     expect(contractor.adMeasurement).toBe('opt_out');
-    expect(box).toContain('checked=""');
+    expect(box).not.toBe('');
+    expect(box).not.toContain('checked=""');
   });
 });
 

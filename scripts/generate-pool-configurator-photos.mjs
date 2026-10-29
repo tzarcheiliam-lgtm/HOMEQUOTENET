@@ -26,9 +26,12 @@
  *   bases     crops the base photos to 3:2, strips metadata, writes RAW_DIR/base-*.jpg.
  *   generate  runs the edit STEPS in order (skips keys that already have a raw
  *             image unless --force or named explicitly) and saves RAW_DIR/<key>.jpg.
- *   composite builds the COMPOSITES keys from already generated raws.
- *   export    writes <key>.webp (1800 px, < 300 KB) and <key>-sm.webp (900 px,
- *             < 110 KB) into public/estimator/pool-masters/configurator/.
+ *   composite runs scripts/pool-configurator-composite.py: every published photo
+ *             (78 keys) from the edits in RAW_DIR into POOL_CONFIG_FINAL_DIR
+ *             (default RAW_DIR/../final): spa, fire, yard corner, slope and
+ *             stone edge patched in, pebble / quartz water recoloured.
+ *   export    writes <key>.webp (1800 px, < 240 KB) and <key>-sm.webp (1200 px,
+ *             < 120 KB) into public/estimator/pool-masters/configurator/.
  *   sheets    writes one contact sheet per view to RAW_DIR/../ for a visual check.
  *   projects  exports the "Recent Pool Masters projects" strip (real photos,
  *             untouched apart from resize + metadata strip) into .../configurator/projects/.
@@ -38,6 +41,7 @@
  *   POOL_CONFIG_RAW_DIR  raw downloads + bases (default <os tmpdir>/pool-configurator-photos/raw).
  *   KIE_MODEL            default nano-banana-pro.
  */
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -182,43 +186,92 @@ const STEPS = [
     prompt:
       FIRE + ' Keep everything else identical.' + KEEP,
   },
+
+  // ---- v2 polish (QA: picks must carry across views, wrong photos for stone / kitchen, bare dirt slope).
+  // Each is one edit; the region it changes is then composited into every variant that needs it (scripts/pool-configurator-composite.py).
+  {
+    key: 'aerial-slope.raw',
+    from: 'aerial-resurface',
+    prompt:
+      'Landscape only the bare dirt slope OUTSIDE the black metal fence along the lower-left side of this drone photo: replace the bare dirt, ' +
+      'loose rocks and rubble with a finished, mature, drought-tolerant hillside garden - decomposed granite paths, a few natural boulders, ' +
+      'low silver-green and blue-grey shrubs, agaves and soft ornamental grasses, like a high-end Los Angeles landscape. ' +
+      'Keep the black fence, everything inside the fence, the pool, deck, house and umbrella exactly as they are.' + KEEP,
+  },
+  {
+    key: 'aerial-yard-both.raw',
+    from: 'aerial-resurface-yard',
+    prompt:
+      'In the top-left yard corner, make a modern outdoor kitchen clearly visible from above: a long white quartz outdoor kitchen island with a built-in ' +
+      'stainless-steel grill, a small sink and four black bar stools, standing on the light ground just to the RIGHT of and in front of (below) the dark ' +
+      'slatted patio cover so the counter, grill and stools are in open view and not hidden by the roof. Keep the dark slatted patio cover itself as it is.' +
+      KEEP,
+  },
+  {
+    key: 'aerial-yard-cover.raw',
+    from: 'aerial-resurface-yard',
+    prompt:
+      'Under the dark slatted patio cover in the top-left yard corner, replace the outdoor kitchen bar, grill and bar stools with a shaded outdoor lounge: ' +
+      'a low light-grey outdoor sofa, two lounge chairs and a round coffee table on a light paver pad. No kitchen, no grill, no counter. ' +
+      'Keep the patio cover roof itself exactly as it is.' + KEEP,
+  },
+  {
+    key: 'aerial-yard-kitchen.raw',
+    from: 'aerial-yard-both.raw',
+    prompt:
+      'Remove the dark slatted patio cover roof and its posts in the top-left yard corner, so the outdoor kitchen below is open to the sky in full sun: ' +
+      'keep the white kitchen bar with its grill, the white quartz island with its sink and all the black bar stools exactly as they are, and show the ' +
+      'light ground and planting where the roof was.' + KEEP,
+  },
+  {
+    key: 'poolside-plaster-classic-spa',
+    from: 'poolside-plaster-classic',
+    prompt:
+      'Add a raised square spa inside the pool at its FAR-LEFT corner (the far end, against the left wall): about 7 by 7 feet, its walls rise about ' +
+      '18 inches above the pool water and are faced in dark charcoal stone tile with a thin dark coping, it holds clear light-blue water, and a thin ' +
+      'even sheet of water spills from its front edge into the pool. The rest of the pool, the steps, the waterline tile and coping stay as they are.' +
+      KEEP,
+  },
+  {
+    key: 'poolside-plaster-stone',
+    from: 'poolside-plaster-classic',
+    prompt:
+      'Change only the pool edge: replace the waterline tile with a 6 inch band of natural split-face grey-green slate stone tile running all around the pool, ' +
+      'and replace the coping with thick natural warm-grey flagstone coping stones with a slightly rough, chiselled natural edge, about 14 inches wide, all ' +
+      'around the pool. Keep the pool interior finish, water colour and the deck exactly as they are.' + KEEP,
+  },
+  {
+    key: 'evening-spa',
+    from: 'evening',
+    prompt:
+      'Add a raised square spa inside the pool at its FAR-LEFT corner (the far end, against the left wall): about 7 by 7 feet, its walls rise about ' +
+      '18 inches above the pool water and are faced in dark charcoal stone tile with a thin dark coping, lit from inside with a warm white light so its ' +
+      'water glows, and a thin even sheet of water spills from its front edge into the pool. Keep the dusk light and everything else identical.' + KEEP,
+  },
 ];
 
-/** Keys built locally: the yard corner of `patch` feathered into `base`. Coordinates are fractions of width/height. */
-const YARD_MASK = [[0, 0], [0.31, 0], [0.31, 0.06], [0.285, 0.14], [0.22, 0.26], [0.17, 0.33], [0, 0.4]];
-/** Where the spa can be: [x0, y0, x1, y1] fractions (keeps stray differences elsewhere out of the diff mask). */
-const SPA_CLIP = [0.28, 0.38, 0.6, 0.72];
-/** Fire bowls + their glow on the deck, above the far waterline (the LED water keeps its own colour). */
-const FIRE_CLIP = [0, 0.3, 1, 0.585];
-const COMPOSITES = [
-  // Same bowls in both evening variants: cut from evening-fire where it differs from evening.
-  { key: 'evening-led-fire', base: 'evening-led', patch: 'evening-fire', diffFrom: 'evening', clip: FIRE_CLIP },
-  // The spa is cut out of aerial-resurface-spa by where it differs from aerial-resurface
-  // (an edit with the spa image as a reference just copied that whole image, deck included).
-  { key: 'aerial-pavers-spa', base: 'aerial-pavers', patch: 'aerial-resurface-spa', diffFrom: 'aerial-resurface', clip: SPA_CLIP },
-  { key: 'aerial-porcelain-spa', base: 'aerial-porcelain', patch: 'aerial-resurface-spa', diffFrom: 'aerial-resurface', clip: SPA_CLIP },
-  { key: 'aerial-pavers-yard', base: 'aerial-pavers', patch: 'aerial-resurface-yard', mask: YARD_MASK },
-  { key: 'aerial-porcelain-yard', base: 'aerial-porcelain', patch: 'aerial-resurface-yard', mask: YARD_MASK },
-  { key: 'aerial-resurface-spa-yard', base: 'aerial-resurface-spa', patch: 'aerial-resurface-yard', mask: YARD_MASK },
-  { key: 'aerial-pavers-spa-yard', base: 'aerial-pavers-spa', patch: 'aerial-resurface-yard', mask: YARD_MASK },
-  { key: 'aerial-porcelain-spa-yard', base: 'aerial-porcelain-spa', patch: 'aerial-resurface-yard', mask: YARD_MASK },
-];
-
+/** The published matrix (content/estimators/pool-masters-configurator.ts), built by scripts/pool-configurator-composite.py. */
 const VIEWS = {
-  aerial: ['resurface', 'pavers', 'porcelain'].flatMap((d) => ['', '-spa', '-yard', '-spa-yard'].map((s) => `aerial-${d}${s}`)),
-  poolside: ['plaster', 'quartz', 'pebble'].flatMap((f) => ['classic', 'premium'].map((e) => `poolside-${f}-${e}`)),
-  evening: ['evening', 'evening-led', 'evening-fire', 'evening-led-fire'],
+  aerial: ['resurface', 'pavers', 'porcelain'].flatMap((d) =>
+    ['', '-pebble'].flatMap((f) => ['', '-spa'].flatMap((s) => ['', '-yard', '-kitchen', '-cover'].map((y) => `aerial-${d}${f}${s}${y}`))),
+  ),
+  poolside: ['plaster', 'quartz', 'pebble'].flatMap((f) => ['classic', 'premium', 'stone'].flatMap((e) => ['', '-spa'].map((s) => `poolside-${f}-${e}${s}`))),
+  evening: ['', '-led', '-pebble'].flatMap((w) => ['', '-fire'].flatMap((f) => ['', '-spa'].map((s) => `evening${w}${f}${s}`))),
 };
 const ALL_KEYS = Object.values(VIEWS).flat();
 
 // ------------------------------------------------------------------ helpers
 
 const W = 1800;
-const W_SM = 900;
-const MAX_KB = 300;
-const MAX_KB_SM = 110;
+// Phones (2x and 3x screens) and the result thumbnails: 1200 px, about a third of the full file.
+const W_SM = 1200;
+const MAX_KB = 240;
+const MAX_KB_SM = 120;
 
 const raw = (key) => path.join(RAW_DIR, `${key}.jpg`);
+/** Composited, publishable photos (scripts/pool-configurator-composite.py writes them here). */
+const FINAL_DIR = process.env.POOL_CONFIG_FINAL_DIR || path.join(RAW_DIR, '..', 'final');
+const final = (key) => path.join(FINAL_DIR, `${key}.jpg`);
 
 function kieKey() {
   const k = process.env.KIE_API_KEY;
@@ -338,62 +391,18 @@ async function cmdGenerate(args) {
   console.log('credits after', await credits());
 }
 
-/** Mask of where `a` differs from `b` (spa + its shadow), cleaned of noise, slightly grown and feathered. */
-async function diffMask(a, b, width, height, clip = [0, 0, 1, 1]) {
-  const small = Math.round(width / 4);
-  const sh = Math.round(height / 4);
-  const read = (f) => sharp(f).resize(small, sh, { fit: 'fill' }).greyscale().blur(1.5).extractChannel(0).raw().toBuffer();
-  const [pa, pb] = await Promise.all([read(a), read(b)]);
-  const bin = Buffer.alloc(small * sh);
-  for (let i = 0; i < bin.length; i++) {
-    const x = (i % small) / small;
-    const y = Math.floor(i / small) / sh;
-    const inside = x >= clip[0] && x <= clip[2] && y >= clip[1] && y <= clip[3];
-    bin[i] = inside && Math.abs(pa[i] - pb[i]) > 28 ? 255 : 0;
-  }
-  // open (drop specks), then close + grow (fill the spa body): box-filter thresholds.
-  const box = async (buf, r, t) => {
-    const out = await sharp(buf, { raw: { width: small, height: sh, channels: 1 } }).blur(r).extractChannel(0).raw().toBuffer();
-    for (let i = 0; i < out.length; i++) out[i] = out[i] > t ? 255 : 0;
-    return out;
-  };
-  let m = await box(bin, 2, 170); // erode
-  m = await box(m, 6, 20); // dilate (and fill)
-  m = await box(m, 4, 200); // erode back a little
-  return sharp(m, { raw: { width: small, height: sh, channels: 1 } })
-    .resize(width, height, { fit: 'fill' }).blur(Math.max(1, width * 0.002)).extractChannel(0).raw().toBuffer();
-}
-
-async function cmdComposite() {
-  for (const c of COMPOSITES) {
-    const base = sharp(raw(c.base));
-    const { width, height } = await base.metadata();
-    if (c.diffFrom) {
-      const mask = await diffMask(raw(c.patch), raw(c.diffFrom), width, height, c.clip);
-      writeFileSync(path.join(RAW_DIR, `${c.key}.mask.png`), await sharp(mask, { raw: { width, height, channels: 1 } }).png().toBuffer());
-      const patch = await sharp(raw(c.patch)).resize(width, height, { fit: 'fill' })
-        .joinChannel(mask, { raw: { width, height, channels: 1 } }).png().toBuffer();
-      await sharp(raw(c.base)).composite([{ input: patch }]).jpeg({ quality: 95 }).toFile(raw(c.key));
-      console.log('composite', c.key, '(diff mask)');
-      continue;
-    }
-    const pts = c.mask.map(([x, y]) => `${Math.round(x * width)},${Math.round(y * height)}`).join(' ');
-    const blur = Math.round(width * 0.012);
-    const mask = await sharp(Buffer.from(
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="black"/><polygon points="${pts}" fill="white"/></svg>`,
-    )).blur(blur).extractChannel(0).toBuffer();
-    const patch = await sharp(raw(c.patch)).resize(width, height, { fit: 'fill' }).joinChannel(mask).png().toBuffer();
-    await base.composite([{ input: patch }]).jpeg({ quality: 95 }).toFile(raw(c.key));
-    console.log('composite', c.key);
-  }
+/** Every published photo, composited from the edits by scripts/pool-configurator-composite.py (numpy + Pillow). */
+function cmdComposite() {
+  const res = spawnSync('python3', ['-I', path.join(ROOT, 'scripts', 'pool-configurator-composite.py'), RAW_DIR, FINAL_DIR], { stdio: 'inherit' });
+  if (res.status !== 0) throw new Error('pool-configurator-composite.py failed');
 }
 
 async function cmdExport() {
   mkdirSync(OUT, { recursive: true });
   for (const key of ALL_KEYS) {
-    if (!existsSync(raw(key))) { console.log('MISSING', key); continue; }
-    const a = await webpUnder(raw(key), W, MAX_KB, path.join(OUT, `${key}.webp`));
-    const b = await webpUnder(raw(key), W_SM, MAX_KB_SM, path.join(OUT, `${key}-sm.webp`));
+    if (!existsSync(final(key))) { console.log('MISSING', key); continue; }
+    const a = await webpUnder(final(key), W, MAX_KB, path.join(OUT, `${key}.webp`));
+    const b = await webpUnder(final(key), W_SM, MAX_KB_SM, path.join(OUT, `${key}-sm.webp`));
     console.log(key.padEnd(28), `${a.kb} KB q${a.q}`, `| sm ${b.kb} KB q${b.q}`);
   }
 }
@@ -408,7 +417,7 @@ async function cmdSheets() {
     const rows = Math.ceil(keys.length / cols);
     const tiles = [];
     for (const [i, key] of keys.entries()) {
-      const file = existsSync(raw(key)) ? raw(key) : null;
+      const file = existsSync(final(key)) ? final(key) : null;
       const x = (i % cols) * tw;
       const y = Math.floor(i / cols) * (th + label);
       if (file) tiles.push({ input: await sharp(file).resize(tw, th, { fit: 'cover' }).toBuffer(), left: x, top: y + label });

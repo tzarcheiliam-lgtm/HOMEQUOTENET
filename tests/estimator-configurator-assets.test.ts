@@ -6,7 +6,7 @@ import { POOL_MASTERS_CONFIGURATOR as SPEC } from '@/content/estimators/pool-mas
 
 /**
  * The configurator's pre-rendered photo matrix (scripts/generate-pool-configurator-photos.mjs):
- * every image key the spec can resolve to must ship as a 1800 px WebP plus a 900 px
+ * every image key the spec can resolve to must ship as a 1800 px WebP plus a 1200 px
  * "-sm" phone version, 3:2, within the size budget and with no metadata.
  */
 const PUBLIC = path.join(process.cwd(), 'public');
@@ -21,8 +21,8 @@ async function meta(file: string) {
 describe('pool configurator photo assets', () => {
   const photos = Object.entries(SPEC.photos);
 
-  it('covers the whole photo matrix (22 keys)', () => {
-    expect(photos).toHaveLength(22);
+  it('covers the whole photo matrix (78 keys: aerial 48, poolside 18, evening 12)', () => {
+    expect(photos).toHaveLength(78);
   });
 
   it.each(photos)('%s ships a full-size and a phone WebP', async (_key, photo) => {
@@ -32,11 +32,11 @@ describe('pool configurator photo assets', () => {
     const sm = fileFor(smSrc(photo.src));
     expect(existsSync(full)).toBe(true);
     expect(existsSync(sm)).toBe(true);
-    expect(statSync(full).size).toBeLessThan(300 * 1024);
-    expect(statSync(sm).size).toBeLessThan(110 * 1024);
+    expect(statSync(full).size).toBeLessThan(250 * 1024);
+    expect(statSync(sm).size).toBeLessThan(125 * 1024);
     const [a, b] = await Promise.all([meta(full), meta(sm)]);
     expect([a.format, a.width, a.height]).toEqual(['webp', 1800, 1200]);
-    expect([b.format, b.width, b.height]).toEqual(['webp', 900, 600]);
+    expect([b.format, b.width, b.height]).toEqual(['webp', 1200, 800]);
     for (const m of [a, b]) {
       expect(m.exif).toBeUndefined();
       expect(m.xmp).toBeUndefined();

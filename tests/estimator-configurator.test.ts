@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { POOL_MASTERS_CONFIGURATOR as SPEC } from '@/content/estimators/pool-masters-configurator';
 import { POOL_MASTERS_ESTIMATOR } from '@/content/estimators/pool-masters';
 import { applyPackage, computeEstimate, validateTemplate } from '@/lib/estimator/engine';
-import { getEstimator } from '@/lib/estimator/registry';
+import { configuratorSpecFor, getEstimator } from '@/lib/estimator/registry';
 import { POOL_TEMPLATE } from '@/lib/estimator/templates/pool';
 import {
   bundleQuote,
@@ -18,6 +18,7 @@ import {
   rowDelta,
   selectionToAnswers,
   viewForRow,
+  viewsShowingRow,
 } from '@/lib/estimator/configurator/engine';
 import type { ConfiguratorSelection } from '@/lib/estimator/configurator/types';
 
@@ -98,7 +99,7 @@ describe('configurator: photo matrix', () => {
     const keys = photoKeys(SPEC);
     expect(new Set(keys).size).toBe(keys.length);
     expect(Object.keys(SPEC.photos).sort()).toEqual([...keys].sort());
-    expect(keys.length).toBeLessThanOrEqual(22);
+    expect(keys.length).toBe(78);
     for (const k of keys) expect(SPEC.photos[k].src).toBe(`/estimator/pool-masters/configurator/${k}.webp`);
   });
 
@@ -116,13 +117,29 @@ describe('configurator: photo matrix', () => {
     expect(photoFor(SPEC, 'aerial', sel)).toBe('aerial-resurface');
     expect(photoFor(SPEC, 'poolside', sel)).toBe('poolside-plaster-classic');
     expect(photoFor(SPEC, 'evening', sel)).toBe('evening');
-    expect(photoFor(SPEC, 'aerial', { ...sel, luxe: true })).toBe('aerial-porcelain-spa');
-    expect(photoFor(SPEC, 'poolside', { ...sel, luxe: true })).toBe('poolside-pebble-premium');
-    expect(photoFor(SPEC, 'evening', { ...sel, luxe: true })).toBe('evening-fire');
+    // Go Luxe shows in every view: pebble and the spa everywhere, the deck from above, the edge poolside, fire at dusk.
+    expect(photoFor(SPEC, 'aerial', { ...sel, luxe: true })).toBe('aerial-porcelain-pebble-spa');
+    expect(photoFor(SPEC, 'poolside', { ...sel, luxe: true })).toBe('poolside-pebble-premium-spa');
+    expect(photoFor(SPEC, 'evening', { ...sel, luxe: true })).toBe('evening-pebble-fire-spa');
     const custom = decodeSelection(SPEC, 'm=large&o=deck_pavers,patio_cover,led_lights,fire_bowls,quartz,edge_stone');
-    expect(photoFor(SPEC, 'aerial', custom)).toBe('aerial-pavers-yard');
-    expect(photoFor(SPEC, 'poolside', custom)).toBe('poolside-quartz-premium');
+    expect(photoFor(SPEC, 'aerial', custom)).toBe('aerial-pavers-cover');
+    expect(photoFor(SPEC, 'poolside', custom)).toBe('poolside-quartz-stone');
     expect(photoFor(SPEC, 'evening', custom)).toBe('evening-led-fire');
+  });
+
+  it('shows the kitchen and the patio cover as separate pictures, and both together', () => {
+    const sel = defaultSelection(SPEC);
+    const yard = (rows: string[]) => photoFor(SPEC, 'aerial', { ...sel, picks: { ...sel.picks, backyard: rows } });
+    expect(yard(['outdoor_kitchen'])).toBe('aerial-resurface-kitchen');
+    expect(yard(['patio_cover'])).toBe('aerial-resurface-cover');
+    expect(yard(['patio_cover', 'outdoor_kitchen'])).toBe('aerial-resurface-yard');
+    expect(yard(['fire_pit'])).toBe('aerial-resurface');
+  });
+
+  it('LED lights set the evening water over a pebble finish', () => {
+    const sel = decodeSelection(SPEC, 'm=medium&o=pebble,led_lights');
+    expect(photoFor(SPEC, 'evening', sel)).toBe('evening-led');
+    expect(photoFor(SPEC, 'evening', decodeSelection(SPEC, 'm=medium&o=pebble'))).toBe('evening-pebble');
   });
 
   it('falls back to the view real photo for an unknown key', () => {
@@ -130,11 +147,18 @@ describe('configurator: photo matrix', () => {
     expect(photoSrc(SPEC, 'evening-led').src).toBe('/estimator/pool-masters/configurator/evening-led.webp');
   });
 
-  it('switches view by row', () => {
+  it('switches view by row only when the current view does not picture it', () => {
     expect(viewForRow(SPEC, 'pebble')).toBe('poolside');
     expect(viewForRow(SPEC, 'fire_bowls')).toBe('evening');
     expect(viewForRow(SPEC, 'spa')).toBe('aerial');
     expect(viewForRow(SPEC, 'heater')).toBeUndefined();
+    // Pictured in the current view: stay.
+    expect(viewForRow(SPEC, 'spa', 'evening')).toBe('evening');
+    expect(viewForRow(SPEC, 'pebble', 'aerial')).toBe('aerial');
+    expect(viewForRow(SPEC, 'deck_pavers', 'evening')).toBe('aerial');
+    // Price-only rows are pictured nowhere.
+    for (const id of ['baja', 'water_bowls', 'fire_pit', 'turf_planting', 'heater', 'automation', 'salt']) expect(viewsShowingRow(SPEC, id)).toEqual([]);
+    expect(viewsShowingRow(SPEC, 'spa')).toEqual(['aerial', 'poolside', 'evening']);
   });
 });
 
@@ -259,5 +283,14 @@ describe('configurator: shareable URL', () => {
     expect(encodeSelection(SPEC, decodeSelection(SPEC, '?m=large&o=pebble,spa&lx=1'))).toBe('m=large&o=pebble,spa&lx=1');
     expect(decodeSelection(SPEC, 'm=huge&o=nope,<script>&lx=yes')).toEqual(defaultSelection(SPEC));
     expect(decodeSelection(SPEC, new URLSearchParams('o=quartz,pebble')).picks.finish).toEqual(['pebble']);
+  });
+});
+
+describe('configurator opt-in', () => {
+  it('is used only with revealRange immediately (else prices are stripped): the pages fall back to the builder', () => {
+    expect(configuratorSpecFor(POOL_MASTERS_ESTIMATOR)).toBe(SPEC);
+    expect(configuratorSpecFor({ ...POOL_MASTERS_ESTIMATOR, revealRange: 'after_contact' })).toBeNull();
+    expect(configuratorSpecFor({ ...POOL_MASTERS_ESTIMATOR, configurator: undefined })).toBeNull();
+    expect(configuratorSpecFor({ ...POOL_MASTERS_ESTIMATOR, experience: 'builder' })).toBeNull();
   });
 });

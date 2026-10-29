@@ -13,6 +13,7 @@ import { nicheDataFor } from '@/lib/meta/niche';
 import { rememberLeadMetaIds } from '@/lib/meta/lead-ids';
 import { directSendAudit } from '@/lib/meta/audit.server';
 import { computeEstimate } from '@/lib/estimator/engine';
+import { configuratorSpecFor } from '@/lib/estimator/configurator/engine';
 import { getEstimator } from '@/lib/estimator/registry';
 import {
   ReplayCache, acceptedConsent, bookingUrl, buildLeadPayload, configuratorLeadDesign, isHoneypot, originAllowed, parseLeadRequest, pickLikedLooks,
@@ -36,8 +37,22 @@ type Context = { params: Promise<{ slug: string }> };
 const reply = (data: EstimatorLeadResponse, status = 200) => NextResponse.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
 const fail = (form: string, status: number) => reply({ ok: false, errors: { form } }, status);
 
-/** Successful replies by slug + submissionId: the client's automatic retry gets the first answer, not a second lead. */
+/**
+ * Successful replies by slug + submissionId + the contact's email/phone (hashed): the client's
+ * automatic retry gets the first answer, not a second lead, and nobody else can read it back
+ * with only the id.
+ */
 const replays = new ReplayCache<EstimatorLeadResponse>();
+/** Requests still being saved, by the same key: a retry that arrives while the first is slow waits for it. */
+const inflight = new Map<string, Promise<Response>>();
+
+function replayKeyFor(slug: string, submissionId: unknown, contact: unknown): string | null {
+  if (typeof submissionId !== 'string' || !submissionId) return null;
+  const c = (contact && typeof contact === 'object' ? contact : {}) as { email?: unknown; phone?: unknown };
+  const email = typeof c.email === 'string' ? c.email.trim().toLowerCase() : '';
+  const phone = typeof c.phone === 'string' ? c.phone.replace(/\D/g, '').slice(-10) : '';
+  return `${slug}:${submissionId.slice(0, 80)}:${hash(`${email}|${phone}`).slice(0, 24)}`;
+}
 
 /** " or call (818) 643-6888" when the contractor has a phone. */
 const orCall = (phone: string | undefined) => (phone ? ` or call ${phone}` : '');
@@ -54,6 +69,30 @@ function deviceOf(userAgent: string | null): 'mobile' | 'tablet' | 'desktop' {
 }
 
 export async function POST(request: Request, context: Context) {
+  let key: string | null = null;
+  try {
+    const peek = (await request.clone().json()) as { submissionId?: unknown; contact?: unknown };
+    key = replayKeyFor((await context.params).slug, peek?.submissionId, peek?.contact);
+  } catch {
+    key = null;
+  }
+  if (!key) return handle(request, context);
+  const pending = inflight.get(key);
+  // The first copy is still saving: wait for it, then answer from the replay cache (or try again if it failed).
+  if (pending) await pending.catch(() => undefined);
+  else {
+    const first = handle(request, context);
+    inflight.set(key, first);
+    try {
+      return await first;
+    } finally {
+      inflight.delete(key);
+    }
+  }
+  return handle(request, context);
+}
+
+async function handle(request: Request, context: Context): Promise<Response> {
   // The strict check first; then the www/apex twin, a proxied host and the configured site URL (originAllowed).
   if (!sameOrigin(request) && !originAllowed(request)) return fail('This page’s address doesn’t match our site. Reload the page and try again.', 403);
   const slug = (await context.params).slug;
@@ -67,14 +106,14 @@ export async function POST(request: Request, context: Context) {
   if (!parsed.ok) return reply({ ok: false, errors: parsed.errors }, 422);
   const lead = parsed.data;
 
-  const replayKey = lead.submissionId ? `${slug}:${lead.submissionId}` : null;
+  const replayKey = replayKeyFor(slug, lead.submissionId, lead.contact);
   const replayed = replayKey ? replays.get(replayKey) : undefined;
   if (replayed) return reply(replayed);
 
   // Never trust the browser: the answers are cut down to what the template allows and the
   // range is computed here. A configurator design is re-derived from the selection alone.
   const origin = new URL(request.url).origin;
-  const spec = contractor.experience === 'configurator' ? contractor.configurator : undefined;
+  const spec = configuratorSpecFor(contractor);
   let answers = sanitizeEstimatorAnswers(template, lead.answers);
   let estimate = computeEstimate(template, { answers, dimensions: lead.dimensions });
   let design: ConfiguratorLeadDesign | undefined;

@@ -6,6 +6,7 @@ import { Configurator } from '@/components/estimator/configurator/configurator';
 import { configuratorPhotoManifest } from '@/components/estimator/configurator/photo-manifest';
 import { Estimator } from '@/components/estimator/estimator';
 import { publicTemplate } from '@/lib/estimator/config';
+import { configuratorSpecFor } from '@/lib/estimator/configurator/engine';
 import { ESTIMATOR_SLUGS, getEstimator } from '@/lib/estimator/registry';
 import { rendersEnabled } from '@/lib/estimator/render';
 
@@ -34,13 +35,14 @@ export default async function EstimatorEmbedPage({ params }: Props) {
   const found = getEstimator(slug);
   if (!found) notFound();
   const { contractor } = found;
-  if (contractor.experience === 'configurator' && contractor.configurator) {
+  const spec = configuratorSpecFor(contractor);
+  if (spec) {
     return (
       <Configurator
-        spec={contractor.configurator}
+        spec={spec}
         template={publicTemplate(found.template, contractor)}
         contractor={contractor}
-        manifest={configuratorPhotoManifest(contractor.configurator)}
+        manifest={configuratorPhotoManifest(spec)}
         embedded
       />
     );

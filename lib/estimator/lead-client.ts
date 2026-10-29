@@ -173,7 +173,7 @@ export function describeConfiguratorDesign(spec: ConfiguratorSpec, selection: Co
 export type SubmitOptions = {
   /** Injected in tests. */
   fetch?: typeof fetch;
-  /** Give up on one attempt after this long (default 25 s). */
+  /** Give up on one attempt after this long (default 65 s, past the route's 60 s maxDuration). */
   timeoutMs?: number;
   /** Wait before the single automatic retry (default 900 ms). */
   retryDelayMs?: number;
@@ -234,7 +234,8 @@ export async function submitEstimatorLead(slug: string, request: EstimatorLeadRe
   const fetcher = options.fetch ?? fetch;
   const url = `/api/estimator/${encodeURIComponent(slug)}/lead`;
   const body = JSON.stringify({ ...request, submissionId: request.submissionId ?? newSubmissionId() });
-  const timeoutMs = options.timeoutMs ?? 25_000;
+  // Longer than the route's maxDuration (60 s): a slow first save is answered, not raced by the retry.
+  const timeoutMs = options.timeoutMs ?? 65_000;
   let result = await attempt(url, body, fetcher, timeoutMs);
   if (result.kind !== 'reply') {
     await sleep(options.retryDelayMs ?? 900);

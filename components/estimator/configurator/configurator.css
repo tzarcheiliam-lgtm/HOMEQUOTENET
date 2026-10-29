@@ -80,14 +80,13 @@ body:has(.es-cfg) {
   animation: es-cfg-toast 1900ms ease-out both;
 }
 
+/* Step changes fade in place (no movement: nothing shifts under the reader). */
 @keyframes es-cfg-rise {
   from {
     opacity: 0;
-    transform: translateY(8px);
   }
   to {
     opacity: 1;
-    transform: none;
   }
 }
 
@@ -114,5 +113,27 @@ body:has(.es-cfg) {
     100% {
       opacity: 0;
     }
+  }
+}
+
+/*
+  Keyboard focus never lands under the fixed photo (phones) or the sticky total
+  bar: scrolling into view leaves room for both.
+*/
+html:has(.es-cfg-photo) {
+  scroll-padding-top: calc(3.5rem + 32vh + 0.5rem);
+  scroll-padding-bottom: 7rem;
+}
+
+html:has(.es-cfg-embedded .es-cfg-photo) {
+  scroll-padding-top: calc(32vh + 0.5rem);
+}
+
+@media (min-width: 1024px) {
+  html:has(.es-cfg-photo) {
+    scroll-padding-top: 5rem;
+  }
+  html:has(.es-cfg-embedded .es-cfg-photo) {
+    scroll-padding-top: 1rem;
   }
 }

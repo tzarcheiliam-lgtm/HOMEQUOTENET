@@ -29,4 +29,6 @@ export type ConfiguratorBookingProps = {
   designUrl: string;
   /** Frame mode (iframe on the contractor's site): open the calendar in a new tab. */
   embedded?: boolean;
+  /** Called once the lead is saved (the page marks "Send your design" done). */
+  onSent?: () => void;
 };

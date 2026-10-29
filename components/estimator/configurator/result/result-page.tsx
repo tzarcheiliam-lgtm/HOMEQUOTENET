@@ -3,11 +3,12 @@
 /* eslint-disable @next/next/no-img-element -- the same pre-rendered files as the stage, already in the browser cache */
 
 import { useMemo, useState } from 'react';
-import { Check, Copy, Sparkles } from 'lucide-react';
+import { Check, ChevronDown, Copy, ShieldCheck, Sparkles } from 'lucide-react';
 import type { GalleryImage } from '@/lib/estimator/types';
 import { BreakdownLines } from '../cost';
 import type { ConfiguratorBookingProps, ViewPhoto } from '../result-types';
-import { moneyRange } from '../state';
+import { selectedRows } from '@/lib/estimator/configurator/engine';
+import { moneyRange, notPictured } from '../state';
 import { ConfiguratorBooking } from './booking-form';
 import { designHighlights } from './booking-state';
 
@@ -34,6 +35,11 @@ export function ConfiguratorResultPage(props: ConfiguratorResultPageProps) {
   const highlights = useMemo(() => designHighlights(spec, selection), [spec, selection]);
   const gallery = (projects?.length ? projects : contractor.gallery ?? []).filter((g) => g.src);
   const examplePrices = !template.pricesConfirmed;
+  const [sent, setSent] = useState(false);
+  // Picks no photo shows (priced only), named under the gallery so the photos never seem to drop them.
+  const picked = selectedRows(spec, selection);
+  const unpictured = spec.groups.flatMap((g) => g.rows).filter((r) => picked.has(r.id) && notPictured(spec, r.id));
+  const upgradeCount = breakdown.upgrades.length;
 
   return (
     <div className="es-cfg-rise mx-auto w-full max-w-[760px] px-4 pb-24 pt-6 sm:px-6 sm:pt-10" data-configurator-result="">
@@ -41,18 +47,22 @@ export function ConfiguratorResultPage(props: ConfiguratorResultPageProps) {
         &larr; Back to edit
       </button>
 
-      <ResultGallery photos={photos} note={photoNote} />
+      <ResultGallery
+        photos={photos}
+        note={`${photoNote} Each view shows the picks it can${unpictured.length ? `; ${listOf(unpictured.map((r) => r.label.toLowerCase()))} ${unpictured.length === 1 ? 'is' : 'are'} priced, not pictured` : ''}.`}
+      />
 
-      <p className="mt-8 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#6d675d]">Your {contractor.contractorName} design</p>
+      <p className="mt-8 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#5f5a52]">Your {contractor.contractorName} design</p>
       <h1 id="cfg-result-title" tabIndex={-1} className="mt-1.5 text-[34px] font-semibold leading-[1.08] tracking-[-0.025em] text-[#111] outline-none sm:text-[44px]">
         Here&rsquo;s your pool.
       </h1>
       {model ? (
         <p className="mt-2.5 text-pretty text-[15.5px] leading-[23px] text-[#4a463f]">
-          The {model.name}, {model.dimensions}
-          {breakdown.luxe ? `, with ${breakdown.luxe.label}` : ''}
-          {breakdown.upgrades.length ? ` and ${breakdown.upgrades.length} more upgrade${breakdown.upgrades.length === 1 ? '' : 's'}` : ''}. Ballpark{' '}
-          <span className="whitespace-nowrap font-semibold tabular-nums text-[#111]">{moneyRange(breakdown.total)}</span>.
+          The {model.name} ({model.dimensions})
+          {breakdown.luxe ? ` with ${breakdown.luxe.label}` : ''}
+          {upgradeCount ? `${breakdown.luxe ? ' and' : ' with'} ${upgradeCount} upgrade${upgradeCount === 1 ? '' : 's'}` : ''}. Ballpark{' '}
+          <span className="whitespace-nowrap font-semibold tabular-nums text-[#111]">{moneyRange(breakdown.total)}</span>
+          {examplePrices ? ' (example prices)' : ''}, firm price at your free site visit.
         </p>
       ) : null}
 
@@ -81,26 +91,18 @@ export function ConfiguratorResultPage(props: ConfiguratorResultPageProps) {
                       Luxe
                     </span>
                   ) : item.included ? (
-                    <span className="text-[12px] text-[#8a847a]">Included</span>
+                    <span className="text-[12px] text-[#5f5a52]">Included</span>
                   ) : null}
                 </span>
               ))}
             />
           ))}
         </dl>
-      </section>
-
-      {/* Cost breakdown and the total as a range. */}
-      <section aria-labelledby="cfg-cost" className={`${card} mt-4 px-5 pb-5 pt-4 sm:px-6`}>
-        <h2 id="cfg-cost" className="sr-only">
-          Cost breakdown
-        </h2>
-        <BreakdownLines breakdown={breakdown} siteNote="Confirmed at your free on-site visit" />
-        <div className="mt-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t-2 border-[#111] pt-4">
-          <p className="text-[19px] font-semibold text-[#111]">Total estimate*</p>
-          <p className="whitespace-nowrap text-right text-[24px] font-semibold tabular-nums tracking-[-0.01em] text-[#111] sm:text-[28px]">{moneyRange(breakdown.total)}</p>
+        <div className="mt-4 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t-2 border-[#111] pt-4">
+          <p className="text-[17px] font-semibold text-[#111]">Total estimate*</p>
+          <p className="whitespace-nowrap text-right text-[22px] font-semibold tabular-nums tracking-[-0.01em] text-[#111] sm:text-[26px]">{moneyRange(breakdown.total)}</p>
         </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className="mt-2.5 flex flex-wrap items-center gap-2">
           <span className="rounded-full bg-[#f5f3ef] px-2.5 py-0.5 text-[12px] font-medium text-[#111]">Ballpark, not a quote</span>
           {examplePrices ? <span className="rounded-full border border-[#d9d4ca] px-2.5 py-0.5 text-[12px] text-[#5f5a52]">Example prices</span> : null}
         </div>
@@ -108,6 +110,17 @@ export function ConfiguratorResultPage(props: ConfiguratorResultPageProps) {
           *{examplePrices ? `Example prices, not yet confirmed by ${contractor.contractorName}. ` : ''}Excludes site-specific work (access, soil, permits) and
           permit fees. Your firm, all-in price is confirmed at your free on-site visit.
         </p>
+        <details className="group mt-3 border-t border-[#efece6] pt-3">
+          <summary
+            className={`inline-flex cursor-pointer list-none items-center gap-1 rounded text-[13px] font-medium text-[#111] underline-offset-4 hover:underline [&::-webkit-details-marker]:hidden ${focusRing}`}
+          >
+            See the cost breakdown
+            <ChevronDown aria-hidden="true" className="size-3.5 transition-transform duration-150 group-open:rotate-180 motion-reduce:transition-none" />
+          </summary>
+          <div className="mt-2">
+            <BreakdownLines breakdown={breakdown} siteNote="Confirmed at your free on-site visit" />
+          </div>
+        </details>
         <SaveDesign url={designUrl} />
       </section>
 
@@ -118,18 +131,36 @@ export function ConfiguratorResultPage(props: ConfiguratorResultPageProps) {
           Book your free on-site consultation
         </h2>
         <p className="mt-2 text-pretty text-[14.5px] leading-[22px] text-[#4a463f]">
-          We&rsquo;ll measure, confirm materials and give you a firm price. No obligation.
+          We&rsquo;ll measure, confirm materials and give you a firm price. No obligation. You pick a time right after sending this.
         </p>
+        {contractor.facts?.length || contractor.licenseLabel ? (
+          <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-[13px] text-[#3d3a34]">
+            {[...(contractor.facts ?? []), contractor.licenseLabel].filter(Boolean).map((fact) => (
+              <li key={fact} className="inline-flex items-center gap-1.5">
+                <ShieldCheck aria-hidden="true" className="size-3.5 text-[var(--cfg-accent)]" />
+                {fact}
+              </li>
+            ))}
+          </ul>
+        ) : null}
         <ol className="mt-4 grid gap-2 text-[13px] text-[#4a463f] sm:grid-cols-3">
-          {['Send your design', 'Pick a time', 'Get your firm price on site'].map((step, i) => (
-            <li key={step} className="flex items-center gap-2 rounded-xl bg-[#f5f3ef] px-3 py-2.5">
-              <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-[#111] text-[11px] font-semibold text-white tabular-nums">{i + 1}</span>
-              {step}
-            </li>
-          ))}
+          {['Send your design', 'Pick a time', 'Get your firm price on site'].map((step, i) => {
+            const done = sent && i === 0;
+            return (
+              <li key={step} className="flex items-center gap-2 rounded-xl bg-[#f5f3ef] px-3 py-2.5">
+                <span
+                  className={`inline-flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums text-white ${done ? 'bg-[var(--cfg-accent)]' : 'bg-[#111]'}`}
+                >
+                  {done ? <Check aria-hidden="true" className="size-3" strokeWidth={3} /> : i + 1}
+                </span>
+                <span className={done ? 'line-through decoration-[#8f897e]' : undefined}>{step}</span>
+                {done ? <span className="sr-only"> (done)</span> : null}
+              </li>
+            );
+          })}
         </ol>
         <div className="mt-6">
-          <ConfiguratorBooking {...props} />
+          <ConfiguratorBooking {...props} onSent={() => setSent(true)} />
         </div>
       </section>
 
@@ -146,6 +177,11 @@ export function ConfiguratorResultPage(props: ConfiguratorResultPageProps) {
       {gallery.length ? <ProjectsStrip gallery={gallery} title={`Recent ${contractor.contractorName} projects`} /> : null}
     </div>
   );
+}
+
+/** "a, b and c". */
+function listOf(items: string[]): string {
+  return items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
 }
 
 function DesignRow({ term, value }: { term: string; value: React.ReactNode }) {

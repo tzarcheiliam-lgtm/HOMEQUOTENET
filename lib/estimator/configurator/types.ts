@@ -40,13 +40,15 @@ export type ConfiguratorView = {
 };
 
 /**
- * One visual dimension of a view. Options are checked in order: the first whose
- * `rows` intersects the selected rows wins; an option with `rows: []` is the
- * default and must come last.
+ * One visual dimension of a view. Options are checked in order: the first that
+ * matches wins. An option matches when any of its `rows` is selected (or `rows`
+ * is empty) and, with `allOf`, every one of those rows is selected too (e.g.
+ * "kitchen and patio cover" before "kitchen" and "cover"). The option with
+ * `rows: []` and no `allOf` is the default and must come last.
  */
 export type PhotoDimension = {
   id: string;
-  options: { token: string; rows: string[] }[];
+  options: { token: string; rows: string[]; allOf?: string[] }[];
 };
 
 /**
@@ -95,8 +97,10 @@ export type ConfiguratorBundle = {
 export type ConfiguratorPhoto = { src: string; alt: string };
 
 export type ConfiguratorSpec = {
-  /** Heading over the options, e.g. "Design your pool". */
+  /** Heading over the options, e.g. "Reimagine your pool". */
   title: string;
+  /** One or two lines under the heading (what is priced, how the page works). */
+  intro?: string;
   models: ConfiguratorModel[];
   /** Model selected on load. */
   defaultModel: string;

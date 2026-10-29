@@ -8,6 +8,7 @@ import {
   rowDelta,
   selectedRows,
   viewForRow,
+  viewsShowingRow,
   type BundleQuote,
   type SelectionEstimate,
 } from '@/lib/estimator/configurator/engine';
@@ -46,8 +47,14 @@ export function compactRange(r: Range): string {
   return r.low === r.high ? lo : `${lo}–${kilo(r.high)}`;
 }
 
-/** "+$1.8k–2.7k" for an upgrade row. */
-export const deltaLabel = (r: Range) => `+${compactRange(r)}`;
+/**
+ * "+$1,800" for an upgrade row: the low end of the row's example range, shown
+ * with a small "from" (the total stays a range). Full figures, no "k".
+ */
+export const deltaLabel = (r: Range) => `+${money(r.low)}`;
+
+/** "from $14,500" for the size cards. */
+export const fromLabel = (r: Range) => `from ${money(r.low)}`;
 
 /* ------------------------------------------------------------------ */
 /* Selection changes                                                   */
@@ -89,12 +96,27 @@ export function reduceSelection(spec: ConfiguratorSpec, current: ConfiguratorSel
   }
 }
 
-/** The photo view to show after an action (undefined: keep the current one). */
-export function viewAfter(spec: ConfiguratorSpec, action: ConfiguratorAction): string | undefined {
-  if (action.type === 'row') return viewForRow(spec, action.rowId);
-  if (action.type === 'luxe' && action.on && spec.bundle) return viewForRow(spec, spec.bundle.rows.find((id) => viewForRow(spec, id)) ?? '');
+/**
+ * The photo view to show after an action (undefined: keep the current one).
+ * A row only moves the photo when the current view does not picture it, so a
+ * price-only row (water bowls, heater) never jumps to a view where nothing changed.
+ */
+export function viewAfter(spec: ConfiguratorSpec, action: ConfiguratorAction, currentView?: string): string | undefined {
+  if (action.type === 'row') {
+    const next = viewForRow(spec, action.rowId, currentView);
+    return next === currentView ? undefined : next;
+  }
+  if (action.type === 'luxe' && action.on && spec.bundle) {
+    // Stay when the current view shows any of the bundle; else the first view that does.
+    if (currentView && spec.bundle.rows.some((id) => viewsShowingRow(spec, id).includes(currentView))) return undefined;
+    const first = spec.bundle.rows.map((id) => viewForRow(spec, id)).find(Boolean);
+    return first === currentView ? undefined : first;
+  }
   return undefined;
 }
+
+/** True when no photo shows the row (it changes the price only). */
+export const notPictured = (spec: ConfiguratorSpec, rowId: string) => viewsShowingRow(spec, rowId).length === 0;
 
 /**
  * A short, calm confirmation for the photo ("Spa added", "Pebble finish"), or
@@ -103,6 +125,10 @@ export function viewAfter(spec: ConfiguratorSpec, action: ConfiguratorAction): s
  */
 export function toastFor(spec: ConfiguratorSpec, before: ConfiguratorSelection, after: ConfiguratorSelection, action: ConfiguratorAction): string | null {
   if (action.type === 'luxe') return action.on && spec.bundle ? `${spec.bundle.label} applied` : null;
+  if (action.type === 'model') {
+    const m = spec.models.find((x) => x.id === after.model);
+    return m && before.model !== after.model ? `${m.name} · ${m.dimensions}` : null;
+  }
   if (action.type !== 'row') return null;
   const group = spec.groups.find((g) => g.rows.some((r) => r.id === action.rowId));
   const row = group?.rows.find((r) => r.id === action.rowId);
@@ -110,8 +136,9 @@ export function toastFor(spec: ConfiguratorSpec, before: ConfiguratorSelection, 
   const was = selectedRows(spec, before).has(row.id);
   const is = selectedRows(spec, after).has(row.id);
   if (was === is) return null;
-  if (group.kind === 'single') return row.label;
-  return `${row.label} ${is ? 'added' : 'removed'}`;
+  const hidden = notPictured(spec, row.id) ? ' · priced, not pictured' : '';
+  if (group.kind === 'single') return `${row.label}${hidden}`;
+  return `${row.label} ${is ? 'added' : 'removed'}${is ? hidden : ''}`;
 }
 
 /* ------------------------------------------------------------------ */

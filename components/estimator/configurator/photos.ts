@@ -4,7 +4,7 @@ import type { ConfiguratorSelection, ConfiguratorSpec } from '@/lib/estimator/co
 /*
  * Which file each photo key shows. Variants live at
  * /estimator/pool-masters/configurator/<key>.webp (1800 px) with an optional
- * <key>-sm.webp (900 px) for phones. The server page checks which files ship
+ * <key>-sm.webp (1200 px) for phones and 1x desktops. The server page checks which files ship
  * (photo-manifest.ts) so the browser never asks for a missing one; without a
  * manifest the <img> falls back to the view's real photo on error.
  */
@@ -27,8 +27,8 @@ export type StagePhoto = {
 /** "/x/aerial-pavers.webp" -> "/x/aerial-pavers-sm.webp". */
 export const smallSrc = (src: string) => src.replace(/\.webp$/, '-sm.webp');
 
-/** Width hints for srcset (the files are 900 and 1800 px wide). */
-export const SMALL_W = 900;
+/** Width hints for srcset (the files are 1200 and 1800 px wide). */
+export const SMALL_W = 1200;
 export const FULL_W = 1800;
 
 /** The photo for a key, honouring the manifest (missing variant -> the view's real photo). */

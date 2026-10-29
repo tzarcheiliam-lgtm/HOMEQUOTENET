@@ -4,11 +4,17 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
-import type { ConfiguratorSpec } from '@/lib/estimator/configurator/types';
+import type { ConfiguratorModel, ConfiguratorSpec } from '@/lib/estimator/configurator/types';
 import type { StagePhoto } from './photos';
 
-/** sizes for the stage <img>: the photo column on desktop, the full width on phones. */
-export const STAGE_SIZES = '(min-width: 1280px) calc(100vw - 480px), (min-width: 1024px) calc(100vw - 440px), 100vw';
+/**
+ * sizes for the stage <img>. Desktop: the photo is cover-cropped into a box
+ * about (100vh - chrome) tall, so the width it needs is ~1.5 x that height,
+ * not the column width (135vh: a 1440 x 900 screen at 1x gets the 1200 px
+ * file without upscaling, 2x screens the 1800 px one). Phones: the full width,
+ * so 2x and 3x phones get the 1200 px file (390 x 3 = 1170).
+ */
+export const STAGE_SIZES = '(min-width: 1024px) 135vh, 100vw';
 
 /* ------------------------------------------------------------------ */
 /* Preloading                                                          */
@@ -41,6 +47,14 @@ export function preloadPhoto(photo: Pick<StagePhoto, 'src' | 'srcSet'>): Promise
   return p;
 }
 
+/** False on Save-Data or a 2G/3G connection: then only the photo being asked for is fetched. */
+export function canWarmPhotos(): boolean {
+  if (typeof navigator === 'undefined') return true;
+  const c = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
+  if (!c) return true;
+  return !c.saveData && !/(^|-)(2g|3g)$/.test(c.effectiveType ?? '');
+}
+
 function whenIdle(fn: () => void): () => void {
   const w = window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void };
   if (w.requestIdleCallback) {
@@ -66,15 +80,18 @@ export type PhotoStageProps = {
   onView: (view: string) => void;
   /** The photo to show now (current view, current picks). */
   photo: StagePhoto;
-  /** Warm these right away (the other views' current photos, one-click neighbours). */
+  /** Warm these right away (the other views' current photos). */
   next: StagePhoto[];
-  /** Warm these when the browser is idle (every variant of the current view). */
+  /** Warm these when the browser is idle and the connection allows (one click away in this view). */
   idle: StagePhoto[];
   /** A short "Spa added" note over the photo; `id` changes for each new note. */
   toast: { id: number; text: string } | null;
   /** Small caption, e.g. "Example design · AI-assisted" (hidden while a real photo stands in). */
   caption: string;
-  /** Phones: the photo shrinks to a strip. */
+  /** The chosen size, drawn to scale on the photo (the photos themselves show one size). */
+  model?: ConfiguratorModel;
+  models: ConfiguratorModel[];
+  /** Phones: the photo is a shorter strip. */
   collapsed: boolean;
   onCollapsed: (collapsed: boolean) => void;
 };
@@ -82,9 +99,10 @@ export type PhotoStageProps = {
 /**
  * The big photo with view pills. Variants are pre-rendered files: a new pick
  * preloads and decodes the target, then fades it in over the old one (instant
- * with reduced motion). Fixed box, object-cover: nothing below ever moves.
+ * with reduced motion). The box never changes the page layout (fixed on
+ * phones, the full column height on desktop), object-cover.
  */
-export function PhotoStage({ spec, view, onView, photo, next, idle, toast, caption, collapsed, onCollapsed }: PhotoStageProps) {
+export function PhotoStage({ spec, view, onView, photo, next, idle, toast, caption, model, models, collapsed, onCollapsed }: PhotoStageProps) {
   const [layers, setLayers] = useState<Layer[]>(() => [{ ...photo, id: 0 }]);
   const seq = useRef(0);
   const wanted = useRef(photo.src);
@@ -111,8 +129,9 @@ export function PhotoStage({ spec, view, onView, photo, next, idle, toast, capti
     // eslint-disable-next-line react-hooks/exhaustive-deps -- layers is read for the no-op check only
   }, [photo.src, photo.srcSet, photo.alt, photo.key]);
 
-  // Warm the next likely photos now and the rest of this view when idle.
+  // Warm the other views now; the one-click neighbours when idle, and only on a good connection.
   useEffect(() => {
+    if (!canWarmPhotos()) return;
     for (const p of next) void preloadPhoto(p);
     return whenIdle(() => {
       for (const p of idle) void preloadPhoto(p);
@@ -123,11 +142,7 @@ export function PhotoStage({ spec, view, onView, photo, next, idle, toast, capti
   const showCaption = !top.isFallback && !top.failed;
 
   return (
-    <div
-      className={`es-cfg-stage relative isolate w-full overflow-hidden bg-[#e9e6df] transition-[height] duration-300 ease-out motion-reduce:transition-none ${
-        collapsed ? 'h-[22vh]' : 'h-[38vh]'
-      } lg:h-full`}
-    >
+    <div className="es-cfg-stage relative isolate h-full w-full overflow-hidden bg-[#e9e6df]">
       {layers.map((l, i) => {
         const isTop = i === layers.length - 1;
         return (
@@ -139,7 +154,6 @@ export function PhotoStage({ spec, view, onView, photo, next, idle, toast, capti
             alt={isTop ? l.alt : ''}
             aria-hidden={isTop ? undefined : true}
             decoding="async"
-            fetchPriority={l.id === 0 ? 'high' : undefined}
             draggable={false}
             className={`absolute inset-0 h-full w-full select-none object-cover ${isTop && l.id !== 0 ? 'es-cfg-fade' : ''}`}
             onAnimationEnd={isTop ? () => setLayers((ls) => ls.slice(-1)) : undefined}
@@ -151,10 +165,10 @@ export function PhotoStage({ spec, view, onView, photo, next, idle, toast, capti
       })}
 
       {/* Soft shade top and bottom so the pills and caption read on any photo. */}
-      <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/25 to-transparent" />
-      <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/35 to-transparent" />
+      <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-black/25 to-transparent" />
+      <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/30 to-transparent" />
 
-      <div role="group" aria-label="Photo view" className="absolute inset-x-0 top-3 flex justify-center gap-1.5 px-3 sm:top-5">
+      <div role="group" aria-label="Photo view" className="absolute inset-x-0 top-2.5 flex justify-center gap-1.5 px-3 sm:top-5">
         {spec.views.map((v) => {
           const active = v.id === view;
           return (
@@ -173,15 +187,11 @@ export function PhotoStage({ spec, view, onView, photo, next, idle, toast, capti
         })}
       </div>
 
-      {showCaption ? (
-        <p className="pointer-events-none absolute bottom-3 left-4 text-[11px] font-medium tracking-wide text-white/85 [text-shadow:0_1px_2px_rgba(0,0,0,.45)] sm:bottom-5 sm:left-6">
-          {caption}
-        </p>
-      ) : null}
+      {model ? <SizePlan model={model} models={models} caption={showCaption ? caption : null} /> : null}
 
       {toast ? (
-        <div key={toast.id} aria-hidden="true" className="es-cfg-toast pointer-events-none absolute inset-x-0 bottom-10 flex justify-center sm:bottom-8">
-          <span className="rounded-full bg-white/95 px-4 py-2 text-[13px] font-medium text-[#111] shadow-[0_6px_24px_-8px_rgba(0,0,0,.45)]">{toast.text}</span>
+        <div key={toast.id} aria-hidden="true" className="es-cfg-toast pointer-events-none absolute inset-x-0 top-12 flex justify-center px-4 sm:top-16">
+          <span className="rounded-full bg-white/95 px-4 py-2 text-center text-[13px] font-medium text-[#111] shadow-[0_6px_24px_-8px_rgba(0,0,0,.45)]">{toast.text}</span>
         </div>
       ) : null}
 
@@ -190,10 +200,55 @@ export function PhotoStage({ spec, view, onView, photo, next, idle, toast, capti
         onClick={() => onCollapsed(!collapsed)}
         aria-expanded={!collapsed}
         aria-label={collapsed ? 'Show a bigger photo' : 'Make the photo smaller'}
-        className="absolute bottom-2.5 right-3 inline-flex size-9 touch-manipulation items-center justify-center rounded-full bg-white/90 text-[#111] shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white lg:hidden"
+        className="absolute bottom-2 right-2.5 inline-flex size-9 touch-manipulation items-center justify-center rounded-full bg-white/90 text-[#111] shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white lg:hidden"
       >
         {collapsed ? <ChevronDown aria-hidden="true" className="size-4" /> : <ChevronUp aria-hidden="true" className="size-4" />}
       </button>
+    </div>
+  );
+}
+
+const dims = (m: ConfiguratorModel) => m.dimensions.match(/\d+(\.\d+)?/g)?.map(Number) ?? [1, 1];
+
+/**
+ * The chosen size to scale (the photos show one example pool): every size as
+ * a faint outline, the chosen one filled, with its name and measurements.
+ */
+export function SizePlan({ model, models, caption }: { model: ConfiguratorModel; models: ConfiguratorModel[]; caption: string | null }) {
+  const maxW = Math.max(...models.map((m) => dims(m)[0]));
+  const maxH = Math.max(...models.map((m) => dims(m)[1]));
+  const box = { w: 64, h: 34 };
+  const scale = Math.min((box.w - 4) / maxW, (box.h - 4) / maxH);
+  const rect = (m: ConfiguratorModel) => {
+    const [w, h] = dims(m);
+    return { width: w * scale, height: h * scale, x: (box.w - w * scale) / 2, y: (box.h - h * scale) / 2 };
+  };
+  const on = rect(model);
+  return (
+    <div className="pointer-events-none absolute bottom-2 left-2.5 flex items-center gap-2.5 rounded-xl bg-white/92 py-1.5 pl-2 pr-3 shadow-[0_4px_18px_-8px_rgba(0,0,0,.4)] backdrop-blur-sm sm:bottom-4 sm:left-4">
+      <svg aria-hidden="true" width={box.w} height={box.h} viewBox={`0 0 ${box.w} ${box.h}`} className="shrink-0">
+        {models.map((m) => {
+          const r = rect(m);
+          return <rect key={m.id} x={r.x} y={r.y} width={r.width} height={r.height} rx={1.5} fill="none" stroke="#b9b3a9" strokeDasharray="2 2" strokeWidth={1} />;
+        })}
+        <rect
+          x={on.x}
+          y={on.y}
+          width={on.width}
+          height={on.height}
+          rx={1.5}
+          fill="#4f9fd6"
+          stroke="#26389a"
+          strokeWidth={1.2}
+          className="transition-all duration-300 ease-out motion-reduce:transition-none"
+        />
+      </svg>
+      <span className="min-w-0 leading-tight">
+        <span className="block text-[12.5px] font-semibold text-[#111]">
+          {model.name} <span className="font-normal tabular-nums text-[#4a463f]">· {model.dimensions}</span>
+        </span>
+        <span className="block text-[10.5px] text-[#5f5a52]">{caption ? `To scale · ${caption}` : 'Your size, to scale'}</span>
+      </span>
     </div>
   );
 }

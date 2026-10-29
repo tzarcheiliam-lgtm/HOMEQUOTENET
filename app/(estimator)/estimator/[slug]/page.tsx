@@ -10,6 +10,7 @@ import { EstimatorHeader } from '@/components/estimator/shell/estimator-header';
 import { EstimatorHero } from '@/components/estimator/shell/estimator-hero';
 import { contractorFacts } from '@/components/estimator/shell/facts';
 import { publicTemplate } from '@/lib/estimator/config';
+import { configuratorSpecFor } from '@/lib/estimator/configurator/engine';
 import { ESTIMATOR_SLUGS, getEstimator } from '@/lib/estimator/registry';
 import { rendersEnabled } from '@/lib/estimator/render';
 
@@ -69,13 +70,14 @@ export default async function EstimatorPage({ params }: Props) {
   if (!found) notFound();
   const { template, contractor } = found;
   // Opt-in one-page configurator (size / finish / upgrades over pre-rendered photos): its own light page, header and footer.
-  if (contractor.experience === 'configurator' && contractor.configurator) {
+  const spec = configuratorSpecFor(contractor);
+  if (spec) {
     return (
       <Configurator
-        spec={contractor.configurator}
+        spec={spec}
         template={publicTemplate(template, contractor)}
         contractor={contractor}
-        manifest={configuratorPhotoManifest(contractor.configurator)}
+        manifest={configuratorPhotoManifest(spec)}
       />
     );
   }

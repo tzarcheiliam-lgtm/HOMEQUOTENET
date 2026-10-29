@@ -17,14 +17,30 @@ import type { ConfiguratorPhoto, ConfiguratorSpec, ConfiguratorView } from '@/li
  * $44,100–$73,100 (saving about $4,800–$8,200). The 10% is an example figure for
  * the contractor to confirm with the prices.
  *
- * Photos are pre-rendered: public/estimator/pool-masters/configurator/<key>.webp,
- * edited from Pool Masters' own job photos (art direction:
- * scratchpad v2/ART_DIRECTION.md). A missing file falls back to the view's real photo.
+ * Prices are for remodelling an existing pool (the size cards describe the
+ * pool the homeowner has), not a new build.
+ *
+ * Photos are pre-rendered: public/estimator/pool-masters/configurator/<key>.webp
+ * (1800 px) and <key>-sm.webp (1200 px), 78 keys, all edited from one real Pool
+ * Masters job (the same yard from three angles) by
+ * scripts/generate-pool-configurator-photos.mjs (kie.ai edits) and
+ * scripts/pool-configurator-composite.py (composites and recolours). A missing
+ * file falls back to the view's real photo. The pool's size is not in the
+ * photos: the size cards and the to-scale plan on the photo show it.
  */
 
 const DIR = '/estimator/pool-masters/configurator/';
 const REAL = '/estimator/pool-masters/';
 
+const SPA = { id: 'spa', options: [{ token: 'spa', rows: ['spa'] }, { token: '', rows: [] }] };
+
+/*
+ * Every view shows the picks it can (the same yard from three angles): the pebble
+ * finish and the spa show everywhere; the deck and the backyard from above; the
+ * waterline tile and coping poolside; LED lights and fire bowls at dusk.
+ * Baja shelf, water bowls, fire pit, turf and equipment are priced, not pictured
+ * (the rows say so).
+ */
 const VIEWS: ConfiguratorView[] = [
   {
     id: 'aerial',
@@ -38,8 +54,18 @@ const VIEWS: ConfiguratorView[] = [
           { token: 'resurface', rows: [] },
         ],
       },
-      { id: 'spa', options: [{ token: 'spa', rows: ['spa'] }, { token: '', rows: [] }] },
-      { id: 'yard', options: [{ token: 'yard', rows: ['outdoor_kitchen', 'patio_cover'] }, { token: '', rows: [] }] },
+      // Quartz reads as light water from above; only pebble changes the colour there.
+      { id: 'water', options: [{ token: 'pebble', rows: ['pebble'] }, { token: '', rows: [] }] },
+      SPA,
+      {
+        id: 'yard',
+        options: [
+          { token: 'yard', rows: [], allOf: ['outdoor_kitchen', 'patio_cover'] },
+          { token: 'kitchen', rows: ['outdoor_kitchen'] },
+          { token: 'cover', rows: ['patio_cover'] },
+          { token: '', rows: [] },
+        ],
+      },
     ],
     fallback: {
       src: `${REAL}overhead-pool-turf-bands-pavers.webp`,
@@ -61,10 +87,12 @@ const VIEWS: ConfiguratorView[] = [
       {
         id: 'edge',
         options: [
-          { token: 'premium', rows: ['edge_glass_travertine', 'edge_stone'] },
+          { token: 'premium', rows: ['edge_glass_travertine'] },
+          { token: 'stone', rows: ['edge_stone'] },
           { token: 'classic', rows: [] },
         ],
       },
+      SPA,
     ],
     fallback: {
       src: `${REAL}pool-umbrella-spa-baja-shelf.webp`,
@@ -75,8 +103,10 @@ const VIEWS: ConfiguratorView[] = [
     id: 'evening',
     label: 'Evening',
     dimensions: [
-      { id: 'lights', options: [{ token: 'led', rows: ['led_lights'] }, { token: '', rows: [] }] },
+      // Colour LEDs set the water colour at night; otherwise a pebble pool reads deep blue.
+      { id: 'water', options: [{ token: 'led', rows: ['led_lights'] }, { token: 'pebble', rows: ['pebble'] }, { token: '', rows: [] }] },
       { id: 'fire', options: [{ token: 'fire', rows: ['fire_bowls'] }, { token: '', rows: [] }] },
+      SPA,
     ],
     fallback: {
       src: `${REAL}night-led-pool-spa.webp`,
@@ -98,26 +128,35 @@ const FINISH_ALT: Record<string, string> = {
 const EDGE_ALT: Record<string, string> = {
   classic: 'white porcelain waterline tile and a concrete coping',
   premium: 'blue glass waterline tile and travertine coping',
+  stone: 'natural split-face stone waterline tile and flagstone coping',
+};
+const YARD_ALT: Record<string, string> = {
+  yard: 'an outdoor kitchen with a grill, island and bar stools beside a dark patio cover',
+  kitchen: 'an open-air outdoor kitchen with a grill, island and bar stools',
+  cover: 'a dark patio cover over an outdoor lounge',
 };
 
 /** Alt text per image key (example designs; the page labels them once as AI-assisted). */
 function altFor(key: string): string {
   const [view, ...tokens] = key.split('-');
+  const has = (t: string) => tokens.includes(t);
   if (view === 'aerial') {
     const [deck] = tokens;
-    const parts = [`Drone view of a rectangular pool with ${DECK_ALT[deck]}`];
-    if (tokens.includes('spa')) parts.push('an attached raised spa');
-    if (tokens.includes('yard')) parts.push('a covered outdoor kitchen');
+    const parts = [`Drone view of a rectangular pool${has('pebble') ? ' with a dark pebble finish' : ''} and ${DECK_ALT[deck]}`];
+    if (has('spa')) parts.push('a raised spa in dark tile');
+    const yard = ['yard', 'kitchen', 'cover'].find(has);
+    if (yard) parts.push(YARD_ALT[yard]);
     return `${parts.join(', ')} (example design)`;
   }
   if (view === 'poolside') {
     const [finish, edge] = tokens;
-    return `Poolside view of a rectangular pool with ${FINISH_ALT[finish]}, ${EDGE_ALT[edge]} (example design)`;
+    return `Poolside view of a rectangular pool with ${FINISH_ALT[finish]}, ${EDGE_ALT[edge]}${has('spa') ? ', and a raised spa with a spillover' : ''} (example design)`;
   }
-  const parts = ['The same pool at dusk'];
-  parts.push(tokens.includes('led') ? 'glowing with colour LED pool lights' : 'with a warm white pool light');
-  if (tokens.includes('fire')) parts.push('and two lit fire bowls at the far end');
-  return `${parts.join(' ')} (example design)`;
+  const parts = [`The same pool at dusk${has('pebble') ? ', its pebble finish a deep blue' : ''}`];
+  parts.push(has('led') ? 'glowing with colour LED pool lights' : 'with a warm white pool light');
+  if (has('spa')) parts.push('a lit raised spa in the foreground');
+  if (has('fire')) parts.push('two lit fire bowls at the far end');
+  return `${parts.join(', ')} (example design)`;
 }
 
 function photoMatrix(views: ConfiguratorView[]): Record<string, ConfiguratorPhoto> {
@@ -132,27 +171,28 @@ function photoMatrix(views: ConfiguratorView[]): Record<string, ConfiguratorPhot
 }
 
 export const POOL_MASTERS_CONFIGURATOR: ConfiguratorSpec = {
-  title: 'Design your pool',
+  title: 'Reimagine your pool',
+  intro: 'Remodel pricing for the pool you have. Pick its size, a finish and the upgrades you want: the photos and the price change as you go.',
   defaultModel: 'medium',
   models: [
     {
       id: 'small',
-      name: 'Courtyard',
-      tagline: 'A sleek pool for a compact yard',
+      name: 'Compact',
+      tagline: 'Existing pools up to about 24 × 12 ft',
       dimensions: '24 × 12 ft',
       answers: { shape: ['rectangle'], size: ['small'], deckSize: ['small'] },
     },
     {
       id: 'medium',
       name: 'Classic',
-      tagline: 'Room to swim, lounge and entertain',
+      tagline: 'Existing pools around 30 × 15 ft',
       dimensions: '30 × 15 ft',
       answers: { shape: ['rectangle'], size: ['medium'], deckSize: ['medium'] },
     },
     {
       id: 'large',
       name: 'Estate',
-      tagline: 'A statement pool with space for everything',
+      tagline: 'Existing pools around 36 × 18 ft or larger',
       dimensions: '36 × 18 ft',
       answers: { shape: ['rectangle'], size: ['large'], deckSize: ['large'] },
     },
