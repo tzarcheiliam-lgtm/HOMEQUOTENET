@@ -33,13 +33,13 @@ export const site = {
   },
 
   nav: [
-    { label: 'How it works', href: '/#how-it-works' },
+    { label: 'How it works', href: '/contractors#how-it-works' },
     /* wideOnly: hidden in the desktop bar below 1280px, where the Industries
        menu needs the room. Always listed in the mobile sheet. */
-    { label: 'Projects', href: '/#projects', wideOnly: true },
+    { label: 'Projects', href: '/contractors#projects', wideOnly: true },
     { label: 'Appointment standards', href: '/lead-standards' },
-    { label: 'Working together', href: '/#options' },
-    { label: 'FAQ', href: '/#faq', wideOnly: true },
+    { label: 'Working together', href: '/contractors#options' },
+    { label: 'FAQ', href: '/contractors#faq', wideOnly: true },
   ],
 
   footerLinks: {
@@ -63,7 +63,7 @@ export const site = {
     primaryShort: 'Check Availability',
     primaryHref: '/apply',
     secondary: 'See How It Works',
-    secondaryHref: '/#how-it-works',
+    secondaryHref: '/contractors#how-it-works',
     managed: 'Discuss Managed Growth',
     managedHref: '/apply?track=managed',
   },

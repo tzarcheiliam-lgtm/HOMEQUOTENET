@@ -10,7 +10,8 @@ route group, its own theme, its own content layer.
 
 | Route | File | Purpose |
 |---|---|---|
-| `/` | `app/(marketing)/page.tsx` | Full homepage — all twelve sections |
+| `/` | `app/(marketing)/page.tsx` | Homeowner-directed homepage (project picker into the live funnels) |
+| `/contractors` | `app/(marketing)/contractors/page.tsx` | Contractor homepage (the former `/`) — all twelve sections |
 | `/pool-contractors` | `app/(marketing)/pool-contractors/page.tsx` | Industry page — pool contractors, form embedded |
 | `/general-contractors` | `app/(marketing)/general-contractors/page.tsx` | Industry page — general contractors / remodelers |
 | `/roofing` | `app/(marketing)/roofing/page.tsx` | Industry page — roofing |

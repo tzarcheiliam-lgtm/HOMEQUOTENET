@@ -99,12 +99,12 @@ middleware.ts           Delegates to lib/supabase/middleware.ts (session refresh
 ## 4. Routes
 
 ### Marketing (public, `app/(marketing)/`)
-`/` (home), `/pool-contractors`, `/hvac`, `/roofing`, `/fencing`,
+`/` (HOMEOWNER-directed home, 2026-10-29: blue hero + project picker linking to `/estimate/bathroom-remodel`, `/estimate/kitchen-remodel`, `/adu-quiz`; styles in `app/(marketing)/home.css`, scoped `.ho`; header/footer swap by pathname via `components/marketing/homeowner-chrome.tsx`), `/contractors` (the former contractor homepage, moved verbatim), `/pool-contractors`, `/hvac`, `/roofing`, `/fencing`,
 `/general-contractors`, `/lead-standards`, `/apply` (contractor application
 form), `/privacy`, `/terms`, `/adu-estimator` (homeowner ADU price estimator, see
 `docs/adu-estimator.md`: pricing in `lib/adu/pricing-config.ts`,
 in the sitemap, lead capture OFF until a destination is approved),
-`/estimator/[slug]` (instant pool estimator, `noindex` while prices are examples, see §33). `/redesign-demo` (`noindex` design demo of a homepage redesign: light "day sheet" direction in `app/(marketing)/redesign-demo/`, own `.ds` CSS scope, reuses `content/home.ts`; the live `/` is unchanged). Dark theme scoped to a `.hq` wrapper so it never
+`/estimator/[slug]` (instant pool estimator, `noindex` while prices are examples, see §33). Dark theme scoped to a `.hq` wrapper so it never
 touches the CRM's light shadcn tokens. Copy lives in `content/` so a new
 vertical/niche is a content file, not a rewrite (see MARKETING_SITE.md, still
 broadly accurate).
