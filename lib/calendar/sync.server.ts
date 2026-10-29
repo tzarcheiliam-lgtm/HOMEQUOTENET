@@ -60,6 +60,21 @@ async function syncAppointment(db: Db, job: Job): Promise<{ settled: boolean; er
       .eq('status', 'active')
       .eq('push_appointments', true);
     targets = (data ?? []) as ConnectionRow[];
+  } else if (appointment?.calendarId) {
+    // HomeQuote team calendar booking with no contractor yet: its hosts' own connections.
+    const { data: members } = await db.from('booking_calendar_members').select('user_id').eq('calendar_id', appointment.calendarId);
+    const hostIds = ((members ?? []) as { user_id: string }[]).map((m) => m.user_id);
+    if (hostIds.length) {
+      const { data } = await db
+        .from('calendar_connections')
+        .select(CONNECTION_COLUMNS)
+        .in('user_id', hostIds)
+        .is('contractor_id', null)
+        .eq('provider', 'google')
+        .eq('status', 'active')
+        .eq('push_appointments', true);
+      targets = (data ?? []) as ConnectionRow[];
+    }
   }
   const targetIds = new Set(targets.map((t) => t.id));
   for (const t of targets) connectionIds.add(t.id);
@@ -78,9 +93,16 @@ async function syncAppointment(db: Db, job: Job): Promise<{ settled: boolean; er
     try {
       if (wanted && targetIds.has(id) && appointment) {
         const eventId = prior?.external_event_id ?? googleEventId(appointment.id, id);
-        const { data: settings } = await db.from('contractor_availability_settings').select('default_duration_minutes').eq('contractor_id', contractorId!).maybeSingle();
-        const duration = (settings as any)?.default_duration_minutes ?? 60;
         const startMs = new Date(appointment.scheduledAt!).getTime();
+        // A calendar booking carries its own end; an on-site visit uses the company's default length.
+        const endsMs = appointment.endsAt ? new Date(appointment.endsAt).getTime() : NaN;
+        let duration = Number.isFinite(endsMs) && endsMs > startMs ? Math.round((endsMs - startMs) / 60_000) : 0;
+        if (!duration) {
+          const { data: settings } = contractorId
+            ? await db.from('contractor_availability_settings').select('default_duration_minutes').eq('contractor_id', contractorId).maybeSingle()
+            : { data: null };
+          duration = (settings as any)?.default_duration_minutes ?? 60;
+        }
         const token = await accessTokenFor(db, connection);
         await upsertEvent(token, connection.calendar_id, eventId, {
           summary: eventTitle(appointment),
@@ -172,6 +194,25 @@ export async function runCalendarMaintenance(): Promise<SyncResult> {
 }
 
 /** After a calendar is connected, queue every upcoming appointment of that company so it appears there. */
+/**
+ * A HomeQuote host just connected Google: queue the upcoming calls on the
+ * booking calendars they host that belong to no contractor (team calendar
+ * calls before a match). Contractor-calendar calls sync through the company.
+ */
+export async function backfillHostedAppointments(db: Db, userId: string): Promise<number> {
+  const { data: hosted } = await db.from('booking_calendar_members').select('calendar_id').eq('user_id', userId);
+  const calendarIds = ((hosted ?? []) as { calendar_id: string }[]).map((m) => m.calendar_id);
+  if (!calendarIds.length) return 0;
+  const { data } = await db.from('appointments').select('id').in('calendar_id', calendarIds).is('assignment_id', null)
+    .eq('status', 'scheduled').gte('scheduled_at', new Date().toISOString());
+  const ids = ((data ?? []) as { id: string }[]).map((a) => a.id);
+  for (const id of ids) {
+    // A pending job already queued for this appointment violates the partial unique index; that is fine.
+    await db.from('calendar_sync_jobs').insert({ appointment_id: id, contractor_id: null });
+  }
+  return ids.length;
+}
+
 export async function backfillUpcomingAppointments(db: Db, contractorId: string): Promise<number> {
   const { data } = await db
     .from('appointments')

@@ -220,6 +220,7 @@
     }
   ],
   "qualifiedMessage": "Great — it looks like we may be able to help.",
+  "calendarProvider": "homequote",
   "thankYouPage": {
     "headline": "You’re all set.",
     "message": "Your project details are saved. A HomeQuote project specialist will reach out shortly to talk through your pool and next steps."

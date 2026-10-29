@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { consentText, contactSchema, inServiceArea, matches, qualify, serviceAreaValid, type FunnelConfig } from '@/lib/funnels/schema';
+import { consentText, contactSchema, inServiceArea, matches, qualify, serviceAreaValid, usesNativeCalendar, type FunnelConfig } from '@/lib/funnels/schema';
 import { encodeSelection, estimateSelection, normalizeSelection, photoFor, photoSrc, selectionToAnswers } from './configurator/engine.ts';
 import type { ConfiguratorSelection, ConfiguratorSpec, Range } from './configurator/types.ts';
 import { formatRange, picksFor, visibleQuestions } from './engine.ts';
@@ -611,7 +611,7 @@ export function buildLeadPayload(input: LeadPayloadInput): LeadPayload {
     qualified,
     areaValid,
     completed,
-    nextStep: qualified && funnel.config.calendarUrl ? 'calendar' : 'thanks',
+    nextStep: qualified && estimatorBooking(contractor, funnel.config) !== 'none' ? 'calendar' : 'thanks',
     activity: {
       body: lines.join('\n'),
       metadata: {
@@ -655,8 +655,26 @@ export function buildLeadPayload(input: LeadPayloadInput): LeadPayload {
 }
 
 /* ------------------------------------------------------------------ */
-/* Booking link                                                        */
+/* Booking                                                             */
 /* ------------------------------------------------------------------ */
+
+/**
+ * How a qualified estimator lead books: 'homequote' = HomeQuote's own calendar
+ * (the route returns a booking ticket, the screen records the booking server-side),
+ * 'link' = the external calendarUrl (Calendly fallback), 'none' = no booking step
+ * (the screen says we will call). The contractor's own setting wins, then the
+ * lead funnel's calendarProvider; a contractor link only counts with a URL.
+ */
+export function estimatorBooking(
+  contractor: Pick<ContractorEstimatorConfig, 'calendarProvider' | 'calendarUrl'>,
+  config: Pick<FunnelConfig, 'calendarProvider' | 'calendarUrl'>,
+): 'homequote' | 'link' | 'none' {
+  if (contractor.calendarProvider === 'homequote') return 'homequote';
+  if (contractor.calendarProvider === 'none') return 'none';
+  if (contractor.calendarProvider === 'link') return contractor.calendarUrl ?? config.calendarUrl ? 'link' : 'none';
+  if (usesNativeCalendar(config)) return 'homequote';
+  return contractor.calendarUrl ?? config.calendarUrl ? 'link' : 'none';
+}
 
 /** The booking link with the homeowner's name/email (and UTMs) prefilled, for Calendly links only. */
 export function bookingUrl(

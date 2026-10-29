@@ -215,6 +215,22 @@ describe('homeowner appointment reminders', () => {
   });
 });
 
+describe('calls booked on a HomeQuote calendar (0070)', () => {
+  it('a team-calendar call with no assignment yet is reminded from its lead; no "booked" text (the booking confirmation covers it)', async () => {
+    const leadId = randomUUID(); const appt = randomUUID();
+    await q(`insert into public.leads(id, first_name, last_name, phone, state, status, consent_granted) values ($1,'Kim','Ray','(818) 555-0788','CA','new',true)`, [leadId]);
+    const [{ id: team }] = await q(`select id from public.booking_calendars where kind='team'`);
+    await q(`insert into public.appointments(id, lead_id, calendar_id, scheduled_at, ends_at, time_zone, invitee_time_zone, meeting_type, created_at)
+      values ($1,$2,$3,'2026-10-23T22:00:00Z','2026-10-23T22:10:00Z','America/Los_Angeles','America/New_York','phone',$4)`, [appt, leadId, team, T.toISOString()]);
+    await run(T);
+    expect(await texts('+18185550788')).toHaveLength(0);
+    await run(at('2026-10-22T14:05:00Z')); // 10:05 AM in the homeowner's own zone (New York)
+    const out = await texts('+18185550788');
+    expect(out.map((o) => o.reminder_step)).toEqual(['day_before']);
+    expect(out[0].body).toBe('Hi Kim, Liam from HomeQuote here. Confirming your quick 10-minute call tomorrow at 6:00 PM. Reply YES to confirm or R to reschedule. Liam will call you from (747) 217-5713.');
+  });
+});
+
 describe('homeowner follow-ups when they never reply', () => {
   it('follows up on day 1, 3 and 7, then closes; a reply afterwards reopens the conversation', async () => {
     const leadId = randomUUID();

@@ -28,8 +28,11 @@ export const site = {
     phone: '747-217-5713',
     /** E.164, for tel: links. */
     phoneHref: '+17472175713',
-    /** 30-minute contractor call. */
-    booking: 'https://calendly.com/homequotenetwork/30min',
+    /**
+     * 30-minute contractor call: the Check My Fit funnel, which books it on
+     * HomeQuote's own sales calendar (lib/contractor-funnel/settings.server.ts).
+     */
+    booking: '/contractor-appointments/check-fit',
   },
 
   nav: [

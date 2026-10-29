@@ -163,11 +163,11 @@ export const TOOLS: ToolDef[] = [
         db.from('sms_conversations').select('id,status,mode,sender_name,summary,workflow_owned').eq('lead_id', id).maybeSingle(),
         db.from('lead_assignments').select('id,contractor_id,status').eq('lead_id', id),
       ]);
-      const assignmentIds = (assigns ?? []).map((a: any) => a.id);
       const contractorIds = [...new Set((assigns ?? []).map((a: any) => a.contractor_id))];
       const [{ data: msgs }, { data: appts }, { data: cos }] = await Promise.all([
         convo ? db.from('sms_messages').select('direction,body,status,created_at').eq('conversation_id', (convo as any).id).order('created_at', { ascending: false }).limit(20) : Promise.resolve({ data: [] }),
-        assignmentIds.length ? db.from('appointments').select('id,assignment_id,scheduled_at,status,location').in('assignment_id', assignmentIds) : Promise.resolve({ data: [] }),
+        // appointments.lead_id (0070) also covers calls on the HomeQuote team calendar before any contractor is assigned.
+        db.from('appointments').select('id,assignment_id,scheduled_at,status,location').eq('lead_id', id),
         contractorIds.length ? db.from('contractors').select('id,name').in('id', contractorIds) : Promise.resolve({ data: [] }),
       ]);
       const coName = new Map((cos ?? []).map((c: any) => [c.id, c.name]));
@@ -197,13 +197,14 @@ export const TOOLS: ToolDef[] = [
       const from = str(args.from) ? new Date(String(args.from)) : new Date();
       const to = str(args.to) ? new Date(String(args.to)) : new Date(from.getTime() + 14 * 86_400_000);
       if (Number.isNaN(+from) || Number.isNaN(+to)) fail('from/to must be dates like 2026-10-28.');
-      let q = db.from('appointments').select('id,assignment_id,scheduled_at,status,location').gte('scheduled_at', from.toISOString()).lte('scheduled_at', to.toISOString());
+      let q = db.from('appointments').select('id,assignment_id,lead_id,contact_name,scheduled_at,status,location').gte('scheduled_at', from.toISOString()).lte('scheduled_at', to.toISOString());
       const status = str(args.status, 40); if (status) q = q.eq('status', status);
       const { data: appts } = await q.order('scheduled_at', { ascending: true }).limit(200);
-      const assignIds = [...new Set((appts ?? []).map((a: any) => a.assignment_id))];
+      // Team-calendar calls (0070) have no assignment yet: filter the nulls, and read the lead from appointments.lead_id.
+      const assignIds = [...new Set((appts ?? []).map((a: any) => a.assignment_id).filter(Boolean))];
       const { data: assigns } = assignIds.length ? await db.from('lead_assignments').select('id,lead_id,contractor_id').in('id', assignIds) : { data: [] };
       const byAssign = new Map((assigns ?? []).map((a: any) => [a.id, a]));
-      const leadIds = [...new Set((assigns ?? []).map((a: any) => a.lead_id))];
+      const leadIds = [...new Set([...(assigns ?? []).map((a: any) => a.lead_id), ...(appts ?? []).map((a: any) => a.lead_id)].filter(Boolean))];
       const coIds = [...new Set((assigns ?? []).map((a: any) => a.contractor_id))];
       const [{ data: leads }, { data: cos }] = await Promise.all([
         leadIds.length ? db.from('leads').select('id,first_name,last_name,phone,city').in('id', leadIds) : Promise.resolve({ data: [] }),
@@ -212,8 +213,8 @@ export const TOOLS: ToolDef[] = [
       const leadById = new Map((leads ?? []).map((l: any) => [l.id, l]));
       const coName = new Map((cos ?? []).map((c: any) => [c.id, c.name]));
       return (appts ?? []).map((a: any) => {
-        const as = byAssign.get(a.assignment_id) as any; const l = as ? (leadById.get(as.lead_id) as any) : null;
-        return { id: a.id, scheduled_at: a.scheduled_at, status: a.status, location: a.location, lead: l ? { id: l.id, name: name(l), phone: l.phone, city: l.city, link: link(`/app/leads/${l.id}`) } : null, contractor: as ? coName.get(as.contractor_id) ?? null : null };
+        const as = byAssign.get(a.assignment_id) as any; const l = leadById.get(as?.lead_id ?? a.lead_id) as any;
+        return { id: a.id, scheduled_at: a.scheduled_at, status: a.status, location: a.location, lead: l ? { id: l.id, name: name(l), phone: l.phone, city: l.city, link: link(`/app/leads/${l.id}`) } : a.contact_name ? { name: a.contact_name } : null, contractor: as ? coName.get(as.contractor_id) ?? null : null };
       });
     },
   },

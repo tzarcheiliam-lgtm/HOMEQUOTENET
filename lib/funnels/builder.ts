@@ -8,7 +8,7 @@
 // funnel_step_options / funnel_logic_rules table: a step IS a `questions[]`
 // entry, an option IS `question.options[]`, branching logic IS `showWhen`.
 // See docs/funnel-builder-architecture.md.
-import { funnelSchema, isAnswered, isTextQuestion, matches, qualify, sanitizeAnswers, validateAnswer, visibleQuestions, type Answers, type FunnelConfig, type Question } from './schema';
+import { DEFAULT_CALENDAR_PROVIDER, funnelSchema, isAnswered, isTextQuestion, matches, qualify, sanitizeAnswers, validateAnswer, visibleQuestions, type Answers, type CalendarProvider, type FunnelConfig, type Question } from './schema';
 
 /** Question ids and option values share this pattern (lib/funnels/schema.ts `key`/option regex). */
 const ID_PATTERN = /^[a-z][a-z0-9_]{0,49}$/;
@@ -44,7 +44,30 @@ export function blankFunnelConfig(clientName: string, industry: string): FunnelC
       { id: 'zip', type: 'zip', headline: 'Where is your project located?', description: 'Enter the ZIP code of the property.' },
     ],
     thankYouPage: { headline: 'You’re all set.', message: 'Your project details are saved. The team will be in touch shortly.' },
+    // Qualified visitors book a free call on the HomeQuote calendar (removable in the builder).
+    calendarProvider: DEFAULT_CALENDAR_PROVIDER,
   });
+}
+
+/**
+ * The calendar step's provider. The HomeQuote calendar needs no URL, so switching to it
+ * drops the external one (and its GHL calendar id); switching to GHL / Calendly keeps the
+ * step off until a URL is pasted.
+ */
+export function setCalendarProvider(config: FunnelConfig, provider: CalendarProvider): FunnelConfig {
+  if (provider === 'homequote') return { ...config, calendarProvider: provider, calendarUrl: undefined, calendarId: undefined };
+  return { ...config, calendarProvider: provider, ...(provider === 'calendly' ? { calendarId: undefined } : {}) };
+}
+/**
+ * No calendar step: qualified visitors go straight to the thank-you screen. Stored as the
+ * schema default with no URL, the same shape every funnel without a calendar has always had.
+ */
+export function removeCalendarStep(config: FunnelConfig): FunnelConfig {
+  return { ...config, calendarProvider: 'ghl', calendarUrl: undefined, calendarId: undefined };
+}
+/** Whose calendar the HomeQuote provider books, for the builder's calendar panel. */
+export function nativeCalendarOwner(contractorName: string | null | undefined): string {
+  return contractorName ? `${contractorName}’s calendar` : 'the HomeQuote team calendar (project specialists; a contractor is matched later)';
 }
 
 const NEW_TEXT_HEADLINES = {

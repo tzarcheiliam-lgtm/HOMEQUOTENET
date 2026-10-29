@@ -254,12 +254,10 @@ describe('configurator lead', () => {
     expect(body).toMatch(/Not asked online, check on site:/);
     expect(rpcArgs().p_qualified).toBe(true);
   });
-  it('returns the Calendly link prefilled with the homeowner’s name and email', async () => {
+  it('books on Pool Masters’ HomeQuote calendar: no Calendly link, the session moves to the calendar step', async () => {
     const body = await (await post(valid)).json();
-    const url = new URL(body.calendarUrl);
-    expect(url.hostname).toBe('calendly.com');
-    expect(url.searchParams.get('name')).toBe('Jordan Rivera');
-    expect(url.searchParams.get('email')).toBe('jordan@example.test');
+    expect(body.calendarUrl).toBeUndefined();
+    expect(rpcArgs().p_step).toBe('calendar');
   });
   it('drops unknown ids in the selection instead of failing', async () => {
     const res = await post({ ...valid, configurator: { model: 'huge', picks: { finish: ['gold'], nope: ['x'] }, luxe: false } });

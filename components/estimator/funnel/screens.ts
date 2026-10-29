@@ -19,7 +19,10 @@ export type FunnelLeadResult = {
   estimate: Estimate;
   /** false for renters / out-of-area ZIPs (the lead is still saved for review). */
   qualified: boolean;
+  /** External booking link (the Calendly fallback); unset on the HomeQuote calendar. */
   calendarUrl?: string;
+  /** HomeQuote calendar: the booking ticket the lead route returned (the booking screen books with it). */
+  bookingTicket?: string;
   /** For the scheduler prefill (Calendly name / email params). */
   contact: { firstName: string; lastName: string; email: string };
   /**

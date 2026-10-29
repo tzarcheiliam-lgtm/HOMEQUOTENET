@@ -82,7 +82,13 @@ export type EstimatorLeadResponse =
       estimate: Estimate;
       /** false for renters / out-of-area ZIPs (lead still saved for review). */
       qualified: boolean;
+      /** External booking link (the Calendly / link fallback); absent on the HomeQuote calendar. */
       calendarUrl?: string;
+      /**
+       * Booking ticket for the HomeQuote calendar (the public booking API's grant, a
+       * week long): qualified leads that were saved, on a natively booking estimator.
+       */
+      bookingTicket?: string;
       /** Short-lived token for the optional photoreal render (absent when renders are off). */
       renderToken?: string;
       /** false when nothing was saved (an unqualified visitor on a funnel set to 'stop'). */

@@ -256,7 +256,7 @@ file.
 hydration); steps are hashes so Back works.
 
 **Booking.** First and last name, mobile, email, ZIP, "do you own the home", the funnel consent wording and the optional
-measurement box (never pre-ticked). The request carries `configurator` (the selection), `answers`
+measurement box (pre-ticked unless the contractor is `opt_in`). The request carries `configurator` (the selection), `answers`
 (`selectionToAnswers`, for logs), `submissionId` and an optional timeline; the server re-prices from the selection only
 (`configuratorLeadDesign`) and stores `estimator_design`, `estimator_photos`, `estimator_design_url` and
 `estimator_check_on_site` (the property questions the page never asked). Reliability: one automatic retry on a network
@@ -299,7 +299,7 @@ $106,500 (examples). No equipment or site questions: those are checked at the fr
 (`contactStep.homeowner`; the lead's `homeowner` yes / no, always asked and required by the route, never
 assumed), the button, the trust line, and the consent wording in small print under the button: tapping "Get my
 estimate" is the agreement (the request sends `consent: true` with that exact `consentText`; the route still checks the
-wording). The optional ad-measurement box is never pre-ticked. One error at a time; Return moves to the next field.
+wording). The optional ad-measurement box is pre-ticked unless the contractor is `opt_in`. One error at a time; Return moves to the next field.
 
 **Address autocomplete.** `components/estimator/funnel/contact/address-field.tsx` (ARIA combobox + listbox; 200 ms
 debounce, 3+ characters, white list with 1px #d0d0d0 border, 8px radius, 48px rows, arrows / Return / Escape, closes on

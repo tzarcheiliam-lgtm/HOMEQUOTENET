@@ -51,7 +51,7 @@ vi.mock('@/lib/meta/audit.server', () => ({ directSendAudit: () => ({ reserve: a
 vi.mock('@/lib/meta/capi', async (orig) => ({ ...(await orig<typeof import('@/lib/meta/capi')>()), sendMetaEvent: m.send }));
 
 import { POST } from '@/app/api/estimator/[slug]/lead/route';
-import { areaValidFor, bookingUrl, buildLeadPayload, funnelAnswersFor, isHoneypot, parseLeadRequest, pickLikedLooks, qualifyLead, sanitizeEstimatorAnswers } from '@/lib/estimator/lead';
+import { areaValidFor, bookingUrl, buildLeadPayload, estimatorBooking, funnelAnswersFor, isHoneypot, parseLeadRequest, pickLikedLooks, qualifyLead, sanitizeEstimatorAnswers } from '@/lib/estimator/lead';
 
 const answers: Answers = {
   project: ['remodel'], shape: ['rectangle'], size: ['medium'], package: ['refresh'],
@@ -187,14 +187,21 @@ describe('POST /api/estimator/[slug]/lead', () => {
     expect(m.emails).toHaveBeenCalled();
     expect(m.deliver).toHaveBeenCalled();
   });
-  it('qualified: returns the prefilled booking link', async () => {
+  it('qualified on a HomeQuote-calendar funnel: no external booking link (the booking API books it)', async () => {
     const body = await (await post(valid)).json();
     expect(body.qualified).toBe(true);
+    expect(body.calendarUrl).toBeUndefined();
+    expect(rpcArgs().p_step).toBe('calendar');
+  });
+  it('fallback: an estimator set to an external link returns it', async () => {
+    m.registered = { template: FIXTURE_TEMPLATE, contractor: { ...contractor, calendarProvider: 'link' } };
+    const body = await (await post(valid)).json();
     const url = new URL(body.calendarUrl);
     expect(url.origin + url.pathname).toBe('https://example.com/book');
+    expect(body.bookingTicket).toBeUndefined();
   });
-  it('qualified with a Calendly link prefills the homeowner', async () => {
-    m.registered = { template: FIXTURE_TEMPLATE, contractor: { ...contractor, calendarUrl: 'https://calendly.com/pool/30min' } };
+  it('fallback: a Calendly link prefills the homeowner', async () => {
+    m.registered = { template: FIXTURE_TEMPLATE, contractor: { ...contractor, calendarProvider: 'link', calendarUrl: 'https://calendly.com/pool/30min' } };
     const body = await (await post(valid)).json();
     const url = new URL(body.calendarUrl);
     expect(url.searchParams.get('name')).toBe('Jordan Rivera');
@@ -317,9 +324,25 @@ describe('payload mapping', () => {
     const empty = build({}, {}).payload;
     expect(empty.funnelAnswers.estimator_range).toBe('To be confirmed on site');
   });
-  it('does not claim a booking when the funnel has no calendar', () => {
+  it('does not claim a booking when neither the funnel nor the estimator has a calendar', () => {
     const noCalendar = funnelSchema.parse({ ...poolMasters, calendarUrl: undefined, calendarProvider: 'ghl' });
-    expect(build({}, answers, noCalendar).payload.nextStep).toBe('thanks');
+    const estimate = computeEstimate(FIXTURE_TEMPLATE, { answers });
+    const payload = buildLeadPayload({
+      template: FIXTURE_TEMPLATE, contractor: { ...contractor, calendarUrl: undefined }, funnel: { slug: 'pool-masters', contractorId: 'c1', config: noCalendar },
+      request: request(), answers, estimate, likedLooks: [],
+    });
+    expect(payload.nextStep).toBe('thanks');
+  });
+  it('estimatorBooking: the estimator’s own setting, then the funnel’s provider, then any link', () => {
+    const native = funnelSchema.parse(poolMasters);
+    const ghl = funnelSchema.parse({ ...poolMasters, calendarProvider: 'ghl' });
+    expect(estimatorBooking({ calendarProvider: 'homequote' }, ghl)).toBe('homequote');
+    expect(estimatorBooking({ calendarProvider: 'link', calendarUrl: 'https://calendly.com/x/30min' }, native)).toBe('link');
+    expect(estimatorBooking({ calendarProvider: 'link' }, native)).toBe('none');
+    expect(estimatorBooking({ calendarUrl: 'https://calendly.com/x/30min' }, native)).toBe('homequote');
+    expect(estimatorBooking({ calendarUrl: 'https://calendly.com/x/30min' }, ghl)).toBe('link');
+    expect(estimatorBooking({}, ghl)).toBe('none');
+    expect(estimatorBooking({ calendarProvider: 'none', calendarUrl: 'https://calendly.com/x/30min' }, native)).toBe('none');
   });
   it('qualifies like the funnel: renter, out of area, and out of state fail', () => {
     const base = funnelAnswersFor(funnelConfig, { zip: '91301', homeowner: 'yes', timeline: 'asap', project: 'remodel' });

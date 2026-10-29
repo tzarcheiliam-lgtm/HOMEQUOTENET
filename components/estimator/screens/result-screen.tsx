@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { ChevronDown } from 'lucide-react';
+import { BookingFlow } from '@/components/booking/booking-flow';
 import { formatRange } from '@/lib/estimator/engine';
 import type { EstimatorLeadResponse } from '@/lib/estimator/lead-client';
 import type { ContractorEstimatorConfig, EstimatorTemplate } from '@/lib/estimator/types';
@@ -105,7 +106,9 @@ function useCountUp(ref: RefObject<HTMLSpanElement | null>, low: number, high: n
  * amounts) and the booking button. With the live builder (`builder`) the range
  * counts up as it is revealed and the booking button sits right under it
  * (after "Ballpark, not a quote"), before the breakdown, followed by the
- * homeowner's design; every other trade keeps the button last.
+ * homeowner's design; every other trade keeps the button last. When the lead
+ * route returned a booking ticket (HomeQuote's own calendar), the slot picker
+ * (<BookingFlow>) takes the button's place and books the call server-side.
  */
 export function ResultScreen({
   template,
@@ -137,7 +140,9 @@ export function ResultScreen({
   const rollRef = useRef<HTMLSpanElement>(null);
   const landed = useCountUp(rollRef, estimate.low ?? 0, estimate.high ?? 0, Boolean(builder && hasRange));
   const booking = qualified ? (
-    bookingUrl ? (
+    result.bookingTicket ? (
+      <BookingFlow grant={result.bookingTicket} heading={null} />
+    ) : bookingUrl ? (
       <a
         href={bookingUrl}
         target={embedded ? '_top' : undefined}

@@ -11,6 +11,8 @@
 
 # next.js
 /.next/
+# NEXT_DIST_DIR builds (parallel dev servers), e.g. .next-cal-int
+/.next-*/
 /out/
 
 # production

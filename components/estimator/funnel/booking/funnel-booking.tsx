@@ -3,18 +3,27 @@
 import { useEffect, useId, useState } from 'react';
 import { CalendarCheck, Check, ExternalLink, Phone } from 'lucide-react';
 import { telHref } from '@/components/estimator/shell/facts';
+import { BookingFlow } from '@/components/booking/booking-flow';
+import { exampleFinancingDisclosure, exampleFinancingLine, syncDemoFinancing } from '@/lib/estimator/demo-financing';
 import type { FunnelBookingScreenProps } from '../screens';
-import { bookingFrameUrl, priceEyebrow, priceRange, readCalendlyMessage } from './state';
+import { bookingFrameUrl, plainBookingTitle, priceEyebrow, priceRange, readCalendlyMessage } from './state';
 
 /**
- * The funnel's last screen: "Book your free on-site estimate".
+ * The funnel's last screen: "Book your free call".
  * 1. The price card: the picks on one line, the ballpark range from the server,
  *    one sentence of ballpark wording (plus "example prices" while prices are unconfirmed) and
  *    "Financing available" with the lender disclosure behind "See details".
- *    Never a monthly payment.
- * 2. The booking card: the contractor's Calendly inline (name / email
- *    prefilled by the server), sized to its content, with a button that opens
- *    it in a new tab (also the only option inside the /embed iframe). An
+ *    No monthly payment, except DEMO ONLY with ?demo=financing (kept for the
+ *    tab, lib/estimator/demo-financing.ts): "or from $649/mo*" from the low end
+ *    of the range with the spec's exampleFinancing terms, a "Demo" pill and the
+ *    example fine print behind "See details".
+ * 2. The booking card: a quick free call (10 minutes; Liam calls) on HomeQuote's own calendar
+ *    (<BookingFlow>, the contractor's calendar, or the HomeQuote team's for a
+ *    network funnel), booked and recorded server-side with the ticket the lead
+ *    route returned; confirmation, reminders and the reschedule / cancel link
+ *    go out automatically. Fallback (an estimator still set to an external
+ *    link): the Calendly inline, sized to its content, with a button that
+ *    opens it in a new tab (the only option inside the /embed iframe). An
  *    unqualified lead outside the service area is told we will call; a renter
  *    ("No" to "Are you the homeowner?") that the funnel saved for review is told the project needs
  *    a personal review (the funnel's own review wording, no promised call);
@@ -28,7 +37,18 @@ import { bookingFrameUrl, priceEyebrow, priceRange, readCalendlyMessage } from '
 
 const FRAME_START = 700;
 
-export function FunnelBookingScreen({ spec, selection, contractor, result, embedded, headingId }: FunnelBookingScreenProps) {
+/** "or from $649/mo*" -> the words, the amount (set a touch heavier) and the asterisk. */
+function monthlyParts(line: string): { before: string; amount: string; after: string } {
+  const m = /^(.*?)(\$[\d,]+\/mo)(.*)$/.exec(line);
+  return m ? { before: m[1], amount: m[2], after: m[3] } : { before: line, amount: '', after: '' };
+}
+
+export function FunnelBookingScreen({
+  spec, selection, contractor, result, embedded, headingId, initialDemoFinancing = false,
+}: FunnelBookingScreenProps & {
+  /** Previews / tests: start with the demo payment on (the browser still reads ?demo=financing). */
+  initialDemoFinancing?: boolean;
+}) {
   const uid = useId();
   const step = spec.bookingStep;
   const firstName = result.contact.firstName;
@@ -36,14 +56,24 @@ export function FunnelBookingScreen({ spec, selection, contractor, result, embed
   const [host, setHost] = useState<string | null>(null);
   const [frameHeight, setFrameHeight] = useState(FRAME_START);
   const [booked, setBooked] = useState(false);
+  // Read after mount only: the server render (and every visitor without the flag) never shows a payment.
+  const [demoFinancing, setDemoFinancing] = useState(initialDemoFinancing);
+  useEffect(() => {
+    const on = syncDemoFinancing(window.location.search);
+    setDemoFinancing((was) => was || on);
+  }, []);
 
   const range = priceRange(result.estimate);
-  const calendarUrl = result.qualified ? result.calendarUrl : undefined;
+  // HomeQuote calendar (the lead route's booking ticket) first; an external link only without one.
+  const ticket = result.qualified ? result.bookingTicket : undefined;
+  const calendarUrl = result.qualified && !ticket ? result.calendarUrl : undefined;
   // "No" (not the homeowner): the funnel's homeowner rule did not pass (never a booking, never a promised call).
   const renter = !result.qualified && result.homeowner === 'no';
   const frame = !embedded && calendarUrl && host ? bookingFrameUrl(calendarUrl, host) : null;
   const tel = telHref(contractor.phone);
   const examplePrices = contractor.pricesConfirmed === false;
+  const example = demoFinancing && step.exampleFinancing && range ? step.exampleFinancing : null;
+  const monthly = example ? exampleFinancingLine(result.estimate.low, example) : null;
 
   useEffect(() => {
     setHost(window.location.hostname);
@@ -75,12 +105,39 @@ export function FunnelBookingScreen({ spec, selection, contractor, result, embed
         <p className="mt-2.5 text-[clamp(26px,7.6vw,31px)] font-medium leading-[1.1] tracking-[-0.02em] text-[var(--fn-ink)] tabular-nums [text-wrap:balance]">
           {range ?? 'Priced at your free on-site visit'}
         </p>
+        {monthly && example ? (
+          // DEMO ONLY, right under the range: an example payment, never an offer (the fine print is behind "See details").
+          <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1.5" data-funnel-demo-financing="">
+            <p className="text-[16.5px] leading-[24px] text-[var(--fn-text)] tabular-nums">
+              {monthlyParts(monthly).before}
+              <span className="font-medium text-[var(--fn-ink)]">{monthlyParts(monthly).amount}</span>
+              {monthlyParts(monthly).after}
+            </p>
+            <span className="inline-flex h-[19px] items-center rounded-full bg-[#fff4e0] px-[7px] text-[10.5px] font-semibold uppercase leading-none tracking-[0.07em] text-[#8a4b00] shadow-[inset_0_0_0_1px_rgba(138,75,0,0.16)]">
+              Demo
+            </span>
+            <button
+              type="button"
+              aria-expanded={details}
+              aria-controls={`${uid}-fin`}
+              onClick={() => setDetails((d) => !d)}
+              className="relative ml-auto text-[15px] font-medium text-[color:var(--fn-blue-ink)] after:absolute after:-inset-x-2 after:-inset-y-3 after:content-[''] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--fn-blue)]"
+            >
+              {details ? 'Hide details' : 'See details'}
+            </button>
+          </div>
+        ) : null}
         <p className="mt-2.5 text-[14.5px] leading-[21px] text-[var(--fn-text)] [text-wrap:pretty]">
           {step.priceNote}
           {/* While prices are unconfirmed: one quiet clause in the same paragraph, not a second notice. */}
           {examplePrices ? <span className="text-[var(--fn-muted)]"> Example prices, not yet confirmed.</span> : null}
         </p>
-        {step.financingLabel ? (
+        {monthly && example ? (
+          <div id={`${uid}-fin`} hidden={!details} className="mt-3 space-y-2 rounded-[10px] bg-[var(--fn-bg,#f6f5f2)] px-3.5 py-3 text-[12.5px] leading-[18px] text-[var(--fn-muted)] motion-safe:animate-[funnel-fade_160ms_ease-out]">
+            <p>{exampleFinancingDisclosure(example)}</p>
+            {contractor.financingDisclosure ? <p>{contractor.financingDisclosure}</p> : null}
+          </div>
+        ) : step.financingLabel ? (
           <div className="mt-4">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
               <p className="inline-flex items-center gap-2 text-[15px] text-[var(--fn-ink)]">
@@ -113,8 +170,18 @@ export function FunnelBookingScreen({ spec, selection, contractor, result, embed
       </section>
 
       {/* Booking card */}
-      <section aria-labelledby={`${uid}-book`} className="mt-4 rounded-[16px] bg-white p-5 shadow-[0_0_0_1px_rgba(0,0,0,0.08)]" data-funnel-calendar="">
-        {booked ? (
+      <section
+        aria-labelledby={ticket ? undefined : `${uid}-book`}
+        aria-label={ticket ? 'Book your call' : undefined}
+        className="mt-4 rounded-[16px] bg-white p-5 shadow-[0_0_0_1px_rgba(0,0,0,0.08)]"
+        data-funnel-calendar={ticket ? 'homequote' : ''}
+      >
+        {ticket ? (
+          // Loads the open times, books under the calendar lock and shows "You're booked" (also after a refresh).
+          // The page title already says "Book your free call": the card opens with one light sentence, then the
+          // times (as on the Buildoly screen), so the first times show without scrolling on small phones.
+          <BookingFlow grant={ticket} heading={null} intro={step.bookingTitle} headingLevel={2} />
+        ) : booked ? (
           <div className="flex items-start gap-3 motion-safe:animate-[funnel-fade_180ms_ease-out]" role="status">
             <span className="mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-[color:var(--fn-blue)] text-white" aria-hidden="true">
               <CalendarCheck className="size-4" strokeWidth={2.4} />
@@ -131,7 +198,7 @@ export function FunnelBookingScreen({ spec, selection, contractor, result, embed
         ) : calendarUrl ? (
           <>
             <h2 id={`${uid}-book`} className="text-[17px] font-medium leading-[24px] text-[var(--fn-ink)] [text-wrap:pretty]">
-              {step.bookingTitle}
+              {plainBookingTitle(step.bookingTitle)}
             </h2>
             {embedded ? null : (
               // Height is reserved before the frame exists (no layout shift), then follows Calendly's own height;

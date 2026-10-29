@@ -67,8 +67,8 @@ export function FunnelContactScreen({ slug, spec, selection, contractor, heading
   // The latest fields for checks that run after an await (a resolved address pick).
   const fieldsRef = useRef(fields);
   fieldsRef.current = fields;
-  // Never pre-ticked (same as the configurator): only the visitor's own tick sends browser ids to Meta.
-  const [measurement, setMeasurement] = useState(false);
+  // Pre-ticked unless the contractor is set to opt_in (the owner's call); the visitor can still untick it.
+  const [measurement, setMeasurement] = useState(contractor.adMeasurement !== 'opt_in');
   const [consentWording, setConsentWording] = useState(() => estimatorConsentText(contractor.contractorName));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [sending, setSending] = useState(false);
@@ -137,6 +137,7 @@ export function FunnelContactScreen({ slug, spec, selection, contractor, heading
         estimate: res.estimate,
         qualified: res.qualified,
         calendarUrl: res.calendarUrl,
+        ...(res.bookingTicket ? { bookingTicket: res.bookingTicket } : {}),
         contact: { firstName: draft.contact.firstName, lastName: draft.contact.lastName, email: draft.contact.email },
         selection: draft.funnel,
         saved: res.saved,

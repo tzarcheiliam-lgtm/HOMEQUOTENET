@@ -32,6 +32,7 @@ import {
 } from './engine';
 import { parseWorkflowGraph, triggerOf, type GraphNode, type WorkflowGraph } from './model';
 import { validateGraph } from './validate';
+import { supersededByNativeBooking } from '../native-booking';
 
 type Db = ReturnType<typeof createAdminClient>;
 
@@ -319,7 +320,7 @@ export interface GraphDispatchResult {
 
 interface WorkflowGraphRow {
   id: string; contractor_id: string | null; trigger_type: string; published_version: number | null; published_at: string | null;
-  enroll_from: string | null; enabled: boolean; archived_at: string | null; graph_status: string | null;
+  enroll_from: string | null; enabled: boolean; archived_at: string | null; graph_status: string | null; template_key?: string | null;
 }
 
 async function loadVersion(db: Db, workflowId: string, version: number) {
@@ -356,10 +357,10 @@ export async function dispatchGraphEvent(db: Db, event: WorkflowEvent, recordedA
 
   let rows: WorkflowGraphRow[] = [];
   if (manual) {
-    const { data } = await db.from('workflows').select('id,contractor_id,trigger_type,published_version,published_at,enroll_from,enabled,archived_at,graph_status').eq('id', String(payload.workflowId)).eq('engine', 'graph').is('archived_at', null);
+    const { data } = await db.from('workflows').select('id,contractor_id,trigger_type,published_version,published_at,enroll_from,enabled,archived_at,graph_status,template_key').eq('id', String(payload.workflowId)).eq('engine', 'graph').is('archived_at', null);
     rows = (data ?? []) as WorkflowGraphRow[];
   } else {
-    const { data, error } = await db.from('workflows').select('id,contractor_id,trigger_type,published_version,published_at,enroll_from,enabled,archived_at,graph_status')
+    const { data, error } = await db.from('workflows').select('id,contractor_id,trigger_type,published_version,published_at,enroll_from,enabled,archived_at,graph_status,template_key')
       .eq('engine', 'graph').eq('trigger_type', event.type).eq('enabled', true).is('archived_at', null);
     // Before migration 0041 the engine column does not exist: there are no graph workflows to enroll.
     if (error && /engine|column/i.test(error.message)) return result;
@@ -374,6 +375,8 @@ export async function dispatchGraphEvent(db: Db, event: WorkflowEvent, recordedA
     };
     const isTest = manual && payload.testRun === true;
     if (!workflowCanSeeEvent(wf.contractor_id, event.contractorId)) { await skip('tenant'); continue; }
+    // Calendar bookings get the built-in notices (lib/booking/notify.server.ts); the old reminder template would double-send.
+    if (!manual && supersededByNativeBooking(wf.template_key, event.type, payload)) { await skip('native_booking_notices'); continue; }
 
     // Pick the definition: a live run pins the latest PUBLISHED version; a live test runs the current draft.
     let graph: WorkflowGraph;

@@ -4,8 +4,9 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { z } from 'zod';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { MAX_ANSWER_LENGTH, calendlyUri, captureAttribution, consentText, contactSchema, funnelSchema, isAnswered, qualify, sanitizeAnswers, serviceAreaValid, validateAnswer, visibleQuestions, type FunnelConfig, type Session } from '@/lib/funnels/schema';
+import { MAX_ANSWER_LENGTH, calendlyUri, captureAttribution, consentText, contactSchema, funnelSchema, hasCalendarStep, isAnswered, qualify, sanitizeAnswers, serviceAreaValid, usesNativeCalendar, validateAnswer, visibleQuestions, type FunnelConfig, type Session } from '@/lib/funnels/schema';
 import { verifyCalendlyBooking } from '@/lib/funnels/calendly';
+import { signBookingTicket } from '@/app/api/booking/_lib/grant';
 import { cookieName, getFunnel, getSession, hash, newToken, publicSession, readBody, sameOrigin } from '@/lib/funnels/server';
 import { after } from 'next/server';
 import { deliverPendingFunnels } from '@/lib/funnels/delivery';
@@ -27,10 +28,20 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 type Context = { params: Promise<{ slug: string }> };
 const reply = (data: unknown, status = 200) => NextResponse.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
-/** Calendly step only: return the owner's name/email so the booking form is prefilled after a refresh. */
-function withPrefill(session: Session, s: { config_snapshot: FunnelConfig; contact: Record<string, unknown> | null }) {
+/**
+ * The calendar step's booking context, for the session owner only. Calendly: the owner's
+ * name/email so the booking form is prefilled after a refresh. HomeQuote calendar: the
+ * booking ticket the public booking API takes (also after booking, so a refresh shows the
+ * booked call). Never for a demo funnel: it books nothing.
+ */
+function withPrefill(session: Session, s: { config_snapshot: FunnelConfig; contact: Record<string, unknown> | null }, demo = false) {
   const config = funnelSchema.parse(s.config_snapshot);
-  if (config.calendarProvider !== 'calendly' || session.current_step !== 'calendar' || session.booked_at || !s.contact) return session;
+  if (session.current_step !== 'calendar' || !s.contact || !session.contact_submitted_at) return session;
+  if (usesNativeCalendar(config)) {
+    const ticket = !demo && session.qualified ? signBookingTicket(session.id, 'funnel') : null;
+    return ticket ? { ...session, bookingTicket: ticket } : session;
+  }
+  if (config.calendarProvider !== 'calendly' || session.booked_at) return session;
   return { ...session, prefill: { name: `${s.contact.firstName ?? ''} ${s.contact.lastName ?? ''}`.trim(), email: String(s.contact.email ?? '') } };
 }
 export async function POST(request: Request, context: Context) {
@@ -39,7 +50,7 @@ export async function POST(request: Request, context: Context) {
     const funnel = await getFunnel((await context.params).slug);
     if (!funnel) return reply({ error: 'Funnel unavailable' }, 404);
     const existing = await getSession(funnel);
-    if (existing) return reply({ session: withPrefill(publicSession(existing), existing), config: existing.config_snapshot });
+    if (existing) return reply({ session: withPrefill(publicSession(existing), existing, funnel.is_demo), config: existing.config_snapshot });
     const body = z.object({ url: z.string().url().max(4000), referrer: z.string().max(2000), device: z.enum(['mobile', 'tablet', 'desktop']) }).parse(await readBody(request));
     // Vercel overwrites this header; only a daily hash is retained, never raw IP.
     const address = request.headers.get('x-vercel-forwarded-for') ?? request.headers.get('x-forwarded-for') ?? 'local';
@@ -71,7 +82,7 @@ export async function GET(_request: Request, context: Context) {
   try {
     const funnel = await getFunnel((await context.params).slug);
     const session = funnel && await getSession(funnel);
-    return session ? reply({ session: withPrefill(publicSession(session), session), config: session.config_snapshot }) : reply({ error: 'Session expired' }, 401);
+    return session ? reply({ session: withPrefill(publicSession(session), session, funnel?.is_demo), config: session.config_snapshot }) : reply({ error: 'Session expired' }, 401);
   } catch { return reply({ error: 'We couldn’t restore your progress.' }, 503); }
 }
 
@@ -110,7 +121,7 @@ export async function PATCH(request: Request, context: Context) {
       if (error) { measurementAllowed = false; console.error('[funnel-session] could not record measurement choice', error.code ?? 'unknown'); }
     }
     if (s.contact_submitted_at) {
-      if (body.calendarViewed && s.qualified && config.calendarUrl) {
+      if (body.calendarViewed && s.qualified && hasCalendarStep(config)) {
         const { error } = await db.from('funnel_events').upsert({ session_id: s.id, event: 'calendar_viewed', step_id: '' }, { onConflict: 'session_id,event,step_id', ignoreDuplicates: true });
         if (error) throw error;
       }
@@ -140,7 +151,7 @@ export async function PATCH(request: Request, context: Context) {
         });
         return reply({ session: publicSession(data) });
       }
-      return reply({ session: withPrefill(publicSession(s), s) });
+      return reply({ session: withPrefill(publicSession(s), s, funnel.is_demo) });
     }
     let answers = sanitizeAnswers(config, s.answers);
     let completed: string | null = null;
@@ -169,7 +180,7 @@ export async function PATCH(request: Request, context: Context) {
     const areaValid = zipQuestionId && isAnswered(answers, zipQuestionId) ? serviceAreaValid(config, answers[zipQuestionId]) : null;
     if (body.contact) {
       if (qualified === null || s.current_step !== 'contact' || (!qualified && config.unqualifiedAction === 'stop')) return reply({ error: 'Please finish the questions first.' }, 422);
-      nextStep = qualified && config.calendarUrl ? 'calendar' : 'thanks';
+      nextStep = qualified && hasCalendarStep(config) ? 'calendar' : 'thanks';
     }
     const { data, error } = await db.rpc('save_funnel_session', { p_id: s.id, p_hash: s.token_hash, p_version: body.version,
       p_answers: answers, p_step: nextStep, p_completed: completed, p_contact: body.contact ?? null, p_qualified: qualified,
@@ -215,7 +226,7 @@ export async function PATCH(request: Request, context: Context) {
       after(() => rememberLeadMetaIds(db, data.lead_id as string, metaIds));
     }
     const saved = publicSession(data);
-    return reply({ session: body.contact && config.calendarProvider === 'calendly' && saved.current_step === 'calendar'
-      ? { ...saved, prefill: { name: `${body.contact.firstName} ${body.contact.lastName}`, email: body.contact.email } } : saved });
+    // Just submitted onto the calendar step: hand over the booking context (prefill or ticket).
+    return reply({ session: body.contact ? withPrefill(saved, { config_snapshot: config, contact: body.contact }, funnel.is_demo) : saved });
   } catch { return reply({ error: 'We couldn’t save that. Please try again.' }, 503); }
 }

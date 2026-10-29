@@ -2,16 +2,20 @@ import { randomBytes } from 'node:crypto';
 import { NextResponse, type NextRequest } from 'next/server';
 import { getProfile } from '@/lib/auth';
 import { GOOGLE_CALENDAR_SCOPES, googleCalendarReady } from '@/lib/calendar/config';
-import { buildAuthUrl, pkceChallenge } from '@/lib/calendar/google';
+import { buildAuthUrl, googleCalendarReturnPath, mayConnectGoogleCalendar, pkceChallenge } from '@/lib/calendar/google';
 
 const COOKIE_PATH = '/api/integrations/google-calendar/oauth/callback';
 
-/** Contractor users connect their own Google Calendar. (Staff/admins have no contractor calendar to connect.) */
+/**
+ * A user connects their own Google Calendar: contractor users (their company's
+ * appointments), and HomeQuote admins / setters who host the team or sales
+ * booking calendars (0070; the connection has no contractor then).
+ */
 export async function GET(request: NextRequest) {
   const me = await getProfile();
   if (!me || !me.is_active) return NextResponse.redirect(new URL('/sign-in', request.url));
-  const back = new URL('/app/availability', request.url);
-  if (me.role !== 'contractor' || !me.contractor_id) {
+  const back = new URL(googleCalendarReturnPath(me), request.url);
+  if (!mayConnectGoogleCalendar(me)) {
     back.searchParams.set('calendar', 'forbidden');
     return NextResponse.redirect(back);
   }

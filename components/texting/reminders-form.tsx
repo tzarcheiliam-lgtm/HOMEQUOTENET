@@ -104,12 +104,12 @@ export function RemindersForm({ value }: { value: ReminderFormValue }) {
       </section>
 
       <section className="space-y-3 rounded-lg border p-4">
-        <Toggle checked={cfg.homeowner.enabled} onChange={(v) => set('homeowner', { enabled: v })} label="Homeowner appointments" hint="Estimate visits booked on a lead. Texts come from the contractor’s texting name." />
+        <Toggle checked={cfg.homeowner.enabled} onChange={(v) => set('homeowner', { enabled: v })} label="Homeowner appointments" hint="Estimate visits booked on a lead, and calls homeowners book on a HomeQuote calendar ({how} reads “free estimate visit” or “quick 10-minute call”; a call’s booking confirmation text replaces the Booked step). Texts come from the contractor’s texting name." />
         {cfg.homeowner.enabled && (
           <ol className="space-y-4 border-l [&>li]:-ml-[5px]">
             {MEETING_STEPS.map((s) => (
               <StepEditor key={s} id={`rem_h_${s}`} label={MEETING_WHEN[s].label} when={MEETING_WHEN[s].when} value={cfg.homeowner.templates[s]} fallback={d.homeowner.templates[s]}
-                vars={{ first_name: 'Sam', host: 'Acme Remodeling', when: MEETING_WHEN[s].sampleWhen }}
+                vars={{ first_name: 'Sam', host: 'Acme Remodeling', how: 'free estimate visit', when: MEETING_WHEN[s].sampleWhen }}
                 onChange={(v) => set('homeowner', { templates: { ...cfg.homeowner.templates, [s]: v } })} />
             ))}
           </ol>

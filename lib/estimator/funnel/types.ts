@@ -1,5 +1,6 @@
 import type { ConfiguratorSpec } from '../configurator/types.ts';
 import type { Answers, GalleryImage } from '../types.ts';
+import type { ExampleFinancing } from '../demo-financing.ts';
 
 /**
  * The simple mobile funnel (ContractorEstimatorConfig.experience === 'funnel'):
@@ -122,6 +123,12 @@ export type FunnelBookingStep = {
   priceNote: string;
   /** Short financing line shown with a "See details" toggle (the contractor's financingDisclosure); no payment amounts. */
   financingLabel?: string;
+  /**
+   * DEMO ONLY: example terms for "or from $649/mo*" under the range, shown
+   * only with ?demo=financing (lib/estimator/demo-financing.ts). Replace with
+   * the lender's real terms before ever showing it without the flag.
+   */
+  exampleFinancing?: ExampleFinancing;
   /** Heading of the booking card above the scheduler. */
   bookingTitle: string;
   /** e.g. "Prefer to talk now? Call". The contractor's phone follows. */

@@ -55,6 +55,8 @@ export async function updateSession(request: NextRequest) {
   // Public e-signing: signers have no HQN session; the token (never a cookie) is the credential.
   // Calendar subscribe feeds are fetched by Apple/Google Calendar with no session; the unguessable token is the credential.
   if (publicPath.startsWith('/api/calendar/feed/')) return supabaseResponse;
+  // Homeowner booking: the slot picker API, the token-linked manage page and its .ics need no session.
+  if (publicPath.startsWith('/api/booking/') || publicPath.startsWith('/booking/') || publicPath.startsWith('/book/manage/')) return supabaseResponse;
   if (publicPath === '/sign' || publicPath.startsWith('/api/signing/')) return supabaseResponse;
   // Seret API (MCP): authenticated by its own API key, never a session.
   if (publicPath === '/api/seret/mcp') return supabaseResponse;

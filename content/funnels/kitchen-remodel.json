@@ -145,6 +145,7 @@
     "metaPixelId": "29178560738497902",
     "consentMode": "opt_out"
   },
+  "calendarProvider": "homequote",
   "thankYouPage": {
     "headline": "You’re all set.",
     "message": "Your kitchen project details are saved. A HomeQuote project specialist will call you shortly to talk through your remodel and next steps."

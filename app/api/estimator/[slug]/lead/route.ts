@@ -17,11 +17,12 @@ import { configuratorSpecFor } from '@/lib/estimator/configurator/engine';
 import { funnelSpecFor } from '@/lib/estimator/funnel/engine';
 import { getEstimator } from '@/lib/estimator/registry';
 import {
-  ReplayCache, acceptedConsent, addressLine, bookingUrl, buildLeadPayload, configuratorLeadDesign, funnelLeadDesign, isHoneypot, originAllowed, parseLeadRequest, pickLikedLooks,
+  ReplayCache, acceptedConsent, addressLine, bookingUrl, buildLeadPayload, configuratorLeadDesign, estimatorBooking, funnelLeadDesign, isHoneypot, originAllowed, parseLeadRequest, pickLikedLooks,
   sanitizeEstimatorAnswers, type ConfiguratorLeadDesign,
 } from '@/lib/estimator/lead';
 import { estimatorConsentText, type EstimatorLeadResponse } from '@/lib/estimator/lead-client';
 import { signRenderToken } from '@/lib/estimator/render';
+import { signBookingTicket } from '@/app/api/booking/_lib/grant';
 
 /**
  * Instant estimator lead capture. One request = one finished estimate + contact.
@@ -233,9 +234,22 @@ async function handle(request: Request, context: Context): Promise<Response> {
 
     // Optional photoreal render of their design: only for a lead that was really saved (null when renders are off).
     const renderToken = leadId ? signRenderToken(slug, leadId) ?? undefined : undefined;
+    // Booking: on the HomeQuote calendar, a ticket for this saved, qualified session (the booking
+    // API re-checks both and records the booking with every funnel side effect); otherwise the
+    // external link. A demo funnel books nothing.
+    const booking = estimatorBooking(contractor, funnel.config);
+    const bookingTicket = booking === 'homequote' && payload.qualified && leadId && !funnel.is_demo
+      ? signBookingTicket(session.id, 'estimator') ?? undefined : undefined;
+    if (bookingTicket) {
+      // The booking screen opens with this reply: count it as the calendar being shown (funnel analytics).
+      const { error: viewedError } = await db.from('funnel_events')
+        .upsert({ session_id: session.id, event: 'calendar_viewed', step_id: '' }, { onConflict: 'session_id,event,step_id', ignoreDuplicates: true });
+      if (viewedError) console.error('[estimator-lead] could not record calendar_viewed', viewedError.code ?? 'unknown');
+    }
     const done: EstimatorLeadResponse = {
       ok: true, estimate, qualified: payload.qualified,
-      calendarUrl: payload.qualified ? bookingUrl(contractor.calendarUrl ?? funnel.config.calendarUrl, payload.contact, attribution) : undefined,
+      calendarUrl: payload.qualified && booking === 'link' ? bookingUrl(contractor.calendarUrl ?? funnel.config.calendarUrl, payload.contact, attribution) : undefined,
+      ...(bookingTicket ? { bookingTicket } : {}),
       renderToken,
     };
     if (replayKey) replays.set(replayKey, done);

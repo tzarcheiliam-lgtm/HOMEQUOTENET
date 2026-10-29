@@ -118,11 +118,21 @@ export const POOL_MASTERS_FUNNEL: FunnelSpec = {
     trustLine: 'Licensed & insured · CSLB #1112793',
   },
   bookingStep: {
-    headline: 'Book your free on-site estimate',
+    headline: 'Book your free call',
     priceEyebrow: '{options}',
     priceNote: 'Ballpark price, not a quote. Your firm price is set at your free on-site visit.',
     financingLabel: 'Financing available',
-    bookingTitle: 'Pick a time that works for you.',
+    // DEMO ONLY (?demo=financing): example terms for "or from $649/mo*" on the price card.
+    // Replace with Pool Masters' real lender terms before showing a payment to everyone.
+    exampleFinancing: {
+      apr: 8.99,
+      months: 180,
+      label: 'or from {monthly}/mo*',
+      disclosure:
+        '*Example only: {apr} APR for {months} months, {perThousand}/mo per $1,000 financed, with approved credit. Not an offer of credit; actual terms from Pool Masters’ lending partners may differ.',
+    },
+    // {minutes} / {host} come from the booking calendar: "a quick 10-minute call with Liam from Pool Masters".
+    bookingTitle: 'Pick a time for a quick {minutes}-minute call with {host}.',
     callPrompt: 'Prefer to talk now? Call',
   },
   configurator: POOL_MASTERS_CONFIGURATOR,

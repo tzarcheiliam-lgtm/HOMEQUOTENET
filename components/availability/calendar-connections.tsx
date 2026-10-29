@@ -23,7 +23,7 @@ const NOTICES: Record<string, { tone: 'ok' | 'bad'; text: string }> = {
   token_error: { tone: 'bad', text: 'Google would not complete the connection. Please try again.' },
   missing_permission: { tone: 'bad', text: 'Both calendar permissions are needed (view busy times and add events). Please connect again and leave both ticked.' },
   not_configured: { tone: 'bad', text: 'Google Calendar isn’t set up on this HomeQuote site yet. Ask your HomeQuote admin.' },
-  forbidden: { tone: 'bad', text: 'Only contractor accounts can connect a calendar.' },
+  forbidden: { tone: 'bad', text: 'Only contractor accounts and HomeQuote team members can connect a calendar.' },
 };
 
 export function CalendarNotice({ code }: { code?: string }) {
@@ -40,16 +40,19 @@ export function CalendarConnections({
   connections,
   googleConfigured,
   hasFeedLink,
+  host = false,
 }: {
   connections: ConnectionView[];
   googleConfigured: boolean;
   hasFeedLink: boolean;
+  /** A HomeQuote team / sales host (booking calendar settings): Google only, call wording, no feed link. */
+  host?: boolean;
 }) {
   const google = connections.find((c) => c.provider === 'google');
   // Direct Google sign-in is optional and hidden until an admin sets it up; the calendar link below works for everyone.
   const showGoogleSignIn = googleConfigured || !!google;
   return (
-    <div className={showGoogleSignIn ? 'grid gap-4 lg:grid-cols-2' : 'grid gap-4'}>
+    <div className={showGoogleSignIn && !host ? 'grid gap-4 lg:grid-cols-2' : 'grid gap-4'}>
       {showGoogleSignIn && (
       <section className="space-y-3 rounded-lg border p-4">
         <div className="flex items-center justify-between gap-2">
@@ -61,8 +64,9 @@ export function CalendarConnections({
           )}
         </div>
         <p className="text-sm text-muted-foreground">
-          Two-way: times you’re busy on Google show as unavailable in HomeQuote (only “busy”, never your event details), and every appointment
-          HomeQuote assigns you is added to your calendar automatically — including changes and cancellations.
+          {host
+            ? 'Two-way: times you’re busy on Google are not offered to callers (only “busy”, never your event details), and every call booked on the calendars you host is added to your calendar, including changes and cancellations.'
+            : 'Two-way: times you’re busy on Google show as unavailable in HomeQuote (only “busy”, never your event details), and every appointment HomeQuote assigns you is added to your calendar automatically — including changes and cancellations.'}
         </p>
         {google ? (
           <>
@@ -106,6 +110,7 @@ export function CalendarConnections({
       </section>
       )}
 
+      {!host && (
       <section className="space-y-3 rounded-lg border p-4">
         <div className="flex items-center justify-between gap-2">
           <h3 className="font-semibold">Add appointments to your calendar</h3>
@@ -118,6 +123,7 @@ export function CalendarConnections({
         <FeedLink hasLink={hasFeedLink} />
         <p className="text-xs text-muted-foreground">You can also download any single appointment as an .ics file from the Appointments page.</p>
       </section>
+      )}
     </div>
   );
 }

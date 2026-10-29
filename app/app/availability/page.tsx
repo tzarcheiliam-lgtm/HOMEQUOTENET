@@ -37,6 +37,10 @@ export default async function AvailabilityPage({
     return (
       <div className="space-y-4">
         <PageHeader title="Contractor availability" description="Choose a contractor to see when they can take appointments." />
+        <p className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
+          Online call booking (HomeQuote team, sales and each contractor) has its own hours on the{' '}
+          <Link href="/app/calendar" className="font-medium text-foreground underline underline-offset-4">Calendar</Link> page.
+        </p>
         {profile.role === 'admin' && (
           <Card>
             <CardHeader><CardTitle>Default hours</CardTitle></CardHeader>
@@ -103,6 +107,11 @@ export default async function AvailabilityPage({
         backLabel="All contractors"
       />
       <CalendarNotice code={one('calendar')} />
+      {/* These hours are for on-site visits; the 30-minute calls homeowners book online have their own calendar (0070). */}
+      <p className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
+        Hours for the calls homeowners book online are set on the{' '}
+        <Link href={isContractor ? '/app/calendar/settings' : `/app/calendar?contractor=${contractorId}`} className="font-medium text-foreground underline underline-offset-4">booking calendar</Link>.
+      </p>
 
       {stored.settings.weeklyScheduleEnabled && stored.rules.length === 0 && (
         <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900" role="alert">

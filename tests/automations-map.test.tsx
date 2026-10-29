@@ -38,7 +38,7 @@ describe('the automation registry', () => {
     const route = readFileSync(join(root, 'app/api/workflows/tick/route.ts'), 'utf8');
     const jobs: Record<string, string> = {
       processWorkflowTick: 'workflows', pruneWorkflowHistory: 'workflow_pruning', runNotificationMaintenance: 'push_notifications', runCalendarMaintenance: 'calendar_sync',
-      signingMaintenance: 'signing_upkeep', checkBridgeHealth: 'sms_bridge_alert', runTextReminders: 'sms_reminders_contractor', retryPendingAduQuizLeads: 'adu_quiz_retry',
+      signingMaintenance: 'signing_upkeep', checkBridgeHealth: 'sms_bridge_alert', runTextReminders: 'sms_reminders_contractor', runBookingNotifications: 'booking_notices', retryPendingAduQuizLeads: 'adu_quiz_retry',
     };
     const called = [...route.matchAll(/await (\w+)\(/g)].map((m) => m[1]).filter((n) => !['recordAutomationRun'].includes(n));
     for (const fn of called) {

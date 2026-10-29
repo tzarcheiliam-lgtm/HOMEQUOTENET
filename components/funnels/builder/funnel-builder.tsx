@@ -11,10 +11,10 @@ import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { FunnelExperience } from '@/components/funnels/funnel-experience';
-import { DEFAULT_PLACEHOLDERS, funnelSchema, isRequired, isTextQuestion, type FunnelConfig, type Question } from '@/lib/funnels/schema';
+import { DEFAULT_CALENDAR_PROVIDER, DEFAULT_PLACEHOLDERS, funnelSchema, hasCalendarStep, isRequired, isTextQuestion, type CalendarProvider, type FunnelConfig, type Question } from '@/lib/funnels/schema';
 import {
-  STEP_TYPE_PRESETS, addOption, addQuestion, changeQuestionType, duplicateQuestion, moveOption, moveQuestion, removeOption, removeQuestion,
-  updateQuestion, type FunnelStatus,
+  STEP_TYPE_PRESETS, addOption, addQuestion, changeQuestionType, duplicateQuestion, moveOption, moveQuestion, nativeCalendarOwner, removeCalendarStep, removeOption, removeQuestion,
+  setCalendarProvider, updateQuestion, type FunnelStatus,
 } from '@/lib/funnels/builder';
 import { saveFunnelConfig, saveFunnelRouting } from '@/lib/actions/funnel-builder';
 
@@ -64,6 +64,8 @@ export function FunnelBuilder({
   }
 
   const jumpToStep = selected.kind === 'question' ? selected.id : selected.id;
+  const calendarStep = hasCalendarStep(config);
+  const routedContractor = routing.contractorId && routing.contractorId !== 'house' ? contractors.find(c => c.id === routing.contractorId)?.name ?? 'the contractor' : null;
   const previewKey = useMemo(() => `${config.questions.length}:${config.questions.map(q => q.type).join(',')}`, [config.questions]);
 
   return (
@@ -113,8 +115,12 @@ export function FunnelBuilder({
             <div className="mt-2 space-y-1 border-t pt-2">
               <button className={`block w-full rounded-md px-2 py-1.5 text-left text-sm ${selected.kind === 'fixed' && selected.id === 'qualification' ? 'bg-accent' : ''}`} onClick={() => setSelected({ kind: 'fixed', id: 'qualification' })}>Qualification</button>
               <button className={`block w-full rounded-md px-2 py-1.5 text-left text-sm ${selected.kind === 'fixed' && selected.id === 'contact' ? 'bg-accent' : ''}`} onClick={() => setSelected({ kind: 'fixed', id: 'contact' })}>Contact info</button>
-              <button className={`block w-full rounded-md px-2 py-1.5 text-left text-sm ${selected.kind === 'fixed' && selected.id === 'calendar' ? 'bg-accent' : ''} ${config.calendarUrl ? '' : 'text-muted-foreground'}`} onClick={() => setSelected({ kind: 'fixed', id: 'calendar' })}>
-                {config.calendarUrl ? 'Calendar' : '+ Add calendar step'}
+              <button className={`block w-full rounded-md px-2 py-1.5 text-left text-sm ${selected.kind === 'fixed' && selected.id === 'calendar' ? 'bg-accent' : ''} ${calendarStep ? '' : 'text-muted-foreground'}`} onClick={() => {
+                // "+ Add calendar step" starts on the HomeQuote calendar; an external one stays as it is.
+                if (!calendarStep && config.calendarProvider !== 'calendly') patch(setCalendarProvider(config, DEFAULT_CALENDAR_PROVIDER));
+                setSelected({ kind: 'fixed', id: 'calendar' });
+              }}>
+                {calendarStep ? 'Calendar' : '+ Add calendar step'}
               </button>
               <button className={`block w-full rounded-md px-2 py-1.5 text-left text-sm ${selected.kind === 'fixed' && selected.id === 'thanks' ? 'bg-accent' : ''}`} onClick={() => setSelected({ kind: 'fixed', id: 'thanks' })}>Thank you</button>
             </div>
@@ -153,17 +159,26 @@ export function FunnelBuilder({
           {selected.kind === 'fixed' && selected.id === 'calendar' && (
             <Card><CardContent className="space-y-3 p-4">
               <h3 className="text-sm font-semibold">Calendar</h3>
-              {!config.calendarUrl && <p className="text-xs text-muted-foreground">Optional — qualified visitors book a time before the thank-you screen. Choose a provider and paste a URL below to add it; leave it blank to skip straight to the thank-you screen.</p>}
+              {!calendarStep && <p className="text-xs text-muted-foreground">Optional — qualified visitors book a time before the thank-you screen. Choose the HomeQuote calendar, or an external provider with a URL; without one they skip straight to the thank-you screen.</p>}
               <Field label="Provider">
-                <Select value={config.calendarProvider} onChange={e => patch({ ...config, calendarProvider: e.target.value as 'ghl' | 'calendly' })}>
-                  <option value="ghl">GoHighLevel (embedded calendar, server-confirmed)</option>
-                  <option value="calendly">Calendly (inline, prefilled)</option>
+                <Select value={config.calendarProvider} onChange={e => patch(setCalendarProvider(config, e.target.value as CalendarProvider))}>
+                  <option value="homequote">HomeQuote calendar (built in, quick 10-minute call)</option>
+                  <option value="ghl">GoHighLevel (embedded calendar, server-confirmed; fallback)</option>
+                  <option value="calendly">Calendly (inline, prefilled; fallback)</option>
                 </Select>
               </Field>
-              <Field label="Calendar URL"><Input value={config.calendarUrl ?? ''} onChange={e => patch({ ...config, calendarUrl: e.target.value })} placeholder="https://…" /></Field>
-              {config.calendarProvider === 'ghl' && <Field label="Calendar ID (GHL)"><Input value={config.calendarId ?? ''} onChange={e => patch({ ...config, calendarId: e.target.value })} /></Field>}
-              <Field label="Headline"><Input value={config.calendarHeadline ?? ''} onChange={e => patch({ ...config, calendarHeadline: e.target.value })} placeholder="Choose a time for your free estimate" /></Field>
-              {config.calendarUrl && <Button variant="outline" size="sm" onClick={() => { patch({ ...config, calendarUrl: undefined, calendarId: undefined }); setSelected({ kind: 'fixed', id: 'qualification' }); }}>Remove calendar step</Button>}
+              {config.calendarProvider === 'homequote' ? (
+                <p className="text-xs text-muted-foreground" data-builder-native-calendar="">
+                  Qualified visitors book a quick free call (10 minutes by default) on {nativeCalendarOwner(routedContractor)}. Hours, buffers and hosts are set on the
+                  {' '}<Link href="/app/calendar" className="underline underline-offset-2">Calendar</Link> page; confirmations and reminders go out automatically.
+                  {routingDirty ? ' Save the routing for this to apply.' : ''}
+                </p>
+              ) : <>
+                <Field label="Calendar URL"><Input value={config.calendarUrl ?? ''} onChange={e => patch({ ...config, calendarUrl: e.target.value })} placeholder="https://…" /></Field>
+                {config.calendarProvider === 'ghl' && <Field label="Calendar ID (GHL)"><Input value={config.calendarId ?? ''} onChange={e => patch({ ...config, calendarId: e.target.value })} /></Field>}
+              </>}
+              <Field label="Headline"><Input value={config.calendarHeadline ?? ''} onChange={e => patch({ ...config, calendarHeadline: e.target.value })} placeholder={config.calendarProvider === 'homequote' ? 'Book your free call' : 'Choose a time for your free estimate'} /></Field>
+              {calendarStep && <Button variant="outline" size="sm" onClick={() => { patch(removeCalendarStep(config)); setSelected({ kind: 'fixed', id: 'qualification' }); }}>Remove calendar step</Button>}
             </CardContent></Card>
           )}
           {selected.kind === 'fixed' && selected.id === 'thanks' && (

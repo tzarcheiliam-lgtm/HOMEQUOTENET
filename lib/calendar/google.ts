@@ -210,3 +210,19 @@ export async function deleteEvent(accessToken: string, calendarId: string, event
   if (response.ok || response.status === 404 || response.status === 410) return;
   throw new CalendarApiError(`Google event delete failed (${response.status})`, response.status);
 }
+
+type CalendarUser = { role: string; contractor_id: string | null; is_active?: boolean | null };
+
+/**
+ * Who may connect their own Google Calendar: contractor users (their company's
+ * appointments) and HomeQuote admins / setters, who host the team and sales
+ * booking calendars (0070) and whose busy time those calendars must respect.
+ */
+export function mayConnectGoogleCalendar(me: CalendarUser): boolean {
+  if (me.is_active === false) return false;
+  if (me.role === 'contractor') return !!me.contractor_id;
+  return me.role === 'admin' || me.role === 'setter';
+}
+
+/** Where the connect flow returns: contractors to Availability, HomeQuote hosts to their booking calendar settings. */
+export const googleCalendarReturnPath = (me: CalendarUser) => (me.role === 'contractor' ? '/app/availability' : '/app/calendar/settings');

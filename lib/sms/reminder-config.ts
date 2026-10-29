@@ -32,13 +32,15 @@ export const DEFAULT_REMINDER_CONFIG: ReminderConfig = {
   },
   homeowner: {
     enabled: true,
+    // {how} is "free estimate visit" for an on-site visit, or e.g. "quick 10-minute call" for a call booked on a
+    // HomeQuote calendar (lib/sms/reminders.ts homeownerHow).
     templates: {
-      booked: "Hi {first_name}, it's {host}. Your free estimate visit is set for {when}. Reply R anytime if you need a different time.",
-      four_days: 'Hi {first_name}, {host} here. Just a reminder that your free estimate visit is coming up {when}.',
-      day_before: 'Hi {first_name}, {host} here. Confirming your free estimate visit {when}. Reply YES to confirm or R to reschedule.',
-      morning_of: 'Good morning {first_name}! See you {when} for your free estimate visit. - {host}',
-      two_hours: "Hi {first_name}, {host} here. We'll see you {when}!",
-      no_show: 'Hi {first_name}, {host} here. Sorry we missed you {when}. Want to set up a new time for your free estimate? Just reply with a day that works.',
+      booked: "Hi {first_name}, it's {host}. Your {how} is set for {when}. Reply R anytime if you need a different time.",
+      four_days: 'Hi {first_name}, {host} here. Just a reminder that your {how} is coming up {when}.',
+      day_before: 'Hi {first_name}, {host} here. Confirming your {how} {when}. Reply YES to confirm or R to reschedule.',
+      morning_of: 'Good morning {first_name}! Just a reminder about your {how} {when}. - {host}',
+      two_hours: "Hi {first_name}, {host} here. Your {how} is {when}. Talk soon!",
+      no_show: 'Hi {first_name}, {host} here. Sorry we missed you {when}. Want to set up a new time? Just reply with a day that works.',
     },
   },
   followups: {

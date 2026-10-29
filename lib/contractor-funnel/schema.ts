@@ -198,11 +198,21 @@ export const REASON_LABELS: Record<string, string> = {
 
 /** What the visitor may see about the calendar. */
 export type CalendarInfo = {
-  /** Plain configured URL; no contact data in it. Also the fallback link. */
+  /**
+   * Plain configured URL; no contact data in it. Also the fallback link. For
+   * 'homequote' it is the in-app Calendar page (shown to admins, never to the visitor).
+   */
   url: string;
-  /** 'calendly' = inline embed + booking events; 'link' = open in a new tab only. */
-  provider: 'calendly' | 'link';
+  /**
+   * 'homequote' = HomeQuote's own sales calendar, booked in the page (<BookingFlow>
+   * with the submission's grant); 'calendly' = inline embed + booking events
+   * (fallback); 'link' = open in a new tab only.
+   */
+  provider: 'homequote' | 'calendly' | 'link';
 };
+
+/** Where staff manage the HomeQuote sales calendar (CalendarInfo.url for the native provider). */
+export const NATIVE_SALES_CALENDAR_URL = '/app/calendar';
 
 export function isMeasurementEvent(e: string): e is 'CtaClick' | 'QualificationComplete' | 'Lead' | 'Schedule' {
   return ['CtaClick', 'QualificationComplete', 'Lead', 'Schedule'].includes(e);

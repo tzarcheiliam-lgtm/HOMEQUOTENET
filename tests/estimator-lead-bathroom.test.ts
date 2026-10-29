@@ -136,8 +136,8 @@ describe('bathroom payload mapping', () => {
     expect(payload.funnelAnswers.estimator_picks).toContain('Fixtures: Brushed gold');
     expect(payload.funnelAnswers.estimator_picks).not.toMatch(/pool|coping|plaster/i);
     expect(Object.values(payload.funnelAnswers).every((v) => typeof v === 'string')).toBe(true);
-    // No booking link on this funnel, so never a calendar step.
-    expect(payload).toMatchObject({ qualified: true, nextStep: 'thanks', completed: 'timeline' });
+    // Books the HomeQuote team calendar from the result screen.
+    expect(payload).toMatchObject({ qualified: true, nextStep: 'calendar', completed: 'timeline' });
     expect(payload.activity.metadata).not.toHaveProperty('contractor_id');
     expect(payload.activity.body).toMatch(/^Bathroom estimator: ballpark \$[\d,]+ – \$[\d,]+ \(not a quote; example prices\)/);
     expect(payload.activity.body).toContain('- Shower tile: Zellige: $');
@@ -161,7 +161,7 @@ describe('POST /api/estimator/bathroom-remodel/lead', () => {
     method: 'POST', headers: { origin: 'https://homequote.example' }, body: JSON.stringify(body),
   }), { params: Promise.resolve({ slug: 'bathroom-remodel' }) });
 
-  it('saves through the bathroom funnel, qualified, with a render token and no booking link', async () => {
+  it('saves through the bathroom funnel, qualified, with a render token and the HomeQuote calendar step (no external link)', async () => {
     const res = await post(valid);
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -171,7 +171,7 @@ describe('POST /api/estimator/bathroom-remodel/lead', () => {
     expect(verifyRenderToken('pool-masters', body.renderToken)).toBeNull();
 
     const args = m.rpc.mock.calls[0]![1] as Record<string, unknown>;
-    expect(args).toMatchObject({ p_qualified: true, p_step: 'thanks', p_consent: consentText(funnelConfig), p_service_area_valid: true });
+    expect(args).toMatchObject({ p_qualified: true, p_step: 'calendar', p_consent: consentText(funnelConfig), p_service_area_valid: true });
     expect(args.p_answers).toMatchObject({ service: 'full_remodel', estimator_source: 'Bathroom estimator' });
     const timeline = m.inserts.find((i) => i.table === 'lead_activities')!;
     expect(timeline.row.body).toMatch(/^Bathroom estimator: ballpark/);

@@ -9,6 +9,10 @@ type Db = ReturnType<typeof createAdminClient>;
 export interface AppointmentDetail {
   id: string;
   scheduledAt: string | null;
+  /** Set on HomeQuote-calendar bookings (their own length); else the caller's default length applies. */
+  endsAt?: string | null;
+  /** HomeQuote booking calendar (0070), when booked through one. */
+  calendarId?: string | null;
   status: string;
   location: string | null;
   notes: string | null;
@@ -22,25 +26,30 @@ export interface AppointmentDetail {
   project: string | null;
 }
 
-export const APPOINTMENT_SELECT = `id, scheduled_at, status, location, notes, updated_at,
+export const APPOINTMENT_SELECT = `id, calendar_id, scheduled_at, ends_at, status, location, notes, updated_at, contact_name, contact_phone,
+  direct_lead:leads(id, first_name, last_name, phone, address, city, state, zip, vertical:verticals(name), sub_service:sub_services(name)),
   assignment:lead_assignments(contractor_id, lead:leads(id, first_name, last_name, phone, address, city, state, zip,
     vertical:verticals(name), sub_service:sub_services(name)))`;
 
 export function mapAppointment(a: any): AppointmentDetail {
-  const lead = a.assignment?.lead;
+  // Team-calendar bookings may have no assignment yet: appointments.lead_id, then the booking contact.
+  const lead = a.assignment?.lead ?? a.direct_lead;
+  const contactFirst = typeof a.contact_name === 'string' && a.contact_name.trim() ? a.contact_name.trim().split(/\s+/)[0] : null;
   const addressLine = [lead?.address, lead?.city, [lead?.state, lead?.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
   return {
     id: a.id,
     scheduledAt: a.scheduled_at,
+    endsAt: a.ends_at ?? null,
+    calendarId: a.calendar_id ?? null,
     status: a.status,
     location: a.location,
     notes: a.notes,
     updatedAt: a.updated_at ?? null,
     contractorId: a.assignment?.contractor_id ?? null,
     leadId: lead?.id ?? null,
-    customerName: [lead?.first_name, lead?.last_name].filter(Boolean).join(' ') || 'Homeowner',
-    firstName: lead?.first_name ?? null,
-    phone: lead?.phone ?? null,
+    customerName: [lead?.first_name, lead?.last_name].filter(Boolean).join(' ') || a.contact_name || 'Homeowner',
+    firstName: lead?.first_name ?? contactFirst,
+    phone: lead?.phone ?? a.contact_phone ?? null,
     address: addressLine || null,
     project: [lead?.vertical?.name, lead?.sub_service?.name].filter(Boolean).join(' · ') || null,
   };
@@ -82,10 +91,11 @@ export function toIcsEvent(a: AppointmentDetail, durationMinutes: number): IcsEv
   if (Number.isNaN(startMs)) return null;
   const cancelled = a.status === 'cancelled' || a.status === 'rescheduled';
   const updated = a.updatedAt ? new Date(a.updatedAt).getTime() : startMs;
+  const endsMs = a.endsAt ? new Date(a.endsAt).getTime() : NaN;
   return {
     uid: `appt-${a.id}@homequotenet.com`,
     startMs,
-    endMs: startMs + durationMinutes * 60_000,
+    endMs: Number.isFinite(endsMs) && endsMs > startMs ? endsMs : startMs + durationMinutes * 60_000,
     summary: eventTitle(a),
     description: eventDescription(a),
     location: eventLocation(a),

@@ -32,9 +32,8 @@
     { "question": "homeowner", "operator": "equals", "values": ["yes"] }
   ],
   "qualifiedMessage": "Great — it looks like we may be able to help.",
-  "calendarProvider": "calendly",
-  "calendarUrl": "https://calendly.com/homequotenetwork/30min",
-  "calendarHeadline": "Great — your project looks like a fit. Choose a time below for your free pool consultation.",
+  "calendarProvider": "homequote",
+  "calendarHeadline": "Great — your project looks like a fit. Book a free call about your pool.",
   "trackingPixels": { "metaPixelId": "933962709362966", "consentMode": "opt_out" },
   "thankYouPage": {
     "headline": "You’re all set.",
