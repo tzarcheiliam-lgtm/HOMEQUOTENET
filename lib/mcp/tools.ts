@@ -238,7 +238,7 @@ export const TOOLS: ToolDef[] = [
       const [{ data: s }, { count: waiting }, { data: needs }] = await Promise.all([
         db.from('sms_settings').select('enabled,stopped_at,bridge_last_seen_at,window_start_hour,window_end_hour,daily_cap').eq('id', true).maybeSingle(),
         db.from('sms_messages').select('id', { count: 'exact', head: true }).eq('direction', 'out').eq('status', 'queued'),
-        db.from('sms_conversations').select('lead_id,summary,updated_at').eq('status', 'handoff').order('updated_at', { ascending: false }).limit(10),
+        db.from('sms_conversations').select('lead_id,summary,updated_at').eq('status', 'handoff').not('lead_id', 'is', null).order('updated_at', { ascending: false }).limit(10),
       ]);
       const ids = (needs ?? []).map((c: any) => c.lead_id);
       const { data: leads } = ids.length ? await db.from('leads').select('id,first_name,last_name').in('id', ids) : { data: [] };

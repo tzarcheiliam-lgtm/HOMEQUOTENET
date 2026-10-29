@@ -11,6 +11,23 @@ import { SmsSettingsForm } from '@/components/texting/settings-form';
 import { SmsBotForm } from '@/components/texting/bot-form';
 import { MAX_EXTRA_INSTRUCTIONS } from '@/lib/sms/agent';
 import { SENDER_HOUSE } from '@/lib/sms/rules';
+import { RemindersForm, type ReminderFormValue } from '@/components/texting/reminders-form';
+import { reminderConfig } from '@/lib/sms/reminder-config';
+import { FOLLOW_UP_STEPS, MEETING_STEPS } from '@/lib/sms/reminder-plan';
+
+/** Merged settings for the switches, but only the CUSTOM wording in the text boxes (blank = the standard text). */
+function reminderFormValue(raw: unknown): ReminderFormValue {
+  const cfg = reminderConfig(raw);
+  const r = (v: unknown) => (v && typeof v === 'object' ? (v as Record<string, unknown>) : {});
+  const custom = <K extends string>(t: unknown, keys: readonly K[]) => Object.fromEntries(keys.map((k) => [k, typeof r(t)[k] === 'string' ? (r(t)[k] as string) : ''])) as Record<K, string>;
+  const raw_ = r(raw);
+  return {
+    contractor: { enabled: cfg.contractor.enabled, host: String(r(raw_.contractor).host ?? ''), brand: String(r(raw_.contractor).brand ?? ''), templates: custom(r(raw_.contractor).templates, MEETING_STEPS) },
+    homeowner: { enabled: cfg.homeowner.enabled, templates: custom(r(raw_.homeowner).templates, MEETING_STEPS) },
+    followups: { enabled: cfg.followups.enabled, days: cfg.followups.days, templates: custom(r(raw_.followups).templates, FOLLOW_UP_STEPS) },
+    unconfirmedAlert: cfg.unconfirmedAlert,
+  };
+}
 
 export const metadata = { title: 'Texting · HomeQuote Network' };
 export const dynamic = 'force-dynamic';
@@ -20,15 +37,23 @@ export default async function TextingPage() {
   const db = await createClient();
   const [{ data: settings }, { data: convos }] = await Promise.all([
     db.from('sms_settings').select('*').eq('id', true).maybeSingle(),
-    db.from('sms_conversations').select('id,lead_id,sender_name,phone_e164,status,mode,qualification,summary,last_inbound_at,created_at').order('updated_at', { ascending: false }).limit(60),
+    db.from('sms_conversations').select('*').order('updated_at', { ascending: false }).limit(60),
   ]);
   const s = settings ?? { enabled: false, stopped_at: null, bridge_last_seen_at: null, window_start_hour: 8, window_end_hour: 21, daily_cap: 200, contractor_funnels_enabled: false, bot_extra_instructions: null, house_sender_name: null, opening_template: null, first_text_delay_minutes: 0, max_ai_turns: 14, max_ai_replies_per_day: 150 };
   const seen = s.bridge_last_seen_at ? new Date(s.bridge_last_seen_at) : null;
   const bridgeUp = !!seen && Date.now() - +seen < 60_000;
   const rows = convos ?? [];
-  const leadIds = rows.map((r) => r.lead_id as string);
-  const { data: leads } = leadIds.length ? await db.from('leads').select('id,first_name,last_name').in('id', leadIds) : { data: [] };
-  const names = new Map((leads ?? []).map((l) => [l.id as string, [l.first_name, l.last_name].filter(Boolean).join(' ') || 'Lead']));
+  // A conversation is with a homeowner lead, or (reminder texts) with a contractor prospect about a sales meeting.
+  const leadIds = rows.map((r) => r.lead_id as string | null).filter((x): x is string => !!x);
+  const prospectIds = rows.map((r) => (r as { prospect_id?: string | null }).prospect_id).filter((x): x is string => !!x);
+  const [{ data: leads }, { data: prospects }] = await Promise.all([
+    leadIds.length ? db.from('leads').select('id,first_name,last_name').in('id', leadIds) : Promise.resolve({ data: [] as { id: string; first_name: string | null; last_name: string | null }[] }),
+    prospectIds.length ? db.from('contractor_prospects').select('id,company_name').in('id', prospectIds) : Promise.resolve({ data: [] as { id: string; company_name: string }[] }),
+  ]);
+  const names = new Map<string, string>([
+    ...(leads ?? []).map((l) => [l.id as string, [l.first_name, l.last_name].filter(Boolean).join(' ') || 'Lead'] as [string, string]),
+    ...(prospects ?? []).map((p) => [p.id as string, (p.company_name as string) || 'Contractor'] as [string, string]),
+  ]);
   const { count: waiting } = await db.from('sms_messages').select('id', { count: 'exact', head: true }).eq('direction', 'out').eq('status', 'queued').lte('send_after', new Date().toISOString());
   const live = !!s.enabled && !s.stopped_at;
 
@@ -61,20 +86,25 @@ export default async function TextingPage() {
           template={s.opening_template ?? ''} />
       </CardContent></Card>
 
+      <Card><CardHeader><CardTitle className="text-base">Reminders &amp; follow-ups</CardTitle></CardHeader><CardContent>
+        {'reminder_config' in (settings ?? {}) ? <RemindersForm value={reminderFormValue((settings as { reminder_config?: unknown }).reminder_config)} />
+          : <p className="text-sm text-muted-foreground">Run database migration 0068 to turn on reminder texts and follow-ups.</p>}
+      </CardContent></Card>
+
       <section className="space-y-2">
         <h2 className="text-lg font-semibold">Conversations</h2>
         {rows.length === 0 ? <p className="text-sm text-muted-foreground">No text conversations yet. They start automatically when a new lead submits a funnel.</p> : (
           <ul className="divide-y rounded-lg border">
-            {rows.map((r) => (
-              <li key={r.id as string}><Link href={`/app/leads/${r.lead_id}#texts`} className="flex flex-wrap items-center justify-between gap-2 p-3 hover:bg-accent">
-                <span><span className="font-medium">{names.get(r.lead_id as string)}</span> <span className="text-xs text-muted-foreground">as {r.sender_name as string}</span>
+            {rows.map((r) => { const pid = (r as { prospect_id?: string | null }).prospect_id; return (
+              <li key={r.id as string}><Link href={pid ? `/app/calls/${pid}` : `/app/leads/${r.lead_id}#texts`} className="flex flex-wrap items-center justify-between gap-2 p-3 hover:bg-accent">
+                <span><span className="font-medium">{names.get((pid ?? r.lead_id) as string)}</span> {pid && <span className="rounded-full border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">Contractor</span>} <span className="text-xs text-muted-foreground">as {r.sender_name as string}</span>
                   {r.summary && <span className="block max-w-xl truncate text-xs text-muted-foreground">{r.summary as string}</span>}</span>
                 <span className="flex items-center gap-2 text-xs">
                   {r.qualification !== 'unknown' && <span className="rounded-full border px-2 py-0.5">{r.qualification as string}</span>}
                   <span className={`rounded-full border px-2 py-0.5 ${r.status === 'handoff' ? 'border-amber-500 text-amber-700 dark:text-amber-300' : ''}`}>{SMS_STATUS_LABELS[r.status as string] ?? (r.status as string)}</span>
                 </span>
               </Link></li>
-            ))}
+            ); })}
           </ul>
         )}
       </section>

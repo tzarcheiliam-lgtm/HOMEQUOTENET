@@ -1,30 +1,14 @@
 import 'server-only';
-import type { SupabaseClient } from '@supabase/supabase-js';
+export { DEFAULT_SETTINGS, loadSettings, type SmsSettings } from './core';
 import { normalizeUsPhone } from '@/lib/ai-calling/phone';
 import { nextEligible, resolveZones } from '@/lib/ai-calling/timezone';
 import { runSmsAgent, type AgentInput, type AgentResult, type SmsTurn } from './agent';
 import type { Alert } from './health';
 import { notifyAdmins } from './health-notify';
 import { DEFAULT_ZONES, MAX_AI_TURNS } from './config';
+import { handleLeadReminderReply, handleProspectReply } from './reminder-replies';
+import { isLive, loadSettings, note, phoneInUse, queue, sentToday, type Db } from './core';
 import { finalizeOutbound, helpReply, isHelp, isOptOut, isStart, openingMessage, optOutConfirmation, projectLabel, SENDER_HOUSE } from './rules';
-
-type Db = SupabaseClient;
-export interface SmsSettings {
-  enabled: boolean; contractor_funnels_enabled: boolean; window_start_hour: number; window_end_hour: number; daily_cap: number; stopped_at: string | null;
-  bot_extra_instructions?: string | null; house_sender_name?: string | null;
-  opening_template?: string | null; first_text_delay_minutes?: number; max_ai_turns?: number; max_ai_replies_per_day?: number;
-}
-export const DEFAULT_SETTINGS: SmsSettings = { enabled: false, contractor_funnels_enabled: false, window_start_hour: 8, window_end_hour: 21, daily_cap: 200, stopped_at: null };
-
-export async function loadSettings(db: Db): Promise<SmsSettings> {
-  const core = 'enabled,contractor_funnels_enabled,window_start_hour,window_end_hour,daily_cap,stopped_at';
-  // Newer columns arrive with migrations 0057 and 0059; until they are applied, fall back so texting keeps working.
-  for (const cols of [`${core},bot_extra_instructions,house_sender_name,opening_template,first_text_delay_minutes,max_ai_turns,max_ai_replies_per_day`, `${core},bot_extra_instructions,house_sender_name,opening_template,first_text_delay_minutes,max_ai_turns`, `${core},bot_extra_instructions,house_sender_name`, core]) {
-    const { data, error } = await db.from('sms_settings').select(cols).eq('id', true).maybeSingle();
-    if (!error) return { ...DEFAULT_SETTINGS, ...(data as Partial<SmsSettings> | null) };
-  }
-  return { ...DEFAULT_SETTINGS };
-}
 
 export interface ContractorTexting { enabled: boolean; senderName: string | null; openingTemplate: string | null; extraInstructions: string | null }
 /** A contractor's texting switch and wording. Tolerates migration 0059 not being applied yet. */
@@ -37,23 +21,11 @@ export async function loadContractorTexting(db: Db, contractorId: string): Promi
   const { data } = await db.from('contractors').select('texting_enabled').eq('id', contractorId).maybeSingle();
   return { enabled: !!(data as { texting_enabled?: boolean } | null)?.texting_enabled, senderName: null, openingTemplate: null, extraInstructions: null };
 }
-const isLive = (s: SmsSettings) => s.enabled && !s.stopped_at;
 
-async function sentToday(db: Db): Promise<number> {
-  const since = new Date(Date.now() - 24 * 3600_000).toISOString();
-  const { count } = await db.from('sms_messages').select('id', { count: 'exact', head: true }).eq('direction', 'out').gte('created_at', since);
-  return count ?? 0;
-}
 async function aiRepliesToday(db: Db): Promise<number> {
   const since = new Date(Date.now() - 24 * 3600_000).toISOString();
   const { count } = await db.from('sms_messages').select('id', { count: 'exact', head: true }).eq('direction', 'out').eq('ai', true).gte('created_at', since);
   return count ?? 0;
-}
-/** One conversation per phone number: a number already texted in the last 14 days is not started again from a second lead. */
-async function phoneInUse(db: Db, phone: string, now: Date): Promise<boolean> {
-  const since = new Date(now.getTime() - 14 * 24 * 3600_000).toISOString();
-  const { data } = await db.from('sms_conversations').select('id').eq('phone_e164', phone).gte('created_at', since).limit(1);
-  return !!data?.length;
 }
 const normalizeBody = (t: string) => t.toLowerCase().replace(/\s+/g, ' ').trim();
 
@@ -72,18 +44,6 @@ async function withSkipNote(db: Db, leadId: string, run: Promise<StartResult>): 
   const r = await run;
   if (!r.started && SKIP_NOTES[r.reason]) { try { await note(db, leadId, SKIP_NOTES[r.reason], { sms_skipped: r.reason }); } catch { /* the note is a courtesy */ } }
   return r;
-}
-
-async function queue(db: Db, c: { id: string; lead_id: string }, body: string, opts: { ai: boolean; sendAfter?: Date; workflowStepRunId?: string }) {
-  const { data } = await db.from('sms_messages').insert({
-    conversation_id: c.id, lead_id: c.lead_id, direction: 'out', body, status: 'queued', ai: opts.ai, send_after: (opts.sendAfter ?? new Date()).toISOString(),
-    ...(opts.workflowStepRunId ? { workflow_step_run_id: opts.workflowStepRunId } : {}),
-  }).select('id').single();
-  await db.from('sms_conversations').update({ last_outbound_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', c.id);
-  return data?.id as string | undefined;
-}
-async function note(db: Db, leadId: string, body: string, metadata: Record<string, unknown> = {}) {
-  await db.from('lead_activities').insert({ lead_id: leadId, type: 'system', body, metadata: { sms: true, ...metadata } });
 }
 
 interface Snapshot { clientName?: string; industry?: string; questions?: { id: string; headline?: string; options?: { value?: string; label?: string }[] }[] }
@@ -218,8 +178,8 @@ export async function handleInbound(db: Db, input: InboundInput, deps: InboundDe
       .in('status', ['sent', 'sending', 'queued']).gte('created_at', new Date(now.getTime() - 30 * 60_000).toISOString()).order('created_at', { ascending: false }).limit(20);
     if ((recentOut ?? []).some((m: { body: string }) => normalizeBody(m.body) === normalizeBody(body))) return { handled: true, reason: 'echo' };
   }
-  const c = convo as { id: string; lead_id: string; sender_name: string; status: string; ai_turns: number; mode?: string | null; call_time_preference?: string | null; workflow_owned?: boolean; contractor_id?: string | null };
-  const { data: inRow } = await db.from('sms_messages').insert({ conversation_id: c.id, lead_id: c.lead_id, direction: 'in', body, status: 'received', external_guid: input.guid, sent_at: input.receivedAt ?? now.toISOString() }).select('id').single();
+  const c = convo as { id: string; lead_id: string | null; prospect_id?: string | null; sender_name: string; status: string; ai_turns: number; mode?: string | null; call_time_preference?: string | null; workflow_owned?: boolean; contractor_id?: string | null };
+  const { data: inRow } = await db.from('sms_messages').insert({ conversation_id: c.id, lead_id: c.lead_id, ...(c.prospect_id ? { prospect_id: c.prospect_id } : {}), direction: 'in', body, status: 'received', external_guid: input.guid, sent_at: input.receivedAt ?? now.toISOString() }).select('id').single();
   await db.from('sms_conversations').update({ last_inbound_at: now.toISOString(), updated_at: now.toISOString() }).eq('id', c.id);
 
   if (isOptOut(body)) {
@@ -237,17 +197,36 @@ export async function handleInbound(db: Db, input: InboundInput, deps: InboundDe
     return { handled: true, reason: 'resubscribed' };
   }
   if (c.status === 'opted_out') return { handled: true, reason: 'opted_out' };
+  // A contractor we texted about a sales meeting: never the homeowner assistant or workflows.
+  if (c.prospect_id || !c.lead_id) {
+    if (isHelp(body)) { await queue(db, c, helpReply(c.sender_name), { ai: false }); return { handled: true, replied: true }; }
+    return handleProspectReply(db, c, body, now);
+  }
+  const lead = { ...c, lead_id: c.lead_id };
   // A real reply: let workflows see it (a "wait for a reply" step, or a workflow that starts on replies). Never throws.
-  await emitReplyEvent(db, c, (inRow as { id: string } | null)?.id ?? null, now);
+  await emitReplyEvent(db, lead, (inRow as { id: string } | null)?.id ?? null, now);
   if (isHelp(body)) { await queue(db, c, helpReply(c.sender_name), { ai: false }); return { handled: true, replied: true }; }
+  // "YES" / "R" to an appointment reminder.
+  const reminderReply = await handleLeadReminderReply(db, c, body, now);
+  if (reminderReply) return reminderReply;
   // A person owns this conversation now: store the message, flag it, no AI reply.
   // A workflow started this conversation and is handling replies itself (the assistant was not asked to take over).
   if (c.workflow_owned) return { handled: true, reason: 'workflow_owned' };
+  // Closed by the no-reply follow-ups: they replied after all, so the assistant picks the conversation back up.
+  if (c.status === 'closed' && (await closedByFollowUps(db, c.id))) {
+    await db.from('sms_conversations').update({ status: 'active', updated_at: now.toISOString() }).eq('id', c.id);
+    c.status = lead.status = 'active';
+  }
   if (c.status !== 'active') {
     await note(db, c.lead_id, `New text from the lead: “${body.slice(0, 300)}”`, { needs_attention: true });
     return { handled: true, reason: `status_${c.status}` };
   }
-  return replyWithAgent(db, c, deps, now);
+  return replyWithAgent(db, lead, deps, now);
+}
+
+async function closedByFollowUps(db: Db, conversationId: string) {
+  const { data } = await db.from('sms_reminders').select('id').eq('kind', 'no_reply').eq('ref_id', conversationId).eq('step', 'final').eq('status', 'queued').limit(1);
+  return (data ?? []).length > 0;
 }
 
 /** Tell the workflow engine a lead replied by text (message.received). Best effort: a failure never affects texting. */
