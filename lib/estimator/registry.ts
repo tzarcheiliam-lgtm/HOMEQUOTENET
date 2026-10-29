@@ -1,8 +1,11 @@
+import { HOMEQUOTE_BATHROOM_ESTIMATOR } from '@/content/estimators/homequote-bathroom';
 import { POOL_MASTERS_ESTIMATOR } from '@/content/estimators/pool-masters';
+import { BATHROOM_CATALOG } from './catalog/bathroom.ts';
 import { POOL_CATALOG } from './catalog/pool.ts';
 import { applyContractorConfig } from './config.ts';
+import { BATHROOM_TEMPLATE } from './templates/bathroom.ts';
 import { POOL_TEMPLATE } from './templates/pool.ts';
-import type { ContractorEstimatorConfig, EstimatorTemplate } from './types.ts';
+import type { ContractorEstimatorConfig, EstimatorCatalog, EstimatorTemplate, EstimatorTrade } from './types.ts';
 
 export type RegisteredEstimator = {
   /** Template already merged with the contractor's settings. */
@@ -10,13 +13,21 @@ export type RegisteredEstimator = {
   contractor: ContractorEstimatorConfig;
 };
 
+/** The default template and option catalog per trade (kitchen slots in here). */
+export const TEMPLATES: Record<EstimatorTrade, { template: EstimatorTemplate; catalog: EstimatorCatalog }> = {
+  pool: { template: POOL_TEMPLATE, catalog: POOL_CATALOG },
+  bathroom: { template: BATHROOM_TEMPLATE, catalog: BATHROOM_CATALOG },
+};
+
 /*
  * Published estimators. For now each is a config file in content/estimators/
- * merged onto the pool template; self-serve contractors will later load their
- * saved config here instead. Server-safe: no client-only imports.
+ * merged onto its trade's template (config.trade, default pool); self-serve
+ * contractors will later load their saved config here instead. Server-safe:
+ * no client-only imports.
  */
 const CONTRACTORS: Record<string, ContractorEstimatorConfig> = {
   [POOL_MASTERS_ESTIMATOR.slug]: POOL_MASTERS_ESTIMATOR,
+  [HOMEQUOTE_BATHROOM_ESTIMATOR.slug]: HOMEQUOTE_BATHROOM_ESTIMATOR,
 };
 
 /** Slugs with a published estimator (used by pages and the lead route). */
@@ -26,5 +37,8 @@ export const ESTIMATOR_SLUGS: readonly string[] = Object.keys(CONTRACTORS);
 export function getEstimator(slug: string): RegisteredEstimator | null {
   if (!Object.hasOwn(CONTRACTORS, slug)) return null;
   const contractor = CONTRACTORS[slug];
-  return { template: applyContractorConfig(POOL_TEMPLATE, contractor, POOL_CATALOG), contractor };
+  const trade = contractor.trade ?? 'pool';
+  if (!Object.hasOwn(TEMPLATES, trade)) return null;
+  const { template, catalog } = TEMPLATES[trade];
+  return { template: applyContractorConfig(template, contractor, catalog), contractor };
 }

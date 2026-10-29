@@ -1,18 +1,29 @@
+import type { ContractorEstimatorConfig } from '@/lib/estimator/types';
+
 /**
- * Contractor facts the branded estimator page shows (header, hero trust row,
- * footer). Only facts the contractor has published: Pool Masters LA's come
- * from its brochure (V3): "Licensed & insured", "Serving Southern California
- * since 2010", "Complimentary on-site estimates". Nothing here is invented;
- * a contractor without an entry simply shows no trust row.
+ * Trust facts the branded estimator page shows (header, hero trust row).
+ * Only facts the business has published: Pool Masters LA's come from its
+ * brochure (V3): "Licensed & insured", "Serving Southern California since
+ * 2010", "Complimentary on-site estimates". HomeQuote Network is a matching
+ * network, not a contractor, so its facts are about the service only (no
+ * license, years or reviews of its own). Nothing here is invented; a business
+ * without facts simply shows no trust row.
  *
- * TODO: move to ContractorEstimatorConfig (e.g. `trustFacts`) so it sits with
- * the rest of the contractor's settings in content/estimators/.
+ * A config's own `facts` win (ContractorEstimatorConfig.facts); this table is
+ * the fallback for callers that only have a slug.
  */
 const FACTS: Record<string, readonly string[]> = {
   'pool-masters': ['Licensed & insured', 'Serving SoCal since 2010', 'Free on-site estimate'],
+  'bathroom-remodel': ['Free in-home consultation', 'No obligation', 'Free to use'],
 };
 
-export function contractorFacts(slug: string): readonly string[] {
+/** A config that may carry its own trust facts. */
+type FactsSource = Pick<ContractorEstimatorConfig, 'slug'> & { facts?: readonly string[] };
+
+/** The trust facts for a config (its own `facts` first) or a slug. Unknown and prototype slugs have none. */
+export function contractorFacts(source: string | FactsSource): readonly string[] {
+  if (typeof source !== 'string' && Array.isArray(source.facts)) return source.facts;
+  const slug = typeof source === 'string' ? source : source.slug;
   return Object.hasOwn(FACTS, slug) ? FACTS[slug]! : [];
 }
 

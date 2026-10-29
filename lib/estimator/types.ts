@@ -20,11 +20,13 @@
  * - interior_sqft: pool interior surface (floor + walls), e.g. plaster, pebble
  * - perimeter_lf:  pool edge length, e.g. coping, waterline tile
  * - deck_sqft:     deck area from the deck-size answer, e.g. pavers
+ * - floor_sqft:    room floor area, length x width from the size preset or typed
+ *                  dimensions (bathroom), e.g. floor tile
  * - linear_ft:     other run lengths with a default quantity, e.g. seating wall
  * - each:          per item with a default quantity, e.g. LED lights
  * - flat:          one price, e.g. automation, Baja shelf
  */
-export type PriceUnit = 'interior_sqft' | 'perimeter_lf' | 'deck_sqft' | 'linear_ft' | 'each' | 'flat';
+export type PriceUnit = 'interior_sqft' | 'perimeter_lf' | 'deck_sqft' | 'floor_sqft' | 'linear_ft' | 'each' | 'flat';
 
 /** Whole US dollars per unit. `quantity` is the default for `each` and `linear_ft` (1 if absent). */
 export type Price = { unit: PriceUnit; low: number; high: number; quantity?: number };
@@ -32,6 +34,9 @@ export type Price = { unit: PriceUnit; low: number; high: number; quantity?: num
 /* ------------------------------------------------------------------ */
 /* Questions                                                           */
 /* ------------------------------------------------------------------ */
+
+/** A condition on another question's picks (EstimatorOption.siteVisitWhen). */
+export type SiteVisitWhen = { questionId: string; anyOf: string[] };
 
 export type EstimatorOption = {
   id: string;
@@ -41,6 +46,14 @@ export type EstimatorOption = {
   price?: Price;
   /** Picking this flags the estimate for a site visit; the text is shown to the homeowner. */
   siteVisit?: string;
+  /**
+   * Flag siteVisit only when this (visible) question has one of these picks,
+   * e.g. a freestanding tub only in a small bathroom. A list flags when any
+   * one of its conditions holds. On the size-role question, valid typed
+   * dimensions count as the size they read as (sizeClassFor), so "Small" with
+   * a typed 14 x 12 ft room is large. Absent = always.
+   */
+  siteVisitWhen?: SiteVisitWhen | SiteVisitWhen[];
   /** Visual for the option: a swatch id from components/estimator/swatches.tsx. */
   swatch?: string;
   /** Optional photo (public path) shown on the option card. */
@@ -235,12 +248,27 @@ export type OptionOverride = {
 /** A look photo; `thumb` is an optional smaller copy the picker tiles load instead of `src`. */
 export type GalleryImage = { src: string; alt: string; caption?: string; thumb?: string };
 
+/** Trades with a template (lib/estimator/registry.ts TEMPLATES). Kitchen slots in here later. */
+export type EstimatorTrade = 'pool' | 'bathroom';
+
 export type ContractorEstimatorConfig = {
   /** URL segment, e.g. "pool-masters". */
   slug: string;
+  /** Which template + catalog the config is merged onto. Default 'pool'. */
+  trade?: EstimatorTrade;
   contractorName: string;
-  /** Shown on the page, e.g. "CSLB #1112793". */
+  /**
+   * Shown on the page, e.g. "CSLB #1112793". For a `network` it describes the
+   * service instead ("Connects you with licensed local contractors") and is
+   * never shown as a credential.
+   */
   licenseLabel: string;
+  /**
+   * A contractor-matching network (HomeQuote Network), not a contractor: the
+   * header, footer and result show licenseLabel as a plain line, never as the
+   * business's own license.
+   */
+  network?: boolean;
   phone?: string;
   website?: string;
   logoUrl?: string;
@@ -269,4 +297,6 @@ export type ContractorEstimatorConfig = {
   packages?: EstimatorPackage[];
   /** "Which look do you like?" photos (not priced). */
   gallery?: GalleryImage[];
+  /** Short trust facts shown in the header and hero; only published, truthful ones. */
+  facts?: string[];
 };

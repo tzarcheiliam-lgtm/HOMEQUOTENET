@@ -8,7 +8,7 @@ import type {
   PriceUnit,
 } from './types.ts';
 import { CUSTOM_PACKAGE_ID, POOL_SHAPES, POOL_SIZES } from './types.ts';
-import { poolGeometry } from './geometry.ts';
+import { poolGeometry, sizeClassFor } from './geometry.ts';
 
 /** Valid picks for a question: unknown ids dropped, a single question keeps its first pick. */
 export function picksFor(q: EstimatorQuestion, answers: Answers): string[] {
@@ -70,13 +70,17 @@ function cents(n: number): number {
  * - Only visible questions count; stale answers to hidden ones are ignored.
  * - The package and scope questions only steer, they never produce lines.
  * - Quantity per unit: interior_sqft, perimeter_lf and deck_sqft come from the
- *   geometry, linear_ft and each use price.quantity (default 1), flat is 1.
+ *   geometry, floor_sqft is the room floor (geometry length x width), linear_ft
+ *   and each use price.quantity (default 1), flat is 1.
  *   Quantities are rounded to whole units; line low/high = unit price x quantity.
  * - A deck_sqft line with no deck area yet (deck size unanswered) is skipped and
  *   leaves the estimate incomplete, so the range never shows a deck at $0.
  * - Totals add the lines, apply minimumJob, then round the low end down and the
  *   high end up to roundTo (neither end ends below minimumJob). With no lines,
  *   low and high are null.
+ * - An option's siteVisit with siteVisitWhen only counts while one of its
+ *   conditions holds: that question is visible and has one of the listed picks
+ *   (on the size question, typed dimensions count as their size class).
  * - status: incomplete (a shown question is unanswered) > site_visit > ready.
  */
 export function computeEstimate(template: EstimatorTemplate, input: EstimateInput): Estimate {
@@ -96,6 +100,8 @@ export function computeEstimate(template: EstimatorTemplate, input: EstimateInpu
         return Math.round(geometry.perimeterFt);
       case 'deck_sqft':
         return Math.round(geometry.deckSqft);
+      case 'floor_sqft':
+        return Math.round(geometry.lengthFt * geometry.widthFt);
       case 'flat':
         return 1;
       default:
@@ -110,7 +116,14 @@ export function computeEstimate(template: EstimatorTemplate, input: EstimateInpu
       const opt = q.options.find((o) => o.id === id)!;
       // "Not sure" on size needs no measuring visit once the homeowner typed valid dimensions.
       const measured = q.role === 'size' && geometry.source === 'dimensions';
-      if (opt.siteVisit && !measured && !seenSiteVisit.has(opt.siteVisit)) {
+      const conditions = opt.siteVisitWhen ? [opt.siteVisitWhen].flat() : [];
+      const applies = conditions.length === 0 || conditions.some((when) => {
+        const whenQ = questions.find((x) => x.id === when.questionId);
+        if (!whenQ) return false;
+        const whenPicks = whenQ.role === 'size' && geometry.source === 'dimensions' ? [sizeClassFor(template, geometry)] : picksFor(whenQ, input.answers);
+        return whenPicks.some((p) => when.anyOf.includes(p));
+      });
+      if (opt.siteVisit && applies && !measured && !seenSiteVisit.has(opt.siteVisit)) {
         seenSiteVisit.add(opt.siteVisit);
         siteVisitItems.push({ questionId: q.id, label: opt.siteVisit });
       }
@@ -162,7 +175,7 @@ export function computeEstimate(template: EstimatorTemplate, input: EstimateInpu
 /* Template validation                                                 */
 /* ------------------------------------------------------------------ */
 
-const PRICE_UNITS: readonly PriceUnit[] = ['interior_sqft', 'perimeter_lf', 'deck_sqft', 'linear_ft', 'each', 'flat'];
+const PRICE_UNITS: readonly PriceUnit[] = ['interior_sqft', 'perimeter_lf', 'deck_sqft', 'floor_sqft', 'linear_ft', 'each', 'flat'];
 const ROLES = ['project', 'shape', 'size', 'package', 'scope', 'deckSize'] as const;
 
 /** Problems with a template as readable strings (empty = valid). */
@@ -200,6 +213,22 @@ export function validateTemplate(template: EstimatorTemplate): string[] {
       }
     }
   });
+
+  // siteVisitWhen must point at a question and one of its options.
+  for (const q of qs) {
+    for (const o of q.options) {
+      for (const when of o.siteVisitWhen ? [o.siteVisitWhen].flat() : []) {
+        const target = qs.find((x) => x.id === when.questionId);
+        if (!target) {
+          problems.push(`Option "${q.id}.${o.id}" has siteVisitWhen on unknown question "${when.questionId}".`);
+          continue;
+        }
+        for (const id of when.anyOf) {
+          if (!target.options.some((x) => x.id === id)) problems.push(`Option "${q.id}.${o.id}" has siteVisitWhen on unknown option "${target.id}.${id}".`);
+        }
+      }
+    }
+  }
 
   // Prices.
   for (const q of qs) {

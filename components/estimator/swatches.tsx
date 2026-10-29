@@ -1,4 +1,5 @@
 import { useId, type CSSProperties } from 'react';
+import { BATH_METAL_COLORS, BATH_TEXTURES, bathOptionTexture } from '@/lib/estimator/scene/bath/textures';
 import { TEXTURES } from '@/lib/estimator/scene/textures';
 import { optionMaterial } from './scene/materials';
 
@@ -313,6 +314,59 @@ export function MaterialSampler({ questionId, optionIds, className }: { question
           <MaterialSample key={id} questionId={questionId} optionId={id} className="h-full min-w-0 flex-1" />
         ))}
       </span>
+    </span>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Bathroom materials                                                  */
+/* ------------------------------------------------------------------ */
+
+/** How many feet of each bathroom material a tile shows (a few tiles across, a wall of paint). */
+const BATH_VIEW_FT: Record<string, number> = { showerTile: 2.5, floor: 4, paint: 4, counter: 2.5, vanityFinish: 2.5 };
+
+/** True when a bathroom option has a material sample (BathSample draws something). */
+export function hasBathSample(questionId: string, optionId: string): boolean {
+  return Boolean(bathOptionTexture(questionId, optionId)) || (questionId === 'metal' && Object.hasOwn(BATH_METAL_COLORS, optionId));
+}
+
+/**
+ * An option tile's picture of a bathroom material: a crop of the same texture
+ * the live bathroom picture paints (tile, floor, paint, counter, cabinet
+ * finish) at a believable scale, on its mean colour while the file loads, or
+ * a brushed-metal chip for a fixture finish. Null for anything else.
+ * Decorative: the tile's label names the material.
+ */
+export function BathSample({ questionId, optionId, className }: { questionId: string; optionId: string; className?: string }) {
+  if (questionId === 'metal') {
+    if (!Object.hasOwn(BATH_METAL_COLORS, optionId)) return null;
+    const color = BATH_METAL_COLORS[optionId];
+    return (
+      <span aria-hidden="true" data-bath-metal={optionId} className={`relative block overflow-hidden ${className ?? ''}`} style={{ backgroundColor: '#e9e6e0' }}>
+        {/* A brushed bar of the finish with a soft highlight, the way a faucet catches the light. */}
+        <span
+          className="absolute inset-x-[14%] top-1/2 h-[38%] -translate-y-1/2 rounded-full shadow-[0_6px_14px_-6px_rgba(0,0,0,0.55)]"
+          style={{ backgroundColor: color, backgroundImage: 'linear-gradient(180deg, rgba(255,255,255,.55), rgba(255,255,255,0) 45%, rgba(0,0,0,.22))' }}
+        />
+      </span>
+    );
+  }
+  const id = bathOptionTexture(questionId, optionId);
+  if (!id) return null;
+  const tex = BATH_TEXTURES[id];
+  const viewFt = BATH_VIEW_FT[questionId] ?? 3;
+  return (
+    <span
+      aria-hidden="true"
+      data-material={id}
+      className={`relative block overflow-hidden ${className ?? ''}`}
+      style={{
+        backgroundColor: tex.fallback,
+        ...(tex.src ? { backgroundImage: `url(${tex.src})`, backgroundSize: `${pct(Math.min(1, tex.realFt / viewFt))} auto`, backgroundPosition: 'center' } : {}),
+      }}
+    >
+      {/* Soft room light from the top left. */}
+      <span className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(135deg, rgba(255,255,255,.18), transparent 45%, rgba(0,0,0,.12))' }} />
     </span>
   );
 }

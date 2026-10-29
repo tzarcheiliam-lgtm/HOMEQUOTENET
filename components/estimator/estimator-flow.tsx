@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
-import { buildScene } from '@/lib/estimator/scene/scene';
 import { estimatorConsentText, submitEstimatorLead, type EstimatorLeadRequest } from '@/lib/estimator/lead-client';
 import type { Answers, ContractorEstimatorConfig, EstimatorQuestion, EstimatorTemplate } from '@/lib/estimator/types';
 import { cn } from '@/lib/utils';
-import { designSummary, isVisualQuestion, optionLabeler, optionPhrase, previewAnswers, scrollDelta } from './builder';
+import { optionLabeler, previewAnswers, scrollDelta } from './builder';
+import { getTradeBuilder, type ExampleMedia } from './builders';
 import { Loader2 } from 'lucide-react';
 import { flowStages, rewardSteps, stageFraction, unlockCopy, type FlowPhase, type PhotoProgress } from './builder-progress';
 import { BuilderStyles } from './motion';
@@ -108,30 +108,19 @@ function holdScrollAnchoring() {
   }, 1500);
 }
 
-/** Questions whose choices are about the pool's edge and finish: the camera moves in close for them. */
-const CLOSE_UP_IDS = new Set(['surface', 'tile', 'coping']);
-
 /** The photo's arrival is announced by the picture's own status line; the tracker stays quiet about it. */
 const QUIET_REWARDS: readonly string[] = ['photo'];
-
-const SHAPE_WORD: Record<string, string> = { Rectangle: 'rectangular', 'L-shape': 'L-shaped', Freeform: 'freeform' };
-
-/** "Sam, here’s your freeform pool": names the outcome (their shape, from the design list) when it can. */
-export function resultHeading(firstName: string, items: readonly { label: string; value: string }[]): string {
-  const shape = SHAPE_WORD[items.find((i) => i.label === 'Pool')?.value.split(',')[0]?.trim() ?? ''];
-  const pool = shape ? `${shape} pool` : 'pool';
-  const name = firstName.trim();
-  return name ? `${name}, here’s your ${pool}` : `Here’s your ${pool}`;
-}
 
 /** Hover-intent delays: a quick sweep across tiles does not flicker the picture. */
 const PREVIEW_IN_MS = 70;
 const PREVIEW_OUT_MS = 140;
 
 /**
- * The homeowner estimator, one screen at a time. For a pool template it is a
- * live builder: the top-down picture of the pool (ScenePanel) sits beside the
- * questions on desktop and pinned above them on phones, redraws on every pick,
+ * The homeowner estimator, one screen at a time. For a trade with a live
+ * builder adapter (getTradeBuilder: pool, bathroom) it is a live builder: the
+ * picture of their project (ScenePanel, drawn by the adapter: the top-down
+ * pool, the eye-level bathroom) sits beside the questions on desktop and
+ * pinned above them on phones, redraws on every pick,
  * previews an option on hover or keyboard focus, and becomes the finished
  * design on the result (save as PNG, share, and the realistic photo, which
  * starts by itself when the lead response carries a render token).
@@ -146,6 +135,7 @@ export function EstimatorFlow({
   contractor,
   embedded = false,
   rendersEnabled = false,
+  example,
   seed,
 }: {
   template: EstimatorTemplate;
@@ -153,12 +143,16 @@ export function EstimatorFlow({
   embedded?: boolean;
   /** See EstimatorProps.rendersEnabled. */
   rendersEnabled?: boolean;
+  /** See EstimatorProps.example. */
+  example?: ExampleMedia | null;
   seed?: EstimatorSeed;
 }) {
   const gallery = contractor.gallery?.filter((g) => g.src) ?? [];
   const hasGallery = gallery.length > 0;
   const immediate = contractor.revealRange === 'immediately';
-  const builder = template.trade === 'pool';
+  // The trade's adapter (everything that differs between pool and bathroom); null = the plain flow.
+  const trade = getTradeBuilder(template.trade);
+  const builder = trade !== null;
 
   const [state, setState] = useState<FlowState>(() => ({
     ...initialFlowState(seed?.answers, contractor.adMeasurement === 'opt_out'),
@@ -197,7 +191,8 @@ export function EstimatorFlow({
   // Phones pin the picture over the questions; on the ZIP and contact screens it scrolls away
   // instead, so the on-screen keyboard never hides the field being typed in (WCAG 2.4.11).
   const pinned = builder && !result && (current.kind === 'questions' || current.kind === 'looks');
-  const focus = current.kind === 'questions' && current.questions.some((q) => CLOSE_UP_IDS.has(q.id)) ? 'pool' : 'yard';
+  const focusOn = trade && current.kind === 'questions' ? current.questions.find((q) => trade.closeUpIds.has(q.id))?.id : undefined;
+  const focus = focusOn ? 'close' : 'overview';
 
   // Move focus to the new heading when the screen changes (not on first paint). With the live
   // builder the browser's own focus scroll would tuck the heading under the pinned picture, so
@@ -244,6 +239,14 @@ export function EstimatorFlow({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- runs on screen changes only; pinned/embedded follow from them
   }, [current.id, result, builder]);
 
+  // The page header's "Start my design" link means nothing once the design is done: the flow marks the page.
+  useEffect(() => {
+    if (!result) return;
+    const root = document.documentElement;
+    root.setAttribute('data-estimator-done', '');
+    return () => root.removeAttribute('data-estimator-done');
+  }, [result]);
+
   // After a failed submit, focus the first invalid field.
   useEffect(() => {
     if (focusErrorTick === 0) return;
@@ -258,17 +261,17 @@ export function EstimatorFlow({
     setPreview(null);
   };
   const requestPreview = (q: EstimatorQuestion, optionId: string | null) => {
-    if (!builder || !isVisualQuestion(q)) return;
+    if (!trade || !trade.isVisual(q)) return;
     clearTimeout(previewTimer.current);
     previewTimer.current = setTimeout(() => setPreview(optionId ? { q, optionId } : null), optionId ? PREVIEW_IN_MS : PREVIEW_OUT_MS);
   };
   const ghost = useMemo(() => {
-    if (!preview) return null;
-    const answers = previewAnswers(template, state.answers, preview.q, preview.optionId);
+    if (!preview || !trade) return null;
+    const answers = previewAnswers(template, state.answers, preview.q, preview.optionId, trade.isVisual);
     if (!answers) return null;
-    const label = optionPhrase(preview.q.role === 'package' ? 'package' : preview.q.id, preview.optionId, labeler);
+    const label = trade.optionPhrase(preview.q.role === 'package' ? 'package' : preview.q.id, preview.optionId, labeler);
     return { answers, label };
-  }, [preview, template, state.answers, labeler]);
+  }, [preview, template, state.answers, labeler, trade]);
 
   const update = (patch: Partial<FlowState>, clear: string[] = []) => {
     setState((s) => ({ ...s, ...patch }));
@@ -350,7 +353,7 @@ export function EstimatorFlow({
   // The live builder keeps the price for the end and makes the lead screens the "unlock" step
   // (with revealRange "immediately" the range is live all along, so there is nothing to unlock).
   const unlocking = builder && !immediate;
-  const unlock = unlockCopy(rendersEnabled);
+  const unlock = unlockCopy(rendersEnabled, trade?.copy.subject);
   const nextLabel =
     current.kind === 'contact'
       ? unlocking
@@ -377,7 +380,7 @@ export function EstimatorFlow({
   }
   const percent = Math.min(100, progress.current.percent);
   // Live builder: named stages and the rewards being earned.
-  const { stages, stageOf } = useMemo(() => flowStages(screens), [screens]);
+  const { stages, stageOf } = useMemo(() => flowStages(screens, trade?.copy.stageLabel), [screens, trade]);
   const stagePart = stageFraction(screens, stageOf, current.id);
   const flowPhase: FlowPhase = result ? 'result' : current.kind === 'zip' || current.kind === 'contact' ? 'unlock' : 'design';
   const rewards = useMemo(() => rewardSteps(flowPhase, rendersEnabled, photo), [flowPhase, rendersEnabled, photo]);
@@ -388,13 +391,22 @@ export function EstimatorFlow({
   const slide = useRef({ index, className: 'eb-fwd' });
   if (slide.current.index !== index) slide.current = { index, className: index > slide.current.index ? 'eb-fwd' : 'eb-back' };
 
-  const designItems = useMemo(
-    () => (builder && result ? designSummary(buildScene(template, { answers: state.answers, dimensions: dims.dimensions }), labeler) : []),
-    [builder, result, template, state.answers, dims.dimensions, labeler],
+  // The finished design (result only): its spec names the heading, its summary is the "Your design" list.
+  const resultSpec = useMemo(
+    () => (trade && result ? trade.buildSpec(template, { answers: state.answers, dimensions: dims.dimensions }) : null),
+    [trade, result, template, state.answers, dims.dimensions],
   );
+  const designItems = useMemo(() => (trade && resultSpec !== null ? trade.designSummary(resultSpec, labeler) : []), [trade, resultSpec, labeler]);
 
   const unlockPreview = unlocking ? (
-    <UnlockPreview template={template} answers={state.answers} dimensions={dims.dimensions} rendersEnabled={rendersEnabled} promise={unlock.promise} />
+    <UnlockPreview
+      template={template}
+      builder={trade ?? undefined}
+      answers={state.answers}
+      dimensions={dims.dimensions}
+      rendersEnabled={rendersEnabled}
+      promise={unlock.promise}
+    />
   ) : undefined;
 
   /* ---- Layout ---- */
@@ -449,6 +461,7 @@ export function EstimatorFlow({
             {result ? (
               <ResultScene
                 template={template}
+                builder={trade ?? undefined}
                 answers={state.answers}
                 dimensions={dims.dimensions}
                 night={night}
@@ -462,14 +475,17 @@ export function EstimatorFlow({
             ) : (
               <ScenePanel
                 template={template}
+                builder={trade ?? undefined}
                 answers={state.answers}
                 dimensions={dims.dimensions}
                 preview={ghost}
                 night={night}
                 onNightChange={setNight}
                 focus={focus}
+                focusOn={focusOn}
                 stepKey={current.id}
                 examplePhoto={rendersEnabled}
+                example={example}
               />
             )}
           </div>
@@ -515,7 +531,7 @@ export function EstimatorFlow({
           {result ? (
             <div className={cn(card, builder && 'eb-rise')}>
               <h2 ref={headingRef} tabIndex={-1} className="mb-4 text-2xl font-semibold tracking-tight text-balance focus:outline-none">
-                {builder ? resultHeading(state.contact.firstName, designItems) : 'Your ballpark estimate'}
+                {trade ? trade.resultHeading(state.contact.firstName, designItems, resultSpec) : 'Your ballpark estimate'}
               </h2>
               {/* The builder says "Example prices" once, right under the figure (ResultScreen). */}
               {!template.pricesConfirmed && !builder ? (
@@ -530,6 +546,7 @@ export function EstimatorFlow({
                 firstName={state.contact.firstName.trim() || undefined}
                 embedded={embedded}
                 builder={builder}
+                copy={trade?.copy}
                 design={
                   designItems.length ? (
                     // Desktop shows the list under the picture instead (ResultScene).
@@ -576,6 +593,7 @@ export function EstimatorFlow({
                       onPick={onPick}
                       showPrices={immediate}
                       onPreview={builder ? requestPreview : undefined}
+                      optionVisual={trade?.optionVisual}
                     />
                     {current.questions.some((q) => q.role === 'size') ? (
                       <SizeDimensions
@@ -585,6 +603,7 @@ export function EstimatorFlow({
                         value={state.dimensions}
                         onChange={(dimensions) => update({ dimensions })}
                         hint={dims.hint}
+                        using={Boolean(dims.dimensions)}
                       />
                     ) : null}
                   </>

@@ -29,6 +29,9 @@ export const BUILDER_CSS = `
 .eb-reveal{animation:eb-reveal .9s ${EASE} both}
 @keyframes eb-reveal{from{opacity:0;transform:scale(1.03);filter:blur(8px)}to{opacity:1;transform:none;filter:none}}
 .eb-bar{transition:width .6s ${EASE}}
+.eb-leave{animation:eb-leave .4s ease-out both}
+@keyframes eb-leave{from{opacity:1}to{opacity:0}}
+@media (prefers-reduced-motion:reduce){.eb-leave{animation:none;opacity:0}}
 @media (prefers-reduced-motion:reduce){.eb-fwd,.eb-back,.eb-rise,.eb-chip,.eb-glow,.eb-badge,.eb-shimmer,.eb-reveal{animation:none!important}.eb-bar{transition:none!important}}
 `;
 

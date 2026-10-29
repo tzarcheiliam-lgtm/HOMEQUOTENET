@@ -38,7 +38,12 @@ vi.mock('@/lib/supabase/admin', () => ({
 }));
 vi.mock('@/lib/estimator/registry', () => ({
   ESTIMATOR_SLUGS: [],
-  getEstimator: (slug: string) => (slug === 'fixture-pools' ? { template: FIXTURE_TEMPLATE, contractor: FIXTURE_CONTRACTOR } : null),
+  getEstimator: (slug: string) => {
+    if (slug === 'fixture-pools') return { template: FIXTURE_TEMPLATE, contractor: FIXTURE_CONTRACTOR };
+    // A bathroom estimator: only the trade matters to the render route.
+    if (slug === 'fixture-baths') return { template: { ...FIXTURE_TEMPLATE, trade: 'bathroom' }, contractor: { ...FIXTURE_CONTRACTOR, slug: 'fixture-baths', trade: 'bathroom' } };
+    return null;
+  },
 }));
 vi.mock('@/lib/funnels/server', () => ({
   hash: (s: string) => `h:${s}`, newToken: () => 'tok', readBody: async (r: Request) => r.json(), sameOrigin: () => m.sameOrigin,
@@ -55,7 +60,7 @@ vi.mock('@/lib/meta/audit.server', () => ({ directSendAudit: () => ({ reserve: a
 vi.mock('@/lib/meta/capi', async (orig) => ({ ...(await orig<typeof import('@/lib/meta/capi')>()), sendMetaEvent: vi.fn() }));
 
 import {
-  MAX_RENDER_IMAGE_BYTES, RENDER_PROMPT, RENDER_TOKEN_TTL_MS, dailyRenderCap, parseRenderImage, rendersEnabled,
+  BATHROOM_RENDER_PROMPT, MAX_RENDER_IMAGE_BYTES, RENDER_PROMPT, RENDER_TOKEN_TTL_MS, dailyRenderCap, parseRenderImage, renderPromptFor, rendersEnabled,
   signRenderToken, signTaskRef, verifyRenderToken, verifyTaskRef,
 } from '@/lib/estimator/render';
 import { POST as renderPost } from '@/app/api/estimator/[slug]/render/route';
@@ -189,6 +194,27 @@ describe('render tokens', () => {
   });
 });
 
+describe('render prompts', () => {
+  it('keeps the pool prompt exactly as it was', () => {
+    expect(RENDER_PROMPT).toBe([
+      'Turn this top-down design illustration into a photorealistic straight-down drone photograph of a Southern California backyard pool.',
+      'Keep exactly the same layout, framing, pool shape and size, materials, colours and objects: do not add, remove, move or resize anything.',
+      'Camera looks straight down from above, the same crop as the input.',
+      'Realistic clear turquoise water with soft light caustics on the pool floor and a gentle sun glint; crisp coping edges and waterline tile;',
+      'real paver, stone, concrete and wood textures with fine joints; natural grass, plants and trees; furniture as real outdoor furniture.',
+      'Soft natural shadows, bright midday Southern California light, true-to-life colours, sharp detail.',
+      'No text, no labels, no watermark, no people.',
+    ].join(' '));
+    expect(renderPromptFor('pool')).toBe(RENDER_PROMPT);
+  });
+  it('gives a bathroom an eye-level interior photo, and anything unknown the pool prompt', () => {
+    expect(renderPromptFor('bathroom')).toBe(BATHROOM_RENDER_PROMPT);
+    expect(BATHROOM_RENDER_PROMPT).toBe('Turn this bathroom design illustration into a photorealistic interior photograph of a newly remodeled bathroom, shot straight-on at eye level with a wide-angle lens. Keep exactly the same layout, fixtures, tile patterns, materials, colours and finishes; realistic grout lines, glass reflections, soft natural window light and warm accent lighting. No text, no people, no logos.');
+    expect(renderPromptFor('toString')).toBe(RENDER_PROMPT);
+    expect(renderPromptFor('')).toBe(RENDER_PROMPT);
+  });
+});
+
 describe('render image parsing', () => {
   it('accepts a real PNG data URL', () => {
     const parsed = parseRenderImage(pngUrl);
@@ -232,6 +258,15 @@ describe('POST /api/estimator/[slug]/render', () => {
     expect(JSON.stringify(insert.ops)).not.toMatch(/203\.0\.113/);
     const update = m.queries.find((q) => q.ops[0]?.[0] === 'update')!;
     expect(update.ops[0]![1][0]).toMatchObject({ metadata: { status: 'running', task_id: 'task_abc123' } });
+  });
+  it('picks the edit prompt by the estimator trade: an eye-level interior photo for a bathroom', async () => {
+    const res = await startReq({ renderToken: signRenderToken('fixture-baths', LEAD), image: pngUrl }, 'fixture-baths');
+    expect(res.status).toBe(200);
+    const sent = JSON.parse(String(kie.calls[1]!.init!.body));
+    expect(sent.input).toMatchObject({ prompt: BATHROOM_RENDER_PROMPT, aspect_ratio: '3:2', resolution: '2K' });
+    expect(sent.input.prompt).not.toMatch(/pool|drone|backyard/i);
+    // A pool token cannot spend a bathroom render (tokens are per estimator).
+    expect((await startReq({ renderToken: token(), image: pngUrl }, 'fixture-baths')).status).toBe(401);
   });
   it('answers disabled without KIE_API_KEY and calls nobody', async () => {
     vi.stubEnv('KIE_API_KEY', '');

@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { ChevronsLeftRight, Download, ExternalLink, Loader2, RotateCcw, Share2, Sparkles, X } from 'lucide-react';
 import { checkRender, startRender } from '@/lib/estimator/render-client';
-import { rasterizeScene } from '@/lib/estimator/scene/rasterize';
 import type { Answers, EstimatorTemplate, PoolDimensions } from '@/lib/estimator/types';
 import { cn } from '@/lib/utils';
-import { renderProgress, type DesignItem } from '../builder';
+import { renderProgress, type DesignItem, type RenderHelp } from '../builder';
+import type { TradeBuilder } from '../builders';
+import { POOL_COPY } from '../builders/pool';
 import type { PhotoProgress } from '../builder-progress';
 import {
   AUTO_RENDER_DELAY_MS,
@@ -18,11 +19,11 @@ import {
   type RenderPhase,
   type ShareEnv,
 } from '../builder-render';
-import { ScenePanel } from '../scene/scene-panel';
+import { builderFor, ScenePanel } from '../scene/scene-panel';
 import { BURST_MS, GLIDE_DELAY_MS, GLIDE_MS, PHOTO_PANEL_DELAY_MS, RevealStyles } from './reveal-styles';
 
-/** File name of the "Save my design" download. */
-export const DESIGN_FILE_NAME = 'my-pool-design.png';
+/** File name of the pool's "Save my design" download (each trade's is TradeCopy.designFile). */
+export const DESIGN_FILE_NAME = POOL_COPY.designFile;
 
 /** Quiet text action under the picture ("Save my design"). */
 const quietButton =
@@ -32,10 +33,8 @@ const glowButton =
 /** Round icon button on the photo (close, open full size). 44px tap target around a 36px circle. */
 const photoButton =
   "relative inline-flex size-9 items-center justify-center rounded-full bg-[#06122b]/80 text-white transition-colors before:absolute before:-inset-1 before:content-[''] hover:bg-[#06122b] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-white";
-/** Under the picture while the photo shows: says what it is (an AI render of their design, not their yard). */
-export const PHOTO_CAPTION = 'AI-rendered photo of your design. Final details are confirmed at your free on-site visit.';
-/** File name of the shared realistic photo. */
-const PHOTO_FILE_NAME = 'my-pool-photo.jpg';
+/** Under the pool's picture while the photo shows: says what it is (an AI render of their design, not their yard). */
+export const PHOTO_CAPTION = POOL_COPY.photoCaption;
 
 /** The "Your design" list: the visible choices in plain words. */
 export function DesignList({ items }: { items: DesignItem[] }) {
@@ -100,7 +99,7 @@ function prefersReducedMotion(): boolean {
  * overlay waits for the price to land, see ResultScene). `auto` is true while the current attempt is that automatic one:
  * its failures stay quiet. `start` is the manual retry.
  */
-function useRealisticPhoto(slug: string, renderToken: string | undefined, capture: () => Promise<string>) {
+function useRealisticPhoto(slug: string, renderToken: string | undefined, capture: () => Promise<string>, help: RenderHelp) {
   const [phase, setPhase] = useState<RenderPhase>(() => (shouldAutoRender(renderToken, autoStarted) ? { kind: 'preparing' } : { kind: 'idle' }));
   const [auto, setAuto] = useState(() => shouldAutoRender(renderToken, autoStarted));
   // When this attempt started (the developing clock ticks inside DevelopingPhoto, not here).
@@ -136,12 +135,13 @@ function useRealisticPhoto(slug: string, renderToken: string | undefined, captur
             cancelled: () => !alive.current,
           },
           setPhase,
+          { help },
         );
       } finally {
         busy.current = false;
       }
     },
-    [slug, renderToken, capture],
+    [slug, renderToken, capture, help],
   );
 
   useEffect(() => {
@@ -227,11 +227,17 @@ export function PhotoReveal({
   after,
   celebrate,
   onClose,
+  subject = 'pool',
+  photoLabel = 'Realistic photo',
 }: {
   before: string;
   after: string;
   celebrate: boolean;
   onClose: () => void;
+  /** What the photo shows ("pool", "bathroom"), for its alt text. */
+  subject?: string;
+  /** Badge on the photo half (TradeCopy.photoLabel). */
+  photoLabel?: string;
 }) {
   const [motion] = useState(() => celebrate && !prefersReducedMotion());
   const [pos, setPos] = useState(motion ? 0 : 50);
@@ -264,7 +270,7 @@ export function PhotoReveal({
     >
       {/* Plain img: the render is a remote image of unknown size, cropped to the frame. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={after} alt="AI-rendered realistic photo of your pool design" className={cn('absolute inset-0 size-full object-cover', motion && 'er-reveal')} />
+      <img src={after} alt={`AI-rendered realistic photo of your ${subject} design`} className={cn('absolute inset-0 size-full object-cover', motion && 'er-reveal')} />
       <div className="er-before absolute inset-0" style={{ clipPath: `inset(0 ${100 - pos}% 0 0)` }} aria-hidden="true">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={before} alt="" className="absolute inset-0 size-full object-cover" />
@@ -288,7 +294,7 @@ export function PhotoReveal({
       </span>
       <span className={cn(pillClass, 'right-2.5 bottom-2.5', motion && 'er-in')} style={motion ? { animationDelay: '700ms' } : undefined} aria-hidden="true">
         <Sparkles className="size-3.5 text-[#ffd666]" />
-        Realistic photo
+        {photoLabel}
       </span>
 
       <input
@@ -352,12 +358,12 @@ async function dataUrlFile(dataUrl: string, name: string): Promise<File> {
 }
 
 /** The photo as a file, when its host allows reading it from here; null otherwise. */
-async function photoFile(url: string): Promise<File | null> {
+async function photoFile(url: string, name: string): Promise<File | null> {
   try {
     const res = await fetch(url, { mode: 'cors' });
     if (!res.ok) return null;
     const blob = await res.blob();
-    return blob.type.startsWith('image/') ? new File([blob], PHOTO_FILE_NAME, { type: blob.type }) : null;
+    return blob.type.startsWith('image/') ? new File([blob], name, { type: blob.type }) : null;
   } catch {
     return null;
   }
@@ -379,6 +385,7 @@ async function photoFile(url: string): Promise<File | null> {
  */
 export function ResultScene({
   template,
+  builder: builderProp,
   answers,
   dimensions,
   night,
@@ -389,8 +396,11 @@ export function ResultScene({
   onPhotoProgress,
 }: {
   template: EstimatorTemplate;
+  /** The trade adapter; picked from template.trade when omitted. */
+  builder?: TradeBuilder<unknown>;
   answers: Answers;
   dimensions?: PoolDimensions;
+  /** True = the adapter's second lighting mode (pool Night, bath Evening). */
   night: boolean;
   onNightChange: (night: boolean) => void;
   slug: string;
@@ -399,16 +409,19 @@ export function ResultScene({
   designItems?: DesignItem[];
   onPhotoProgress?: (progress: PhotoProgress) => void;
 }) {
+  const builder = builderProp ?? builderFor(template);
+  const { copy } = builder;
   const frame = useRef<HTMLDivElement>(null);
-  const getSvg = useCallback(
-    () => frame.current?.querySelector<SVGSVGElement>('svg.ps-root') ?? frame.current?.querySelector<SVGSVGElement>('svg') ?? null,
-    [],
-  );
+  // The scene in the frame as a PNG (the adapter knows whether it is an SVG or a canvas).
+  const snapshot = useCallback(() => {
+    const el = frame.current;
+    return el ? builder.rasterize(el) : Promise.reject(new Error('scene not found'));
+  }, [builder]);
   // Latest night value for the async snapshot (the prop changes under it once switched to day).
   const nightRef = useRef(night);
   nightRef.current = night;
-  // The render prompt asks for midday light, so a night snapshot would not match: switch to day for the
-  // snapshot, then back to the night view they chose.
+  // The render prompt asks for daylight, so a night/evening snapshot would not match: switch to day for the
+  // snapshot, then back to the view they chose.
   const capture = useCallback(async () => {
     const wasNight = nightRef.current;
     if (wasNight) {
@@ -417,14 +430,12 @@ export function ResultScene({
       await sleep(120);
     }
     try {
-      const svg = getSvg();
-      if (!svg) throw new Error('scene not found');
-      return await rasterizeScene(svg);
+      return await snapshot();
     } finally {
       if (wasNight) onNightChange(true);
     }
-  }, [getSvg, onNightChange]);
-  const { phase, auto, start, since } = useRealisticPhoto(slug, renderToken, capture);
+  }, [snapshot, onNightChange]);
+  const { phase, auto, start, since } = useRealisticPhoto(slug, renderToken, capture, copy);
   // The reveal is one moment at a time: the price counts up first, then the photo's progress appears.
   const [priceSettled, setPriceSettled] = useState(false);
   useEffect(() => {
@@ -452,12 +463,10 @@ export function ResultScene({
     setSaving(true);
     setNote(null);
     try {
-      const svg = getSvg();
-      if (!svg) throw new Error('scene not found');
-      const url = await rasterizeScene(svg);
+      const url = await snapshot();
       const a = document.createElement('a');
       a.href = url;
-      a.download = DESIGN_FILE_NAME;
+      a.download = copy.designFile;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -475,32 +484,29 @@ export function ResultScene({
   useEffect(() => {
     if (!done || !shareEnv?.canShareFiles || shareFile.current?.key === done.imageUrl) return;
     let cancelled = false;
-    void photoFile(done.imageUrl).then((file) => {
+    void photoFile(done.imageUrl, copy.photoFile).then((file) => {
       if (file && !cancelled) shareFile.current = { key: done.imageUrl, file };
     });
     return () => {
       cancelled = true;
     };
-  }, [done, shareEnv]);
+  }, [done, shareEnv, copy]);
 
   const plan = shareEnv ? sharePlan(shareEnv, Boolean(done)) : null;
   const share = async () => {
     if (sharing || !plan) return;
     setSharing(true);
     setNote(null);
-    const title = 'My pool design';
-    const text = done ? 'A realistic photo of my new pool design.' : 'My new pool design.';
+    const title = copy.shareTitle;
+    const text = done ? copy.sharePhotoText : copy.shareDesignText;
     try {
       if (plan === 'files') {
         let file = shareFile.current?.key === shareKey ? shareFile.current.file : null;
         let fresh = false;
         if (!file) {
           fresh = true;
-          if (done) file = await photoFile(done.imageUrl);
-          else {
-            const svg = getSvg();
-            if (svg) file = await dataUrlFile(await rasterizeScene(svg), DESIGN_FILE_NAME);
-          }
+          if (done) file = await photoFile(done.imageUrl, copy.photoFile);
+          else file = await dataUrlFile(await snapshot(), copy.designFile);
           if (file) shareFile.current = { key: shareKey, file };
         }
         if (file && navigator.canShare?.({ files: [file] })) {
@@ -551,6 +557,8 @@ export function ResultScene({
       before={done.before}
       after={done.imageUrl}
       celebrate={!reopened}
+      subject={copy.subject}
+      photoLabel={copy.photoLabel}
       onClose={() => {
         closedByUser.current = true;
         setShowRender(false);
@@ -629,6 +637,7 @@ export function ResultScene({
   return (
     <ScenePanel
       template={template}
+      builder={builder}
       answers={answers}
       dimensions={dimensions}
       night={night}
@@ -637,7 +646,7 @@ export function ResultScene({
       frameRef={frame}
       overlay={overlay}
       hideLighting={working || Boolean(done && showRender)}
-      caption={done && showRender ? PHOTO_CAPTION : undefined}
+      caption={done && showRender ? copy.photoCaption : undefined}
       footer={footer}
     />
   );

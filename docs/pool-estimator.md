@@ -181,6 +181,22 @@ and backyard sits beside the questions (pinned above them on phones) and redraws
   the on-site visit" stays under the picture
 - The builder's result keeps "Ballpark, not a quote" directly above the booking button; other trades keep the button last
 
+## Bathroom builder (`/estimator/bathroom-remodel`)
+
+The same live-builder experience for bathroom remodels, published for HomeQuote Network (a matching network, not a
+contractor). Full technical summary: `HOMEQUOTE_CONTEXT.md` §33, "Live bathroom builder". In short:
+
+- **Config** `content/estimators/homequote-bathroom.ts` (`trade: 'bathroom'`, `network: true`), template
+  `lib/estimator/templates/bathroom.ts` (example Southern California prices, `floor_sqft` unit, `siteVisitWhen` layout
+  checks), catalog `lib/estimator/catalog/bathroom.ts`. Leads file under the `bathroom-remodel` funnel; a cosmetic
+  "update the look" project is filed as `other` and goes to review.
+- **Trade adapters** (`components/estimator/builders/`): the flow and the scene panel never branch on the trade; the pool
+  adapter wraps the pool scene unchanged. A kitchen builder needs a template, a catalog, a config, an adapter and a scene.
+- **Picture**: an eye-level Canvas 2D bathroom (`components/estimator/scene/bath/`), drawn from `buildBathScene` and
+  `bathLayout`; instant draft frame on every pick, sharp frame when picks pause.
+- **Images**: all generated with kie.ai or drawn procedurally (`scripts/generate-bath-assets.mjs`), labelled as AI style
+  ideas or AI-rendered; never photos from the web.
+
 ## Open items
 
 - **Real prices.** All prices are examples until the owner fills in the price sheet.
