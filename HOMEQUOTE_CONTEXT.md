@@ -104,7 +104,7 @@ middleware.ts           Delegates to lib/supabase/middleware.ts (session refresh
 form), `/privacy`, `/terms`, `/adu-estimator` (homeowner ADU price estimator, see
 `docs/adu-estimator.md`: pricing in `lib/adu/pricing-config.ts`,
 in the sitemap, lead capture OFF until a destination is approved),
-`/estimator/[slug]` (instant pool estimator, `noindex` while prices are examples, see §33). Dark theme scoped to a `.hq` wrapper so it never
+`/estimator/[slug]` (instant pool estimator, `noindex` while prices are examples, see §33). `/redesign-demo` (`noindex` design demo of a homepage redesign: light "day sheet" direction in `app/(marketing)/redesign-demo/`, own `.ds` CSS scope, reuses `content/home.ts`; the live `/` is unchanged). Dark theme scoped to a `.hq` wrapper so it never
 touches the CRM's light shadcn tokens. Copy lives in `content/` so a new
 vertical/niche is a content file, not a rewrite (see MARKETING_SITE.md, still
 broadly accurate).
