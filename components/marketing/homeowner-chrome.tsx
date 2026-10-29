@@ -25,7 +25,7 @@ export function AudienceSwitch({
 export function HomeownerHeader() {
   return (
     <header className="ho-header">
-      <div className="mx-auto flex h-16 w-full max-w-5xl items-center justify-between gap-4 px-5 sm:h-20 sm:px-8">
+      <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-4 px-5 sm:h-20 sm:px-8">
         <Link href="/" aria-label={`${site.name} home`} className="shrink-0 py-1.5">
           <BrandLogo tone="primary" priority className="w-[150px]" />
         </Link>
@@ -40,7 +40,7 @@ export function HomeownerHeader() {
 export function HomeownerFooter() {
   return (
     <footer className="ho-footer border-t border-[var(--ho-rule)]">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-3 px-5 py-8 text-xs leading-5 text-[var(--ho-ink-soft)] sm:flex-row sm:items-center sm:justify-between sm:px-8">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-5 py-8 text-xs leading-5 text-[var(--ho-ink-soft)] sm:flex-row sm:items-center sm:justify-between sm:px-8">
         <p>
           &copy; {new Date().getFullYear()} {site.name}. Stock photography is
           illustrative. We do not build or install anything shown.

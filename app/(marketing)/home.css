@@ -51,65 +51,12 @@
   color: var(--ho-blue);
 }
 
-/* ---- Project choices ------------------------------------------------------ */
+/* ---- Headline ------------------------------------------------------------- */
 
-.ho-pick {
-  display: block;
-  color: inherit;
-}
-
-.ho-pick-photo {
-  position: relative;
-  overflow: hidden;
-  border-radius: 14px;
-  aspect-ratio: 4 / 3;
-  background: var(--ho-rule);
-}
-
-.ho-pick-photo img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: transform 700ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.ho-pick:hover .ho-pick-photo img,
-.ho-pick:focus-visible .ho-pick-photo img {
-  transform: scale(1.04);
-}
-
-.ho-pick-name {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-top: 1rem;
-  padding-bottom: 0.75rem;
-  border-bottom: 1px solid var(--ho-rule);
-  font-size: 1.25rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  transition: border-color 200ms ease, color 200ms ease;
-}
-
-.ho-pick:hover .ho-pick-name {
-  border-color: var(--ho-blue);
-  color: var(--ho-blue);
-}
-
-.ho-pick-name svg {
-  transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.ho-pick:hover .ho-pick-name svg {
-  transform: translateX(4px);
-}
-
-/* One authored moment: the choices fade up in sequence. */
 @keyframes ho-rise {
   from {
     opacity: 0.001;
-    transform: translateY(16px);
+    transform: translateY(18px);
   }
   to {
     opacity: 1;
@@ -117,15 +64,100 @@
   }
 }
 
-.ho-pick {
+.ho-words > span {
+  display: inline-block;
+  margin-right: 0.26em;
   animation: ho-rise 800ms cubic-bezier(0.16, 1, 0.3, 1) both;
-  animation-delay: calc(var(--i, 0) * 110ms + 120ms);
+  animation-delay: calc(var(--w, 0) * 90ms);
+}
+
+.ho-fade {
+  animation: ho-rise 800ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--w, 0) * 90ms + 60ms);
+}
+
+/* ---- Project choices ------------------------------------------------------ */
+
+.ho-pick {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: 20px;
+  aspect-ratio: 4 / 5;
+  color: #fff;
+  background: var(--ho-navy);
+  box-shadow: 0 1px 2px rgb(10 27 61 / 0.08), 0 18px 36px -20px rgb(10 27 61 / 0.35);
+  animation: ho-rise 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--i, 0) * 110ms + 450ms);
+  transition: transform 400ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 400ms ease;
+}
+
+.ho-pick:hover,
+.ho-pick:focus-visible {
+  transform: translateY(-6px);
+  box-shadow: 0 2px 4px rgb(10 27 61 / 0.08), 0 28px 48px -22px rgb(10 27 61 / 0.5);
+}
+
+.ho-pick img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 900ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ho-pick:hover img,
+.ho-pick:focus-visible img {
+  transform: scale(1.06);
+}
+
+/* Scrim so the white label clears contrast on any photo. */
+.ho-pick::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgb(10 27 61 / 0.82) 0%, rgb(10 27 61 / 0.35) 38%, transparent 62%);
+  pointer-events: none;
+}
+
+.ho-pick-label {
+  position: absolute;
+  left: 1.5rem;
+  right: 1.5rem;
+  bottom: 1.5rem;
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.ho-pick-go {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex: none;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ho-navy);
+  transition: background-color 250ms ease, color 250ms ease, transform 350ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ho-pick:hover .ho-pick-go,
+.ho-pick:focus-visible .ho-pick-go {
+  background: var(--ho-blue);
+  color: #fff;
+  transform: rotate(45deg);
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .ho-words > span,
+  .ho-fade,
   .ho-pick,
-  .ho-pick-photo img,
-  .ho-pick-name svg {
+  .ho-pick img,
+  .ho-pick-go {
     animation: none;
     transition: none;
   }
