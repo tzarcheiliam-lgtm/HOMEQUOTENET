@@ -169,4 +169,37 @@
   color: #a3271b;
 }
 
+.bk-on-dark .bk {
+  --bk-ink: #f4f6fb;
+  --bk-text: #dce3ef;
+  --bk-muted: #a7b3c8;
+  --bk-hair: #ffffff2e;
+  --bk-skeleton: #ffffff1a;
+  --bk-accent-ink: #8cc0ff;
+  --bk-focus: #8cc0ff73;
+}
+
+.bk-on-dark .bk-secondary {
+  background: none;
+}
+
+@media (hover: hover) {
+  .bk-on-dark .bk-secondary:hover {
+    background: #ffffff0f;
+  }
+}
+
+.bk-on-dark .bk-slot[aria-selected="true"] {
+  color: #0a0a0a;
+  background: #fff;
+}
+
+.bk-on-dark .bk-slot:focus-visible {
+  box-shadow: 0 0 0 2px #0b1730, 0 0 0 5px var(--bk-accent);
+}
+
+.bk-on-dark .bk-secondary.bk-danger {
+  color: #ffa196;
+}
+
 /*# sourceMappingURL=components_booking_booking_83abb40a.css.map*/

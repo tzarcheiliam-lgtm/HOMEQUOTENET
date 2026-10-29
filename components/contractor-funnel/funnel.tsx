@@ -418,7 +418,7 @@ function Result({ outcome, contact, submissionId, pixelId, headingRef, fallbackC
   // HomeQuote's own sales calendar: pick a time right here, recorded on our side with the submission's grant.
   if (cal?.provider === 'homequote' && outcome.token) {
     return (
-      <div data-contractor-booking="homequote">
+      <div data-contractor-booking="homequote" className="bk-on-dark">
         <h1 ref={headingRef} tabIndex={-1} className="text-balance text-2xl font-semibold tracking-tight outline-none">
           {nativeBooked ? 'Your call is booked.' : 'Your details are saved. Pick a time for your call.'}
         </h1>

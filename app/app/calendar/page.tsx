@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getContractorCalendar, listVisibleCalendars, loadCalendarRules } from '@/lib/booking/calendars.server';
 import { localParts } from '@/lib/availability/time';
-import { zoneLabel } from '@/components/booking/zone';
+import { zoneLabel } from '@/components/booking/zone-label';
 import { canManageCalendar, canOverrideSlots, canViewCalendar, canWorkCalendar, isCalendarStaff, type CalendarViewer } from '@/components/calendar/access';
 import { CalendarBoard } from '@/components/calendar/calendar-board';
 import { CalendarSwitcher } from '@/components/calendar/calendar-switcher';

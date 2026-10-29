@@ -5,7 +5,7 @@ import { parseWallTime } from '@/lib/availability/time';
 import { formatSlot } from '@/lib/booking/format';
 import { SlotPicker, SlotPickerSkeleton } from '@/components/booking/slot-picker';
 import type { PublicSlot } from '@/components/booking/types';
-import { zoneLabel } from '@/components/booking/zone';
+import { zoneLabel } from '@/components/booking/zone-label';
 import { Input } from '@/components/ui/input';
 import { getCalendarSlots, type ActionResult, type SlotsPayload } from '@/lib/actions/booking';
 

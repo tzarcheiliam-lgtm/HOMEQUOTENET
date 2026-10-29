@@ -6,7 +6,7 @@ import { CalendarClock, ExternalLink, Mail, Phone, Video, XCircle } from 'lucide
 import { formatRange } from '@/lib/booking/format';
 import { cancelCalendarEvent, rescheduleCalendarEvent, setCalendarEventStatus } from '@/lib/actions/booking';
 import { fmtPhone, telHref } from '@/components/calls/format';
-import { zoneLabel } from '@/components/booking/zone';
+import { zoneLabel } from '@/components/booking/zone-label';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';

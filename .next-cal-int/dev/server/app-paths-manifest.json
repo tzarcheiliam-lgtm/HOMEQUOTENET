@@ -4,5 +4,8 @@
   "/(contractor-ads)/contractor-appointments/check-fit/page": "app/(contractor-ads)/contractor-appointments/check-fit/page.js",
   "/(estimator)/estimator/[slug]/design/page": "app/(estimator)/estimator/[slug]/design/page.js",
   "/(estimator)/estimator/[slug]/page": "app/(estimator)/estimator/[slug]/page.js",
+  "/api/notifications/route": "app/api/notifications/route.js",
+  "/app/calendar/page": "app/app/calendar/page.js",
+  "/app/calendar/settings/page": "app/app/calendar/settings/page.js",
   "/estimate/[slug]/page": "app/estimate/[slug]/page.js"
 }

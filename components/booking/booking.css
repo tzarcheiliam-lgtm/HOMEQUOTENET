@@ -127,3 +127,25 @@
 
 /* Destructive confirm (cancel a call): same quiet outline, red text (7.1:1 on white). */
 .bk-secondary.bk-danger { color: #a3271b; }
+
+/*
+ * On a dark host page (the contractor sales funnel's navy card): the same
+ * layout, light on dark. The blue time buttons stay as they are; text, rules,
+ * the outline buttons and the selected time flip so every line stays legible.
+ */
+.bk-on-dark .bk {
+  --bk-ink: #f4f6fb;
+  --bk-text: #dce3ef;
+  --bk-muted: #a7b3c8;
+  --bk-hair: rgb(255 255 255 / 0.18);
+  --bk-skeleton: rgb(255 255 255 / 0.1);
+  --bk-accent-ink: #8cc0ff;
+  --bk-focus: rgb(140 192 255 / 0.45);
+}
+.bk-on-dark .bk-secondary { background: transparent; }
+@media (hover: hover) {
+  .bk-on-dark .bk-secondary:hover { background: rgb(255 255 255 / 0.06); }
+}
+.bk-on-dark .bk-slot[aria-selected='true'] { background: #fff; color: #0a0a0a; }
+.bk-on-dark .bk-slot:focus-visible { box-shadow: 0 0 0 2px #0b1730, 0 0 0 5px var(--bk-accent); }
+.bk-on-dark .bk-secondary.bk-danger { color: #ffa196; }
