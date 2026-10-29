@@ -2,6 +2,7 @@
 import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getCalendar } from './calendars.server';
+import { ensureManageToken } from './notify.server';
 import { loadHostBusy } from './slots.server';
 import { hashManageToken, isManageTokenShape, newManageToken } from './tokens';
 import {
@@ -27,6 +28,20 @@ type Db = ReturnType<typeof createAdminClient>;
  */
 
 const toIso = (t: string | number | Date) => new Date(t).toISOString();
+
+/**
+ * The link every notice carries is derived from the booking id (notify.server
+ * ensureManageToken), so swap the random one stored at booking for it now; the
+ * thank-you page and the first email then show the same working link. On any
+ * failure the random token (already stored) is kept.
+ */
+async function stableManageToken(db: Db, kind: 'appointment' | 'sales_appointment', id: string, fallback: string, hash: string): Promise<string> {
+  try {
+    return (await ensureManageToken(db, kind, id, hash)) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 async function hostBusyAt(db: Db, calendarId: string, startMs: number, endMs: number): Promise<boolean> {
   const cal = await getCalendar(calendarId, db);
@@ -85,7 +100,8 @@ export async function bookAppointment(input: BookInput): Promise<BookResult> {
   if (error || !data) return { ok: false, error: 'unavailable' };
   const r = data as Record<string, any>;
   if (!r.ok) return { ok: false, error: asBookingError(r.error), appointmentId: r.appointment_id ?? null };
-  return { ok: true, appointmentId: r.appointment_id, startsAt: toIso(r.starts_at), endsAt: toIso(r.ends_at), calendarId: r.calendar_id, timeZone: r.time_zone, manageToken: token };
+  const manageToken = await stableManageToken(db, 'appointment', r.appointment_id, token, hash);
+  return { ok: true, appointmentId: r.appointment_id, startsAt: toIso(r.starts_at), endsAt: toIso(r.ends_at), calendarId: r.calendar_id, timeZone: r.time_zone, manageToken };
 }
 
 function changeResult(data: any, error: unknown, idKey: 'appointment_id' | 'sales_appointment_id'): ChangeResult {
@@ -184,9 +200,10 @@ export async function bookSalesAppointment(input: SalesBookInput): Promise<Sales
   if (error || !data) return { ok: false, error: 'unavailable' };
   const r = data as Record<string, any>;
   if (!r.ok) return { ok: false, error: asBookingError(r.error), salesAppointmentId: r.sales_appointment_id ?? null };
+  const manageToken = await stableManageToken(db, 'sales_appointment', r.sales_appointment_id, token, hash);
   return {
     ok: true, salesAppointmentId: r.sales_appointment_id, prospectId: r.prospect_id, startsAt: toIso(r.starts_at), endsAt: toIso(r.ends_at),
-    calendarId: r.calendar_id, timeZone: r.time_zone, manageToken: token,
+    calendarId: r.calendar_id, timeZone: r.time_zone, manageToken,
   };
 }
 

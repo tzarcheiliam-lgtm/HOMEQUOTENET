@@ -23,9 +23,9 @@ export function isManageTokenShape(token: unknown): token is string {
 }
 
 /**
- * Path of the homeowner's manage page. Default route `/book/manage/<token>`;
- * the page builder owns the route, so keep this in sync with it.
+ * Path of the homeowner's manage page (app/(booking)/booking/manage/[token]).
+ * Older links of the form /book/manage/<token> redirect there.
  */
 export function managePath(token: string): string {
-  return `/book/manage/${encodeURIComponent(token)}`;
+  return `/booking/manage/${encodeURIComponent(token)}`;
 }

@@ -161,7 +161,7 @@ describe('confirmation', () => {
 
     const homeowner = sent.find((m) => m.toEmail.startsWith('pat-'))!;
     expect(homeowner.subject).toMatch(/^Your call with HomeQuote is booked: .* E[SD]T$/); // the homeowner's zone
-    expect(homeowner.text).toContain(`${SITE}/book/manage/${token}`);
+    expect(homeowner.text).toContain(`${SITE}/booking/manage/${token}`);
     expect(homeowner.attachments?.[0].content).toContain(`UID:booking-${a}@homequotenet.com`);
     const host = sent.find((m) => m.toEmail === 'admin@t.test')!;
     expect(host.subject).toMatch(/^New call booked: Pat Doe, .* P[SD]T$/); // the calendar's zone

@@ -112,7 +112,7 @@ export const isLeadgenId = (v: string | null | undefined): v is string => !!v &&
  * Meta `action_source` = where the conversion actually happened (Meta: website = "made on your website", phone_call =
  * "over the phone", email, chat = "messaging app, SMS...", physical_store = "in person", other = "not listed").
  * Derived from provenance in this order; never from who wrote the row.
- *  appointment: visitor's funnel booking -> website; person-stated channel; AI call that reported a booking -> phone_call; else other.
+ *  appointment: visitor's funnel booking or a HomeQuote-calendar website booking (booked_via 'website') -> website; person-stated channel; AI call that reported a booking -> phone_call; else other.
  *  qualified:   how the confirmation happened (reason code): by phone / text / email; otherwise other.
  *  won:         a sale is recorded off-platform and its channel is not captured -> other.
  */
@@ -120,7 +120,7 @@ export function actionSourceFor(stage: Stage, ref?: OutcomeRef): ActionSource {
   if (stage === 'lead') return 'website'; // the visitor submitted the form on the site
   if (stage === 'appointment') {
     if (ref?.funnelBooking) return 'website';
-    const via = ({ phone_call: 'phone_call', email: 'email', chat: 'chat', in_person: 'physical_store' } as Record<string, ActionSource>)[ref?.bookedVia ?? ''];
+    const via = ({ website: 'website', phone_call: 'phone_call', email: 'email', chat: 'chat', in_person: 'physical_store' } as Record<string, ActionSource>)[ref?.bookedVia ?? ''];
     if (via) return via;
     return ref?.aiCallBooked ? 'phone_call' : 'other';
   }
