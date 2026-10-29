@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { recordAutomationRun } from '@/lib/automations/runs.server';
 import { equalSecret } from '@/lib/funnels/server';
 import { runAiCallQueue } from '@/lib/ai-calling/run.server';
 
@@ -13,10 +14,14 @@ export async function POST(request: Request) {
   if (!expected || !equalSecret(request.headers.get('authorization') ?? '', `Bearer ${expected}`)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  const startedAt = new Date();
   try {
     const result = await runAiCallQueue({ limit: 10 });
-    return NextResponse.json({ ...result, dialed: result.outcomes.filter((o) => o.result === 'accepted').length });
+    const dialed = result.outcomes.filter((o) => o.result === 'accepted').length;
+    await recordAutomationRun('ai_calling_tick', startedAt, true, { dialed, outcomes: result.outcomes.length });
+    return NextResponse.json({ ...result, dialed });
   } catch {
+    await recordAutomationRun('ai_calling_tick', startedAt, false, { error: 'AI call processing unavailable' });
     return NextResponse.json({ error: 'AI call processing unavailable' }, { status: 503 });
   }
 }

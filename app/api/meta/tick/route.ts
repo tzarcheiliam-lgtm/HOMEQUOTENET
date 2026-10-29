@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { recordAutomationRun } from '@/lib/automations/runs.server';
 import { equalSecret } from '@/lib/funnels/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { runMetaConversionTick } from '@/lib/meta/queue.server';
@@ -17,6 +18,7 @@ export async function POST(request: Request) {
   if (!expected || !equalSecret(request.headers.get('authorization') ?? '', `Bearer ${expected}`)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  const startedAt = new Date();
   const out: Record<string, unknown> = {};
   try { out.conversions = await runMetaConversionTick(); }
   catch { out.conversions = { error: 'conversion tick failed' }; }
@@ -36,5 +38,6 @@ export async function POST(request: Request) {
       }
     } catch { out.sync = { error: 'sync failed' }; }
   }
+  await recordAutomationRun('meta_tick', startedAt, !JSON.stringify(out).includes('"error"'), out);
   return NextResponse.json(out);
 }
