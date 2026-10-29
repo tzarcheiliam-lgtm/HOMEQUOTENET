@@ -16,7 +16,7 @@ import { bookingFrameUrl, priceEyebrow, priceRange, readCalendlyMessage } from '
  *    prefilled by the server), sized to its content, with a button that opens
  *    it in a new tab (also the only option inside the /embed iframe). An
  *    unqualified lead outside the service area is told we will call; a renter
- *    ("No, I rent") that the funnel saved for review is told the project needs
+ *    ("No" to "Are you the homeowner?") that the funnel saved for review is told the project needs
  *    a personal review (the funnel's own review wording, no promised call);
  *    when nothing was saved (result.saved false), to call us.
  * 3. "Prefer to talk now? Call (818) 643-6888".
@@ -39,7 +39,7 @@ export function FunnelBookingScreen({ spec, selection, contractor, result, embed
 
   const range = priceRange(result.estimate);
   const calendarUrl = result.qualified ? result.calendarUrl : undefined;
-  // "No, I rent": the funnel's homeowner rule did not pass (never a booking, never a promised call).
+  // "No" (not the homeowner): the funnel's homeowner rule did not pass (never a booking, never a promised call).
   const renter = !result.qualified && result.homeowner === 'no';
   const frame = !embedded && calendarUrl && host ? bookingFrameUrl(calendarUrl, host) : null;
   const tel = telHref(contractor.phone);

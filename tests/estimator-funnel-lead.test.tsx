@@ -134,8 +134,8 @@ describe('contact step request', () => {
     expect(errors.homeowner).toBe('Tell us whether this pool is at your home.');
     expect(funnelContactErrors({ ...fields, consent: false }, rules)).toEqual({});
   });
-  it('asks "Is this pool at your home?" with Yes, it’s my home / No, I rent', () => {
-    expect(spec.contactStep.homeowner).toEqual({ label: 'Is this pool at your home?', yes: 'Yes, it’s my home', no: 'No, I rent' });
+  it('asks "Are you the homeowner?" with Yes / No', () => {
+    expect(spec.contactStep.homeowner).toEqual({ label: 'Are you the homeowner?', yes: 'Yes', no: 'No' });
     // The funnel this files into qualifies homeowners only: the answer is always asked, never assumed.
     expect(funnelConfig.qualificationRules).toContainEqual({ question: 'homeowner', operator: 'equals', values: ['yes'] });
     expect('askHomeowner' in spec.contactStep).toBe(false);
@@ -258,7 +258,7 @@ describe('funnel lead route', () => {
     expect(body).toMatchObject({ ok: true, qualified: false, saved: false });
     expect(m.rpc).not.toHaveBeenCalled();
   });
-  it('a renter ("No, I rent") is saved for review without a booking link', async () => {
+  it('a non-owner ("No") is saved for review without a booking link', async () => {
     const body = await (await post({ ...request(), homeowner: 'no' })).json();
     expect(body.ok).toBe(true);
     expect(body.qualified).toBe(false);
@@ -340,9 +340,9 @@ describe('screens render', () => {
     expect(html).toContain('CSLB #1112793');
     // Four text fields + the ownership buttons, no consent checkbox, the measurement box never pre-ticked.
     expect(html.match(/data-text=""/g)).toHaveLength(4);
-    expect(html).toContain('Is this pool at your home?');
-    expect(html).toContain('Yes, it’s my home');
-    expect(html).toContain('No, I rent');
+    expect(html).toContain('Are you the homeowner?');
+    expect(html).toContain('>Yes<');
+    expect(html).toContain('>No<');
     expect(html.match(/type="radio"/g)).toHaveLength(2);
     expect(html).not.toMatch(/type="radio"[^>]*checked/);
     expect(html).not.toContain('Do you own this home?');

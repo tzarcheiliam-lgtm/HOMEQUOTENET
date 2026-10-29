@@ -21,8 +21,8 @@ import {
 /**
  * The funnel's contact step: "Your estimate is ready. / Where should we send it?"
  * Buildoly's shape: name, email, phone, home address (Google suggestions via
- * ./address-field; its ZIP gates the service area), then "Is this pool at your
- * home?" (Yes, it's my home / No, I rent: the lead's homeowner answer, always
+ * ./address-field; its ZIP gates the service area), then "Are you the
+ * homeowner?" (Yes / No: the lead's homeowner answer, always
  * asked, never assumed), then the button, with the consent wording in small
  * print right under it: tapping the button is the agreement (agree-on-submit;
  * the lead route still checks the exact wording). Then the lead POST with the picks.

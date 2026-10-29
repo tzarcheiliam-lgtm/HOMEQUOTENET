@@ -114,7 +114,7 @@ export const POOL_MASTERS_FUNNEL: FunnelSpec = {
     subline: 'Where should we send it?',
     cta: 'Get my estimate',
     // Name, email, phone, home address, then this (owner: ask it, in words that make sense).
-    homeowner: { label: 'Is this pool at your home?', yes: 'Yes, it’s my home', no: 'No, I rent' },
+    homeowner: { label: 'Are you the homeowner?', yes: 'Yes', no: 'No' },
     trustLine: 'Licensed & insured · CSLB #1112793',
   },
   bookingStep: {

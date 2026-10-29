@@ -295,8 +295,8 @@ Go Luxe discount**, so Luxe totals sit above the configurator's Go Luxe figure. 
 $106,500 (examples). No equipment or site questions: those are checked at the free on-site visit (the lead lists them).
 
 **Contact step.** "Your estimate is ready. / Where should we send it?" Name, Email, Phone number, **Home address**
-(Google address suggestions, see below), then "Is this pool at your home?" with two buttons "Yes, it's my home" / "No,
-I rent" (`contactStep.homeowner`; the lead's `homeowner` yes / no, always asked and required by the route, never
+(Google address suggestions, see below), then "Are you the homeowner?" with two buttons "Yes" / "No"
+(`contactStep.homeowner`; the lead's `homeowner` yes / no, always asked and required by the route, never
 assumed), the button, the trust line, and the consent wording in small print under the button: tapping "Get my
 estimate" is the agreement (the request sends `consent: true` with that exact `consentText`; the route still checks the
 wording). The optional ad-measurement box is never pre-ticked. One error at a time; Return moves to the next field.
@@ -314,7 +314,7 @@ input. ZIP: the picked place's (while the text is unchanged), else a 5-digit ZIP
 after a state code (`extractZip`); none -> "Add your ZIP code to the address". The ZIP still gates the service area
 and is validated by the lead route.
 
-**Renters.** "No, I rent" fails the funnel's `homeowner = yes` rule: the lead is saved for review
+**Non-owners.** "No" fails the funnel's `homeowner = yes` rule: the lead is saved for review
 (`unqualifiedAction: 'review'`), no booking link; the last screen says "Your ballpark estimate" and "Your project needs
 a personal review" (no promised call). With `unqualifiedAction: 'stop'` it says the details were not saved and to call.
 

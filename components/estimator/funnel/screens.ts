@@ -29,7 +29,7 @@ export type FunnelLeadResult = {
   selection?: FunnelSelection;
   /** false: nothing was saved (an unqualified visitor on a funnel set to 'stop'). */
   saved?: boolean;
-  /** Their answer to "Is this pool at your home?" ('no' = they rent): picks the honest unqualified wording. */
+  /** Their answer to "Are you the homeowner?" ('no' = not the owner): picks the honest unqualified wording. */
   homeowner?: 'yes' | 'no';
 };
 

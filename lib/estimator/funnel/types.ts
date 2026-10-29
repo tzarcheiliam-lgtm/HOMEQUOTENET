@@ -102,8 +102,8 @@ export type FunnelContactStep = {
   /** Submit button, e.g. "Get my estimate". */
   cta: string;
   /**
-   * The ownership question under the address, e.g. "Is this pool at your home?"
-   * with "Yes, it's my home" / "No, I rent" (the lead's homeowner yes / no).
+   * The ownership question under the address, e.g. "Are you the homeowner?"
+   * with "Yes" / "No" (the lead's homeowner yes / no).
    * Always asked: the lead funnel's qualification rules read it, so it is never
    * assumed. The address (Google suggestions when GOOGLE_PLACES_API_KEY is set)
    * is always asked too: its ZIP gates the service area.
