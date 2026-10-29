@@ -228,6 +228,7 @@ export function PhotoReveal({
   celebrate,
   onClose,
   subject = 'pool',
+  photoLabel = 'Realistic photo',
 }: {
   before: string;
   after: string;
@@ -235,6 +236,8 @@ export function PhotoReveal({
   onClose: () => void;
   /** What the photo shows ("pool", "bathroom"), for its alt text. */
   subject?: string;
+  /** Badge on the photo half (TradeCopy.photoLabel). */
+  photoLabel?: string;
 }) {
   const [motion] = useState(() => celebrate && !prefersReducedMotion());
   const [pos, setPos] = useState(motion ? 0 : 50);
@@ -291,7 +294,7 @@ export function PhotoReveal({
       </span>
       <span className={cn(pillClass, 'right-2.5 bottom-2.5', motion && 'er-in')} style={motion ? { animationDelay: '700ms' } : undefined} aria-hidden="true">
         <Sparkles className="size-3.5 text-[#ffd666]" />
-        Realistic photo
+        {photoLabel}
       </span>
 
       <input
@@ -555,6 +558,7 @@ export function ResultScene({
       after={done.imageUrl}
       celebrate={!reopened}
       subject={copy.subject}
+      photoLabel={copy.photoLabel}
       onClose={() => {
         closedByUser.current = true;
         setShowRender(false);

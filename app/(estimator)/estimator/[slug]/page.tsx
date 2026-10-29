@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { resolveExampleMedia, tradeMeta } from '@/components/estimator/builders/meta';
-import { publicFileExists } from '@/components/estimator/builders/public-file';
+import { exampleFileExists } from '@/components/estimator/builders/example-files';
 import { Estimator } from '@/components/estimator/estimator';
 import { EstimatorFooter } from '@/components/estimator/shell/estimator-footer';
 import { EstimatorHeader } from '@/components/estimator/shell/estimator-header';
@@ -34,7 +34,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     ? meta.description(template.projectNoun, contractor.contractorName)
     : `Get a ballpark price range for your ${template.projectNoun} from ${contractor.contractorName}, then book a free on-site consultation. A ballpark, not a quote.`;
   // Only a share picture that is actually there.
-  const share = meta?.shareImage && publicFileExists(meta.shareImage.url) ? meta.shareImage : null;
+  const share = meta?.shareImage && exampleFileExists(meta.shareImage.url) ? meta.shareImage : null;
   return {
     title: { absolute: title },
     description,
@@ -72,7 +72,7 @@ export default async function EstimatorPage({ params }: Props) {
   const renders = rendersEnabled();
   const facts = contractorFacts(contractor);
   // Before the first answer (renders on): the example design and its photo, or the example clip, if the files exist.
-  const example = meta && renders ? resolveExampleMedia(meta, publicFileExists) : null;
+  const example = meta && renders ? resolveExampleMedia(meta, exampleFileExists) : null;
 
   return (
     <>

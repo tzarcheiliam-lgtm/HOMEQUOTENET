@@ -120,9 +120,10 @@ export function describePicks(template: EstimatorTemplate, answers: Answers): st
 
 /**
  * Estimator project ids and the funnel option values that mean the same thing,
- * per trade (EstimatorTemplate.trade). A bathroom refresh files as a full
- * remodel: the bathroom funnel has no "update the look" service, and its
- * closest small option ("repair") does not qualify.
+ * per trade (EstimatorTemplate.trade). A bathroom refresh ("update the look")
+ * is filed as "other", truthfully: the bathroom funnel has no cosmetic-update
+ * service, so those leads go to the funnel's review instead of being passed off
+ * as a full remodel. Add a real service value to the funnel to qualify them.
  */
 const PROJECT_ALIASES: Record<string, Record<string, string[]>> = {
   pool: {
@@ -131,7 +132,7 @@ const PROJECT_ALIASES: Record<string, Record<string, string[]>> = {
   },
   bathroom: {
     full: ['full_remodel'],
-    refresh: ['full_remodel'],
+    refresh: ['other'],
   },
 };
 

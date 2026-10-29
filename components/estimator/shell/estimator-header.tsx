@@ -3,7 +3,7 @@ import { ArrowDown, Phone } from 'lucide-react';
 import type { ContractorEstimatorConfig } from '@/lib/estimator/types';
 import { telHref } from './facts';
 
-type HeaderContractor = Pick<ContractorEstimatorConfig, 'contractorName' | 'licenseLabel' | 'phone' | 'logoUrl'>;
+type HeaderContractor = Pick<ContractorEstimatorConfig, 'contractorName' | 'licenseLabel' | 'phone' | 'logoUrl' | 'network'>;
 
 /**
  * The contractor's own bar on the public estimator page (no HomeQuote nav).
@@ -51,7 +51,10 @@ export function EstimatorHeader({
         <span className="min-w-0 border-l border-[rgba(10,27,61,0.14)] pl-3 text-[11px] leading-4 text-[#3b4a6b] sm:pl-5 sm:text-[13px] sm:leading-5">
           {/* The name is in the logo's alt text; spell it out for screen readers that skip images. */}
           {contractor.logoUrl ? <span className="sr-only">{contractor.contractorName}, </span> : null}
-          <span className="block whitespace-nowrap font-medium tabular-nums">{contractor.licenseLabel}</span>
+          {/* A network's line is a description (it may wrap on phones), a license number never wraps. */}
+          <span className={contractor.network ? 'block text-balance font-medium max-sm:max-w-[11rem]' : 'block whitespace-nowrap font-medium tabular-nums'}>
+            {contractor.licenseLabel}
+          </span>
           {credential ? <span className="block truncate">{credential}</span> : null}
         </span>
         {tel ? (
@@ -65,9 +68,10 @@ export function EstimatorHeader({
             <span className="hidden tabular-nums sm:inline">{contractor.phone}</span>
           </a>
         ) : startHref ? (
+          // Hidden once the design is finished (the flow marks the page with data-estimator-done).
           <a
             href={startHref}
-            className="ml-auto inline-flex h-11 shrink-0 touch-manipulation items-center gap-2 rounded-full bg-[var(--hq-accent)] pl-3.5 pr-4 text-sm font-semibold text-white shadow-[0_1px_0_rgba(255,255,255,0.18)_inset,0_6px_16px_-6px_rgba(0,56,184,0.7)] [transition:background-color_150ms_ease,scale_120ms_ease-out] hover:bg-[#0a46d6] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--hq-accent)] active:scale-[.97] motion-reduce:transition-none"
+            className="[[data-estimator-done]_&]:hidden ml-auto inline-flex h-11 shrink-0 touch-manipulation items-center gap-2 rounded-full bg-[var(--hq-accent)] pl-3.5 pr-4 text-sm font-semibold text-white shadow-[0_1px_0_rgba(255,255,255,0.18)_inset,0_6px_16px_-6px_rgba(0,56,184,0.7)] [transition:background-color_150ms_ease,scale_120ms_ease-out] hover:bg-[#0a46d6] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--hq-accent)] active:scale-[.97] motion-reduce:transition-none"
           >
             <ArrowDown aria-hidden="true" className="size-4" strokeWidth={2.4} />
             <span className="sm:hidden">Start</span>

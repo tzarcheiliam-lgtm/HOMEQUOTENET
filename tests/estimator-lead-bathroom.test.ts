@@ -107,15 +107,17 @@ describe('bathroom payload mapping', () => {
   it('answers the funnel service question for every project pick', () => {
     const service = (project: string) => funnelAnswersFor(funnelConfig, { zip: '92101', homeowner: 'yes', timeline: 'asap', project, trade: 'bathroom' }).service;
     expect(service('full')).toBe('full_remodel');
-    expect(service('refresh')).toBe('full_remodel');
+    // A cosmetic refresh is not a full remodel: it is filed as "other" and reviewed.
+    expect(service('refresh')).toBe('other');
     expect(service('tub_to_shower')).toBe('tub_to_shower');
     // Aliases are per trade: a pool project id means nothing to the bathroom funnel.
     expect(service('remodel')).toBeUndefined();
   });
   it('qualifies a homeowner anywhere (no service-area list) and sends a renter to review', () => {
-    for (const project of ['full', 'refresh', 'tub_to_shower']) {
+    for (const project of ['full', 'tub_to_shower']) {
       expect(build({ ...answers, project: [project] }).payload.qualified).toBe(true);
     }
+    expect(build({ ...answers, project: ['refresh'] }).payload.qualified).toBe(false);
     expect(build(answers, { homeowner: 'no' }).payload.qualified).toBe(false);
     expect(build(answers, { zip: '10001' }).payload).toMatchObject({ qualified: true, areaValid: true });
     const base = funnelAnswersFor(funnelConfig, { zip: '92101', homeowner: 'yes', timeline: 'asap', project: 'full', trade: 'bathroom' });

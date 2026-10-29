@@ -73,7 +73,12 @@ describe('buildBathScene', () => {
       counter: null,
       metal: null,
       extras: { niche: false, bench: false, ledMirror: false, heatedFloor: false, rainHead: false },
+      renew: { bathing: false, vanity: false, floor: false, walls: false },
     });
+  });
+
+  it('marks the scope items as renewed (ticking one already changes the picture)', () => {
+    expect(buildBathScene(T, { answers: { scope: ['floor', 'walls'] } }).renew).toEqual({ bathing: false, vanity: false, floor: true, walls: true });
   });
 
   it('follows a package and only visible answers', () => {
@@ -98,6 +103,8 @@ describe('buildBathScene', () => {
     expect(room(8, 5)).toBe('small');
     expect(room(10, 9)).toBe('medium');
     expect(room(15, 12)).toBe('large');
+    // Typed dimensions win over the size pick, in the picture and in the layout check alike.
+    expect(buildBathScene(T, { answers: { size: ['large'] }, dimensions: { lengthFt: 9, widthFt: 9 } }).room).toBe('medium');
     // Out of limits: the preset wins.
     expect(buildBathScene(T, { answers: { size: ['small'] }, dimensions: { lengthFt: 40, widthFt: 5 } })).toMatchObject({ room: 'small', lengthFt: 8, widthFt: 5 });
   });
@@ -108,7 +115,8 @@ describe('buildBathScene', () => {
     }
     expect(Object.keys(BATH_TEXTURES).sort()).toEqual([...BATH_TEXTURE_IDS].sort());
     expect(Object.keys(BATH_SPRITES).sort()).toEqual([...BATH_SPRITE_IDS].sort());
-    expect(EXAMPLE_BATH_SCENE.room).toBe('medium');
+    // The example picture is the example pair's design: the Spa retreat package in a large room.
+    expect(EXAMPLE_BATH_SCENE).toMatchObject({ room: 'large', bathing: 'tub_and_shower', showerTile: 'marble', vanity: 'floating', vanityFinish: 'navy_green' });
   });
 
   it('leaves the pool template valid', () => {

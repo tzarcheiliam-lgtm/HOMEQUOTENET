@@ -191,7 +191,8 @@ export function EstimatorFlow({
   // Phones pin the picture over the questions; on the ZIP and contact screens it scrolls away
   // instead, so the on-screen keyboard never hides the field being typed in (WCAG 2.4.11).
   const pinned = builder && !result && (current.kind === 'questions' || current.kind === 'looks');
-  const focus = trade && current.kind === 'questions' && current.questions.some((q) => trade.closeUpIds.has(q.id)) ? 'close' : 'overview';
+  const focusOn = trade && current.kind === 'questions' ? current.questions.find((q) => trade.closeUpIds.has(q.id))?.id : undefined;
+  const focus = focusOn ? 'close' : 'overview';
 
   // Move focus to the new heading when the screen changes (not on first paint). With the live
   // builder the browser's own focus scroll would tuck the heading under the pinned picture, so
@@ -237,6 +238,14 @@ export function EstimatorFlow({
     if (delta !== null) window.scrollBy({ top: delta, behavior: smooth ? 'smooth' : 'auto' });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- runs on screen changes only; pinned/embedded follow from them
   }, [current.id, result, builder]);
+
+  // The page header's "Start my design" link means nothing once the design is done: the flow marks the page.
+  useEffect(() => {
+    if (!result) return;
+    const root = document.documentElement;
+    root.setAttribute('data-estimator-done', '');
+    return () => root.removeAttribute('data-estimator-done');
+  }, [result]);
 
   // After a failed submit, focus the first invalid field.
   useEffect(() => {
@@ -473,6 +482,7 @@ export function EstimatorFlow({
                 night={night}
                 onNightChange={setNight}
                 focus={focus}
+                focusOn={focusOn}
                 stepKey={current.id}
                 examplePhoto={rendersEnabled}
                 example={example}
@@ -593,6 +603,7 @@ export function EstimatorFlow({
                         value={state.dimensions}
                         onChange={(dimensions) => update({ dimensions })}
                         hint={dims.hint}
+                        using={Boolean(dims.dimensions)}
                       />
                     ) : null}
                   </>

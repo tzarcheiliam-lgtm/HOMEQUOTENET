@@ -35,6 +35,9 @@ export type Price = { unit: PriceUnit; low: number; high: number; quantity?: num
 /* Questions                                                           */
 /* ------------------------------------------------------------------ */
 
+/** A condition on another question's picks (EstimatorOption.siteVisitWhen). */
+export type SiteVisitWhen = { questionId: string; anyOf: string[] };
+
 export type EstimatorOption = {
   id: string;
   label: string;
@@ -45,9 +48,12 @@ export type EstimatorOption = {
   siteVisit?: string;
   /**
    * Flag siteVisit only when this (visible) question has one of these picks,
-   * e.g. a freestanding tub only in a small bathroom. Absent = always.
+   * e.g. a freestanding tub only in a small bathroom. A list flags when any
+   * one of its conditions holds. On the size-role question, valid typed
+   * dimensions count as the size they read as (sizeClassFor), so "Small" with
+   * a typed 14 x 12 ft room is large. Absent = always.
    */
-  siteVisitWhen?: { questionId: string; anyOf: string[] };
+  siteVisitWhen?: SiteVisitWhen | SiteVisitWhen[];
   /** Visual for the option: a swatch id from components/estimator/swatches.tsx. */
   swatch?: string;
   /** Optional photo (public path) shown on the option card. */
@@ -251,8 +257,18 @@ export type ContractorEstimatorConfig = {
   /** Which template + catalog the config is merged onto. Default 'pool'. */
   trade?: EstimatorTrade;
   contractorName: string;
-  /** Shown on the page, e.g. "CSLB #1112793". */
+  /**
+   * Shown on the page, e.g. "CSLB #1112793". For a `network` it describes the
+   * service instead ("Connects you with licensed local contractors") and is
+   * never shown as a credential.
+   */
   licenseLabel: string;
+  /**
+   * A contractor-matching network (HomeQuote Network), not a contractor: the
+   * header, footer and result show licenseLabel as a plain line, never as the
+   * business's own license.
+   */
+  network?: boolean;
   phone?: string;
   website?: string;
   logoUrl?: string;

@@ -61,6 +61,13 @@ export type BathSceneSpec = {
     heatedFloor: boolean;
     rainHead: boolean;
   };
+  /**
+   * Scope items ticked (what will be new). Before a material is picked a
+   * renewed area is drawn as a clean, neutral new finish instead of the
+   * existing beige one, so ticking it already changes the picture. Absent =
+   * nothing ticked (or a spec made before this field existed).
+   */
+  renew?: { bathing: boolean; vanity: boolean; floor: boolean; walls: boolean };
 };
 
 /**

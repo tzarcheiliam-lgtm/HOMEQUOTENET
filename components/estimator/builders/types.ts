@@ -24,6 +24,8 @@ export type TradeSceneProps<Spec> = {
   label: string;
   /** overview = the whole design; close = in close while a closeUpIds question is on screen. */
   focus?: 'overview' | 'close';
+  /** With focus 'close': the closeUpIds question on screen, so the close-up frames what it changes. */
+  focusOn?: string;
   /** First-look build-up animation (played once per visit). */
   intro?: boolean;
   /** A small still copy (no animation). */
@@ -32,6 +34,8 @@ export type TradeSceneProps<Spec> = {
   highlight?: { key: number; items: readonly unknown[] } | null;
   /** Decorative copy fading out over the homeowner's first picture (the example leaving). */
   leaving?: boolean;
+  /** Covered by the example photo or clip: hidden from screen readers (that media has its own text). */
+  covered?: boolean;
   className?: string;
 };
 
@@ -48,6 +52,8 @@ export type TradeCopy = {
   sceneCaptionShort: string;
   /** Under the picture while the realistic photo shows. */
   photoCaption: string;
+  /** Badge on the photo half of the result's before/after (default "Realistic photo"). */
+  photoLabel?: string;
   /** Under the change chip's option photo: "Like this finished job" (real jobs) or an AI style-idea label. */
   chipPhotoNote: string;
   /** Instead of the picture while it is collapsed on a phone. */
@@ -63,6 +69,12 @@ export type TradeCopy = {
   priceOnSite: string;
   /** Without a booking link: who gets in touch. */
   contactLine(contractorName: string): string;
+  /**
+   * Under the range while the template's prices are examples (pricesConfirmed
+   * false). Default: "Example prices: these figures are placeholders until
+   * pricing is confirmed."
+   */
+  examplePriceNote?: string;
   /** "Save my design" file name and the shared photo's file name. */
   designFile: string;
   photoFile: string;
@@ -113,7 +125,7 @@ export interface TradeBuilder<Spec = unknown> {
   designSummary(spec: Spec, label: OptionLabeler): DesignItem[];
   /** Accessible description of the picture. */
   describe(spec: Spec, label: OptionLabeler): string;
-  /** Question ids that move the picture in close. */
+  /** Question ids that move the picture in close (the scene gets the one on screen as focusOn). */
   closeUpIds: ReadonlySet<string>;
   /** Spots on the picture to flash after a committed pick (pool: water ripple, tile shimmer). [] for none. */
   highlights(prev: Spec, next: Spec): readonly unknown[];
@@ -121,6 +133,12 @@ export interface TradeBuilder<Spec = unknown> {
   addedOptions(prev: Spec, next: Spec): { questionId: string; optionId: string }[];
   /** Questions whose "help me choose" pick the chip names ("We’ll help you pick a finish"). */
   unsureIds: readonly string[];
+  /**
+   * Where the change chip sits over the picture on tablets and up: 'center'
+   * (default) or 'start' (lower left, clear of a centred focal point such as
+   * the bathroom's tub or vanity).
+   */
+  chipAlign?: 'center' | 'start';
   /** Picture for an option tile (a material sample), or null to use the shared rules (photo, swatch). */
   optionVisual?(questionId: string, optionId: string): ReactNode | null;
   /** The frame's scene as a PNG data URL, for "Save my design" and the photoreal render. Browser only. */

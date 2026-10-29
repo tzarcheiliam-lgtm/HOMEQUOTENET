@@ -5,7 +5,7 @@ import { DEFAULT_LIMITS, type EstimatorQuestion, type EstimatorTemplate } from '
  *
  * EVERY PRICE IN THIS FILE IS AN EXAMPLE (pricesConfirmed: false). They are
  * plausible installed prices for Southern California bathroom remodels,
- * picked so a medium bathroom (8 x 10 ft, 80 sq ft of floor) lands in
+ * picked so a medium bathroom (10 x 8 ft, 80 sq ft of floor) lands in
  * realistic ranges: about $6k-$15k for a refresh, $25k-$50k for a full
  * remodel and $50k-$95k for a large spa-style primary bath. They are not any
  * contractor's real pricing; each one is confirmed or replaced before the page
@@ -91,9 +91,10 @@ export const BATHROOM_TEMPLATE: EstimatorTemplate = {
       kind: 'single',
       role: 'size',
       options: [
-        { id: 'small', label: 'Small', note: 'Hall or guest bath, about 5 x 8 ft' },
-        { id: 'medium', label: 'Medium', note: 'About 8 x 10 ft' },
-        { id: 'large', label: 'Large', note: 'Primary bath, about 12 x 14 ft' },
+        // Length x width, the order the lead, the result and the typed fields use.
+        { id: 'small', label: 'Small', note: 'Hall or guest bath, about 8 x 5 ft' },
+        { id: 'medium', label: 'Medium', note: 'About 10 x 8 ft' },
+        { id: 'large', label: 'Large', note: 'Primary bath, about 14 x 12 ft' },
         { id: 'unsure', label: 'Not sure', siteVisit: 'Bathroom size to be measured' },
       ],
     },
@@ -133,16 +134,34 @@ export const BATHROOM_TEMPLATE: EstimatorTemplate = {
       showWhen: { questionId: 'scope', anyOf: ['bathing'] },
       options: [
         { id: 'walk_in', label: 'Walk-in shower with glass', note: 'Curbless or low curb, frameless glass', price: { unit: 'flat', low: 7000, high: 13000 } },
-        { id: 'tub_shower', label: 'Tub and shower combo', note: 'A new tub with a shower over it', price: { unit: 'flat', low: 5000, high: 9000 } },
+        {
+          id: 'tub_shower',
+          label: 'Tub and shower combo',
+          note: 'A new tub with a shower over it',
+          // A tub on a tub-to-shower conversion contradicts the project: confirmed in person.
+          siteVisit: 'A tub on a tub-to-shower conversion (plan confirmed in person)',
+          siteVisitWhen: { questionId: 'project', anyOf: ['tub_to_shower'] },
+          price: { unit: 'flat', low: 5000, high: 9000 },
+        },
         {
           id: 'tub_and_shower',
           label: 'Freestanding tub + separate shower',
           note: 'Best in a medium or large bathroom',
-          siteVisit: 'Freestanding tub and separate shower in a small room (layout check)',
-          siteVisitWhen: { questionId: 'size', anyOf: ['small'] },
+          // A layout and plumbing check in a small room, on a same-layout refresh, or on a tub-to-shower conversion.
+          siteVisit: 'Freestanding tub and separate shower (layout and plumbing check)',
+          siteVisitWhen: [
+            { questionId: 'size', anyOf: ['small'] },
+            { questionId: 'project', anyOf: ['refresh', 'tub_to_shower'] },
+          ],
           price: { unit: 'flat', low: 14000, high: 26000 },
         },
-        { id: 'keep', label: 'Keep my current tub/shower', note: 'Work around what is there' },
+        {
+          id: 'keep',
+          label: 'Keep my current tub/shower',
+          note: 'Work around what is there',
+          siteVisit: 'Keeping the tub on a tub-to-shower conversion (plan confirmed in person)',
+          siteVisitWhen: { questionId: 'project', anyOf: ['tub_to_shower'] },
+        },
       ],
     },
     {

@@ -24,6 +24,14 @@
  *             the clip through ffmpeg (H.264 + VP9, no audio). shower_glass is
  *             procedural (an SVG, no API call). Every export drops metadata.
  *   preview   3x3 tile previews and sprites-on-grey sheets in BATH_RAW_DIR/previews.
+ *   touchup   procedural fixes on the served files, run once after `post` (no API
+ *             call): counter_concrete is redrawn as smooth trowelled concrete
+ *             (the generated one read as granite in the picture),
+ *             tile_large_porcelain gets visible 1/8" grout joints, the
+ *             paint textures are redrawn procedurally in their own colour
+ *             (the generated ones drifted in colour and showed as faint
+ *             tinted rectangles where they repeat on a wall), and the
+ *             toilet's soft grey edge fringe is cut back.
  *
  * Env
  *   KIE_API_KEY   kie.ai key (generate / video / credits). Never commit it.
@@ -34,7 +42,7 @@
  * (sprites) into lib/estimator/scene/bath/textures.ts.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
@@ -632,6 +640,149 @@ function preview() {
   console.log(py(['preview', path.join(dir, 'sprites.jpg'), ...list('sprites')]));
 }
 
+// ------------------------------------------------------------------ touchup
+
+/** Seamless value noise in [0, 1]: `cells` x `cells` random lattice, smooth (cosine) interpolation, wrapping. */
+function periodicNoise(size, cells, seed) {
+  let a = seed;
+  const rand = () => ((a = (a * 16807) % 2147483647) / 2147483647);
+  const grid = Float32Array.from({ length: cells * cells }, rand);
+  const out = new Float32Array(size * size);
+  const ease = (t) => (1 - Math.cos(t * Math.PI)) / 2;
+  for (let y = 0; y < size; y++) {
+    const gy = (y / size) * cells;
+    const y0 = Math.floor(gy);
+    const ty = ease(gy - y0);
+    for (let x = 0; x < size; x++) {
+      const gx = (x / size) * cells;
+      const x0 = Math.floor(gx);
+      const tx = ease(gx - x0);
+      const g = (i, j) => grid[((j % cells) * cells) + (i % cells)];
+      const top = g(x0, y0) * (1 - tx) + g(x0 + 1, y0) * tx;
+      const bottom = g(x0, y0 + 1) * (1 - tx) + g(x0 + 1, y0 + 1) * tx;
+      out[y * size + x] = top * (1 - ty) + bottom * ty;
+    }
+  }
+  return out;
+}
+
+/** Smooth trowelled concrete, 3 x 3 ft, seamless: soft cloudy mottling, faint trowel sweeps, a few pinholes. */
+async function concrete() {
+  const size = 768;
+  const octaves = [[3, 0.42], [6, 0.28], [12, 0.16], [32, 0.09], [96, 0.05]].map(([c, w], i) => [periodicNoise(size, c, 7919 * (i + 3)), w]);
+  const sweep = periodicNoise(size, 5, 104729);
+  const px = Buffer.alloc(size * size * 3);
+  let a = 2027;
+  const rand = () => ((a = (a * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < size * size; i++) {
+    let n = 0;
+    for (const [o, w] of octaves) n += o[i] * w;
+    // Trowel sweeps: long, low-contrast bands along a slow curve.
+    const y = Math.floor(i / size);
+    const x = i % size;
+    const band = Math.sin(((x + y * 0.35) / size) * Math.PI * 2 * 6 + sweep[i] * 9) * 0.5 + 0.5;
+    const v = 150 + (n - 0.5) * 34 + (band - 0.5) * 5;
+    const pin = rand() < 0.00025 ? -38 : 0;
+    px[i * 3] = Math.max(0, Math.min(255, v + 2 + pin));
+    px[i * 3 + 1] = Math.max(0, Math.min(255, v + 1 + pin));
+    px[i * 3 + 2] = Math.max(0, Math.min(255, v - 3 + pin));
+  }
+  const out = path.join(SCENE, 'textures', 'counter_concrete.webp');
+  await sharp(px, { raw: { width: size, height: size, channels: 3 } }).blur(0.6).webp({ quality: 86, effort: 6 }).toFile(out);
+  const { channels } = await sharp(out).stats();
+  return `counter_concrete: procedural, mean #${channels.slice(0, 3).map((c) => Math.round(c.mean).toString(16).padStart(2, '0')).join('')}`;
+}
+
+/** 24 x 48" porcelain (one repeat is 4 x 4 ft): grout down the middle and edges, and across the top. */
+async function porcelainGrout() {
+  const file = path.join(SCENE, 'textures', 'tile_large_porcelain.webp');
+  const { data, info } = await sharp(file).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { width: w, height: h } = info;
+  const set = (x, y, rgb, alpha) => {
+    const i = (((y + h) % h) * w + ((x + w) % w)) * 3;
+    for (let c = 0; c < 3; c++) data[i + c] = Math.round(data[i + c] * (1 - alpha) + rgb[c] * alpha);
+  };
+  const grout = [188, 182, 172];
+  // About 1/8" at 256 px per ft is 3 px; a 1 px shadow on the far side gives the joint depth.
+  for (const gx of [0, w / 2]) {
+    for (let y = 0; y < h; y++) {
+      for (const dx of [-1, 0, 1]) set(gx + dx, y, grout, 0.85);
+      set(gx + 2, y, [120, 114, 106], 0.35);
+      set(gx - 2, y, [255, 255, 255], 0.3);
+    }
+  }
+  for (let x = 0; x < w; x++) {
+    for (const dy of [-1, 0, 1]) set(x, dy, grout, 0.85);
+    set(x, 2, [120, 114, 106], 0.35);
+    set(x, -2, [255, 255, 255], 0.3);
+  }
+  await sharp(data, { raw: { width: w, height: h, channels: 3 } }).webp({ quality: 84, effort: 6 }).toFile(file + '.tmp');
+  writeFileSync(file, readFileSync(file + '.tmp'));
+  unlinkSync(file + '.tmp');
+  return 'tile_large_porcelain: grout joints drawn';
+}
+
+/**
+ * Paint, redrawn procedurally in the generated file's own colour: a fine
+ * roller stipple and a barely-there seamless mottle. The generated roller
+ * textures carried broad colour drift and streaks that showed as tinted
+ * rectangles where the texture repeats across a wall.
+ */
+async function flatPaint(id) {
+  const file = path.join(SCENE, 'textures', `${id}.webp`);
+  const { channels } = await sharp(file).stats();
+  const mean = channels.slice(0, 3).map((c) => c.mean);
+  const size = 768;
+  const mottle = periodicNoise(size, 6, 4241);
+  const fine = periodicNoise(size, 192, 1777);
+  const px = Buffer.alloc(size * size * 3);
+  let a = 9001;
+  const rand = () => ((a = (a * 16807) % 2147483647) / 2147483647);
+  // Darker colours show the same texture with less amplitude.
+  const amp = Math.max(0.35, (mean[0] + mean[1] + mean[2]) / 3 / 235);
+  for (let i = 0; i < size * size; i++) {
+    const d = ((mottle[i] - 0.5) * 3 + (fine[i] - 0.5) * 5 + (rand() - 0.5) * 4) * amp;
+    for (let c = 0; c < 3; c++) px[i * 3 + c] = Math.max(0, Math.min(255, Math.round(mean[c] + d)));
+  }
+  await sharp(px, { raw: { width: size, height: size, channels: 3 } }).blur(0.5).webp({ quality: 84, effort: 6 }).toFile(file + '.tmp');
+  writeFileSync(file, readFileSync(file + '.tmp'));
+  unlinkSync(file + '.tmp');
+  return `${id}: procedural paint #${mean.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
+}
+
+/** Cut back a sprite's semi-transparent fringe (a grey halo on light walls) and pull its colour from the opaque body. */
+async function defringe(id) {
+  const file = path.join(SCENE, 'sprites', `${id}.webp`);
+  const { data, info } = await sharp(file).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { width: w, height: h } = info;
+  const src = Buffer.from(data);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      const al = src[i + 3];
+      if (al === 0 || al === 255) continue;
+      // Steeper edge: what was a 10 px soft rim becomes about 3 px.
+      data[i + 3] = Math.max(0, Math.min(255, Math.round((al - 110) * 1.9)));
+      // Colour from the most opaque neighbour within 3 px.
+      let best = -1;
+      for (let dy = -3; dy <= 3; dy++) {
+        for (let dx = -3; dx <= 3; dx++) {
+          const xx = x + dx;
+          const yy = y + dy;
+          if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+          const j = (yy * w + xx) * 4;
+          if (src[j + 3] > (best < 0 ? al : src[best + 3])) best = j;
+        }
+      }
+      if (best >= 0) for (let c = 0; c < 3; c++) data[i + c] = src[best + c];
+    }
+  }
+  await sharp(data, { raw: { width: w, height: h, channels: 4 } }).webp({ quality: 90, alphaQuality: 100, effort: 6 }).toFile(file + '.tmp');
+  writeFileSync(file, readFileSync(file + '.tmp'));
+  unlinkSync(file + '.tmp');
+  return `${id}: fringe cut back`;
+}
+
 async function runPool(items, limit, fn) {
   const queue = [...items];
   await Promise.all(Array.from({ length: limit }, async () => {
@@ -670,6 +821,11 @@ if (cmd === 'credits') {
   if (!ids.length || ids.includes('video')) console.log(postVideo(), '\n' + await postPoster());
 } else if (cmd === 'preview') {
   preview();
+} else if (cmd === 'touchup') {
+  console.log(await concrete());
+  console.log(await porcelainGrout());
+  for (const id of ['paint_soft_white', 'paint_greige', 'paint_sage', 'paint_navy']) console.log(await flatPaint(id));
+  console.log(await defringe('toilet'));
 } else {
   console.log(readFileSync(new URL(import.meta.url), 'utf8').split('*/')[0]);
   process.exitCode = cmd ? 1 : 0;

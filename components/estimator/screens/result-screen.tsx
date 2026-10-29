@@ -127,7 +127,7 @@ export function ResultScreen({
   /** Live builder: count-up reveal, booking button right under the range. */
   builder?: boolean;
   /** The trade's words for the next step (TradeCopy); the pool's on-site wording when omitted. */
-  copy?: Pick<TradeCopy, 'bookLabel' | 'contactLine' | 'siteVisitHeading' | 'priceOnSite'>;
+  copy?: Pick<TradeCopy, 'bookLabel' | 'contactLine' | 'siteVisitHeading' | 'priceOnSite' | 'examplePriceNote'>;
 }) {
   const rangeId = useId();
   const words = copy ?? POOL_COPY;
@@ -188,7 +188,9 @@ export function ResultScreen({
         )}
         <p className="mt-2 text-sm font-semibold text-[var(--hq-text)]">Ballpark, not a quote</p>
         {!template.pricesConfirmed ? (
-          <p className="mt-1 text-sm text-[var(--hq-text-muted)]">Example prices: these figures are placeholders until pricing is confirmed.</p>
+          <p className="mt-1 text-sm text-[var(--hq-text-muted)]">
+            {words.examplePriceNote ?? 'Example prices: these figures are placeholders until pricing is confirmed.'}
+          </p>
         ) : null}
 
         {/* Live builder: booking is the next thing they see, right under the price. */}

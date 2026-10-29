@@ -1,6 +1,6 @@
 'use client';
 
-import { useId } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import type { EstimatorTemplate } from '@/lib/estimator/types';
 import { cn } from '@/lib/utils';
 import { Field, inputClass } from '../ui';
@@ -10,7 +10,9 @@ import type { DimensionsInput } from '../use-estimator-flow';
  * "I know my dimensions": optional length / width (and depth) in feet. Values
  * outside the template limits are ignored and the size preset is used; the
  * hint says so instead of silently changing the number. A template without
- * depth (a room: maxDepthFt 0) asks for length and width only.
+ * depth (a room: maxDepthFt 0) asks for length and width only. While valid
+ * numbers are in use a quiet note says they win over the size picked above,
+ * and ticking the box brings the fields (and that line) into view.
  */
 export function SizeDimensions({
   template,
@@ -19,6 +21,7 @@ export function SizeDimensions({
   value,
   onChange,
   hint,
+  using = false,
 }: {
   template: EstimatorTemplate;
   enabled: boolean;
@@ -26,8 +29,19 @@ export function SizeDimensions({
   value: DimensionsInput;
   onChange: (next: DimensionsInput) => void;
   hint?: string;
+  /** Valid typed dimensions are in use (they win over the size tiles). */
+  using?: boolean;
 }) {
   const uid = useId();
+  const boxRef = useRef<HTMLDivElement>(null);
+  const opened = useRef(enabled);
+  useEffect(() => {
+    if (enabled && !opened.current) {
+      const smooth = !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      boxRef.current?.scrollIntoView({ block: 'nearest', behavior: smooth ? 'smooth' : 'auto' });
+    }
+    opened.current = enabled;
+  }, [enabled]);
   const lim = template.geometry.limits;
   const depth = lim.maxDepthFt > 0;
   // Tabular figures: the digits do not jiggle as the picture resizes with each keystroke.
@@ -45,7 +59,7 @@ export function SizeDimensions({
         />
         I know my dimensions
       </label>
-      <div id={`${uid}-dims`} hidden={!enabled}>
+      <div id={`${uid}-dims`} ref={boxRef} hidden={!enabled} className="scroll-mb-6">
         {enabled ? (
           <>
             <div className={cn('mt-2 grid gap-3', depth ? 'grid-cols-3' : 'grid-cols-2')}>
@@ -67,8 +81,8 @@ export function SizeDimensions({
                 </Field>
               ) : null}
             </div>
-            <p role="status" className="mt-2 min-h-5 text-sm text-[var(--hq-warn)]">
-              {hint ?? ''}
+            <p role="status" className={cn('mt-2 min-h-5 text-sm', hint ? 'text-[var(--hq-warn)]' : 'text-[var(--hq-text-muted)]')}>
+              {hint ?? (using ? 'Using your measurements instead of the size above.' : '')}
             </p>
           </>
         ) : null}

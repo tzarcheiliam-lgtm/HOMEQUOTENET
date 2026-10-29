@@ -48,7 +48,9 @@ describe('bathroom-remodel config', () => {
   });
 
   it('carries only truthful network facts (no license, years or reviews of its own)', () => {
-    expect(found.contractor.facts).toEqual(['Free in-home consultation', 'Licensed local contractors', 'No obligation']);
+    expect(found.contractor.facts).toEqual(['Free in-home consultation', 'No obligation', 'Free to use']);
+    // The licensed-contractor line describes the service and is never shown as the network's own license.
+    expect(found.contractor).toMatchObject({ network: true, licenseLabel: 'Connects you with licensed local contractors' });
     expect(getEstimator('pool-masters')!.contractor.facts).toEqual(['Licensed & insured', 'Serving SoCal since 2010', 'Free on-site estimate']);
   });
 });

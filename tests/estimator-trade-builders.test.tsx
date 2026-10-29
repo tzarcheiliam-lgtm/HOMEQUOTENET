@@ -180,13 +180,15 @@ describe('bathroom flow', () => {
     const visible = text(html);
     expect(visible).toMatch(/Sam, here’s your (walk-in shower|spa-style|new|refreshed) bathroom/);
     expect(visible).toContain('Ballpark, not a quote');
-    expect(visible).toContain('A licensed local bathroom contractor will reach out to set up your free in-home consultation.');
+    // The network acts first (as the funnel's thank-you page says), then the licensed contractor.
+    expect(visible).toContain('A HomeQuote Network project specialist will call you shortly to talk through your design and next steps, including a free in-home consultation with a licensed local bathroom contractor.');
+    expect(visible).not.toMatch(/contractor will (reach out|confirm|price)/);
     expect(visible).not.toMatch(/\bwe (build|install)\b|years in business|on-site visit/i);
     expect(visible).not.toMatch(PHOTO_PROMISE);
   });
 
   it('result headings follow the design', () => {
-    expect(bathResultHeading('Sam', EXAMPLE_BATH_SCENE)).toBe('Sam, here’s your walk-in shower bathroom');
+    expect(bathResultHeading('Sam', { ...EXAMPLE_BATH_SCENE, bathing: 'walk_in' })).toBe('Sam, here’s your walk-in shower bathroom');
     expect(bathResultHeading(' ', { ...EXAMPLE_BATH_SCENE, bathing: 'tub_and_shower' })).toBe('Here’s your spa-style bathroom');
     expect(bathResultHeading('Sam', { ...EXAMPLE_BATH_SCENE, bathing: 'existing', project: 'refresh' })).toBe('Sam, here’s your refreshed bathroom');
     expect(poolResultHeading('Sam', [{ label: 'Pool', value: 'Freeform, about 30 × 15 ft' }])).toBe('Sam, here’s your freeform pool');
@@ -195,7 +197,7 @@ describe('bathroom flow', () => {
 
 describe('network shell', () => {
   it('truthful network facts, and a Start link instead of a phone', () => {
-    expect(contractorFacts(BC)).toEqual(['Free in-home consultation', 'Licensed local contractors', 'No obligation']);
+    expect(contractorFacts(BC)).toEqual(['Free in-home consultation', 'No obligation', 'Free to use']);
     expect(contractorFacts({ slug: 'x', facts: ['A'] })).toEqual(['A']);
     const html = renderToStaticMarkup(<EstimatorHeader contractor={BC} facts={contractorFacts(BC)} startHref="#design" />);
     expect(html).not.toContain('tel:');

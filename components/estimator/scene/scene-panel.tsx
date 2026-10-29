@@ -51,6 +51,8 @@ export type ScenePanelProps = {
   variant?: 'builder' | 'result';
   /** Camera: the whole design, or in close while finishes are chosen ('pool' / 'yard' are the pool's names for close / overview). */
   focus?: CameraFocus | 'close' | 'overview';
+  /** With a close focus: the question on screen it is for (the scene frames what that question changes). */
+  focusOn?: string;
   /** The current screen: a change chip from the previous screen is cleared when it changes. */
   stepKey?: string;
   /** The frame element (the scene's <svg> is inside it), for "Save my design" and the photoreal render. */
@@ -108,6 +110,7 @@ export const ScenePanel = memo(function ScenePanel({
   onNightChange,
   variant = 'builder',
   focus = 'yard',
+  focusOn,
   stepKey,
   frameRef,
   overlay,
@@ -235,8 +238,10 @@ export const ScenePanel = memo(function ScenePanel({
           scene={shown}
           mode={mode}
           focus={close ? 'close' : 'overview'}
+          focusOn={close ? focusOn : undefined}
           intro={intro}
           highlight={flash}
+          covered={compare}
           label={example && !ghost ? `Example design, not your picks yet. ${builder.describe(shown, labeler)}` : builder.describe(shown, labeler)}
           className="absolute inset-0 block size-full"
         />
@@ -301,7 +306,11 @@ export const ScenePanel = memo(function ScenePanel({
 
         {chip ? (
           // Tablet and up: over the bottom of the picture. Phones show it under the picture instead (below).
-          <div key={`chip-${chip.key}`} aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center px-3 max-sm:hidden">
+          <div
+            key={`chip-${chip.key}`}
+            aria-hidden="true"
+            className={cn('pointer-events-none absolute inset-x-0 bottom-3 flex px-3 max-sm:hidden', builder.chipAlign === 'start' ? 'justify-start' : 'justify-center')}
+          >
             <span
               className={cn(
                 'eb-chip inline-flex max-w-full items-center gap-1.5 rounded-full bg-white/95 py-1.5 pr-3.5 text-xs font-semibold text-[#06122b] shadow-lg sm:text-sm',

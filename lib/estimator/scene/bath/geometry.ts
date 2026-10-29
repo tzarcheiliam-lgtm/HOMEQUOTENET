@@ -1,3 +1,4 @@
+import { BATH_SPRITES } from './textures.ts';
 import { BATH_SCENE, type BathSceneSpec, type BathVanity } from './types.ts';
 
 /**
@@ -12,9 +13,10 @@ import { BATH_SCENE, type BathSceneSpec, type BathVanity } from './types.ts';
  *   the distance from the camera; the back wall sits at zBack.
  * - Everything the homeowner picks stands against the back wall, front-on,
  *   left to right: the bathing zone in the back-left corner, then the toilet
- *   (when it fits), then the vanity. A freestanding tub sits just off the
- *   wall under a window. A room too narrow for the picks is drawn wider (the
- *   picture is an illustration of THEIR choices, not a floor plan).
+ *   (always: a bathroom without one reads as fake), then the vanity. A
+ *   freestanding tub sits just off the wall under a window, clear of the
+ *   shower glass. A room too narrow for the picks is drawn wider (the picture
+ *   is an illustration of THEIR choices, not a floor plan).
  * - The camera is fitted per room so the floor, ceiling and both side walls
  *   always fill the frame: small rooms get a wider lens and tighter framing
  *   (the squeezed hall-bath look), large rooms show more back wall.
@@ -36,6 +38,10 @@ const ROOM_W_MAX = 20;
 const ROOM_D_MAX = 16;
 /** Floor space right of a freestanding tub for its filler. */
 const FILLER_ROOM = 0.45;
+/** Beside a freestanding tub the separate shower stays shallow, so the tub never overlaps its glass. */
+const SEPARATE_SHOWER_DEPTH = 3;
+const FREESTANDING_DEPTH = 2.5;
+const FREESTANDING_WALL_GAP = 0.35;
 
 export type Pt = { x: number; y: number };
 
@@ -144,7 +150,7 @@ export type BathLayout = {
   shower: ShowerLayout | null;
   alcove: AlcoveLayout | null;
   freestanding: FreestandingLayout | null;
-  toilet: { cx: number } | null;
+  toilet: { cx: number };
   vanity: VanityLayout;
   mirrors: Rect[];
   sconces: Pt[];
@@ -221,12 +227,12 @@ export function bathLayout(spec: BathSceneSpec): BathLayout {
   const alcoveTub = bathing === 'tub_shower' || bathing === 'existing';
 
   // Widths along the back wall.
-  const showerW = walkIn ? (separate ? [3.2, 3.6, 4.5] : [3.4, 4, 5])[size] : 0;
-  const showerDepth = walkIn ? [3, 3.2, 3.6][size] : 0;
+  const showerW = walkIn ? (separate ? [3.2, 3.6, 4] : [3.4, 4, 5])[size] : 0;
+  const showerDepth = walkIn ? (separate ? SEPARATE_SHOWER_DEPTH : [3, 3.2, 3.6][size]) : 0;
   const alcoveW = alcoveTub ? 5 : 0;
   const partitionW = alcoveTub ? 0.35 : 0;
-  const tubW = separate ? [4.6, 5.2, 5.6][size] : 0;
-  const tubGap = separate ? 0.6 : 0;
+  const tubW = separate ? [4.6, 5, 5.3][size] : 0;
+  const tubGap = separate ? 0.45 : 0;
   const vanityKind: BathVanity = spec.vanity ?? 'single';
   const vanityW = VANITY_W[vanityKind][size];
   const toiletW = 2.2;
@@ -235,10 +241,22 @@ export function bathLayout(spec: BathSceneSpec): BathLayout {
 
   const bathingW = showerW + alcoveW + partitionW + (separate ? tubGap + tubW + tubGap + FILLER_ROOM : 0);
   const core = bathingW + minGap + vanityW + rightGap;
-  // The toilet comes along when it (nearly) fits: up to a foot of extra width is drawn rather than drop it.
-  const withToilet = !separate && core + toiletW <= wallW + 1;
-  const needed = core + (withToilet ? toiletW : 0);
-  const roomW = Math.max(wallW, needed);
+  // The toilet always comes along: a narrow room is drawn wider rather than drop it.
+  // A freestanding tub stands in front of the shower's glass return: it moves right until the picture
+  // shows it clear of the glass (the camera depends on the room width, so fit twice).
+  let tubShift = 0;
+  let needed = core + toiletW;
+  let roomW = Math.max(wallW, needed);
+  for (let i = 0; separate && i < 3; i++) {
+    const cam = fitCamera(roomW, roomD);
+    const zf = cam.zBack - FREESTANDING_WALL_GAP - FREESTANDING_DEPTH + 0.3;
+    const clearX = cam.camX + ((showerW - cam.camX) * zf) / cam.zBack + (BATH_SPRITES.tub_freestanding.widthFt / 2) * (zf / (zf - 0.3)) + 0.1;
+    const cx = showerW + tubGap + tubShift + tubW / 2;
+    if (cx >= clearX) break;
+    tubShift += clearX - cx;
+    needed = core + tubShift + toiletW;
+    roomW = Math.max(wallW, needed);
+  }
 
   const camera = fitCamera(roomW, roomD);
   const C = BATH_CEILING_FT;
@@ -261,8 +279,8 @@ export function bathLayout(spec: BathSceneSpec): BathLayout {
     valve = { x: mid + 0.2, y: 3.6 };
     cursor = showerW;
     if (separate) {
-      const cx = cursor + tubGap + tubW / 2;
-      freestanding = { cx, width: tubW, depth: 2.6, height: 1.95, zFront: camera.zBack - 0.45 - 2.6 };
+      const cx = cursor + tubGap + tubShift + tubW / 2;
+      freestanding = { cx, width: tubW, depth: FREESTANDING_DEPTH, height: 1.95, zFront: camera.zBack - FREESTANDING_WALL_GAP - FREESTANDING_DEPTH };
       // Room on the right for the floor-mounted filler.
       cursor = cx + tubW / 2 + tubGap + FILLER_ROOM;
     }
@@ -287,7 +305,7 @@ export function bathLayout(spec: BathSceneSpec): BathLayout {
   const slack = roomW - needed;
   const vanityX1 = roomW - rightGap - Math.min(slack * 0.3, 1.6);
   const vanityX0 = vanityX1 - vanityW;
-  const toilet = withToilet ? { cx: (cursor + vanityX0) / 2 } : null;
+  const toilet = { cx: (cursor + vanityX0) / 2 };
   const floating = vanityKind === 'floating';
   const vanity: VanityLayout = {
     kind: vanityKind,
@@ -321,7 +339,7 @@ export function bathLayout(spec: BathSceneSpec): BathLayout {
 
   // Towel: on a hook between the bathing zone and the vanity when there is wall for it.
   const towelGapX0 = bathingRight + 0.2;
-  const towelGapX1 = (toilet ? toilet.cx - 1.15 : vanityX0) - 0.2;
+  const towelGapX1 = toilet.cx - 1.15 - 0.2;
   // (A freestanding tub has its towel draped over the rim instead.)
   const towel = !freestanding && towelGapX1 - towelGapX0 >= 1.5 ? { x: (towelGapX0 + towelGapX1) / 2, y: 5.6 } : null;
 
@@ -332,12 +350,57 @@ export function bathLayout(spec: BathSceneSpec): BathLayout {
   const plantX = Math.min(roomW - 0.7, plantVisibleRight - 0.45);
   const plant = plantZ < camera.zBack - vanity.depth - 1.2 && plantX > vanityX0 ? { x: plantX, z: plantZ } : null;
 
+  // Ceiling cans: one over the shower or tub (its evening downlight), one over the vanity, one over a freestanding tub.
+  const canZ = camera.zBack - Math.min(2.2, roomD * 0.3);
+  const bathX = shower ? (shower.x0 + shower.x1) / 2 : alcove ? (alcove.x0 + alcove.x1) / 2 : roomW * 0.3;
+  const bathDepth = shower?.depth ?? alcove?.depth ?? 2.4;
   const cans = [
-    { x: roomW * 0.3, z: camera.zBack - Math.min(2.2, roomD * 0.3) },
-    { x: roomW * 0.7, z: camera.zBack - Math.min(2.2, roomD * 0.3) },
+    { x: bathX, z: camera.zBack - bathDepth / 2 },
+    ...(freestanding ? [{ x: freestanding.cx, z: canZ }] : []),
+    { x: (vanityX0 + vanityX1) / 2, z: canZ },
   ];
 
   return { camera, shower, alcove, freestanding, toilet, vanity, mirrors, sconces, window, niche, bench, showerHead, valve, towel, plant, cans };
+}
+
+/** A frame-space box (1200 x 800 frame units, before any close-up zoom). */
+export type FrameBox = { x: number; y: number; w: number; h: number };
+
+/** The parts of the picture a scope item renews, for the "this is what changes" highlight. */
+export type BathArea = 'bathing' | 'vanity' | 'floor' | 'walls';
+
+/** Where each area sits in the frame (unzoomed), from the layout. */
+export function bathAreaBoxes(L: BathLayout): Record<BathArea, FrameBox> {
+  const cam = L.camera;
+  const zb = cam.zBack;
+  const box = (a: Pt, b: Pt): FrameBox => ({ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) });
+  const bathRight = L.freestanding
+    ? L.freestanding.cx + L.freestanding.width / 2 + 0.4
+    : L.shower
+      ? L.shower.x1
+      : (L.alcove?.partition?.x1 ?? L.alcove?.x1 ?? 4);
+  const bathNear = zb - Math.max(L.shower?.depth ?? 0, L.alcove?.depth ?? 0, L.freestanding ? zb - L.freestanding.zFront : 0);
+  const v = L.vanity;
+  return {
+    bathing: box(project(cam, 0, BATH_CEILING_FT - 0.3, zb), project(cam, bathRight, 0, bathNear)),
+    vanity: box(project(cam, v.x0 - 0.1, (L.mirrors[0]?.y1 ?? v.top + 3) + 0.2, zb), project(cam, v.x1 + 0.1, 0, zb - v.depth)),
+    floor: box(project(cam, 0, 0, zb), { x: cam.frameW, y: cam.frameH }),
+    walls: box(project(cam, 0, BATH_CEILING_FT, zb), project(cam, cam.roomW, 0, zb)),
+  };
+}
+
+/** Where a close-up looks (frame units): the shower wall for tile picks, the vanity otherwise. */
+export function bathFocusPoint(L: BathLayout, target: 'shower' | 'vanity'): Pt {
+  const cam = L.camera;
+  if (target === 'shower') {
+    const x0 = L.shower?.x0 ?? L.alcove?.x0 ?? 0;
+    const x1 = L.shower?.x1 ?? L.alcove?.x1 ?? 4;
+    const p = project(cam, (x0 + x1) / 2, 4.6, cam.zBack);
+    return { x: p.x + 30, y: p.y };
+  }
+  const v = L.vanity;
+  const p = project(cam, (v.x0 + v.x1) / 2, v.top + 0.9, cam.zBack);
+  return { x: p.x - 60, y: p.y };
 }
 
 /** Every finite number in a layout (tests: no NaN / Infinity anywhere). */

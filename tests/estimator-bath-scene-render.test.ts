@@ -25,8 +25,23 @@ const ROOMS: [BathSceneSpec['room'], number, number][] = [
 const BATHING: BathSceneSpec['bathing'][] = ['walk_in', 'tub_shower', 'tub_and_shower', 'existing'];
 const VANITIES: BathSceneSpec['vanity'][] = [null, 'single', 'double', 'floating'];
 
+/** A medium walk-in bathroom to vary (the example is a large spa bath). */
+const BASE: BathSceneSpec = {
+  ...EXAMPLE_BATH_SCENE,
+  room: 'medium',
+  lengthFt: 10,
+  widthFt: 8,
+  bathing: 'walk_in',
+  showerTile: 'zellige',
+  floor: 'hex_mosaic',
+  paint: 'sage',
+  vanityFinish: 'wood',
+  counter: 'quartz_white',
+  extras: { niche: true, bench: false, ledMirror: true, heatedFloor: false, rainHead: true },
+};
+
 function spec(over: Partial<BathSceneSpec>): BathSceneSpec {
-  return { ...EXAMPLE_BATH_SCENE, ...over, extras: { ...EXAMPLE_BATH_SCENE.extras, ...(over.extras ?? {}) } };
+  return { ...BASE, ...over, extras: { ...BASE.extras, ...(over.extras ?? {}) } };
 }
 
 /** Every combination the picture can be asked for, plus hostile dimensions. */
@@ -106,10 +121,9 @@ describe('bathLayout', () => {
       const bathingRight = L.shower ? L.shower.x1 : (L.alcove?.partition?.x1 ?? L.alcove?.x1 ?? 0);
       const right = L.freestanding ? L.freestanding.cx + L.freestanding.width / 2 : bathingRight;
       expect(v.x0).toBeGreaterThanOrEqual(right - 1e-9);
-      if (L.toilet) {
-        expect(L.toilet.cx - 1).toBeGreaterThanOrEqual(bathingRight - 1e-9);
-        expect(L.toilet.cx + 1).toBeLessThanOrEqual(v.x0 + 1e-9);
-      }
+      // Always a toilet, between the bathing zone (and a freestanding tub's filler) and the vanity.
+      expect(L.toilet.cx - 1).toBeGreaterThanOrEqual(right - 1e-9);
+      expect(L.toilet.cx + 1).toBeLessThanOrEqual(v.x0 + 1e-9);
       // Exactly one bathing layout.
       expect(Number(!!L.shower) + Number(!!L.alcove)).toBe(1);
       expect(!!L.freestanding).toBe(s.bathing === 'tub_and_shower');
@@ -152,7 +166,9 @@ describe('bathLayout', () => {
     const combo = bathLayout(spec({ room: 'large', lengthFt: 14, widthFt: 12, bathing: 'tub_and_shower', vanity: 'double' }));
     expect(combo.freestanding).not.toBeNull();
     expect(combo.window.wall).toBe('back');
-    expect(combo.toilet).toBeNull();
+    // Every layout has a toilet, beside the tub's filler; the tub stays clear of the shower glass.
+    expect(combo.toilet.cx - 1).toBeGreaterThan(combo.freestanding!.cx + combo.freestanding!.width / 2);
+    expect(combo.camera.zBack - combo.freestanding!.zFront).toBeLessThanOrEqual(combo.shower!.depth);
     expect(bathLayout(spec({ bathing: 'tub_shower', glass: false })).alcove).toMatchObject({ glass: false });
     expect(bathLayout(spec({ bathing: 'walk_in', extras: { bench: false, niche: false, rainHead: false, ledMirror: false, heatedFloor: false } }))).toMatchObject({ bench: null, niche: null, showerHead: { kind: 'wall' } });
     // A small room keeps a single vanity at its real size.

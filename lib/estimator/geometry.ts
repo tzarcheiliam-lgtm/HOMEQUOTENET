@@ -73,3 +73,27 @@ export function poolGeometry(template: EstimatorTemplate, input: EstimateInput):
     source: useTyped ? 'dimensions' : 'preset',
   };
 }
+
+/**
+ * The size preset a footprint reads as: the size answer itself, or, with
+ * valid typed dimensions (or "not sure"), the preset whose floor area is
+ * nearest on a log scale (the boundary between two presets is the geometric
+ * mean of their areas). For the bathroom presets (40, 80 and 168 sq ft) that
+ * is small up to about 57 sq ft and medium up to about 116.
+ */
+export function sizeClassFor(template: EstimatorTemplate, geometry: PoolGeometry): Exclude<PoolSize, 'unsure'> {
+  if (geometry.source === 'preset' && geometry.size !== 'unsure') return geometry.size;
+  const area = Math.max(1e-6, geometry.lengthFt * geometry.widthFt);
+  let best: Exclude<PoolSize, 'unsure'> = 'medium';
+  let bestGap = Infinity;
+  for (const size of ['small', 'medium', 'large'] as const) {
+    const preset = template.geometry.sizes[size];
+    if (!preset) continue;
+    const gap = Math.abs(Math.log(area / Math.max(1e-6, preset.lengthFt * preset.widthFt)));
+    if (gap < bestGap) {
+      best = size;
+      bestGap = gap;
+    }
+  }
+  return best;
+}

@@ -1,4 +1,5 @@
 import {
+  bathFocusPoint,
   bathLayout,
   BATH_CEILING_FT,
   frameEdgeDepths,
@@ -33,8 +34,11 @@ import { grain, hexRgb, makeCanvas, mix, shade } from './procedural';
  *    then glows are screened on top, then a soft vignette, a warm grade and
  *    film grain.
  *
- * Redraws are synchronous and well under 50 ms at 2x; the flat textures are
- * cached per material and plane scale.
+ * Redraws are synchronous; the flat textures are cached per material and
+ * plane scale (bounded by pixels, released with releaseBathCanvases). A
+ * `draft` paint (while the homeowner is picking) draws the perspective planes
+ * in coarser strips and skips the reflections, for a fraction of the cost;
+ * the scene repaints sharp once picks settle.
  */
 
 const C = BATH_CEILING_FT;
@@ -44,9 +48,24 @@ export type PaintOptions = {
   /** Device pixels per frame unit (canvas width / 1200). */
   scale: number;
   mood: BathMood;
-  /** 'close' zooms on the vanity and shower tile (finish questions). */
+  /** 'close' zooms in for the finish questions... */
   focus?: 'overview' | 'close';
+  /** ...on the shower wall (tile) or the vanity (cabinet, counter, fixtures). Default vanity. */
+  target?: 'shower' | 'vanity';
+  /** Fast, slightly softer frame for the instant response to a pick (a sharp paint follows). */
+  draft?: boolean;
 };
+
+/**
+ * A texture the painter can draw: a manifest texture, or one of the two
+ * "fresh" neutrals (the default tile or floor, cleaned up) that stand in for
+ * a renewed area before its material is picked.
+ */
+type PaintTexture = BathTextureId | 'tile_plain:fresh' | 'floor_plain:fresh';
+
+function baseTexture(id: PaintTexture): BathTextureId {
+  return id.endsWith(':fresh') ? (id.slice(0, -6) as BathTextureId) : (id as BathTextureId);
+}
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -66,27 +85,75 @@ export function materialTexture(question: keyof typeof BATH_DEFAULT_TEXTURES, id
 // Textures at plane scale
 // ---------------------------------------------------------------------------
 
+/** Resampled textures, least recently used first; bounded by total pixels (iOS caps canvas memory). */
 const scaledCache = new Map<string, HTMLCanvasElement>();
+const SCALED_MAX_PX = 24e6;
+let scaledPx = 0;
+
+/** Plane scales snap to these steps, so live, close-up and export paints share cached textures. */
+function snapP(P: number): number {
+  const steps = [24, 32, 40, 48, 64, 80, 96, 112, 128, 150];
+  return steps.find((s) => s >= P - 0.5) ?? 150;
+}
 
 /** The texture resampled so one copy spans realFt * P px (cached per size). */
-function scaledTexture(id: BathTextureId, P: number): HTMLCanvasElement {
-  const src = textureSource(id);
+function scaledTexture(id: PaintTexture, P: number): HTMLCanvasElement {
+  const base = baseTexture(id);
+  const src = textureSource(base);
   const w = Math.max(4, Math.round(src.realFt * P));
   const h = Math.max(4, Math.round((w * src.height) / src.width));
   const key = `${id}|${w}|${src.file ? 1 : 0}`;
   const hit = scaledCache.get(key);
-  if (hit) return hit;
+  if (hit) {
+    scaledCache.delete(key);
+    scaledCache.set(key, hit);
+    return hit;
+  }
   const c = makeCanvas(w, h);
   const cx = c.getContext('2d')!;
   cx.imageSmoothingQuality = 'high';
   cx.drawImage(src.image, 0, 0, w, h);
-  if (scaledCache.size > 160) scaledCache.clear();
+  if (id !== base) freshen(cx, w, h);
+  scaledPx += w * h;
+  for (const [k, old] of scaledCache) {
+    if (scaledPx <= SCALED_MAX_PX) break;
+    scaledPx -= old.width * old.height;
+    scaledCache.delete(k);
+  }
   scaledCache.set(key, c);
   return c;
 }
 
+/** A renewed area before its pick: the existing beige finish, desaturated and lifted to a clean new white-grey. */
+function freshen(cx: Ctx, w: number, h: number) {
+  cx.save();
+  cx.globalCompositeOperation = 'saturation';
+  cx.fillStyle = 'rgb(128,128,128)';
+  cx.fillRect(0, 0, w, h);
+  cx.globalCompositeOperation = 'screen';
+  cx.fillStyle = 'rgb(118,120,122)';
+  cx.fillRect(0, 0, w, h);
+  cx.restore();
+}
+
+/**
+ * Drop the cached textures and scratch canvases (the last BathScene
+ * unmounted). They are rebuilt on the next paint.
+ */
+export function releaseBathCanvases(): void {
+  scaledCache.clear();
+  scaledPx = 0;
+  for (const c of pool.values()) {
+    c.width = 1;
+    c.height = 1;
+  }
+  pool.clear();
+  if (lightCanvas) lightCanvas.width = lightCanvas.height = 1;
+  lightCanvas = null;
+}
+
 /** Fill a px rect with a texture whose pattern origin is (ax, ay). */
-function fillTexture(ctx: Ctx, id: BathTextureId, P: number, x: number, y: number, w: number, h: number, ax = 0, ay = 0) {
+function fillTexture(ctx: Ctx, id: PaintTexture, P: number, x: number, y: number, w: number, h: number, ax = 0, ay = 0) {
   const pattern = ctx.createPattern(scaledTexture(id, P), 'repeat');
   if (!pattern) return;
   ctx.save();
@@ -239,7 +306,7 @@ function pooled(key: string, w: number, h: number): HTMLCanvasElement {
 }
 
 /** A flat canvas filled with a texture, w x h feet at P px/ft (pattern anchored bottom-left). */
-function surface(key: string, id: BathTextureId, wFt: number, hFt: number, P: number, anchorBottom = true): HTMLCanvasElement {
+function surface(key: string, id: PaintTexture, wFt: number, hFt: number, P: number, anchorBottom = true): HTMLCanvasElement {
   const c = pooled(key, wFt * P, hFt * P);
   const cx = c.getContext('2d')!;
   fillTexture(cx, id, P, 0, 0, c.width, c.height, 0, anchorBottom ? c.height : 0);
@@ -261,8 +328,8 @@ type Look = {
   L: BathLayout;
   cam: BathCamera;
   mood: BathMood;
-  tile: BathTextureId;
-  floor: BathTextureId;
+  tile: PaintTexture;
+  floor: PaintTexture;
   paint: BathTextureId;
   counter: BathTextureId;
   cabinet: BathTextureId;
@@ -274,6 +341,7 @@ type Look = {
   dpx: number;
   step: number;
   P: number;
+  draft: boolean;
 };
 
 /** Paint one frame. `ctx` belongs to a canvas of 1200 * scale x 800 * scale px. */
@@ -284,13 +352,17 @@ export function paintBathScene(ctx: Ctx, spec: BathSceneSpec, opts: PaintOptions
   const paintId = materialTexture('paint', spec.paint);
   const zoom = opts.focus === 'close' ? 1.55 : 1;
   const dpx = opts.scale * zoom;
+  const draft = Boolean(opts.draft);
+  // A renewed area shows a clean new neutral until its material is picked (a new layout always gets new tile).
+  const freshTile = !spec.showerTile && (spec.bathing !== 'existing' || Boolean(spec.renew?.bathing));
+  const freshFloor = !spec.floor && Boolean(spec.renew?.floor);
   const look: Look = {
     spec,
     L,
     cam,
     mood: opts.mood,
-    tile: materialTexture('showerTile', spec.showerTile),
-    floor: materialTexture('floor', spec.floor),
+    tile: freshTile ? 'tile_plain:fresh' : materialTexture('showerTile', spec.showerTile),
+    floor: freshFloor ? 'floor_plain:fresh' : materialTexture('floor', spec.floor),
     paint: paintId,
     counter: materialTexture('counter', spec.counter),
     cabinet: materialTexture('vanityFinish', spec.vanityFinish),
@@ -299,10 +371,12 @@ export function paintBathScene(ctx: Ctx, spec: BathSceneSpec, opts: PaintOptions
     paintRgb: hexRgb(textureFallback(paintId)),
     dark: opts.mood === 'evening',
     dpx,
-    // Strip step: device px, but no finer than 1/1.5 frame px (invisible on 2x screens, half the draws).
-    step: 1 / Math.min(dpx, 1.5),
-    // Plane canvases: enough px per ft for the nearest surfaces, capped for memory.
-    P: Math.min(150, Math.max(48, Math.round(64 * dpx))),
+    // Strip step: device px, but no finer than 1/1.5 frame px (invisible on 2x screens, half the draws);
+    // a draft uses 2.5 frame px strips (about a third of the draws).
+    step: draft ? 2.5 : 1 / Math.min(dpx, 1.5),
+    // Plane canvases: enough px per ft for the nearest surfaces, capped for memory (lower for a draft).
+    P: snapP(Math.min(150, Math.max(draft ? 32 : 48, Math.round((draft ? 40 : 64) * dpx)))),
+    draft,
   };
 
   ctx.save();
@@ -312,7 +386,7 @@ export function paintBathScene(ctx: Ctx, spec: BathSceneSpec, opts: PaintOptions
   ctx.fillStyle = look.dark ? '#2a2a33' : '#e8e4dc';
   ctx.fillRect(0, 0, FW, FH);
   if (zoom !== 1) {
-    const target = focusPoint(L);
+    const target = bathFocusPoint(L, opts.target ?? 'vanity');
     const tx = Math.min(FW - FW / (2 * zoom), Math.max(FW / (2 * zoom), target.x));
     const ty = Math.min(FH - FH / (2 * zoom), Math.max(FH / (2 * zoom), target.y));
     ctx.translate(FW / 2, FH / 2);
@@ -332,8 +406,12 @@ export function paintBathScene(ctx: Ctx, spec: BathSceneSpec, opts: PaintOptions
   ctx.restore();
 }
 
-function textureFallback(id: BathTextureId): string {
-  return textureSource(id).file ? sampleMean(id) : FALLBACKS[id] ?? '#e9e6df';
+function textureFallback(texture: PaintTexture): string {
+  const id = baseTexture(texture);
+  const mean = textureSource(id).file ? sampleMean(id) : FALLBACKS[id] ?? '#e9e6df';
+  if (id === texture) return mean;
+  const [r, g, b] = mix(hexRgb(mean), [236, 236, 236], 0.75).map((v) => Math.round(v));
+  return `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
 }
 
 const FALLBACKS: Record<string, string> = Object.fromEntries(Object.entries(BATH_TEXTURES).map(([k, v]) => [k, v.fallback]));
@@ -356,14 +434,6 @@ function sampleMean(id: BathTextureId): string {
   }
   meanCache.set(id, value);
   return value;
-}
-
-/** Where the close-up looks: between the vanity and the shower tile. */
-function focusPoint(L: BathLayout): Pt {
-  const cam = L.camera;
-  const v = L.vanity;
-  const p = project(cam, (v.x0 + v.x1) / 2, v.top + 0.9, cam.zBack);
-  return { x: p.x - 60, y: p.y };
 }
 
 // ---------------------------------------------------------------------------
@@ -434,9 +504,9 @@ function backWall(k: Look): HTMLCanvasElement {
   if (L.valve) valveTrim(ctx, k, X(L.valve.x), Y(L.valve.y));
   if (L.showerHead?.kind === 'wall') wallHead(ctx, k, X(L.showerHead.x), Y(L.showerHead.y));
   if (L.towel) towelHook(ctx, k, X(L.towel.x), Y(L.towel.y));
-  if (spec.extras.heatedFloor) thermostat(ctx, k, X(v.x1 + 0.35 < W - 0.2 ? v.x1 + 0.35 : v.x0 - 0.45), Y(4.3));
-  // Toilet tank shadow.
-  if (L.toilet) softShape(ctx, 0.35 * P, 'rgba(0,0,0,0.25)', (s) => s.rect(X(L.toilet!.cx - 0.75), Y(2.6), 1.5 * P, 1.5 * P));
+  if (spec.extras.heatedFloor && thermostatOnBack(k)) thermostat(ctx, k, X(v.x1 + 0.45), Y(4.3));
+  // Vector toilet: a soft tank shadow on the wall (the generated toilet casts its own, see toilet()).
+  if (!spriteImage('toilet')) softShape(ctx, 0.25 * P, 'rgba(0,0,0,0.2)', (s) => s.rect(X(L.toilet.cx - 0.6), Y(2.5), 1.2 * P, 1.1 * P));
   // Corner occlusion along every edge.
   edgeShade(ctx, c.width, c.height, P, { left: 0.9, right: 0.9, top: 0.5, bottom: 0.45 }, 0.3);
   return c;
@@ -495,10 +565,14 @@ function sideWall(k: Look, side: 'left' | 'right', depth: number): HTMLCanvasEle
   if (side === 'left') {
     if (L.shower) tileZoneSide(ctx, k, 0, Y(L.shower.tileTop), U(L.shower.depth), Y(0));
     if (L.alcove) tileZoneSide(ctx, k, 0, Y(L.alcove.tileTop), U(L.alcove.depth), Y(0));
-  } else if (L.window.wall === 'right') {
-    const zb = k.cam.zBack;
-    const w = L.window;
-    windowPane(ctx, k, U(zb - w.z1), Y(w.y1), U(w.z1 - w.z0), Y(w.y0) - Y(w.y1), P);
+  } else {
+    if (L.window.wall === 'right') {
+      const zb = k.cam.zBack;
+      const w = L.window;
+      windowPane(ctx, k, U(zb - w.z1), Y(w.y1), U(w.z1 - w.z0), Y(w.y0) - Y(w.y1), P);
+    }
+    // Heated floor: its thermostat by the back corner when the back wall has no room beside the vanity.
+    if (k.spec.extras.heatedFloor && !thermostatOnBack(k)) thermostat(ctx, k, U(0.4), Y(4.3));
   }
   // Light: the left wall faces the window and reads brighter towards the room.
   // Both side walls fall off towards the camera; the window wall is the darker one
@@ -803,7 +877,8 @@ function sconce(ctx: Ctx, k: Look, s: Pt, X: Map1, Y: Map1) {
   const P = k.P;
   const x = X(s.x);
   const y = Y(s.y);
-  const img = !k.dark ? silverSprite(k, 'sconce') : null;
+  // The generated sconce is brushed nickel (a warm silver): chrome gets the vector one in true chrome.
+  const img = !k.dark && (k.spec.metal ?? BATH_DEFAULT_METAL) === 'brushed_nickel' ? spriteImage('sconce') : null;
   if (img) {
     const e = BATH_SPRITES.sconce;
     softShape(ctx, 0.12 * P, 'rgba(0,0,0,0.28)', (c) => roundRect(c, x - 0.12 * P, y - 0.5 * P + 0.08 * P, 0.24 * P, 1.0 * P, 0.05 * P));
@@ -912,6 +987,11 @@ function towelPath(ctx: Ctx, x: number, y: number, w: number, h: number) {
   ctx.closePath();
 }
 
+/** The heated-floor thermostat goes on the back wall right of the vanity when it fits there. */
+function thermostatOnBack(k: Look): boolean {
+  return k.L.vanity.x1 + 0.7 < k.cam.roomW - 0.15;
+}
+
 function thermostat(ctx: Ctx, k: Look, x: number, y: number) {
   const P = k.P;
   ctx.beginPath();
@@ -935,10 +1015,10 @@ function drawFixtures(ctx: Ctx, k: Look) {
   const { L } = k;
   const zb = k.cam.zBack;
   const list: Draw[] = [];
+  if (L.showerHead?.kind === 'rain') list.push({ z: zb - 1.2, draw: () => rainHead(ctx, k) });
   if (L.shower) {
     const s = L.shower;
     if (L.bench) list.push({ z: zb - L.bench.zFromBack1, draw: () => bench(ctx, k) });
-    if (L.showerHead?.kind === 'rain') list.push({ z: zb - 1.2, draw: () => rainHead(ctx, k) });
     list.push({ z: zb - s.depth, draw: () => showerGlass(ctx, k) });
   }
   if (L.alcove) list.push({ z: zb - L.alcove.depth, draw: () => alcoveTub(ctx, k) });
@@ -948,6 +1028,65 @@ function drawFixtures(ctx: Ctx, k: Look) {
   if (L.plant) list.push({ z: L.plant.z - 0.4, draw: () => plant(ctx, k) });
   list.sort((a, b) => b.z - a.z);
   for (const d of list) d.draw();
+  if (!k.draft) mirrorReflections(ctx, k);
+}
+
+/**
+ * The mirrors catch a dim, soft reflection of the room: a flipped, blurred
+ * crop of the frame drawn so far, darkened, under a fresh glass sheen.
+ */
+function mirrorReflections(ctx: Ctx, k: Look) {
+  const { cam, L } = k;
+  const zb = cam.zBack;
+  const s = cam.f / zb;
+  const t = ctx.getTransform();
+  const led = k.spec.extras.ledMirror;
+  const inset = led ? 0.04 : 0.09;
+  for (const m of L.mirrors) {
+    const a = pt(k, m.x0 + inset, m.y1 - inset, zb);
+    const b = pt(k, m.x1 - inset, m.y0 + inset, zb);
+    const w = b.x - a.x;
+    const h = b.y - a.y;
+    if (w < 4 || h < 4) continue;
+    // Source: a wider patch of the room, pulled towards the middle of the frame and down to the fixtures.
+    const cx = (a.x + b.x) / 2 + (FW / 2 - (a.x + b.x) / 2) * 0.4;
+    const sw = w * 2.4;
+    const sh = h * 1.7;
+    const sx = cx - sw / 2;
+    const sy = a.y + h * 0.35;
+    const dx0 = Math.max(0, Math.round(t.a * sx + t.e));
+    const dy0 = Math.max(0, Math.round(t.d * sy + t.f));
+    const dx1 = Math.min(ctx.canvas.width, Math.round(t.a * (sx + sw) + t.e));
+    const dy1 = Math.min(ctx.canvas.height, Math.round(t.d * (sy + sh) + t.f));
+    if (dx1 - dx0 < 8 || dy1 - dy0 < 8) continue;
+    // Small and smoothed up again: the blur of an out-of-focus reflection.
+    const tmp = pooled('mirror', Math.max(4, Math.round((dx1 - dx0) / 7)), Math.max(4, Math.round((dy1 - dy0) / 7)));
+    const tc = tmp.getContext('2d')!;
+    tc.imageSmoothingQuality = 'high';
+    tc.setTransform(-1, 0, 0, 1, tmp.width, 0);
+    tc.drawImage(ctx.canvas, dx0, dy0, dx1 - dx0, dy1 - dy0, 0, 0, tmp.width, tmp.height);
+    tc.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.save();
+    ctx.beginPath();
+    roundRect(ctx, a.x, a.y, w, h, led ? Math.max(0, 0.18 * s) : 0);
+    ctx.clip();
+    ctx.globalAlpha = k.dark ? 0.4 : 0.62;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(tmp, a.x, a.y, w, h);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = k.dark ? 'rgba(10,10,16,0.25)' : 'rgba(40,44,48,0.10)';
+    ctx.fillRect(a.x, a.y, w, h);
+    ctx.fillStyle = linear(ctx, a.x, a.y, b.x, b.y, [[0, 'rgba(255,255,255,0.26)'], [0.32, 'rgba(255,255,255,0.04)'], [0.5, 'rgba(255,255,255,0.1)'], [0.62, 'rgba(255,255,255,0)']]);
+    ctx.fillRect(a.x, a.y, w, h);
+    ctx.restore();
+  }
+}
+
+/** A tight dark line where something meets the floor (frame px), so it sits on it instead of floating. */
+function contactLine(ctx: Ctx, x0: number, x1: number, y: number, s: number, a = 0.4) {
+  const h = Math.max(1.5, 0.09 * s);
+  ctx.fillStyle = linear(ctx, 0, y - h * 0.4, 0, y + h, [[0, 'rgba(18,12,8,0)'], [0.35, `rgba(18,12,8,${a})`], [1, 'rgba(18,12,8,0)']]);
+  ctx.fillRect(x0, y - h * 0.4, x1 - x0, h * 1.4);
 }
 
 function pt(k: Look, x: number, y: number, z: number): Pt {
@@ -980,7 +1119,7 @@ function fillQuad(ctx: Ctx, quad: Pt[], style: string | CanvasGradient) {
 }
 
 /** Texture a frontal rect (world x0..x1, y0..y1 at depth z) at its true scale. */
-function frontalTexture(ctx: Ctx, k: Look, id: BathTextureId, x0: number, x1: number, y0: number, y1: number, z: number) {
+function frontalTexture(ctx: Ctx, k: Look, id: PaintTexture, x0: number, x1: number, y0: number, y1: number, z: number) {
   const s = k.cam.f / z;
   const a = pt(k, x0, y1, z);
   const b = pt(k, x1, y0, z);
@@ -1209,7 +1348,10 @@ function alcoveTub(ctx: Ctx, k: Look) {
     const a0 = pt(k, a.x0, 0, zFront);
     const a1 = pt(k, a.x1, a.rim, zFront);
     floorReflection(ctx, k, a0.x, a1.x, a1.y, a0.y);
+    contactLine(ctx, a0.x, a1.x, a0.y, k.cam.f / zFront, 0.45);
   }
+  // A shower bench on a tub-shower combo: a tiled seat on the tub deck at the open end.
+  if (k.spec.extras.bench) tubSeat(ctx, k);
   // Spout under the valve.
   const sp = pt(k, (a.x0 + a.x1) / 2, a.rim + 0.55, zb - 0.02);
   const s = k.cam.f / zb;
@@ -1224,6 +1366,23 @@ function alcoveTub(ctx: Ctx, k: Look) {
   } else {
     curtain(ctx, k, a.x0, a.x1, zFront + 0.12);
   }
+}
+
+function tubSeat(ctx: Ctx, k: Look) {
+  const a = k.L.alcove!;
+  const zb = k.cam.zBack;
+  const seat = { x0: a.x1 - 1.25, x1: a.x1, y0: a.rim - 0.05, y1: a.rim + 0.5, zNear: zb - 1.15, zFar: zb };
+  const tileRgb = hexRgb(textureFallback(k.tile));
+  box(ctx, k, seat, {
+    top: (c, q) => fillQuad(c, q, shade(tileRgb, 10)),
+    front: () => frontalTexture(ctx, k, k.tile, seat.x0, seat.x1, seat.y0, seat.y1, seat.zNear),
+  });
+  const e0 = pt(k, seat.x0, seat.y1, seat.zNear);
+  const e1 = pt(k, seat.x1, seat.y1, seat.zNear);
+  ctx.fillStyle = shade(tileRgb, 35, 0.8);
+  ctx.fillRect(e0.x, e0.y - 1, e1.x - e0.x, 2);
+  const b0 = pt(k, seat.x0, seat.y0, seat.zNear);
+  contactLine(ctx, b0.x, e1.x, b0.y, k.cam.f / seat.zNear, 0.3);
 }
 
 function curtain(ctx: Ctx, k: Look, x0: number, x1: number, z: number) {
@@ -1317,6 +1476,13 @@ function freestandingTub(ctx: Ctx, k: Look) {
     ctx.stroke();
   }
   floorReflection(ctx, k, rim.x - rx, rim.x + rx, rim.y, base.y + bry * 0.9);
+  // Where the foot meets the floor.
+  ctx.save();
+  ctx.translate(base.x, base.y + bry * 0.55);
+  ctx.scale(bx * 0.95, Math.max(2, bry * 0.5));
+  ctx.fillStyle = radial(ctx, 0, 0, 1, [[0, 'rgba(18,12,8,0.42)'], [0.7, 'rgba(18,12,8,0.18)'], [1, 'rgba(18,12,8,0)']]);
+  ctx.fillRect(-1, -1, 2, 2);
+  ctx.restore();
   // Floor-mounted filler beside the tub.
   const fx = t.cx + t.width / 2 + 0.35;
   const fz = zMid + 0.2;
@@ -1365,7 +1531,8 @@ const FLOOR_GLOSS: Partial<Record<BathTextureId, number>> = {
  * catches the vanity and tub the way it does in a listing photo.
  */
 function floorReflection(ctx: Ctx, k: Look, x0: number, x1: number, yTop: number, yBase: number) {
-  const gloss = FLOOR_GLOSS[k.floor] ?? 0.08;
+  if (k.draft) return;
+  const gloss = FLOOR_GLOSS[baseTexture(k.floor)] ?? 0.08;
   const t = ctx.getTransform();
   const dx0 = Math.max(0, Math.floor(t.a * x0 + t.e));
   const dx1 = Math.min(ctx.canvas.width, Math.ceil(t.a * x1 + t.e));
@@ -1400,13 +1567,20 @@ function toilet(ctx: Ctx, k: Look) {
     const s = k.cam.f / z;
     const b = pt(k, t.cx, 0, z);
     // Contact shadow right under the foot, so it sits on the floor.
-    ctx.fillStyle = radial(ctx, 0, 0, 1, [[0, 'rgba(20,14,10,0.45)'], [1, 'rgba(20,14,10,0)']]);
+    ctx.fillStyle = radial(ctx, 0, 0, 1, [[0, 'rgba(20,14,10,0.55)'], [0.6, 'rgba(20,14,10,0.25)'], [1, 'rgba(20,14,10,0)']]);
     ctx.save();
     ctx.translate(b.x, b.y - 0.04 * s);
-    ctx.scale(0.55 * s, 0.12 * s);
+    ctx.scale(0.62 * s, 0.14 * s);
     ctx.fillRect(-1, -1, 2, 2);
     ctx.restore();
+    // Its own soft shadow on the wall behind, offset away from the window light.
+    ctx.save();
+    ctx.shadowColor = 'rgba(40,28,18,0.32)';
+    ctx.shadowBlur = 0.3 * s * k.dpx;
+    ctx.shadowOffsetX = (k.L.window.wall === 'right' ? -0.1 : 0.06) * s * k.dpx;
+    ctx.shadowOffsetY = 0.04 * s * k.dpx;
     ctx.drawImage(sprite, b.x - (e.widthFt * s) / 2, b.y - e.heightFt * s, e.widthFt * s, e.heightFt * s);
+    ctx.restore();
     return;
   }
   const white = (d: number) => shade([247, 246, 243], d);
@@ -1504,6 +1678,7 @@ function vanity(ctx: Ctx, k: Look) {
     const fl = pt(k, v.x0, 0, zFront);
     const fr = pt(k, v.x1, v.top, zFront);
     floorReflection(ctx, k, fl.x, fr.x, fr.y, fl.y);
+    contactLine(ctx, fl.x, fr.x, fl.y, k.cam.f / zFront, 0.35);
   }
 
   // Faucets, soap, a folded towel.
@@ -1592,11 +1767,11 @@ function cabinetFronts(ctx: Ctx, k: Look, z: number, bodyTop: number, cab: [numb
 
   const y0 = v.bottom + (v.bottom === 0 ? 0.33 : 0);
   if (v.bottom === 0) {
-    // Toe kick: a dark recess.
+    // Toe kick: a recess in the cabinet's own colour, in shadow under the doors, lighter where floor light bounces in.
     const tk = R(v.x0 + 0.05, 0, v.x1 - 0.05, 0.33);
-    ctx.fillStyle = 'rgba(14,10,7,0.86)';
+    ctx.fillStyle = shade(cab, -70);
     ctx.fillRect(tk.x, tk.y, tk.w, tk.h);
-    ctx.fillStyle = linear(ctx, 0, tk.y, 0, tk.y + tk.h, [[0, 'rgba(0,0,0,0.3)'], [1, 'rgba(255,255,255,0.05)']]);
+    ctx.fillStyle = linear(ctx, 0, tk.y, 0, tk.y + tk.h, [[0, 'rgba(8,6,4,0.7)'], [0.55, 'rgba(8,6,4,0.35)'], [1, 'rgba(255,245,230,0.08)']]);
     ctx.fillRect(tk.x, tk.y, tk.w, tk.h);
   }
   if (v.kind === 'floating') {
@@ -1844,6 +2019,11 @@ function drawLight(ctx: Ctx, k: Look) {
     if (v.bottom > 0) {
       const p = pt(k, (v.x0 + v.x1) / 2, 0, zb - v.depth * 0.5);
       glow(p.x, p.y, (v.x1 - v.x0) * 0.65 * s, 0.9 * s, 'rgba(255,200,140,A)', 0.8);
+    }
+    // Heated floor: a low, even warmth across the tile.
+    if (k.spec.extras.heatedFloor) {
+      const p = pt(k, cam.roomW / 2, 0, zb - cam.roomD * 0.45);
+      glow(p.x, p.y, cam.roomW * 0.7 * s, Math.max(40, (FH - p.y) * 0.9), 'rgba(255,168,112,A)', 0.3);
     }
     lc.globalCompositeOperation = 'source-over';
   }

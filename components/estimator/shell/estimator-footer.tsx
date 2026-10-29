@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import type { ContractorEstimatorConfig } from '@/lib/estimator/types';
 
-type FooterContractor = Pick<ContractorEstimatorConfig, 'contractorName' | 'licenseLabel' | 'serviceAreaLabel'>;
+type FooterContractor = Pick<ContractorEstimatorConfig, 'contractorName' | 'licenseLabel' | 'serviceAreaLabel' | 'network'>;
 
 const link =
   'inline-flex min-h-11 items-center underline-offset-4 hover:text-[var(--hq-text)] hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--hq-accent-bright)]';
@@ -18,7 +18,16 @@ export function EstimatorFooter({ contractor }: { contractor: FooterContractor }
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-5 py-8 sm:px-8 md:flex-row md:items-center md:justify-between">
         <div className="min-w-0">
           <p className="font-medium text-[var(--hq-text-muted)]">
-            {contractor.contractorName} <span className="tabular-nums">({contractor.licenseLabel})</span>
+            {/* A network's line describes the service, so it is not set off like a license number. */}
+            {contractor.network ? (
+              <>
+                {contractor.contractorName} · <span className="font-normal">{contractor.licenseLabel}</span>
+              </>
+            ) : (
+              <>
+                {contractor.contractorName} <span className="tabular-nums">({contractor.licenseLabel})</span>
+              </>
+            )}
           </p>
           {contractor.serviceAreaLabel ? <p className="mt-1 text-pretty">Serving {contractor.serviceAreaLabel}.</p> : null}
         </div>

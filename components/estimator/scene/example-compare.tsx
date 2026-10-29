@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
-import { ChevronsLeftRight } from 'lucide-react';
+import { ChevronsLeftRight, Pause, Play } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TRADE_META } from '../builders/meta';
 import type { ExampleImages, ExampleVideo as ExampleVideoMedia } from '../builders/types';
@@ -126,8 +126,9 @@ export function ExampleCompare({
  * bathroom), when the trade has no design/photo pair yet: muted, looping,
  * inline on phones, with its poster first. It only plays when motion is
  * welcome (started from an effect, never autoplay, so reduced motion keeps the
- * still poster), and it is labelled as an AI-rendered example. `leaving` fades
- * it out over their first picture.
+ * still poster), has a visible pause / play button (WCAG 2.2.2), and it is
+ * labelled as an AI-rendered example. `leaving` fades it out over their first
+ * picture.
  */
 export function ExampleVideo({
   video,
@@ -141,20 +142,32 @@ export function ExampleVideo({
   className?: string;
 }) {
   const ref = useRef<HTMLVideoElement>(null);
+  const hasClip = Boolean(video.mp4 || video.webm);
+  // The homeowner's own pause wins over everything; reduced motion starts it paused.
+  const [paused, setPaused] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(false);
   useEffect(() => {
-    const el = ref.current;
-    if (!el || leaving || (!video.mp4 && !video.webm)) return;
     const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)');
-    const sync = () => {
-      if (reduced?.matches) el.pause();
-      else void el.play().catch(() => {});
-    };
+    const sync = () => setReducedMotion(Boolean(reduced?.matches));
     sync();
     reduced?.addEventListener?.('change', sync);
     return () => reduced?.removeEventListener?.('change', sync);
-  }, [leaving, video.mp4, video.webm]);
+  }, []);
+  const playing = hasClip && !leaving && !paused && !reducedMotion;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !hasClip) return;
+    if (playing) void el.play().catch(() => {});
+    else el.pause();
+  }, [playing, hasClip]);
   return (
-    <div data-example-video="" aria-hidden={leaving ? true : undefined} className={cn('absolute inset-0 bg-[#d8d2c3]', leaving && 'ec-leave pointer-events-none', className)}>
+    <div
+      data-example-video=""
+      role={leaving ? undefined : 'img'}
+      aria-label={leaving ? undefined : video.alt}
+      aria-hidden={leaving ? true : undefined}
+      className={cn('absolute inset-0 bg-[#d8d2c3]', leaving && 'ec-leave pointer-events-none', className)}
+    >
       <style>{CSS}</style>
       <video
         ref={ref}
@@ -163,7 +176,7 @@ export function ExampleVideo({
         playsInline
         preload="metadata"
         poster={video.poster}
-        aria-label={video.alt}
+        aria-hidden="true"
         onError={onError}
         className="absolute inset-0 size-full object-cover"
       >
@@ -173,6 +186,19 @@ export function ExampleVideo({
       <span className="pointer-events-none absolute bottom-2.5 left-2.5 inline-flex h-7 items-center rounded-full bg-[#06122b]/80 px-2.5 text-[11px] font-semibold text-white sm:bottom-3 sm:left-3 sm:h-8 sm:px-3 sm:text-xs">
         {EXAMPLE_VIDEO_LABEL}
       </span>
+      {hasClip && !leaving && !reducedMotion ? (
+        <button
+          type="button"
+          aria-pressed={paused}
+          aria-label={paused ? 'Play the example clip' : 'Pause the example clip'}
+          onClick={() => setPaused((p) => !p)}
+          className="absolute bottom-1.5 right-1.5 grid size-11 place-items-center rounded-full text-white focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-white sm:bottom-2 sm:right-2"
+        >
+          <span className="grid size-8 place-items-center rounded-full bg-[#06122b]/80">
+            {paused ? <Play className="size-3.5" aria-hidden="true" /> : <Pause className="size-3.5" aria-hidden="true" />}
+          </span>
+        </button>
+      ) : null}
     </div>
   );
 }

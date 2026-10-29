@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { resolveExampleMedia, tradeMeta } from '@/components/estimator/builders/meta';
-import { publicFileExists } from '@/components/estimator/builders/public-file';
+import { exampleFileExists } from '@/components/estimator/builders/example-files';
 import { Estimator } from '@/components/estimator/estimator';
 import { publicTemplate } from '@/lib/estimator/config';
 import { ESTIMATOR_SLUGS, getEstimator } from '@/lib/estimator/registry';
@@ -34,7 +34,7 @@ export default async function EstimatorEmbedPage({ params }: Props) {
   const renders = rendersEnabled();
   const meta = tradeMeta(found.template.trade);
   // The example the builder opens on (renders on), only from files that exist.
-  const example = meta && renders ? resolveExampleMedia(meta, publicFileExists) : null;
+  const example = meta && renders ? resolveExampleMedia(meta, exampleFileExists) : null;
   return (
     <Estimator
       template={publicTemplate(found.template, found.contractor)}

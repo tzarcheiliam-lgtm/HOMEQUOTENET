@@ -48,11 +48,31 @@ async function readJson(request: Request, max: number): Promise<unknown> {
   return JSON.parse(Buffer.concat(chunks).toString());
 }
 
+/**
+ * Who follows up when a render limit is hit: a contractor's designer, or for
+ * a matching network (HomeQuote Network) its project specialist, never a
+ * designer the homeowner does not have yet.
+ */
+function limitWords(network: boolean | undefined): { perDesign: string; perHour: string; perDay: string } {
+  return network
+    ? {
+        perDesign: 'You can see more ideas at your free in-home consultation.',
+        perHour: 'Please try again later.',
+        perDay: 'Your design is saved and a project specialist will follow up.',
+      }
+    : {
+        perDesign: 'Your designer can make more with you.',
+        perHour: 'Please try again later, or your designer can make more with you.',
+        perDay: 'Your design is saved and your designer will follow up.',
+      };
+}
+
 export async function POST(request: Request, context: Context) {
   if (!sameOrigin(request)) return refuse('invalid', 'Invalid origin.', 403);
   const slug = (await context.params).slug;
   const registered = getEstimator(slug);
   if (!registered) return refuse('invalid', 'This estimator is not available.', 404);
+  const limits = limitWords(registered.contractor.network);
   if (!rendersEnabled()) return refuse('disabled', 'Realistic renders are not switched on.', 200);
 
   let body: unknown;
@@ -108,15 +128,15 @@ export async function POST(request: Request, context: Context) {
     for (const result of [mine, visitor, all]) if (result.error) throw result.error;
     if ((mine.count ?? 0) > RENDERS_PER_LEAD) {
       await release();
-      return refuse('limit', `You’ve made ${RENDERS_PER_LEAD} realistic renders, the most for one design. Your designer can make more with you.`, 429);
+      return refuse('limit', `You’ve made ${RENDERS_PER_LEAD} realistic renders, the most for one design. ${limits.perDesign}`, 429);
     }
     if ((visitor.count ?? 0) > RENDERS_PER_IP_HOUR) {
       await release();
-      return refuse('limit', 'You’ve made a lot of realistic renders this hour. Please try again later, or your designer can make more with you.', 429);
+      return refuse('limit', `You’ve made a lot of realistic renders this hour. ${limits.perHour}`, 429);
     }
     if ((all.count ?? 0) > dailyRenderCap()) {
       await release();
-      return refuse('limit', 'We’ve reached today’s limit for realistic renders. Your design is saved and your designer will follow up.', 429);
+      return refuse('limit', `We’ve reached today’s limit for realistic renders. ${limits.perDay}`, 429);
     }
 
     const imageUrl = await uploadRenderImage(picture, `${slug}-${activityId}`);

@@ -14,7 +14,7 @@ import type { ContractorEstimatorConfig } from '@/lib/estimator/types';
  */
 const FACTS: Record<string, readonly string[]> = {
   'pool-masters': ['Licensed & insured', 'Serving SoCal since 2010', 'Free on-site estimate'],
-  'bathroom-remodel': ['Free in-home consultation', 'Licensed local contractors', 'No obligation'],
+  'bathroom-remodel': ['Free in-home consultation', 'No obligation', 'Free to use'],
 };
 
 /** A config that may carry its own trust facts. */

@@ -9,7 +9,9 @@ import type { BathSpriteEntry, BathSpriteId, BathTextureEntry, BathTextureId } f
  * (sprites). `fallback` is each file's mean colour, so the loading state
  * matches the finished picture.
  *
- * Textures are square WebP, seamless (tested 3x3). Wall tile, paint and
+ * Textures are square WebP, seamless (tested 3x3). The paint and concrete
+ * files are drawn procedurally and tile_large_porcelain has its grout drawn
+ * in (the script's `touchup` step). Wall tile, paint and
  * cabinet fronts are shot straight-on; floors and counters straight down.
  * Sprites are front-on (eye-level) cut-outs with soft alpha edges; their
  * footprints keep the trimmed image's proportions. Vanity sprites are plain
@@ -44,14 +46,15 @@ export const BATH_TEXTURES: Record<BathTextureId, BathTextureEntry> = {
   floor_lvp: { src: tex('floor_lvp'), realFt: 6, fallback: '#a48664' },
   // tile_plain recoloured beige: one 12" tile.
   floor_plain: { src: tex('floor_plain'), realFt: 1, fallback: '#d6cfc1' },
-  // Greige, sage and navy are recolours of the soft-white roller texture.
-  paint_soft_white: { src: tex('paint_soft_white'), realFt: 4, fallback: '#efeee5' },
-  paint_greige: { src: tex('paint_greige'), realFt: 4, fallback: '#d1c8b8' },
+  // Procedural paint (fine stipple, no colour drift) in each generated colour: scripts/generate-bath-assets.mjs touchup.
+  paint_soft_white: { src: tex('paint_soft_white'), realFt: 4, fallback: '#f0eee6' },
+  paint_greige: { src: tex('paint_greige'), realFt: 4, fallback: '#d2c9b9' },
   paint_sage: { src: tex('paint_sage'), realFt: 4, fallback: '#b3bea4' },
   paint_navy: { src: tex('paint_navy'), realFt: 4, fallback: '#2d3a52' },
   counter_quartz_white: { src: tex('counter_quartz_white'), realFt: 2.5, fallback: '#efeeec' },
   counter_marble_look: { src: tex('counter_marble_look'), realFt: 2.4, fallback: '#ebe9e4' },
-  counter_concrete: { src: tex('counter_concrete'), realFt: 3, fallback: '#9c9a94' },
+  // Procedural smooth trowelled concrete (touchup).
+  counter_concrete: { src: tex('counter_concrete'), realFt: 3, fallback: '#999793' },
   vanity_white: { src: tex('vanity_white'), realFt: 3, fallback: '#efeee9' },
   vanity_wood: { src: tex('vanity_wood'), realFt: 3, fallback: '#b38b63' },
   // Recolour of the white satin finish.
