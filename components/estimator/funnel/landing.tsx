@@ -5,15 +5,19 @@ import { telHref } from '@/components/estimator/shell/facts';
 import type { FunnelSpec } from '@/lib/estimator/funnel/types';
 import type { ContractorEstimatorConfig } from '@/lib/estimator/types';
 import { FunnelFooter, FunnelLogo } from './chrome';
+import type { FunnelReviewsData } from '@/lib/estimator/reviews';
 import { AnnouncementBar, HeaderMenu } from './landing-bits';
+import { FunnelReviews } from './reviews';
 import { photoSrcSet } from './state';
 
 /*
  * The funnel's landing page (Buildoly's mobile landing, for a pool remodeler):
  * a dark announcement bar, a floating white header card, a huge two-line
  * headline on a pale sky, one line under it, one full-width blue button, and
- * the hero photo rising out of the sky to the bottom of the screen. Below the
- * fold, only three real finished jobs and the licence. Nothing else.
+ * the hero photo rising out of the sky to the bottom of the screen. When the
+ * contractor has them, a few real 5-star Google reviews sit right under the
+ * button (./reviews.tsx; loaded and cached by the page, never in the browser).
+ * Below the fold, only three real finished jobs and the licence. Nothing else.
  */
 
 const SKY = 'linear-gradient(180deg, #b8cfeb 0%, #cddcef 42%, #dfe8f3 100%)';
@@ -24,7 +28,18 @@ export function headlineLines(headline: string): [string, string] | [string] {
   return i > 0 ? [headline.slice(0, i + 1), headline.slice(i + 2)] : [headline];
 }
 
-export function FunnelLanding({ spec, contractor, designHref }: { spec: FunnelSpec; contractor: ContractorEstimatorConfig; designHref: string }) {
+export function FunnelLanding({
+  spec,
+  contractor,
+  designHref,
+  reviews = null,
+}: {
+  spec: FunnelSpec;
+  contractor: ContractorEstimatorConfig;
+  designHref: string;
+  /** Already filtered 5-star reviews (lib/estimator/reviews.server.ts), or null: nothing renders. */
+  reviews?: FunnelReviewsData | null;
+}) {
   const { landing } = spec;
   const tel = telHref(contractor.phone);
   const lines = headlineLines(landing.headline);
@@ -33,6 +48,7 @@ export function FunnelLanding({ spec, contractor, designHref }: { spec: FunnelSp
   // The hero is the largest paint: ask for it with the HTML (the right width from the srcset).
   preload(hero.src, { as: 'image', fetchPriority: 'high', ...(heroSrcSet ? { imageSrcSet: heroSrcSet, imageSizes: '100vw' } : {}) });
   const projects = landing.projects ?? [];
+  const hasReviews = !!reviews?.reviews.length;
 
   return (
     <div className="es-fn flex min-h-[100dvh] flex-1 flex-col">
@@ -93,8 +109,10 @@ export function FunnelLanding({ spec, contractor, designHref }: { spec: FunnelSp
             </Link>
           </div>
 
-          {/* The photo rises out of the sky behind the button and runs to the bottom of the screen. */}
-          <div className="relative -mt-[30px] min-h-[300px] flex-1 lg:-mt-[60px] lg:min-h-[440px]">
+          {reviews && hasReviews ? <FunnelReviews data={reviews} /> : null}
+
+          {/* The photo rises out of the sky behind the button (and the reviews) and runs to the bottom of the screen. */}
+          <div className={`relative min-h-[300px] flex-1 lg:min-h-[440px] ${hasReviews ? '-mt-[64px] lg:-mt-[96px]' : '-mt-[30px] lg:-mt-[60px]'}`}>
             {/* eslint-disable-next-line @next/next/no-img-element -- pre-sized WebP with its own 1200 / 1800 px srcset, preloaded above */}
             <img
               src={hero.src}

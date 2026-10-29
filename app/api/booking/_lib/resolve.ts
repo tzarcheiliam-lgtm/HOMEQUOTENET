@@ -51,9 +51,24 @@ export interface SubmissionRow {
   phone_e164: string | null;
 }
 
+/** The missed / no-show call a "pick a new time" link (hqr1 grant) was sent for. */
+export interface RebookRow {
+  id: string;
+  lead_id: string;
+  /** The missed call's own calendar (null for an on-site visit). */
+  calendar_id: string | null;
+  status: string;
+  scheduled_at: string | null;
+  source: string | null;
+  contact_name: string | null;
+  contact_phone: string | null;
+  contact_email: string | null;
+}
+
 export type Resolved =
   | { kind: 'session'; source: SessionSource; session: SessionRow; funnel: FunnelRow; calendar: BookingCalendar | null; blocked: BookingError | null }
-  | { kind: 'submission'; submission: SubmissionRow; calendar: BookingCalendar | null; blocked: BookingError | null };
+  | { kind: 'submission'; submission: SubmissionRow; calendar: BookingCalendar | null; blocked: BookingError | null }
+  | { kind: 'rebook'; appointment: RebookRow; calendar: BookingCalendar | null; blocked: BookingError | null };
 
 const SESSION_COLUMNS = 'id, funnel_id, token_hash, lead_id, qualified, contact_submitted_at, booked_at, contact, attribution, measurement_allowed, created_at, expires_at';
 const SUBMISSION_COLUMNS = 'id, submission_id, access_token_hash, qualification_status, booking_status, sales_appointment_id, name, phone, phone_e164, review_notes';
@@ -77,12 +92,48 @@ export async function resolveGrant(db: Db, raw: unknown): Promise<Resolved | nul
       : null;
     return { kind: 'session', source: grant.source, session, funnel, calendar, blocked };
   }
+  if (grant.kind === 'rebook') return resolveRebook(db, grant.appointmentId);
   const { data: row } = await db.from('contractor_funnel_submissions').select(SUBMISSION_COLUMNS).eq('submission_id', grant.submissionId).maybeSingle();
   if (!row || !submissionTokenMatches(grant.token, (row as any).access_token_hash)) return null;
   const submission = row as unknown as SubmissionRow;
   const calendar = await calendarForContractorFunnel(db);
   const blocked: BookingError | null = submission.qualification_status !== 'qualified' ? 'not_qualified' : !calendar ? 'calendar_inactive' : null;
   return { kind: 'submission', submission, calendar, blocked };
+}
+
+/**
+ * A "pick a new time" link: the call it was sent for, its lead and the calendar
+ * a new call goes on (the call's own calendar; for an on-site visit, the lead's
+ * contractor calendar). A call held since then, an archived lead or a lead that
+ * moved on (lost / closed) can no longer book from the link.
+ */
+async function resolveRebook(db: Db, appointmentId: string): Promise<Resolved | null> {
+  const { data: a } = await db.from('appointments')
+    .select('id, lead_id, assignment_id, calendar_id, status, scheduled_at, source, contact_name, contact_phone, contact_email')
+    .eq('id', appointmentId).maybeSingle();
+  if (!a) return null;
+  const row = a as any;
+  let leadId: string | null = row.lead_id ?? null;
+  let contractorId: string | null = null;
+  if (row.assignment_id) {
+    const { data: asg } = await db.from('lead_assignments').select('lead_id, contractor_id').eq('id', row.assignment_id).maybeSingle();
+    leadId = leadId ?? (asg as any)?.lead_id ?? null;
+    contractorId = (asg as any)?.contractor_id ?? null;
+  }
+  if (!leadId) return null;
+  const { data: lead } = await db.from('leads').select('first_name, last_name, phone, email, status, archived_at').eq('id', leadId).maybeSingle();
+  if (!lead) return null;
+  const l = lead as any;
+  const own = row.calendar_id ? await getCalendar(row.calendar_id, db) : null;
+  const calendar = own ? (own.active ? own : null) : await calendarForFunnel({ contractorId }, db);
+  const appointment: RebookRow = {
+    id: row.id, lead_id: leadId, calendar_id: row.calendar_id ?? null, status: row.status, scheduled_at: row.scheduled_at, source: row.source ?? null,
+    contact_name: row.contact_name ?? ([l.first_name, l.last_name].filter(Boolean).join(' ') || null),
+    contact_phone: row.contact_phone ?? l.phone ?? null, contact_email: row.contact_email ?? l.email ?? null,
+  };
+  const movedOn = !!l.archived_at || ['lost', 'cancelled', 'sold'].includes(String(l.status));
+  const blocked: BookingError | null = row.status === 'held' || row.status === 'cancelled' || movedOn ? 'not_active' : !calendar ? 'calendar_inactive' : null;
+  return { kind: 'rebook', appointment, calendar, blocked };
 }
 
 // ---------------------------------------------------------------------------
@@ -186,6 +237,19 @@ export function publicBooking(f: BookingFacts): PublicBooking {
  * emails carry. A cancelled call is not "booked": the picker shows again.
  */
 export async function existingBooking(db: Db, r: Resolved): Promise<PublicBooking | null> {
+  if (r.kind === 'rebook') {
+    // A live, still-upcoming call for this lead on a HomeQuote calendar (the moved call itself, or a new one).
+    const { data: aps } = await db.from('appointments')
+      .select('id, status, scheduled_at, ends_at, time_zone, invitee_time_zone, meeting_type, contact_name, contact_phone, calendar_id, created_at')
+      .eq('lead_id', r.appointment.lead_id).eq('status', 'scheduled').not('calendar_id', 'is', null)
+      .gt('scheduled_at', new Date().toISOString()).order('scheduled_at', { ascending: true }).limit(1);
+    const live = ((aps ?? []) as any[])[0];
+    if (!live) return null;
+    const cal = await getCalendar(live.calendar_id, db);
+    const token = await ensureManageToken(db, 'appointment', live.id);
+    return publicBooking({ status: live.status, startsAt: live.scheduled_at, endsAt: live.ends_at, timeZone: live.time_zone, inviteeTimeZone: live.invitee_time_zone,
+      meetingType: live.meeting_type, name: live.contact_name, phone: live.contact_phone, calendar: cal, token });
+  }
   if (r.kind === 'session') {
     if (!r.session.booked_at) return null;
     const { data: fbs } = await db.from('funnel_bookings').select('appointment_id, scheduled_at').eq('session_id', r.session.id);
@@ -227,6 +291,7 @@ export async function existingBooking(db: Db, r: Resolved): Promise<PublicBookin
 
 /** Name + masked phone for the picker's "We'll call you at •••• 0100". */
 export function contactOf(r: Resolved): { firstName: string | null; phoneHint: string | null } {
+  if (r.kind === 'rebook') return { firstName: firstNameOf(r.appointment.contact_name), phoneHint: phoneHint(r.appointment.contact_phone) };
   if (r.kind === 'session') {
     const c = r.session.contact ?? {};
     return { firstName: firstNameOf(c.firstName), phoneHint: phoneHint(c.phone) };

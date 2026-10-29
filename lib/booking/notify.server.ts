@@ -20,6 +20,8 @@ import { DEFAULT_ZONES } from '@/lib/sms/config';
 import { loadSettings, queueWorkflowText } from '@/lib/sms/service';
 import { safeTimeZone } from './format';
 import { bookingSms } from './sms-copy';
+import { emailDesign } from './recovery-copy';
+import { loadLeadDesign } from '@/lib/leads/design.server';
 import { hashManageToken, isManageTokenShape, managePath } from './tokens';
 import { hostVCardPath, resolveHostContact } from './host-contact';
 import { mapHostFields, type BookingActorKind } from './types';
@@ -336,7 +338,7 @@ async function sendGuestText(db: Db, b: Booking, notice: HomeownerNotice, ctx: G
     const when = nextEligible(now, zones, { startHour: settings.window_start_hour, endHour: settings.window_end_hour }) ?? now;
     const latest = notice === 'cancelled' ? b.startMs : b.startMs - TEXT_LEAD_MS;
     if (when.getTime() > latest) return 'outside_texting_hours';
-    const body = bookingSms(notice, ctx, { hasEmail: !!b.email && !b.emailOptOut });
+    const body = bookingSms(notice, ctx, { hasEmail: !!b.email && !b.emailOptOut, design: !!ctx.design });
     const r = await queueWorkflowText(db, {
       leadId: b.leadId, body, contractorId: b.contractorId, assistant: false, now, label: TEXT_LABEL[notice],
       stepRunId: bookingTextKey(b.kind, b.id, TEXT_PURPOSE[notice], b.rescheduleCount),
@@ -451,6 +453,9 @@ export async function sendBookingConfirmation(kind: BookingKind, id: string, dep
   const token = await ensureManageToken(db, kind, id, b.manageTokenHash, deps.linkSecret !== undefined ? deps.linkSecret : bookingLinkSecret());
   const previousStartMs = opts.previousStartsAt ? ms(opts.previousStartsAt) : null;
   const ctx = guestContext(b, token, siteOf(deps), previousStartMs);
+  // Their estimator design ("Your design": photo, picks, ballpark, share link) rides on the confirmation email;
+  // the text says "We emailed you your design." (texts can't carry links or pictures through the bridge).
+  if (b.kind === 'appointment' && b.leadId) ctx.design = emailDesign(await loadLeadDesign(db, b.leadId, siteOf(deps)));
   const email = await sendGuestEmail(b, notice, ctx, deps, token);
   const sms = await sendGuestText(db, b, notice, ctx, now);
   const hostEmails = await sendHostEmails(db, b, notice === 'confirmed' ? 'booked' : 'rescheduled', deps, {

@@ -13,6 +13,8 @@ export interface SmsCopyOptions {
   hasEmail: boolean;
   /** Manage link to include in the text itself (only when links survive the queue). */
   link?: string | null;
+  /** Their estimator design is in the confirmation email ("We emailed you your design."). */
+  design?: boolean;
 }
 
 /**
@@ -41,11 +43,12 @@ export function bookingSms(notice: HomeownerNotice, c: GuestMessageContext, opts
     ? ` Reschedule or cancel: ${opts.link}`
     : opts.hasEmail ? ' Need to reschedule or cancel? Use the link in your confirmation email.' : '';
   const name = callWith(c);
+  const design = opts.design && opts.hasEmail ? ' We emailed you your design.' : '';
   switch (notice) {
     case 'confirmed':
       return host
-        ? `${hi}you’re booked: a ${what} with ${name}, ${when}.${how}${change}`
-        : `${hi}your call with ${name} is booked for ${when}.${how}${change}`;
+        ? `${hi}you’re booked: a ${what} with ${name}, ${when}.${how}${design}${change}`
+        : `${hi}your call with ${name} is booked for ${when}.${how}${design}${change}`;
     case 'rescheduled':
       return `${hi}your ${what} with ${name} is moved to ${when}.${how}${change}`;
     case 'reminder_24h':

@@ -15,7 +15,24 @@ export interface ReminderConfig {
   followups: { enabled: boolean; days: number[]; keepGoing: boolean; everyDays: number; templates: Record<FollowUpStep, string> };
   /** Push an alert to call them when a meeting isn't confirmed by 8:00 on the day. */
   unconfirmedAlert: boolean;
+  /** Lead recovery (lib/booking/recovery.server.ts); each switch on by default. */
+  recovery: RecoveryConfig;
 }
+
+export interface RecoveryConfig {
+  /** Push + email to the owner and calendar hosts the moment a funnel / estimator lead comes in, and again when they book. */
+  speedAlert: boolean;
+  /** One "sorry we missed you" text + email (with a link to pick a new time) after a no-show. */
+  noShow: boolean;
+  /** Push the host when a calendar call is still "scheduled" 30 minutes after it ended. */
+  heldPrompt: boolean;
+  /** The "Couldn't reach them" button on a call (text + email with a link to pick a new time). */
+  missedCall: boolean;
+  /** One text + email to a lead who gave their details but didn't book a call within 2 hours. */
+  unbooked: boolean;
+}
+
+export const RECOVERY_KEYS = ['speedAlert', 'noShow', 'heldPrompt', 'missedCall', 'unbooked'] as const satisfies readonly (keyof RecoveryConfig)[];
 
 export const DEFAULT_REMINDER_CONFIG: ReminderConfig = {
   contractor: {
@@ -59,6 +76,7 @@ export const DEFAULT_REMINDER_CONFIG: ReminderConfig = {
     },
   },
   unconfirmedAlert: true,
+  recovery: { speedAlert: true, noShow: true, heldPrompt: true, missedCall: true, unbooked: true },
 };
 
 /** Why a reminder template can't be used, or null. Blank means "use the default". */
@@ -87,7 +105,7 @@ function templates<K extends string>(raw: unknown, defaults: Record<K, string>):
 /** The stored config merged over the defaults. */
 export function reminderConfig(raw: unknown): ReminderConfig {
   const r = obj(raw);
-  const c = obj(r.contractor), h = obj(r.homeowner), f = obj(r.followups);
+  const c = obj(r.contractor), h = obj(r.homeowner), f = obj(r.followups), rc = obj(r.recovery);
   const d = DEFAULT_REMINDER_CONFIG;
   const days = Array.isArray(f.days) ? f.days.filter((n): n is number => Number.isInteger(n) && n >= 1 && n <= 30) : [];
   const sortedDays = [...new Set(days)].sort((a, b) => a - b).slice(0, 3);
@@ -101,6 +119,7 @@ export function reminderConfig(raw: unknown): ReminderConfig {
       templates: templates(f.templates, d.followups.templates),
     },
     unconfirmedAlert: bool(r.unconfirmedAlert, d.unconfirmedAlert),
+    recovery: Object.fromEntries(RECOVERY_KEYS.map((k) => [k, bool(rc[k], d.recovery[k])])) as unknown as RecoveryConfig,
   };
 }
 

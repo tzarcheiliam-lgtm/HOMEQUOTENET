@@ -6,7 +6,7 @@ import { requireRole } from '@/lib/auth';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { MAX_EXTRA_INSTRUCTIONS } from '@/lib/sms/agent';
 import { openingTemplateProblem } from '@/lib/sms/rules';
-import { reminderTemplateProblem } from '@/lib/sms/reminder-config';
+import { RECOVERY_KEYS, reminderTemplateProblem } from '@/lib/sms/reminder-config';
 import { FOLLOW_UP_STEPS, MEETING_STEPS } from '@/lib/sms/reminder-plan';
 
 export type SmsActionState = { ok: boolean; message?: string; error?: string } | undefined;
@@ -146,7 +146,7 @@ export async function saveReminderSettings(_prev: SmsActionState, fd: FormData):
   };
   let stored: Record<string, unknown>;
   try {
-    const c = r(raw.contractor), h = r(raw.homeowner), f = r(raw.followups);
+    const c = r(raw.contractor), h = r(raw.homeowner), f = r(raw.followups), rc = r(raw.recovery);
     const days = Array.isArray(f.days) ? f.days.map(Number) : [];
     if (days.some((d) => !Number.isInteger(d) || d < 1 || d > 30)) throw new Error('Follow-up days must be whole days from 1 to 30.');
     if (new Set(days).size !== days.length || days.length < 1 || days.length > 3) throw new Error('Pick one to three different follow-up days.');
@@ -157,6 +157,7 @@ export async function saveReminderSettings(_prev: SmsActionState, fd: FormData):
       homeowner: { enabled: h.enabled !== false, templates: cleanTemplates(h.templates, MEETING_STEPS) },
       followups: { enabled: f.enabled !== false, days: [...days].sort((a, b) => a - b), keepGoing: f.keepGoing !== false, everyDays: Number.isInteger(everyDays) ? everyDays : 3, templates: cleanTemplates(f.templates, FOLLOW_UP_STEPS) },
       unconfirmedAlert: raw.unconfirmedAlert !== false,
+      recovery: Object.fromEntries(RECOVERY_KEYS.map((k) => [k, rc[k] !== false])),
     };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Check the settings.' };

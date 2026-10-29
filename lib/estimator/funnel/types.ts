@@ -103,6 +103,42 @@ export type FunnelLanding = {
   heroAlt: string;
   /** Optional, below the fold: a few real finished jobs (never AI-edited). */
   projects?: GalleryImage[];
+  /** Optional: a few of the contractor's real 5-star Google reviews under the button (lib/estimator/reviews.ts). */
+  reviews?: FunnelReviewsConfig;
+};
+
+/**
+ * Google reviews under the landing's button. Only 5-star reviews with text are
+ * shown, never the average rating or the review count, under a heading that
+ * does not claim to be all the reviews (FTC 16 CFR 465). Nothing renders when
+ * GOOGLE_PLACES_API_KEY is missing, Google fails or no review qualifies.
+ */
+export type FunnelReviewsConfig = {
+  enabled: boolean;
+  /** The business's Google place id. Preferred: when set, no lookup is made. */
+  googlePlaceId?: string;
+  /** Without a place id: a Text Search whose result must match strictly (else nothing shows). */
+  lookup?: GoogleBusinessMatch;
+  /** e.g. "What Pool Masters customers say". Default: "What {contractorName} customers say". */
+  heading?: string;
+  /** Reviews shown, newest first (default 3, at most 5: Google returns up to 5). */
+  max?: number;
+};
+
+/** How a Text Search result is recognised as this business (out-of-state namesakes are rejected). */
+export type GoogleBusinessMatch = {
+  /** e.g. "Pool Masters Sherman Oaks CA". */
+  query: string;
+  /** Words the Google name must contain, e.g. "Pool Masters". */
+  name: string;
+  /** The business's website host, e.g. "poolmastersla.com" (a match on its own, with the name). */
+  websiteHost?: string;
+  /** Two-letter state the address must be in when Google gives one, e.g. "CA". */
+  state?: string;
+  /** Cities / neighbourhoods that count as a match, e.g. ["Sherman Oaks"]. */
+  places?: string[];
+  /** ZIP codes that count as a match, e.g. ["91403", "91423"]. */
+  postalCodes?: string[];
 };
 
 export type FunnelContactStep = {

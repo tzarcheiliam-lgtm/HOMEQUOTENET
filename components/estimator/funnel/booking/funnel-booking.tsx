@@ -7,6 +7,8 @@ import { BookingFlow } from '@/components/booking/booking-flow';
 import { exampleFinancingDisclosure, exampleFinancingLine, syncDemoFinancing } from '@/lib/estimator/demo-financing';
 import type { FunnelBookingScreenProps } from '../screens';
 import { bookingFrameUrl, plainBookingTitle, priceEyebrow, priceRange, readCalendlyMessage } from './state';
+import { ShareDesignButton } from './share-design';
+import { shareDesignPath, shareMessage } from '@/lib/estimator/share';
 
 /**
  * The funnel's last screen: "Book your free call".
@@ -44,7 +46,7 @@ function monthlyParts(line: string): { before: string; amount: string; after: st
 }
 
 export function FunnelBookingScreen({
-  spec, selection, contractor, result, embedded, headingId, initialDemoFinancing = false,
+  slug, spec, selection, contractor, template, result, embedded, headingId, initialDemoFinancing = false,
 }: FunnelBookingScreenProps & {
   /** Previews / tests: start with the demo payment on (the browser still reads ?demo=financing). */
   initialDemoFinancing?: boolean;
@@ -74,6 +76,9 @@ export function FunnelBookingScreen({
   const examplePrices = contractor.pricesConfirmed === false;
   const example = demoFinancing && step.exampleFinancing && range ? step.exampleFinancing : null;
   const monthly = example ? exampleFinancingLine(result.estimate.low, example) : null;
+  // "Send my design to my partner": the signed link from the lead route (shows the ballpark), else the picks alone.
+  const shareUrl = result.shareUrl ?? shareDesignPath(slug, spec, selection);
+  const share = shareMessage(contractor.contractorName, template.trade === 'bathroom' ? 'bathroom' : 'pool');
 
   useEffect(() => {
     setHost(window.location.hostname);
@@ -168,6 +173,8 @@ export function FunnelBookingScreen({
           </div>
         ) : null}
       </section>
+
+      {result.saved === false ? null : <ShareDesignButton url={shareUrl} title={share.title} text={share.text} />}
 
       {/* Booking card */}
       <section

@@ -26,6 +26,7 @@ function reminderFormValue(raw: unknown): ReminderFormValue {
     homeowner: { enabled: cfg.homeowner.enabled, templates: custom(r(raw_.homeowner).templates, MEETING_STEPS) },
     followups: { enabled: cfg.followups.enabled, days: cfg.followups.days, keepGoing: cfg.followups.keepGoing, everyDays: cfg.followups.everyDays, templates: custom(r(raw_.followups).templates, FOLLOW_UP_STEPS) },
     unconfirmedAlert: cfg.unconfirmedAlert,
+    recovery: cfg.recovery,
   };
 }
 

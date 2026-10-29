@@ -1,9 +1,10 @@
 import { after } from 'next/server';
 import { z } from 'zod';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { bookAppointment, bookSalesAppointment } from '@/lib/booking/book.server';
+import { bookAppointment, bookSalesAppointment, rescheduleAppointment } from '@/lib/booking/book.server';
 import { getCalendar } from '@/lib/booking/calendars.server';
 import { ensureManageToken, notifyBookingSoon } from '@/lib/booking/notify.server';
+import { speedAlertSoon } from '@/lib/booking/recovery.server';
 import { safeTimeZone } from '@/lib/booking/format';
 import { flushNotificationsSoon } from '@/lib/notifications/outbox';
 import { funnelSchema } from '@/lib/funnels/schema';
@@ -51,6 +52,49 @@ export async function POST(request: Request) {
     if (r.blocked) return fail(r.blocked, { booking: await existingBooking(db, r) });
     const calendar = r.calendar!;
 
+    if (r.kind === 'rebook') {
+      // "Pick a new time" after a missed call / no-show. A call they already have coming up wins (a second tap
+      // on the link shows it instead of booking twice).
+      const live = await existingBooking(db, r);
+      if (live) return fail('already_booked', { booking: live });
+      const a = r.appointment;
+      const contact = { name: a.contact_name ?? undefined, phone: a.contact_phone ?? undefined, email: a.contact_email ?? undefined };
+      let id: string;
+      let booked: { startsAt: string; endsAt: string | null; timeZone: string | null };
+      if (a.status === 'scheduled' && a.calendar_id === calendar.id) {
+        // The missed call was never marked: move it (keeps its history, re-sends the confirmation for the new time).
+        const moved = await rescheduleAppointment(a.id, startsAt, { actorKind: 'homeowner', db });
+        if (!moved.ok) return fail(moved.error);
+        if (!moved.unchanged) notifyBookingSoon({ kind: 'appointment', id: a.id, change: 'rescheduled', previousStartsAt: moved.previousStartsAt ?? a.scheduled_at, actorKind: 'homeowner' });
+        id = a.id;
+        booked = { startsAt: moved.startsAt ?? new Date(startsAt).toISOString(), endsAt: moved.endsAt ?? null, timeZone: calendar.timezone };
+      } else {
+        // A no-show (or an on-site visit): a new call for the same lead.
+        const made = await bookAppointment({
+          calendarId: calendar.id, startsAt, leadId: a.lead_id, source: a.source === 'estimator' ? 'estimator' : 'funnel',
+          actorKind: 'homeowner', inviteeTimeZone: timeZone, contact, notes: 'Booked from the “pick a new time” link after a missed call.', db,
+        });
+        if (!made.ok) {
+          if (made.error === 'already_booked') return fail('already_booked', { booking: await existingBooking(db, r) });
+          return fail(made.error);
+        }
+        notifyBookingSoon({ kind: 'appointment', id: made.appointmentId, change: 'booked', actorKind: 'homeowner' });
+        speedAlertSoon({ leadId: a.lead_id, event: 'booked', appointmentId: made.appointmentId });
+        id = made.appointmentId;
+        booked = { startsAt: made.startsAt, endsAt: made.endsAt, timeZone: made.timeZone };
+      }
+      flushNotificationsSoon();
+      const token = await ensureManageToken(db, 'appointment', id);
+      const cal = (await getCalendar(calendar.id, db)) ?? calendar;
+      const body: BookResponse = {
+        ok: true,
+        booking: publicBooking({ status: 'scheduled', startsAt: booked.startsAt, endsAt: booked.endsAt, timeZone: booked.timeZone, inviteeTimeZone: timeZone,
+          meetingType: cal.meetingType, name: a.contact_name, phone: a.contact_phone, calendar: cal, token }),
+        metaEventId: null,
+      };
+      return reply(body);
+    }
+
     if (r.kind === 'session') {
       const result = await bookAppointment({
         calendarId: calendar.id, startsAt, sessionId: r.session.id, sessionHash: r.session.token_hash, source: r.source,
@@ -63,6 +107,8 @@ export async function POST(request: Request) {
       const token = (await ensureManageToken(db, 'appointment', result.appointmentId)) ?? result.manageToken;
       notifyBookingSoon({ kind: 'appointment', id: result.appointmentId, change: 'booked', actorKind: 'homeowner' });
       flushNotificationsSoon();
+      // Speed-to-lead, second moment: they booked (once per call).
+      if (r.session.lead_id) speedAlertSoon({ leadId: r.session.lead_id, event: 'booked', appointmentId: result.appointmentId });
       const c = r.session.contact ?? {};
       const cal = (await getCalendar(result.calendarId, db)) ?? calendar;
       const metaEventId = scheduleMetaEvent(request, db, r, { appointmentId: result.appointmentId, contractorId: cal.contractorId });

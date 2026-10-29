@@ -2,9 +2,9 @@
 
 import { useEffect, useState, useTransition } from 'react';
 import Link from 'next/link';
-import { CalendarClock, ExternalLink, Mail, Phone, Video, XCircle } from 'lucide-react';
+import { CalendarClock, ExternalLink, Mail, Phone, PhoneMissed, Video, XCircle } from 'lucide-react';
 import { formatRange } from '@/lib/booking/format';
-import { cancelCalendarEvent, rescheduleCalendarEvent, setCalendarEventStatus } from '@/lib/actions/booking';
+import { cancelCalendarEvent, reportMissedCall, rescheduleCalendarEvent, setCalendarEventStatus } from '@/lib/actions/booking';
 import { fmtPhone, telHref } from '@/components/calls/format';
 import { zoneLabel } from '@/components/booking/zone-label';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -12,7 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { CalendarPanel } from './panel';
 import { SlotChooser, type ChosenTime } from './slot-chooser';
-import { isLive, longDayLabel, sourceLabel, statusActions, statusStyle, type CalendarEvent } from './view';
+import { canReportMissedCall, isLive, longDayLabel, sourceLabel, statusActions, statusStyle, type CalendarEvent } from './view';
 import { localParts } from '@/lib/availability/time';
 
 type Mode = 'details' | 'reschedule' | 'cancel';
@@ -64,6 +64,17 @@ export function EventSheet({
   const canChange = canWork && live && event.kind !== 'visit' && event.startMs > nowMs;
   const canCancel = canWork && live && event.startMs > nowMs;
   const actions = canWork ? statusActions(event.kind, event.status, event.startMs, nowMs) : [];
+  // The call time came and nobody picked up: text + email them a link to pick a new time (lead recovery).
+  const canReportMissed = canReportMissedCall(event, canWork, nowMs);
+  const missed = () => {
+    setError(null);
+    setNotice(null);
+    start(async () => {
+      const r = await reportMissedCall({ kind: event.kind, id: event.id });
+      if (!r.ok) setError(r.error);
+      else setNotice(r.message);
+    });
+  };
   const tel = telHref(event.phone);
   const run = (fn: () => Promise<{ ok: boolean; error?: string }>, done: string) => {
     setError(null);
@@ -212,8 +223,16 @@ export function EventSheet({
             </Link>
           ) : null}
 
-          {actions.length || canChange || canCancel ? (
+          {actions.length || canChange || canCancel || canReportMissed ? (
             <section aria-label="Actions" className="space-y-2 border-t pt-4">
+              {canReportMissed ? (
+                <div className="space-y-1">
+                  <Button variant="outline" className="w-full" disabled={pending} onClick={missed} data-missed-call="">
+                    <PhoneMissed aria-hidden /> Couldn’t reach them
+                  </Button>
+                  <p className="text-xs text-muted-foreground">Texts and emails {event.title.split(' ')[0] || 'them'} a link to pick a new time, and logs the attempt.</p>
+                </div>
+              ) : null}
               {actions.length ? (
                 <div className="grid grid-cols-2 gap-2">
                   {actions.map((a) => (

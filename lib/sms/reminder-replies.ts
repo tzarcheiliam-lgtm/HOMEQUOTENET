@@ -72,11 +72,38 @@ export async function handleProspectReply(db: Db, c: Convo, body: string, now: D
   return { handled: true, reason: 'prospect_reply' };
 }
 
+/** Lead-recovery texts (lib/booking/recovery.server.ts, runTextReminders): "want to pick a new time? … reply R". */
+export const RECOVERY_STEPS = ['no_show', 'missed_call', 'unbooked'] as const;
+/** R / YES to a recovery text when they have the email with the link. */
+export const RECOVERY_REPLY = 'No problem. You can pick a time with the link in our email, or someone will reach out shortly to find one.';
+
+/**
+ * R (or YES) to a recovery text: a person finds the new time (handoff, needs-attention note, push), and the reply
+ * points to the "pick a new time" link in our email when they have one. Anything else: null (normal flow).
+ */
+async function handleRecoveryReply(db: Db, c: Convo, body: string, now: Date): Promise<ReminderReplyResult | null> {
+  const { data } = await db.from('sms_messages').select('reminder_kind,reminder_ref,reminder_step,created_at')
+    .eq('conversation_id', c.id).eq('direction', 'out').not('reminder_kind', 'is', null)
+    .gte('created_at', new Date(now.getTime() - 2 * DAY).toISOString()).order('created_at', { ascending: false }).limit(1).maybeSingle();
+  const last = data as { reminder_kind: string; reminder_ref: string; reminder_step: string } | null;
+  if (!last || !(RECOVERY_STEPS as readonly string[]).includes(last.reminder_step)) return null;
+  const { data: lead } = await db.from('leads').select('first_name,last_name,email').eq('id', c.lead_id!).maybeSingle();
+  await db.from('sms_conversations').update({ status: 'handoff', updated_at: now.toISOString() }).eq('id', c.id);
+  const what = last.reminder_step === 'unbooked' ? 'a call time' : 'a new time';
+  await note(db, c.lead_id!, `Wants ${what} (replied “${body.slice(0, 60)}” to the ${last.reminder_step.replace('_', '-')} text). Please call them or book it.`, { needs_attention: true, reminder: true });
+  const name = [(lead as any)?.first_name, (lead as any)?.last_name].filter(Boolean).join(' ') || 'A homeowner';
+  await alertTeam(db, [], { title: last.reminder_step === 'unbooked' ? 'Wants a call' : 'Wants a new time', body: `${name} replied “${body.slice(0, 40)}”. Book them a time.`, url: `/app/leads/${c.lead_id}` });
+  await queue(db, c, (lead as any)?.email ? RECOVERY_REPLY : "No problem. Someone will reach out shortly to find a time.", { ai: false });
+  return { handled: true, reason: 'recovery_reply', replied: true };
+}
+
 export async function handleLeadReminderReply(db: Db, c: Convo, body: string, now: Date): Promise<ReminderReplyResult | null> {
   if (!c.lead_id) return null;
   const confirm = isConfirmReply(body);
   const reschedule = !confirm && isRescheduleReply(body);
   if (!confirm && !reschedule) return null;
+  const recovery = await handleRecoveryReply(db, c, body, now);
+  if (recovery) return recovery;
   const recent = await lastReminder(db, c.id, 'home_appointment', new Date(now.getTime() - 2 * DAY));
   if (!recent) return null;
   const { data: a } = await db.from('appointments').select('id,scheduled_at,status').eq('id', recent.reminder_ref).maybeSingle();

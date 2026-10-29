@@ -11,6 +11,7 @@ const value: ReminderFormValue = {
   homeowner: { enabled: true, templates: { ...blank, booked: 'Hi {first_name}, {host} here. See you {when}.' } },
   followups: { enabled: true, days: [1, 3, 7], keepGoing: false, everyDays: 3, templates: { first: '', second: '', final: '', nudge: '', nudge_last: '' } },
   unconfirmedAlert: true,
+  recovery: { speedAlert: true, noShow: true, heldPrompt: true, missedCall: false, unbooked: true },
 };
 
 describe('Reminders & follow-ups card', () => {
@@ -21,6 +22,13 @@ describe('Reminders & follow-ups card', () => {
     expect(html).toContain('Hi Sam, Acme Remodeling here. See you Thursday, Nov 6 at 2:00 PM.');
     expect(html).toContain('Day 7, if they never replied');
     expect(html).toContain('role="switch"');
+  });
+  it('lists the lead recovery switches, each with what it sends', () => {
+    const html = renderToStaticMarkup(<RemindersForm value={value} />);
+    expect(html).toContain('Lead recovery');
+    for (const label of ['Speed-to-lead alert', 'No-show follow-up', 'Ask me if a call happened', '“Couldn’t reach them” button', 'Follow up when they don’t book a call']) expect(html).toContain(label);
+    // The missed-call switch is off in this value, the others on.
+    expect((html.match(/aria-checked="false"/g) ?? []).length).toBeGreaterThanOrEqual(1);
   });
   it('hides a section that is switched off', () => {
     const html = renderToStaticMarkup(<RemindersForm value={{ ...value, homeowner: { ...value.homeowner, enabled: false } }} />);

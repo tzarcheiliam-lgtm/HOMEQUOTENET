@@ -138,6 +138,7 @@ export function FunnelContactScreen({ slug, spec, selection, contractor, heading
         qualified: res.qualified,
         calendarUrl: res.calendarUrl,
         ...(res.bookingTicket ? { bookingTicket: res.bookingTicket } : {}),
+        ...(res.shareUrl ? { shareUrl: res.shareUrl } : {}),
         contact: { firstName: draft.contact.firstName, lastName: draft.contact.lastName, email: draft.contact.email },
         selection: draft.funnel,
         saved: res.saved,

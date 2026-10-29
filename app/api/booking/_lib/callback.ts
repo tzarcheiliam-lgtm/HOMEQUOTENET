@@ -16,6 +16,11 @@ type Db = ReturnType<typeof createAdminClient>;
 const NOTE_MAX = 300;
 
 export async function callbackRequested(db: Db, r: Resolved): Promise<boolean> {
+  if (r.kind === 'rebook') {
+    const { data } = await db.from('lead_activities').select('id').eq('lead_id', r.appointment.lead_id)
+      .contains('metadata', { callback_requested: true, rebook_appointment_id: r.appointment.id }).limit(1);
+    return (data ?? []).length > 0;
+  }
   if (r.kind === 'session') {
     if (!r.session.lead_id) return false;
     const { data } = await db.from('lead_activities').select('id').eq('lead_id', r.session.lead_id)
@@ -28,6 +33,21 @@ export async function callbackRequested(db: Db, r: Resolved): Promise<boolean> {
 export async function requestCallback(db: Db, r: Resolved, note: string | null): Promise<{ ok: boolean; already: boolean }> {
   if (await callbackRequested(db, r)) return { ok: true, already: true };
   const clean = note?.replace(/\s+/g, ' ').trim().slice(0, NOTE_MAX) || null;
+  if (r.kind === 'rebook') {
+    const contractorId = r.calendar?.kind === 'contractor' ? r.calendar.contractorId : null;
+    const { error } = await db.from('lead_activities').insert({
+      lead_id: r.appointment.lead_id,
+      type: 'contact_attempt',
+      body: `Asked for a callback after the missed call: none of the offered times worked${clean ? `. Best time: ${clean}` : ''}`,
+      metadata: {
+        callback_requested: true, rebook_appointment_id: r.appointment.id,
+        ...(r.calendar ? { calendar_id: r.calendar.id } : {}),
+        ...(contractorId ? { contractor_id: contractorId } : {}),
+        ...(clean ? { note: clean } : {}),
+      },
+    });
+    return { ok: !error, already: false };
+  }
   if (r.kind === 'session') {
     if (!r.session.lead_id) return { ok: false, already: false };
     const contractorId = r.calendar?.kind === 'contractor' ? r.calendar.contractorId : r.funnel.contractor_id;
