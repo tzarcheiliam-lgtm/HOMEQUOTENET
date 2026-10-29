@@ -25,6 +25,7 @@ import {
 import { CallsSubnav } from '@/components/calls/calls-subnav';
 import { SalesAppointmentBadge } from '@/components/calls/disposition-badge';
 import { AppointmentStatusControl } from '@/components/calls/appointment-status-control';
+import { EditAppointment } from '@/components/calls/edit-appointment';
 import { fmtDateTime, fmtPhone, telHref } from '@/components/calls/format';
 import { CreditControl, SaleBadge, SaleOutcomeControl } from '@/components/calls/sale-outcome-control';
 import { reminderChip, type ReminderChip } from '@/lib/sms/reminder-status';
@@ -299,6 +300,7 @@ export default async function SalesAppointmentsPage({
                         Call
                       </a>
                     ) : null}
+                    {(isAdmin || a.partner_id === me.id) && ['scheduled', 'confirmed', 'rescheduled'].includes(a.status) ? <EditAppointment meeting={{ id: a.id, company: a.company_name, scheduledAt: a.scheduled_at, timeZone: a.time_zone, appointmentType: a.appointment_type, contactInfo: a.contact_info, decisionMakerName: a.decision_maker_name, notes: a.notes }} /> : null}
                     <AppointmentStatusControl id={a.id} status={a.status} />
                   </div>
                   <AddToCalendar {...calendarOf(a)} />
@@ -396,7 +398,8 @@ export default async function SalesAppointmentsPage({
                       </span>
                     </TableCell>
                     <TableCell>
-                      <div className="flex justify-end">
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        {(isAdmin || a.partner_id === me.id) && ['scheduled', 'confirmed', 'rescheduled'].includes(a.status) ? <EditAppointment meeting={{ id: a.id, company: a.company_name, scheduledAt: a.scheduled_at, timeZone: a.time_zone, appointmentType: a.appointment_type, contactInfo: a.contact_info, decisionMakerName: a.decision_maker_name, notes: a.notes }} /> : null}
                         <AppointmentStatusControl id={a.id} status={a.status} />
                       </div>
                     </TableCell>

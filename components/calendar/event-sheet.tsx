@@ -247,7 +247,12 @@ export function EventSheet({
                   ))}
                 </div>
               ) : null}
-              {canChange ? (
+              {canChange && event.handBooked && event.prospectId ? (
+                // Booked from a call (no booking calendar): change the time and details with Edit on the contractor's page.
+                <Link href={`/app/calls/${event.prospectId}#meeting`} className={cn(buttonVariants({ variant: 'outline' }), 'w-full')}>
+                  <CalendarClock aria-hidden /> Edit or reschedule
+                </Link>
+              ) : canChange ? (
                 <Button variant="outline" className="w-full" disabled={pending} onClick={() => { setMode('reschedule'); setNotice(null); }}>
                   <CalendarClock aria-hidden /> Reschedule
                 </Button>

@@ -12,6 +12,7 @@ import { homequoteSystemValues } from '@/lib/emails/variables';
 import { signerFor } from '@/lib/emails/prospect-send.server';
 import { CALL_FOLLOW_UP_CATEGORY, quickTemplates } from '@/lib/emails/call-followups';
 import { QuickEmailSheet } from '@/components/calls/quick-email-sheet';
+import { EditAppointment } from '@/components/calls/edit-appointment';
 import { EmailButton } from '@/components/calls/email-button';
 import { isDialable } from '@/lib/calls/rules';
 import { buttonVariants } from '@/components/ui/button';
@@ -286,10 +287,13 @@ export default async function ProspectPage({
                 ) : null}
                 {nextAppt ? (
                   <Row label="Sales appointment" className="col-span-2">
-                    <span className="inline-flex flex-wrap items-center gap-2">
+                    <span id="meeting" className="inline-flex scroll-mt-24 flex-wrap items-center gap-2">
                       <CalendarCheck className="size-3.5 text-emerald-700" aria-hidden="true" />
                       {fmtDateTime(nextAppt.scheduled_at, nextAppt.time_zone)}
                       <SalesAppointmentBadge value={nextAppt.status} />
+                      {me.role === 'admin' || nextAppt.partner_id === me.id ? (
+                        <EditAppointment meeting={{ id: nextAppt.id, company: p.company_name, scheduledAt: nextAppt.scheduled_at, timeZone: nextAppt.time_zone, appointmentType: nextAppt.appointment_type, contactInfo: nextAppt.contact_info, decisionMakerName: nextAppt.decision_maker_name, notes: nextAppt.notes }} />
+                      ) : null}
                       <Link href="/app/calls/appointments" className="text-xs hover:underline">
                         Manage
                       </Link>
@@ -347,6 +351,7 @@ export default async function ProspectPage({
             isDnc={dnc}
             contextQuery={ctxQs}
             emailFollowUps={gmail.canSend && !dnc && !optedOut}
+            existingMeeting={nextAppt ? fmtDateTime(nextAppt.scheduled_at, nextAppt.time_zone) : null}
           />
         }
         script={

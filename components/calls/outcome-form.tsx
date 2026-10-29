@@ -75,6 +75,7 @@ export function OutcomeForm({
   isDnc,
   contextQuery,
   emailFollowUps = false,
+  existingMeeting = null,
 }: {
   prospectId: string;
   disposition: ProspectDisposition;
@@ -86,6 +87,8 @@ export function OutcomeForm({
   contextQuery?: string;
   /** Offer the follow-up email after saving (Gmail connected, prospect may be emailed). */
   emailFollowUps?: boolean;
+  /** Their open sales meeting, if any (formatted). Booking again updates it instead of adding a second one. */
+  existingMeeting?: string | null;
 }) {
   const [state, formAction, pending] = useActionState<ProspectActionState, FormData>(
     logCallOutcome,
@@ -436,6 +439,11 @@ export function OutcomeForm({
               <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Sales appointment
               </p>
+              {existingMeeting ? (
+                <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+                  This updates their existing meeting ({existingMeeting}); it won’t add a second one. To only change the time or details, use Edit on the meeting.
+                </p>
+              ) : null}
               <div className="grid grid-cols-2 gap-3">
                 <Field
                   label="Date"
