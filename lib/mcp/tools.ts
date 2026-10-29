@@ -12,6 +12,8 @@ import { parseWorkflowGraph, triggerOf } from '@/lib/workflows/graph';
 import { hashGraph } from '@/lib/workflows/graph/hash';
 import { sendPushNotification } from '@/lib/notifications/service';
 import { AREA_LABELS, AUTOMATIONS } from '@/lib/automations/registry';
+import { slotProblem } from '@/lib/appointments/book.server';
+import { parseWallTime } from '@/lib/availability/time';
 import { automationStatuses } from '@/lib/automations/status.server';
 import type { McpKey, McpScope } from './keys';
 
@@ -538,9 +540,61 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: 'propose_appointment',
+    title: 'Propose booking an appointment',
+    description: 'Ask the admin to approve booking a free estimate visit for a lead with the contractor it is assigned to (for example the day and time the lead agreed to by text). Only use this when the admin asked for it in this conversation. Nothing is booked by this call: the admin approves or declines it in HomeQuote; once approved, the reminder texts start. date_time is Pacific (workspace) wall time, e.g. 2026-11-03T10:00.',
+    scope: 'assign',
+    inputSchema: {
+      type: 'object', required: ['lead_id', 'date_time'],
+      properties: {
+        lead_id: { type: 'string' },
+        contractor_id: { type: 'string', description: 'Contractor the lead is assigned to (from get_lead / list_contractors). Optional when the lead has exactly one assignment.' },
+        date_time: { type: 'string', description: 'Local (Pacific) date and time, YYYY-MM-DDTHH:mm.' },
+        notes: { type: 'string', description: 'Short notes for the visit, shown on the appointment.' },
+        reason: { type: 'string', description: 'Why, in a sentence, shown to the admin with the request.' },
+      },
+    },
+    summarize: (a) => `lead=${String(a.lead_id ?? '').slice(0, 36)} at=${String(a.date_time ?? '').slice(0, 20)}`,
+    run: async (db, args, key) => {
+      const leadId = uuid(args.lead_id, 'lead_id');
+      const raw = str(args.date_time, 40);
+      if (!raw || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(raw)) fail('date_time must be Pacific wall time like 2026-11-03T10:00.');
+      const startMs = parseWallTime(raw!, 'America/Los_Angeles');
+      if (startMs === null) fail('That date and time is not valid.');
+      const now = Date.now();
+      if (startMs! <= now) fail('That time has already passed.');
+      if (startMs! > now + 90 * 86_400_000) fail('Book within the next 90 days.');
+      const { data: lead } = await db.from('leads').select('id,first_name,last_name').eq('id', leadId).maybeSingle();
+      if (!lead) fail('No lead with that id.');
+      const { data: asgs } = await db.from('lead_assignments').select('id,contractor_id,status').eq('lead_id', leadId);
+      const open = ((asgs ?? []) as any[]).filter((a) => !['lost', 'returned', 'not_qualified'].includes(a.status));
+      const coId = args.contractor_id === undefined ? undefined : uuid(args.contractor_id, 'contractor_id');
+      const asg = coId ? open.find((a) => a.contractor_id === coId) : open.length === 1 ? open[0] : undefined;
+      if (!asg) fail(coId ? 'The lead is not assigned to that contractor. Assign it first (propose_lead_assignment).' : open.length ? 'The lead has several assignments: give contractor_id.' : 'The lead is not assigned to a contractor yet. Propose an assignment first.');
+      const at = new Date(startMs!).toISOString();
+      const { data: dup } = await db.from('appointments').select('id').eq('assignment_id', asg.id).eq('scheduled_at', at).in('status', ['scheduled', 'rescheduled']).limit(1).maybeSingle();
+      if (dup) fail('That appointment is already booked.');
+      const { count } = await db.from('mcp_pending_actions').select('id', { count: 'exact', head: true }).eq('key_id', key.id).eq('status', 'pending');
+      if ((count ?? 0) >= 20) fail('There are already 20 requests waiting for approval. Ask the admin to review them first.');
+      const { data: co } = await db.from('contractors').select('name').eq('id', asg.contractor_id).maybeSingle();
+      const coName = (co as any)?.name ?? 'the contractor';
+      const fmt = (o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', ...o }).format(new Date(startMs!));
+      const when = `${fmt({ weekday: 'short', month: 'short', day: 'numeric' })} at ${fmt({ hour: 'numeric', minute: '2-digit' })}`;
+      const conflict = await slotProblem(db as never, asg.contractor_id, startMs!);
+      const summary = `Book ${name(lead as any)} with ${coName}: ${when} (Pacific)${conflict ? `. Note: ${conflict}` : ''}`.slice(0, 500);
+      const { data: row, error } = await db.from('mcp_pending_actions').insert({
+        key_id: key.id, requested_for: key.actorId, kind: 'book_appointment', summary,
+        payload: { leadId, assignmentId: asg.id, startMs, notes: str(args.notes, 500) ?? null, reason: str(args.reason, 300) ?? null },
+      }).select('id').single();
+      if (error || !row) fail(/kind/i.test(error?.message ?? '') ? 'Booking requests need database migration 0071 first.' : 'Could not create the approval request.');
+      if (key.actorId) await sendPushNotification({ userIds: [key.actorId], type: 'workflow_alert', title: 'Claude needs your OK', body: `${summary}. Tap to approve or decline.`, url: '/app/claude-connector#approvals', db }).catch(() => undefined);
+      return { status: 'waiting for your approval', request_id: (row as any).id, request: summary, ...(conflict ? { availability: conflict } : {}), approve_at: link('/app/claude-connector#approvals'), note: 'Nothing has been booked yet. The admin approves or declines this in HomeQuote; it expires in 24 hours. Once approved, the reminder texts start.' };
+    },
+  },
+  {
     name: 'list_pending_approvals',
     title: 'Check approval requests',
-    description: 'Assignment requests made through this connector and whether the admin approved, declined or has not decided yet (newest first).',
+    description: 'Assignment and booking requests made through this connector and whether the admin approved, declined or has not decided yet (newest first).',
     scope: 'assign',
     inputSchema: { type: 'object', properties: {} },
     annotations: readOnly,

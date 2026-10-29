@@ -15,7 +15,7 @@ export const metadata = { title: 'Claude connector · HomeQuote Network' };
 export const dynamic = 'force-dynamic';
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
-const SCOPE_LABEL: Record<string, string> = { read: 'Look things up', write: 'Make changes', text: 'Text homeowners', assign: 'Propose assignments' };
+const SCOPE_LABEL: Record<string, string> = { read: 'Look things up', write: 'Make changes', text: 'Text homeowners', assign: 'Propose assignments & bookings' };
 
 export default async function ClaudeConnectorPage() {
   await requireRole(['admin']);
