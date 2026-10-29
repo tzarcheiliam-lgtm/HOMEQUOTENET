@@ -65,7 +65,7 @@ export async function POST(request: Request) {
       flushNotificationsSoon();
       const c = r.session.contact ?? {};
       const cal = (await getCalendar(result.calendarId, db)) ?? calendar;
-      const metaEventId = scheduleMetaEvent(request, db, r);
+      const metaEventId = scheduleMetaEvent(request, db, r, { appointmentId: result.appointmentId, contractorId: cal.contractorId });
       const body: BookResponse = {
         ok: true,
         booking: publicBooking({ status: 'scheduled', startsAt: result.startsAt, endsAt: result.endsAt, timeZone: result.timeZone, inviteeTimeZone: timeZone,
@@ -105,7 +105,12 @@ export async function POST(request: Request) {
  * the page's pixel may reuse for deduplication), only with a pixel, contact
  * details and the visitor's measurement choice. Never for a demo funnel.
  */
-function scheduleMetaEvent(request: Request, db: ReturnType<typeof createAdminClient>, r: Extract<Resolved, { kind: 'session' }>): string | null {
+function scheduleMetaEvent(
+  request: Request,
+  db: ReturnType<typeof createAdminClient>,
+  r: Extract<Resolved, { kind: 'session' }>,
+  link: { appointmentId: string; contractorId: string | null },
+): string | null {
   const parsed = funnelSchema.safeParse(r.funnel.config ?? {});
   if (!parsed.success || r.funnel.is_demo) return null;
   const config = parsed.data;
@@ -118,14 +123,18 @@ function scheduleMetaEvent(request: Request, db: ReturnType<typeof createAdminCl
     const ids = await loadLeadMetaIds(db, r.session.lead_id);
     await sendMetaEvent({
       pixelId, eventName: 'Schedule', eventId,
-      eventSourceUrl: r.session.attribution?.landing_page_url ?? `https://${request.headers.get('host')}/estimate/${r.funnel.slug}`,
+      // Funnels live at /estimate/<slug>, estimators at /estimator/<slug>.
+      eventSourceUrl: r.session.attribution?.landing_page_url
+        ?? `https://${request.headers.get('host')}/${r.source === 'estimator' ? 'estimator' : 'estimate'}/${r.funnel.slug}`,
       customData: nicheDataFor(config.industry, r.funnel.slug),
       user: {
         email: c.email as string, phone: c.phone as string, firstName: c.firstName as string, lastName: c.lastName as string,
         clientIpAddress: clientIp(request), clientUserAgent: request.headers.get('user-agent') ?? undefined,
         fbp: ids.fbp, fbc: ids.fbc,
       },
-    }, r.session.lead_id ? directSendAudit(db, { leadId: r.session.lead_id, stage: 'appointment' }) : undefined);
+    }, r.session.lead_id
+      ? directSendAudit(db, { leadId: r.session.lead_id, stage: 'appointment', appointmentId: link.appointmentId, contractorId: link.contractorId })
+      : undefined);
   });
   return eventId;
 }

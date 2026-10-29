@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getContractorCalendar, listVisibleCalendars, loadCalendarRules } from '@/lib/booking/calendars.server';
 import { localParts } from '@/lib/availability/time';
-import { zoneLabel } from '@/components/booking/zone-label';
+import { zoneLabelRange } from '@/components/booking/zone-label';
 import { canManageCalendar, canOverrideSlots, canViewCalendar, canWorkCalendar, isCalendarStaff, type CalendarViewer } from '@/components/calendar/access';
 import { CalendarBoard } from '@/components/calendar/calendar-board';
 import { CalendarSwitcher } from '@/components/calendar/calendar-switcher';
@@ -113,7 +113,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
             replace
             aria-current={mode === m ? 'page' : undefined}
             className={cn(
-              'flex min-h-9 items-center justify-center rounded-md px-3 text-sm font-medium capitalize',
+              'flex min-h-11 items-center justify-center rounded-md px-3 text-sm font-medium capitalize sm:min-h-9',
               mode === m ? 'bg-background text-foreground shadow-xs' : 'text-muted-foreground'
             )}
           >
@@ -129,7 +129,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     <div className="space-y-4 lg:space-y-5">
       <PageHeader
         title={staff ? `Calendar · ${calendar.name}` : 'Calendar'}
-        description={`${calendar.durationMinutes}-minute calls on ${staff ? 'this' : 'your'} calendar. Times in ${zoneLabel(nowMs, tz)}.`}
+        description={`${calendar.durationMinutes}-minute calls on ${staff ? 'this' : 'your'} calendar. Times in ${zoneLabelRange(fromMs, toMs - 1, tz)}.`}
       >
         <Link href={`/app/calendar/settings?cal=${calendar.id}`} className={cn(buttonVariants({ variant: 'outline' }))}>
           <Settings aria-hidden /> {canManageCalendar(viewer, calendar) ? 'Calendar settings' : 'Hours & hosts'}

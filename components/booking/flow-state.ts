@@ -26,6 +26,8 @@ export interface FlowState {
 export type FlowAction =
   | { type: 'loaded'; calendar: PublicCalendar; slots: PublicSlot[]; booked: PublicBooking | null; callbackRequested: boolean; contact: FlowState['contact']; message?: string | null }
   | { type: 'load_failed'; message: string }
+  /** "Try again" after a failed load: show the skeleton while it runs. */
+  | { type: 'reload' }
   | { type: 'select'; start: string }
   | { type: 'back' }
   | { type: 'submit' }
@@ -55,10 +57,14 @@ export function flowReducer(s: FlowState, a: FlowAction): FlowState {
     }
     case 'load_failed':
       return { ...s, view: 'unavailable', message: a.message };
+    case 'reload':
+      return s.view === 'unavailable' ? { ...s, view: 'loading', message: null } : s;
     case 'select':
       if (s.view !== 'pick' || !s.slots.some((x) => x.start === a.start)) return s;
       return moved({ view: 'confirm', selected: a.start, message: null });
     case 'back':
+      // From the callback form opened on a failed load there are no times to go back to.
+      if (s.view === 'callback' && !s.calendar) return moved({ view: 'unavailable', message: null });
       return s.view === 'confirm' || s.view === 'callback' ? moved({ view: 'pick', message: null }) : s;
     case 'submit':
       return s.view === 'confirm' && s.selected ? { ...s, view: 'booking', message: null } : s;
@@ -69,7 +75,7 @@ export function flowReducer(s: FlowState, a: FlowAction): FlowState {
     case 'failed':
       return { ...s, view: s.view === 'booking' ? 'confirm' : s.view, message: a.message };
     case 'open_callback':
-      return s.view === 'pick' ? moved({ view: 'callback', message: null }) : s;
+      return s.view === 'pick' || s.view === 'unavailable' ? moved({ view: 'callback', message: null }) : s;
     case 'callback_sent':
       return moved({ view: 'callback_sent', callbackRequested: true, message: null });
   }

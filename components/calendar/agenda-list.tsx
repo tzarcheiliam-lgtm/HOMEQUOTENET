@@ -4,12 +4,13 @@ import { ChevronRight } from 'lucide-react';
 import { formatRange } from '@/lib/booking/format';
 import { localParts } from '@/lib/availability/time';
 import { cn } from '@/lib/utils';
-import { longDayLabel, statusStyle, type CalendarEvent } from './view';
+import { longDayLabel, openBands, statusStyle, type CalendarEvent, type HourRule } from './view';
 
 /**
  * The week on a phone: one section per day, each booking a full-width row
  * (name, time, project, status) that opens the details sheet. Days with
- * nothing booked say so, so the week still reads as a week.
+ * nothing booked say so ("Closed" when the calendar has no hours that day),
+ * so the week still reads as a week.
  */
 export function AgendaList({
   days,
@@ -18,8 +19,11 @@ export function AgendaList({
   today,
   onSelect,
   className,
+  rules,
 }: {
   days: string[];
+  /** The calendar's weekly hours: a day without any reads "Closed". Omitted: every day is open. */
+  rules?: HourRule[];
   events: CalendarEvent[];
   timeZone: string;
   today: string;
@@ -42,7 +46,9 @@ export function AgendaList({
               {d === today ? <span className="ml-1.5 text-xs font-medium text-muted-foreground">Today</span> : null}
             </h2>
             {list.length === 0 ? (
-              <p className="rounded-xl border border-dashed px-4 py-3 text-sm text-muted-foreground">Nothing booked</p>
+              <p className="rounded-xl border border-dashed px-4 py-3 text-sm text-muted-foreground">
+                {rules && openBands(rules, d).length === 0 ? 'Closed' : 'Nothing booked'}
+              </p>
             ) : (
               <ul className="divide-y overflow-hidden rounded-xl border bg-card">
                 {list.map((e) => {

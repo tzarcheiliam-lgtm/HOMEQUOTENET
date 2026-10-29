@@ -9,6 +9,8 @@ import { canManageCalendar, canViewCalendar, isCalendarStaff, type CalendarViewe
 import { CalendarMembers, type MemberView } from '@/components/calendar/calendar-members';
 import { CalendarSettingsForm } from '@/components/calendar/calendar-settings-form';
 import { WeeklyEditor } from '@/components/availability/weekly-editor';
+import { CalendarConnections, CalendarNotice, type ConnectionView } from '@/components/availability/calendar-connections';
+import { googleCalendarReady } from '@/lib/calendar/config';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
@@ -68,6 +70,16 @@ export default async function CalendarSettingsPage({ searchParams }: { searchPar
   });
   const candidates = ((candidateRows ?? []) as any[]).map((p) => ({ id: p.id as string, name: (p.full_name || p.email || 'Team member') as string }));
 
+  // HomeQuote hosts (team / sales) connect their OWN Google here, so callers are never offered a time they are busy.
+  // Contractor users connect theirs on the Availability page (it covers their on-site visits too).
+  const staffHost = isCalendarStaff(viewer) && calendar.kind !== 'contractor';
+  const { data: connectionRows } = staffHost
+    ? await userDb.from('calendar_connections')
+      .select('id, provider, account_email, calendar_name, status, push_appointments, import_busy, last_synced_at, last_error').eq('user_id', profile.id)
+    : { data: [] };
+  const connections = (connectionRows ?? []) as ConnectionView[];
+  const googleNotice = Array.isArray(sp.calendar) ? sp.calendar[0] : sp.calendar;
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -76,6 +88,8 @@ export default async function CalendarSettingsPage({ searchParams }: { searchPar
         backHref={`/app/calendar?cal=${calendar.id}`}
         backLabel="Calendar"
       />
+
+      <CalendarNotice code={googleNotice} />
 
       <Card>
         <CardHeader><CardTitle>Booking rules</CardTitle></CardHeader>
@@ -120,6 +134,22 @@ export default async function CalendarSettingsPage({ searchParams }: { searchPar
           />
         </CardContent>
       </Card>
+
+      {staffHost && (
+        <Card>
+          <CardHeader><CardTitle>Your Google Calendar</CardTitle></CardHeader>
+          <CardContent>
+            {googleCalendarReady() || connections.length ? (
+              <CalendarConnections connections={connections} googleConfigured={googleCalendarReady()} hasFeedLink={false} host />
+            ) : (
+              <p className="text-sm text-muted-foreground" role="note">
+                Google Calendar sign-in isn’t set up on this site yet, so times you are busy elsewhere are not blocked here. Block them with
+                weekly hours, or ask an admin to set up Google Calendar.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

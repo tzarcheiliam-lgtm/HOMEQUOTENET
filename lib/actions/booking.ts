@@ -57,6 +57,7 @@ const HOST_MESSAGES: Partial<Record<BookingError, string>> = {
 const messageFor = (e: BookingError) => HOST_MESSAGES[e] ?? BOOKING_ERROR_MESSAGES[e];
 const failed = (e: BookingError): { ok: false; error: string; pickAnother?: boolean } => ({ ok: false, error: messageFor(e), pickAnother: PICK_ANOTHER_TIME.has(e) || undefined });
 const denied = { ok: false as const, error: 'You don’t have access to this calendar.' };
+const salesOwnerOnly = { ok: false as const, error: 'Only an admin or the setter who booked this meeting can change it.' };
 
 const uuid = z.string().uuid();
 const iso = z.string().refine((v) => Number.isFinite(Date.parse(v)), 'Pick a valid time');
@@ -90,18 +91,24 @@ interface BookingRef {
   leadId: string | null;
   scheduledAt: string | null;
   status: string;
+  /** False for a sales meeting another setter booked (or the prospect booked themselves). */
+  mayChange: boolean;
 }
 
 /** A booking the user can see (RLS) + whether the role rules let them work it. */
 async function workableBooking(ctx: Ctx, kind: EventKindInput, id: string): Promise<BookingRef | null> {
   if (!uuid.safeParse(id).success) return null;
   if (kind === 'sales_appointment') {
-    const { data } = await ctx.userDb.from('prospect_sales_appointments').select('id, calendar_id, scheduled_at, status').eq('id', id).maybeSingle();
+    const { data } = await ctx.userDb.from('prospect_sales_appointments').select('id, calendar_id, scheduled_at, status, partner_id').eq('id', id).maybeSingle();
     if (!data) return null;
     // Sales meetings are HomeQuote's own: never a contractor's.
     if (ctx.viewer.role !== 'admin' && ctx.viewer.role !== 'setter') return null;
     const calendar = data.calendar_id ? await visibleCalendar(ctx.userDb, data.calendar_id) : null;
-    return { kind, id, calendar, visitContractorId: null, leadId: null, scheduledAt: data.scheduled_at, status: data.status };
+    // A setter changes only meetings they booked themselves (the sales_appointments_update
+    // rule, 0007). Moving or cancelling someone else's, or a self-booked funnel meeting
+    // (partner_id null), would let them re-book it under their own name (setter pay, 0062).
+    const mayChange = ctx.viewer.role === 'admin' || data.partner_id === ctx.profile.id;
+    return { kind, id, calendar, visitContractorId: null, leadId: null, scheduledAt: data.scheduled_at, status: data.status, mayChange };
   }
   const { data } = await ctx.userDb
     .from('appointments')
@@ -113,7 +120,7 @@ async function workableBooking(ctx: Ctx, kind: EventKindInput, id: string): Prom
   const calendar = data.calendar_id ? await visibleCalendar(ctx.userDb, data.calendar_id) : null;
   const ref: BookingRef = {
     kind: 'appointment', id, calendar, visitContractorId: data.calendar_id ? null : asg?.contractor_id ?? null,
-    leadId: data.lead_id ?? asg?.lead_id ?? null, scheduledAt: data.scheduled_at, status: data.status,
+    leadId: data.lead_id ?? asg?.lead_id ?? null, scheduledAt: data.scheduled_at, status: data.status, mayChange: true,
   };
   if (calendar) return canWorkCalendar(ctx.viewer, calendar) ? ref : null;
   // A visit with no calendar: staff, or the contractor whose assignment it is.
@@ -291,6 +298,11 @@ export async function bookCallOnBehalf(input: z.input<typeof bookInput>): Promis
     // RLS: admins see every prospect, a setter only those assigned to them.
     const { data: p } = await ctx.userDb.from('contractor_prospects').select('id, company_name, decision_maker_name, phone, email').eq('id', partyId).maybeSingle();
     if (!p) return { ok: false, error: 'Prospect not found.' };
+    // One live sales meeting per prospect: booking a second would re-credit the
+    // meeting to whoever books it (0062). An admin moves the existing one instead.
+    const { data: live } = await createAdminClient().from('prospect_sales_appointments').select('id')
+      .eq('prospect_id', p.id).in('status', ['scheduled', 'confirmed', 'rescheduled']).gt('scheduled_at', new Date().toISOString()).limit(1);
+    if ((live as any[] | null)?.length) return { ok: false, error: 'This prospect already has a sales meeting booked. Reschedule that one instead.' };
     const r = await bookSalesAppointment({
       calendarId: cal.id, startsAt, prospectId: p.id,
       // The person booking is credited, as in the calling workspace (setter pay, 0062).
@@ -328,6 +340,7 @@ export async function rescheduleCalendarEvent(input: { kind: EventKindInput; id:
   if (!parsed.success) return { ok: false, error: 'Pick a valid time' };
   const ref = await workableBooking(ctx, parsed.data.kind, parsed.data.id);
   if (!ref) return denied;
+  if (!ref.mayChange) return salesOwnerOnly;
   if (!ref.calendar) return failed('not_bookable');
   const override = !!parsed.data.override && canOverrideSlots(ctx.viewer);
   const opts = { actorId: ctx.profile.id, actorKind: 'user' as const, override };
@@ -352,6 +365,7 @@ export async function cancelCalendarEvent(input: { kind: EventKindInput; id: str
   if (!parsed.success) return { ok: false, error: 'Check the cancellation' };
   const ref = await workableBooking(ctx, parsed.data.kind, parsed.data.id);
   if (!ref) return denied;
+  if (!ref.mayChange) return salesOwnerOnly;
   const reason = parsed.data.reason || null;
   const opts = { actorId: ctx.profile.id, actorKind: 'user' as const };
   const r = ref.kind === 'sales_appointment'
@@ -378,6 +392,7 @@ export async function setCalendarEventStatus(input: { kind: EventKindInput; id: 
   if (!parsed.success) return { ok: false, error: 'Pick a status' };
   const ref = await workableBooking(ctx, parsed.data.kind, parsed.data.id);
   if (!ref) return denied;
+  if (!ref.mayChange) return salesOwnerOnly;
   const status = parsed.data.status;
   if (!STATUS_FOR[ref.kind].includes(status)) return { ok: false, error: 'Pick a status' };
   if (ref.status === 'cancelled') return { ok: false, error: 'A cancelled call cannot be marked. Book a new one instead.' };
@@ -386,7 +401,7 @@ export async function setCalendarEventStatus(input: { kind: EventKindInput; id: 
   const table = ref.kind === 'sales_appointment' ? 'prospect_sales_appointments' : 'appointments';
   const { data, error } = await ctx.userDb.from(table).update({ status }).eq('id', ref.id).select('id');
   if (error || !(data as any[] | null)?.length) {
-    return { ok: false, error: ref.kind === 'sales_appointment' ? 'Only an admin or the setter who booked this meeting can change it.' : 'This appointment could not be updated.' };
+    return ref.kind === 'sales_appointment' ? salesOwnerOnly : { ok: false, error: 'This appointment could not be updated.' };
   }
 
   if (ref.kind === 'appointment' && ref.leadId && status === 'held') {

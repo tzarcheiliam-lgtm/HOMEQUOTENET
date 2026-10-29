@@ -50,14 +50,25 @@
 .bk-slot:active { background: var(--bk-accent-press); transform: scale(0.98); }
 .bk-slot:focus-visible { outline: none; box-shadow: 0 0 0 2px #fff, 0 0 0 5px var(--bk-accent); }
 .bk-slot[aria-selected='true'] { background: var(--bk-ink); }
-/* The booking's current time on the reschedule picker: shown for reference, not offered. */
-.bk-slot[aria-disabled='true'] {
+/* The booking's current time on the reschedule picker: shown for reference, not offered.
+   Only picker options: a confirm button that is busy stays solid blue (see aria-busy). */
+.bk-slot[role='option'][aria-disabled='true'] {
   background: transparent;
   color: var(--bk-muted);
   box-shadow: inset 0 0 0 1px var(--bk-hair);
   cursor: default;
   transform: none;
 }
+
+/* In flight ("Booking your call…"): still the same blue button, a touch quieter, spinner inside. */
+.bk-slot[aria-busy='true'] { opacity: 0.86; cursor: progress; transform: none; }
+.bk-slot:disabled:not([aria-busy='true']) { cursor: default; }
+
+/* Times: one column on phones (the Buildoly look); 2–3 columns once the picker is wide (desktop). */
+.bk-picker { container-type: inline-size; width: 100%; }
+.bk-times { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+@container (min-width: 420px) { .bk-times { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container (min-width: 600px) { .bk-times { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 
 /* Quiet secondary action (outline), same height family. */
 .bk-secondary {
@@ -99,8 +110,9 @@
   touch-action: manipulation;
 }
 @media (hover: hover) {
-  .bk-link:hover { text-decoration: underline; }
+  .bk-link:not(:disabled):hover { text-decoration: underline; }
 }
+.bk-link:disabled { color: var(--bk-muted); opacity: 0.6; cursor: default; }
 
 .bk-skeleton {
   border-radius: 8px;
@@ -123,6 +135,8 @@
 }
 
 .bk-heading { text-wrap: balance; }
+/* Standalone booking pages (manage link): keep the funnel's face; the site's global h1–h3 rule would switch to Sora. */
+.bk-page .bk :is(h1, h2, h3, h4) { font-family: inherit; }
 .bk-copy { text-wrap: pretty; }
 
 /* Destructive confirm (cancel a call): same quiet outline, red text (7.1:1 on white). */

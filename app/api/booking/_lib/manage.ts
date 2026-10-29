@@ -5,6 +5,7 @@ import { findByManageToken, type ManagedBooking } from '@/lib/booking/book.serve
 import { getCalendar } from '@/lib/booking/calendars.server';
 import type { BookingCalendar } from '@/lib/booking/types';
 import type { PublicBooking } from '@/components/booking/types';
+import { site } from '@/content/site';
 import { publicBooking } from './resolve';
 
 type Db = ReturnType<typeof createAdminClient>;
@@ -33,9 +34,15 @@ export async function loadManaged(db: Db, token: string, nowMs = Date.now()): Pr
     // contact_info is "phone · email · link" as book_sales_appointment writes it.
     phone = String((data as any)?.contact_info ?? '').split(' · ')[0] || null;
   }
+  // Who the homeowner can call about it: the contractor for its own calendar, else HomeQuote.
+  let hostPhone: string | null = site.contact.phoneHref;
+  if (calendar?.kind === 'contractor' && calendar.contractorId) {
+    const { data } = await db.from('contractors').select('phone').eq('id', calendar.contractorId).maybeSingle();
+    hostPhone = ((data as any)?.phone as string | null) || hostPhone;
+  }
   const booking = publicBooking({
     status: managed.status, startsAt: managed.startsAt, endsAt: managed.endsAt, timeZone: managed.timeZone, inviteeTimeZone: managed.inviteeTimeZone,
-    meetingType: managed.meetingType, name: managed.contactName, phone, calendar, token, sales: managed.kind === 'sales_appointment', nowMs,
+    meetingType: managed.meetingType, name: managed.contactName, phone, calendar, token, sales: managed.kind === 'sales_appointment', nowMs, hostPhone,
   });
   return { managed, calendar, booking };
 }

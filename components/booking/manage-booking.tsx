@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useId, useRef, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Phone } from 'lucide-react';
 import { formatDayHeading, formatTime } from '@/lib/booking/format';
 import { AddToCalendar, CallHow, CallTime, ViewHeading } from './call-summary';
 import { SlotPicker, SlotPickerSkeleton } from './slot-picker';
@@ -17,6 +17,16 @@ import './booking.css';
  */
 
 type Mode = 'view' | 'pick' | 'confirm' | 'cancel';
+
+/** "a HomeQuote project specialist" reads oddly after "Call": the team is HomeQuote. */
+const hostLabel = (hostName: string) => (/^a /.test(hostName) ? 'HomeQuote' : hostName);
+
+/** "+18186436888" -> "(818) 643-6888"; anything else as entered. */
+function prettyPhone(phone: string): string {
+  const d = phone.replace(/\D/g, '');
+  const ten = d.length === 11 && d.startsWith('1') ? d.slice(1) : d;
+  return ten.length === 10 ? `(${ten.slice(0, 3)}) ${ten.slice(3, 6)}-${ten.slice(6)}` : phone;
+}
 
 const UNAVAILABLE = 'This is temporarily unavailable. Please try again in a moment.';
 
@@ -126,11 +136,19 @@ export function ManageBooking({ token, initial }: { token: string; initial: Publ
               </div>
             </>
           ) : (
-            <p className="bk-copy mt-6 text-[15.5px] leading-[23px] text-[var(--bk-muted)]" data-booking-readonly="">
-              {cancelled
-                ? `Changed your mind? Contact ${booking.hostName} to set up a new time.`
-                : past ? 'This call’s time has passed, so it can’t be changed here.' : 'This call can’t be changed online.'}
-            </p>
+            <div className="mt-6" data-booking-readonly="">
+              <p className="bk-copy text-[15.5px] leading-[23px] text-[var(--bk-muted)]">
+                {cancelled
+                  ? `Changed your mind? Call ${hostLabel(booking.hostName)} to set up a new time.`
+                  : past ? 'This call’s time has passed, so it can’t be changed here.' : 'This call can’t be changed online.'}
+              </p>
+              {booking.hostPhone ? (
+                <a className="bk-secondary mt-4 w-full" href={`tel:${booking.hostPhone}`} data-booking-call-host="">
+                  <Phone aria-hidden className="size-[17px]" strokeWidth={2} />
+                  Call <span className="tabular-nums">{prettyPhone(booking.hostPhone)}</span>
+                </a>
+              ) : null}
+            </div>
           )}
         </>
       ) : null}
@@ -176,7 +194,7 @@ export function ManageBooking({ token, initial }: { token: string; initial: Publ
             type="button"
             className="bk-slot mt-6"
             disabled={busy}
-            aria-disabled={busy || undefined}
+            aria-busy={busy || undefined}
             onClick={() => void change({ action: 'reschedule', startsAt: selected }, (b) => `Done. Your call is now ${formatDayHeading(Date.parse(b.startsAt), shownZone)} at ${formatTime(Date.parse(b.startsAt), shownZone)}.`)}
           >
             {busy ? <><Loader2 aria-hidden className="size-[18px] motion-safe:animate-spin" />Moving your call…</> : 'Move my call'}
@@ -203,7 +221,7 @@ export function ManageBooking({ token, initial }: { token: string; initial: Publ
             className="mt-2 w-full resize-none rounded-[8px] bg-white px-3.5 py-3 text-[16px] leading-[23px] text-[var(--bk-ink)] shadow-[inset_0_0_0_1px_var(--bk-hair)] outline-none focus-visible:shadow-[inset_0_0_0_1px_var(--bk-accent),0_0_0_3px_var(--bk-focus)]"
           />
           {message ? <p role="alert" className="bk-copy mt-4 rounded-[8px] bg-[#fdf3e7] px-4 py-3 text-[15px] leading-[22px] text-[#6b3d07]">{message}</p> : null}
-          <button type="submit" className="bk-secondary bk-danger mt-6 w-full" disabled={busy} aria-disabled={busy || undefined} data-booking-cancel-confirm="">
+          <button type="submit" className="bk-secondary bk-danger mt-6 w-full" disabled={busy} aria-busy={busy || undefined} data-booking-cancel-confirm="">
             {busy ? <><Loader2 aria-hidden className="size-[18px] motion-safe:animate-spin" />Cancelling…</> : 'Cancel call'}
           </button>
           <button type="button" className="bk-link mt-2 w-full justify-center" disabled={busy} onClick={() => go('view')}>Keep my call</button>

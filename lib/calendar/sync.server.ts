@@ -194,6 +194,25 @@ export async function runCalendarMaintenance(): Promise<SyncResult> {
 }
 
 /** After a calendar is connected, queue every upcoming appointment of that company so it appears there. */
+/**
+ * A HomeQuote host just connected Google: queue the upcoming calls on the
+ * booking calendars they host that belong to no contractor (team calendar
+ * calls before a match). Contractor-calendar calls sync through the company.
+ */
+export async function backfillHostedAppointments(db: Db, userId: string): Promise<number> {
+  const { data: hosted } = await db.from('booking_calendar_members').select('calendar_id').eq('user_id', userId);
+  const calendarIds = ((hosted ?? []) as { calendar_id: string }[]).map((m) => m.calendar_id);
+  if (!calendarIds.length) return 0;
+  const { data } = await db.from('appointments').select('id').in('calendar_id', calendarIds).is('assignment_id', null)
+    .eq('status', 'scheduled').gte('scheduled_at', new Date().toISOString());
+  const ids = ((data ?? []) as { id: string }[]).map((a) => a.id);
+  for (const id of ids) {
+    // A pending job already queued for this appointment violates the partial unique index; that is fine.
+    await db.from('calendar_sync_jobs').insert({ appointment_id: id, contractor_id: null });
+  }
+  return ids.length;
+}
+
 export async function backfillUpcomingAppointments(db: Db, contractorId: string): Promise<number> {
   const { data } = await db
     .from('appointments')

@@ -71,7 +71,7 @@ export function CalendarBoard({
 
       {mode === 'week' ? (
         <>
-          <AgendaList className="md:hidden" days={days} events={events} timeZone={tz} today={today} onSelect={select} />
+          <AgendaList className="md:hidden" days={days} events={events} rules={rules} timeZone={tz} today={today} onSelect={select} />
           <TimeGrid
             className="hidden md:block"
             days={days} placedByDay={placedByDay} rules={rules} timeZone={tz}

@@ -72,6 +72,9 @@ describe('AgendaList', () => {
     expect(html).toContain('Wednesday, December 9');
     expect(html).toContain('Today');
     expect(html.match(/Nothing booked/g)).toHaveLength(5);
+    // With the calendar's hours, the weekend reads as closed.
+    const withHours = renderToStaticMarkup(<AgendaList days={days} events={events} rules={[1, 2, 3, 4, 5].map((weekday) => ({ weekday, startMinute: 540, endMinute: 1020 }))} timeZone={TZ} today="2026-12-09" onSelect={() => {}} />);
+    expect(withHours.match(/>Closed</g)?.length).toBe(2);
     expect(html).toContain('10:00 AM – 10:30 AM PST · Pools');
     expect(html).toContain('On-site visit');
     expect(html).toContain('Cancelled');

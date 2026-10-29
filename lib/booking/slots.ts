@@ -69,8 +69,10 @@ export function slotProblem(
   }
 
   const reason = unavailableReason(availabilityContext(s, opts.excludeId), startMs, durationMs / 60_000);
-  if (reason === null) return null;
-  return reason === 'conflict' ? 'slot_taken' : reason;
+  if (reason !== null) return reason === 'conflict' ? 'slot_taken' : reason;
+  // Starts sit on the calendar's grid in its own wall clock (as the SQL check requires).
+  if (startMs % 60_000 !== 0 || startLocal.minuteOfDay % Math.max(5, cal.slotStepMinutes) !== 0) return 'invalid_time';
+  return null;
 }
 
 /**

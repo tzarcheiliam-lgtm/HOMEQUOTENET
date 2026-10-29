@@ -2,6 +2,7 @@
 import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { calendarForContractorFunnel, calendarForFunnel, getCalendar } from '@/lib/booking/calendars.server';
+import { ensureManageToken } from '@/lib/booking/notify.server';
 import type { BookingCalendar, BookingError } from '@/lib/booking/types';
 import type { PublicBooking, PublicCalendar, PublicMeetingType } from '@/components/booking/types';
 import { parseGrant, submissionTokenMatches, type SessionSource } from './grant';
@@ -125,6 +126,7 @@ interface BookingFacts {
   token?: string | null;
   /** A prospect_sales_appointments row ('confirmed' / 'rescheduled' are still live there). */
   sales?: boolean;
+  hostPhone?: string | null;
   nowMs?: number;
 }
 
@@ -146,6 +148,8 @@ export function publicBooking(f: BookingFacts): PublicBooking {
     inviteeTimeZone: f.inviteeTimeZone,
     meetingType: type,
     hostName: hostName(f.calendar),
+    kind: f.calendar?.kind ?? (f.sales ? 'sales' : null),
+    hostPhone: f.hostPhone ?? null,
     durationMinutes: Math.round((new Date(endsAt).getTime() - startMs) / 60_000) || duration,
     firstName: firstNameOf(f.name),
     phoneHint: type === 'phone' ? phoneHint(f.phone) : null,
@@ -156,26 +160,35 @@ export function publicBooking(f: BookingFacts): PublicBooking {
   };
 }
 
-/** The call a session / submission already booked (a refresh, a second tab), without its manage link. */
+/**
+ * The live call a session / submission already booked (a refresh, a second tab,
+ * a return visit), with its manage link: the link is derived from the booking
+ * id (ensureManageToken), so the holder of the grant gets the same link the
+ * emails carry. A cancelled call is not "booked": the picker shows again.
+ */
 export async function existingBooking(db: Db, r: Resolved): Promise<PublicBooking | null> {
   if (r.kind === 'session') {
     if (!r.session.booked_at) return null;
-    const { data: fb } = await db.from('funnel_bookings').select('appointment_id, scheduled_at').eq('session_id', r.session.id)
-      .order('id', { ascending: false }).limit(1).maybeSingle();
-    const apptId = (fb as any)?.appointment_id as string | null | undefined;
-    if (apptId) {
-      const { data: ap } = await db.from('appointments')
-        .select('status, scheduled_at, ends_at, time_zone, invitee_time_zone, meeting_type, contact_name, contact_phone, calendar_id')
-        .eq('id', apptId).maybeSingle();
-      if (ap) {
-        const a = ap as any;
-        const cal = a.calendar_id ? await getCalendar(a.calendar_id, db) : r.calendar;
-        return publicBooking({ status: a.status, startsAt: a.scheduled_at, endsAt: a.ends_at, timeZone: a.time_zone, inviteeTimeZone: a.invitee_time_zone,
-          meetingType: a.meeting_type, name: a.contact_name, phone: a.contact_phone, calendar: cal });
+    const { data: fbs } = await db.from('funnel_bookings').select('appointment_id, scheduled_at').eq('session_id', r.session.id);
+    const rows = (fbs ?? []) as { appointment_id: string | null; scheduled_at: string | null }[];
+    const apptIds = rows.map((f) => f.appointment_id).filter((v): v is string => !!v);
+    if (apptIds.length) {
+      const { data: aps } = await db.from('appointments')
+        .select('id, status, scheduled_at, ends_at, time_zone, invitee_time_zone, meeting_type, contact_name, contact_phone, calendar_id, created_at')
+        .in('id', apptIds);
+      const live = ((aps ?? []) as any[]).filter((a) => a.status !== 'cancelled')
+        .sort((x, y) => String(y.created_at).localeCompare(String(x.created_at)))[0];
+      if (live) {
+        const cal = live.calendar_id ? await getCalendar(live.calendar_id, db) : r.calendar;
+        const token = live.calendar_id ? await ensureManageToken(db, 'appointment', live.id) : null;
+        return publicBooking({ status: live.status, startsAt: live.scheduled_at, endsAt: live.ends_at, timeZone: live.time_zone, inviteeTimeZone: live.invitee_time_zone,
+          meetingType: live.meeting_type, name: live.contact_name, phone: live.contact_phone, calendar: cal, token });
       }
+      // Every call this session booked was cancelled: it may book again.
+      if (rows.every((f) => f.appointment_id)) return null;
     }
     // Booked through the old calendar (Calendly / GHL): only the time is known.
-    const at = (fb as any)?.scheduled_at as string | null | undefined;
+    const at = rows.find((f) => !f.appointment_id && f.scheduled_at)?.scheduled_at;
     if (!at) return null;
     const c = r.session.contact ?? {};
     return publicBooking({ status: 'scheduled', startsAt: at, endsAt: null, timeZone: null, inviteeTimeZone: null, meetingType: null,
@@ -185,11 +198,12 @@ export async function existingBooking(db: Db, r: Resolved): Promise<PublicBookin
   if (!id || !['reported', 'confirmed'].includes(r.submission.booking_status)) return null;
   const { data: sa } = await db.from('prospect_sales_appointments')
     .select('status, scheduled_at, ends_at, time_zone, appointment_type, decision_maker_name, calendar_id').eq('id', id).maybeSingle();
-  if (!sa) return null;
+  if (!sa || (sa as any).status === 'cancelled') return null;
   const s = sa as any;
   const cal = s.calendar_id ? await getCalendar(s.calendar_id, db) : r.calendar;
+  const token = s.calendar_id ? await ensureManageToken(db, 'sales_appointment', id) : null;
   return publicBooking({ status: s.status, startsAt: s.scheduled_at, endsAt: s.ends_at, timeZone: cal?.timezone ?? null, inviteeTimeZone: s.time_zone,
-    meetingType: s.appointment_type, name: s.decision_maker_name, phone: r.submission.phone, calendar: cal, sales: true });
+    meetingType: s.appointment_type, name: s.decision_maker_name, phone: r.submission.phone, calendar: cal, sales: true, token });
 }
 
 /** Name + masked phone for the picker's "We'll call you at •••• 0100". */

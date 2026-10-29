@@ -423,13 +423,17 @@ function Result({ outcome, contact, submissionId, pixelId, headingRef, fallbackC
           {nativeBooked ? 'Your call is booked.' : 'Your details are saved. Pick a time for your call.'}
         </h1>
         {!nativeBooked && (
-          <p className="mt-2 text-sm leading-6 text-[var(--hq-text-muted)]">A free 30-minute call with HomeQuote. Times show in your time zone.</p>
+          // The picker names the time zone itself.
+          <p className="mt-2 text-sm leading-6 text-[var(--hq-text-muted)]">A free 30-minute call with HomeQuote.</p>
         )}
         <div className="mt-5">
           <BookingFlow
             grant={contractorFunnelGrant(submissionId, outcome.token)}
             heading={null}
             headingLevel={2}
+            // This page's h1 already says "Your call is booked." (also after a refresh: onAlreadyBooked).
+            hideBookedHeading
+            onAlreadyBooked={() => setNativeBooked(true)}
             onBooked={() => {
               setNativeBooked(true);
               trackContractor('Schedule', `${submissionId}:Schedule`, pixelId);

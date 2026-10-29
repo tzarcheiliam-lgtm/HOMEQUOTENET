@@ -2,6 +2,7 @@
 import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { claimBookingReminders } from './book.server';
+import { SUPERSEDED_WORKFLOW_TEMPLATES } from '@/lib/workflows/native-booking';
 import {
   sendBookingCancellation,
   sendBookingConfirmation,
@@ -15,19 +16,20 @@ import {
  *   1. confirmations not sent yet (new bookings and reschedules whose
  *      request-time notifyBookingSoon did not run),
  *   2. due 24 h / 1 h reminders (claim_booking_reminders: at most once),
- *   3. cancellations of homeowner calls in the last day that have no notice yet.
- * It also reports enabled workflows cloned from the old "Appointment
- * confirmation" templates: those would text/email calendar bookings a second
- * time, so they should be turned off (the built-in notices replace them).
+ *   3. cancellations (homeowner calls and sales meetings) in the last day with no notice yet.
+ * It also counts enabled workflows cloned from the old "Appointment
+ * confirmation" templates. The workflow engines skip those for calendar
+ * bookings (lib/workflows/native-booking.ts), so they no longer double-send;
+ * they only still run for on-site visits booked without a calendar.
  */
 
-export const SUPERSEDED_WORKFLOW_TEMPLATES = ['appointment_confirmation', 'appointment_confirmation_reminder'];
+export { SUPERSEDED_WORKFLOW_TEMPLATES };
 
 export interface BookingDispatchResult {
   confirmations: number;
   reminders: number;
   cancellations: number;
-  /** Enabled workflows that duplicate these notices (turn them off). */
+  /** Enabled workflows from the superseded templates (skipped for calendar bookings). */
   overlappingWorkflows: number;
   notices: NoticeResult[];
 }
@@ -58,20 +60,33 @@ export async function runBookingNotifications(deps: NotifyDeps & { limit?: numbe
 
   // 2. Reminders.
   for (const r of await claimBookingReminders(limit * 2, db)) {
-    try { if (keep(await sendBookingReminder(r.kind, r.id, r.reminder, d))) out.reminders++; } catch { /* claimed: not retried */ }
+    try {
+      if (keep(await sendBookingReminder(r.kind, r.id, r.reminder, d))) out.reminders++;
+    } catch (e) {
+      // Claimed, so not retried: say so in the logs.
+      console.error('[booking] reminder failed:', e instanceof Error ? e.message : e);
+    }
   }
 
-  // 3. Cancellation backstop (homeowner calls; the marker makes a repeat a no-op). Give the request-time notice 2 minutes first.
-  const { data: cancelled } = await db.from('appointments').select('id, calendar_id').eq('status', 'cancelled').not('calendar_id', 'is', null)
-    .gte('cancelled_at', new Date(now.getTime() - 86_400_000).toISOString()).lte('cancelled_at', new Date(now.getTime() - 120_000).toISOString())
-    .gt('scheduled_at', nowIso).limit(limit);
-  for (const r of (cancelled ?? []) as any[]) {
-    if (!r.calendar_id) continue;
-    try { if (keep(await sendBookingCancellation('appointment', r.id, d))) out.cancellations++; } catch { /* next one */ }
+  // 3. Cancellation backstop (cancel_notified_at makes a repeat a no-op). Give the request-time notice 2 minutes first.
+  const since = new Date(now.getTime() - 86_400_000).toISOString();
+  const until = new Date(now.getTime() - 120_000).toISOString();
+  for (const kind of ['appointment', 'sales_appointment'] as const) {
+    const { data: cancelled } = await db.from(kind === 'appointment' ? 'appointments' : 'prospect_sales_appointments').select('id, calendar_id')
+      .eq('status', 'cancelled').not('calendar_id', 'is', null).is('cancel_notified_at', null)
+      .gte('cancelled_at', since).lte('cancelled_at', until).gt('scheduled_at', nowIso).limit(limit);
+    for (const r of (cancelled ?? []) as any[]) {
+      if (!r.calendar_id) continue;
+      try {
+        if (keep(await sendBookingCancellation(kind, r.id, d))) out.cancellations++;
+      } catch (e) {
+        console.error('[booking] cancellation notice failed:', e instanceof Error ? e.message : e);
+      }
+    }
   }
 
   const { count } = await db.from('workflows').select('id', { count: 'exact', head: true }).eq('enabled', true).eq('is_template', false)
-    .is('archived_at', null).in('template_key', SUPERSEDED_WORKFLOW_TEMPLATES);
+    .is('archived_at', null).in('template_key', [...SUPERSEDED_WORKFLOW_TEMPLATES]);
   out.overlappingWorkflows = count ?? 0;
   return out;
 }

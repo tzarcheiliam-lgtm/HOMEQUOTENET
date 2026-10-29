@@ -51,6 +51,9 @@ create or replace function public.booking_valid_timezone(p_tz text)
 returns boolean language sql stable set search_path = public as $$
   select p_tz is not null and exists (select 1 from pg_timezone_names where name = p_tz)
 $$;
+-- The timezone check constraint runs it as whoever writes the calendar (admins / contractor owners).
+revoke all on function public.booking_valid_timezone(text) from public, anon;
+grant execute on function public.booking_valid_timezone(text) to authenticated, service_role;
 
 create table if not exists public.booking_calendars (
   id                 uuid primary key default gen_random_uuid(),
@@ -142,6 +145,25 @@ create or replace function public.can_manage_booking_calendar(p_calendar uuid)
 returns boolean language sql stable security definer set search_path = public as $$
   select public.is_admin() or (public.is_contractor_owner() and public.owns_booking_calendar(p_calendar))
 $$;
+-- Who may host a calendar (receives every booking's contact details): an active
+-- user of that contractor company for a contractor calendar; an active HomeQuote
+-- admin or setter for the team / sales calendars.
+create or replace function public.eligible_booking_calendar_host(p_calendar uuid, p_user uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.booking_calendars c join public.profiles p on p.id = p_user
+     where c.id = p_calendar and p.is_active
+       and case when c.kind = 'contractor' then p.role = 'contractor' and p.contractor_id = c.contractor_id
+                else p.role in ('admin', 'setter') end)
+$$;
+-- Only the RLS policies and the server need these. owns_booking_calendar stays
+-- callable by anon because the appointments policies use it (it is false for anon,
+-- so anon still reads nothing); the others guard tables anon has no grant on.
+revoke all on function public.owns_booking_calendar(uuid), public.can_view_booking_calendar(uuid),
+  public.can_manage_booking_calendar(uuid), public.eligible_booking_calendar_host(uuid, uuid) from public, anon;
+grant execute on function public.can_view_booking_calendar(uuid), public.can_manage_booking_calendar(uuid),
+  public.eligible_booking_calendar_host(uuid, uuid) to authenticated, service_role;
+grant execute on function public.owns_booking_calendar(uuid) to anon, authenticated, service_role;
 
 alter table public.booking_calendars enable row level security;
 alter table public.booking_calendar_rules enable row level security;
@@ -180,7 +202,8 @@ drop policy if exists booking_calendar_members_select on public.booking_calendar
 create policy booking_calendar_members_select on public.booking_calendar_members for select using (public.can_view_booking_calendar(calendar_id));
 drop policy if exists booking_calendar_members_write on public.booking_calendar_members;
 create policy booking_calendar_members_write on public.booking_calendar_members for all
-  using (public.can_manage_booking_calendar(calendar_id)) with check (public.can_manage_booking_calendar(calendar_id));
+  using (public.can_manage_booking_calendar(calendar_id))
+  with check (public.can_manage_booking_calendar(calendar_id) and public.eligible_booking_calendar_host(calendar_id, user_id));
 
 -- Staff (team / sales hosts) may connect Google too: a connection no longer
 -- has to belong to a contractor company. Existing rows are unchanged.
@@ -213,6 +236,8 @@ alter table public.appointments add column if not exists reschedule_count intege
 alter table public.appointments add column if not exists confirmed_at timestamptz;
 alter table public.appointments add column if not exists reminder_24h_sent_at timestamptz;
 alter table public.appointments add column if not exists reminder_1h_sent_at timestamptz;
+-- When the homeowner's cancellation notice was claimed (sent at most once).
+alter table public.appointments add column if not exists cancel_notified_at timestamptz;
 
 alter table public.appointments drop constraint if exists appointments_source_check;
 alter table public.appointments add constraint appointments_source_check
@@ -237,8 +262,12 @@ alter table public.appointments drop constraint if exists appointments_booked_vi
 alter table public.appointments add constraint appointments_booked_via_check
   check (booked_via is null or booked_via in ('phone_call', 'email', 'chat', 'in_person', 'other', 'website'));
 
+-- Backfill without touching updated_at (ICS feeds, Google sync and cursors read it):
+-- the only trigger that fires on a lead_id-only update is set_updated_at.
+alter table public.appointments disable trigger trg_appointments_updated_at;
 update public.appointments ap set lead_id = la.lead_id
   from public.lead_assignments la where la.id = ap.assignment_id and ap.lead_id is null;
+alter table public.appointments enable trigger trg_appointments_updated_at;
 
 create unique index if not exists uq_appointments_manage_token on public.appointments(manage_token_hash) where manage_token_hash is not null;
 create index if not exists idx_appointments_lead on public.appointments(lead_id);
@@ -273,6 +302,9 @@ returns uuid language sql stable security definer set search_path = public as $$
     (select contractor_id from public.lead_assignments where id = p_assignment),
     (select contractor_id from public.booking_calendars where id = p_calendar and kind = 'contractor'))
 $$;
+-- Used only inside security-definer triggers / RPCs: not callable through the API.
+revoke all on function public.appointment_contractor_id(uuid, uuid) from public, anon, authenticated;
+grant execute on function public.appointment_contractor_id(uuid, uuid) to service_role;
 
 -- RLS: staff see all; a contractor sees rows whose assignment they own OR that
 -- sit on their own contractor calendar (never team / sales / another company's).
@@ -284,6 +316,8 @@ returns boolean language sql stable security definer set search_path = public as
      and (p_calendar is null or public.owns_booking_calendar(p_calendar))
      and (p_assignment is not null or (p_calendar is not null and p_lead is not null and public.lead_assigned_to_me(p_lead)))
 $$;
+revoke all on function public.contractor_may_write_appointment(uuid, uuid, uuid) from public;
+grant execute on function public.contractor_may_write_appointment(uuid, uuid, uuid) to anon, authenticated, service_role;
 drop policy if exists appointments_select on public.appointments;
 create policy appointments_select on public.appointments for select
   using (public.is_staff() or public.owns_assignment(assignment_id) or public.owns_booking_calendar(calendar_id));
@@ -443,6 +477,7 @@ alter table public.prospect_sales_appointments add column if not exists reschedu
 alter table public.prospect_sales_appointments add column if not exists booking_confirmed_at timestamptz;
 alter table public.prospect_sales_appointments add column if not exists reminder_24h_sent_at timestamptz;
 alter table public.prospect_sales_appointments add column if not exists reminder_1h_sent_at timestamptz;
+alter table public.prospect_sales_appointments add column if not exists cancel_notified_at timestamptz;
 alter table public.prospect_sales_appointments drop constraint if exists sales_appointments_source_check;
 alter table public.prospect_sales_appointments add constraint sales_appointments_source_check
   check (source is null or source in ('sales_funnel', 'manual', 'ai', 'workflow'));
@@ -471,6 +506,8 @@ returns boolean language sql immutable as $$
       or (p_repeat and p_date > p_start and (p_until is null or p_date <= p_until)
           and extract(dow from p_date) = extract(dow from p_start))
 $$;
+revoke all on function public.booking_exception_applies(date, date, boolean, date, date) from public, anon;
+grant execute on function public.booking_exception_applies(date, date, boolean, date, date) to authenticated, service_role;
 
 -- Busy time on a calendar: its live bookings; for a contractor calendar also
 -- that contractor's other live appointments (on-site visits booked by staff);
@@ -562,6 +599,8 @@ begin
                                      and (e.start_minute is null or (e.start_minute <= m and e.end_minute > m)))) then
       return 'outside_hours';
     end if;
+    -- Starts sit on the calendar's grid (9:00, 9:30, … local), whole minutes only.
+    if extract(second from ls) <> 0 or smin % greatest(5, c.slot_step_minutes) <> 0 then return 'invalid_time'; end if;
   end if;
 
   buf := make_interval(mins => case when p_override then 0 else c.buffer_minutes end);
@@ -587,6 +626,58 @@ returns void language sql security definer set search_path = public as $$
 $$;
 revoke all on function public.booking_lock_calendar(uuid) from public, anon, authenticated;
 grant execute on function public.booking_lock_calendar(uuid) to service_role;
+
+-- Every write path, not only the RPCs: a row that lands on (or moves within) a
+-- booking calendar takes the same per-calendar lock and may not overlap another
+-- live booking there (staff "book anyway" never allows that either). Direct
+-- PostgREST updates, the lead page and status undos (held -> scheduled) are
+-- covered too. Sales meetings setters add by hand (no calendar) take the sales
+-- calendar's lock, so a funnel booking's re-check always sees them.
+create or replace function public.booking_guard_appointment()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare v_end timestamptz;
+begin
+  if new.calendar_id is null or new.scheduled_at is null or new.status <> 'scheduled' then return new; end if;
+  if tg_op = 'UPDATE' and new.scheduled_at is not distinct from old.scheduled_at and new.ends_at is not distinct from old.ends_at
+     and new.calendar_id is not distinct from old.calendar_id and new.status is not distinct from old.status then
+    return new;
+  end if;
+  perform public.booking_lock_calendar(new.calendar_id);
+  v_end := coalesce(new.ends_at, new.scheduled_at + make_interval(mins => coalesce((select duration_minutes from public.booking_calendars where id = new.calendar_id), 30)));
+  if exists (select 1 from public.booking_busy_rows(new.calendar_id, new.scheduled_at - interval '1 day', v_end + interval '1 day', new.id) b
+              where b.starts_at < v_end and new.scheduled_at < b.ends_at) then
+    raise exception 'That time is already booked on this calendar' using errcode = '23505';
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_appointments_booking_guard on public.appointments;
+create trigger trg_appointments_booking_guard before insert or update of scheduled_at, ends_at, calendar_id, status on public.appointments
+  for each row execute function public.booking_guard_appointment();
+
+create or replace function public.booking_guard_sales_appointment()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare v_cal uuid; v_end timestamptz;
+begin
+  if new.scheduled_at is null or new.status not in ('scheduled', 'confirmed', 'rescheduled') then return new; end if;
+  if tg_op = 'UPDATE' and new.scheduled_at is not distinct from old.scheduled_at and new.ends_at is not distinct from old.ends_at
+     and new.calendar_id is not distinct from old.calendar_id and new.status is not distinct from old.status then
+    return new;
+  end if;
+  v_cal := coalesce(new.calendar_id, (select id from public.booking_calendars where kind = 'sales'));
+  if v_cal is null then return new; end if;
+  perform public.booking_lock_calendar(v_cal);
+  -- Hand-booked meetings (no calendar) may overlap by design; calendar bookings may not.
+  if new.calendar_id is null then return new; end if;
+  v_end := coalesce(new.ends_at, new.scheduled_at + make_interval(mins => coalesce((select duration_minutes from public.booking_calendars where id = v_cal), 30)));
+  if exists (select 1 from public.booking_busy_rows(v_cal, new.scheduled_at - interval '1 day', v_end + interval '1 day', new.id) b
+              where b.starts_at < v_end and new.scheduled_at < b.ends_at) then
+    raise exception 'That time is already booked on the sales calendar' using errcode = '23505';
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_sales_appointments_booking_guard on public.prospect_sales_appointments;
+create trigger trg_sales_appointments_booking_guard before insert or update of scheduled_at, ends_at, calendar_id, status on public.prospect_sales_appointments
+  for each row execute function public.booking_guard_sales_appointment();
 
 -- Maps who acted to the workflow ledger's actor types (homeowner = 'contact').
 create or replace function public.booking_set_actor(p_actor_kind text)
@@ -652,9 +743,16 @@ begin
     if s.qualified is not true then return jsonb_build_object('ok', false, 'error', 'not_qualified'); end if;
     if v_lead is not null and v_lead <> s.lead_id then return jsonb_build_object('ok', false, 'error', 'session_invalid'); end if;
     if s.booked_at is not null then
-      select fb.appointment_id into v_existing from public.funnel_bookings fb
-       where fb.session_id = s.id and fb.appointment_id is not null order by fb.id desc limit 1;
-      return jsonb_build_object('ok', false, 'error', 'already_booked', 'appointment_id', v_existing);
+      -- Still booked unless every booking the session made was cancelled (a cancelled
+      -- call frees the session to book again). Old Calendly bookings have no appointment row.
+      if exists (select 1 from public.funnel_bookings fb left join public.appointments ap on ap.id = fb.appointment_id
+                  where fb.session_id = s.id and (ap.id is null or ap.status <> 'cancelled'))
+         or not exists (select 1 from public.funnel_bookings fb where fb.session_id = s.id) then
+        select fb.appointment_id into v_existing from public.funnel_bookings fb
+          join public.appointments ap on ap.id = fb.appointment_id
+         where fb.session_id = s.id and ap.status <> 'cancelled' order by ap.created_at desc limit 1;
+        return jsonb_build_object('ok', false, 'error', 'already_booked', 'appointment_id', v_existing);
+      end if;
     end if;
     v_lead := s.lead_id;
     v_asg := coalesce(v_asg, s.assignment_id);
@@ -747,6 +845,8 @@ begin
   if v_cal is null then return jsonb_build_object('ok', false, 'error', 'not_bookable'); end if;
   perform public.booking_lock_calendar(v_cal);
   select * into ap from public.appointments where id = p_appointment for update;
+  -- Moved to another calendar between the read and the lock: the lock held is the wrong one.
+  if ap.calendar_id is distinct from v_cal then return jsonb_build_object('ok', false, 'error', 'not_bookable'); end if;
   select * into c from public.booking_calendars where id = ap.calendar_id;
   if ap.status <> 'scheduled' then return jsonb_build_object('ok', false, 'error', 'not_active'); end if;
   if ap.scheduled_at = p_starts_at then
@@ -855,7 +955,9 @@ begin
      where submission_id = p_submission and access_token_hash = p_submission_hash for update;
     if not found then return jsonb_build_object('ok', false, 'error', 'submission_invalid'); end if;
     if sub.qualification_status <> 'qualified' then return jsonb_build_object('ok', false, 'error', 'not_qualified'); end if;
-    if sub.booking_status in ('reported', 'confirmed') then
+    -- Booked already, unless that meeting was cancelled (then the prospect may pick a new time).
+    if sub.booking_status in ('reported', 'confirmed')
+       and not exists (select 1 from public.prospect_sales_appointments where id = sub.sales_appointment_id and status = 'cancelled') then
       return jsonb_build_object('ok', false, 'error', 'already_booked', 'sales_appointment_id', sub.sales_appointment_id);
     end if;
   end if;
@@ -919,6 +1021,7 @@ begin
   if v_cal is null then return jsonb_build_object('ok', false, 'error', 'not_bookable'); end if;
   perform public.booking_lock_calendar(v_cal);
   select * into sa from public.prospect_sales_appointments where id = p_appointment for update;
+  if sa.calendar_id is distinct from v_cal then return jsonb_build_object('ok', false, 'error', 'not_bookable'); end if;
   select * into c from public.booking_calendars where id = sa.calendar_id;
   if sa.status not in ('scheduled', 'confirmed', 'rescheduled') then return jsonb_build_object('ok', false, 'error', 'not_active'); end if;
   if sa.scheduled_at = p_starts_at then
@@ -1077,3 +1180,43 @@ begin
   end if;
   if pm is not null then perform public.ensure_contractor_booking_calendar(pm); end if;
 end $$;
+
+-- ---------------------------------------------------------------------------
+-- 10. Switch the live funnels off Calendly (run AFTER the code deploy)
+-- ---------------------------------------------------------------------------
+-- Live funnels read funnels.config from the database and sessions keep a
+-- config_snapshot, so editing content/funnels/*.json changes nothing on its own.
+-- This is a function, not a data step in the migration, because the code that
+-- understands calendarProvider 'homequote' must be live first (older code
+-- rejects the value and the funnel would stop loading).
+--   select public.booking_switch_funnels_to_native();       -- dry run: what would change
+--   select public.booking_switch_funnels_to_native(true);   -- apply
+-- Switches every funnel on Calendly (provider or calendly.com URL) plus the
+-- network / Pool Masters funnels by slug, removing calendarUrl / calendarId.
+-- Open sessions that have not reached the contact step yet follow; sessions
+-- already at the calendar keep their snapshot so a Calendly window someone has
+-- open still records its booking. Funnels on a GHL calendar are only listed.
+create or replace function public.booking_switch_funnels_to_native(p_apply boolean default false)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_ids uuid[]; v_slugs text[]; v_sessions integer := 0; v_ghl text[];
+begin
+  select coalesce(array_agg(id order by slug), '{}'), coalesce(array_agg(slug order by slug), '{}') into v_ids, v_slugs
+    from public.funnels
+   where coalesce(config->>'calendarProvider', '') <> 'homequote'
+     and (config->>'calendarProvider' = 'calendly' or coalesce(config->>'calendarUrl', '') ilike '%calendly.com%'
+          or slug like 'pool-masters%' or slug in ('bathroom-remodel', 'kitchen-remodel', 'pool-remodeling'));
+  select coalesce(array_agg(slug order by slug), '{}') into v_ghl from public.funnels
+   where config->>'calendarProvider' = 'ghl' and config ? 'calendarId' and not (id = any(v_ids));
+  if p_apply and cardinality(v_ids) > 0 then
+    update public.funnels set config = (config - 'calendarUrl' - 'calendarId') || '{"calendarProvider":"homequote"}'::jsonb
+     where id = any(v_ids);
+    update public.funnel_sessions set config_snapshot = (config_snapshot - 'calendarUrl' - 'calendarId') || '{"calendarProvider":"homequote"}'::jsonb
+     where funnel_id = any(v_ids) and contact_submitted_at is null and booked_at is null and expires_at > now();
+    get diagnostics v_sessions = row_count;
+  end if;
+  return jsonb_build_object('applied', p_apply, 'funnels', to_jsonb(v_slugs), 'sessions', v_sessions, 'ghl_left_alone', to_jsonb(v_ghl),
+    'still_mentioning_calendly', (select coalesce(jsonb_agg(slug order by slug), '[]'::jsonb) from public.funnels
+                                   where config::text ilike '%calendly.com%'));
+end $$;
+revoke all on function public.booking_switch_funnels_to_native(boolean) from public, anon, authenticated;
+grant execute on function public.booking_switch_funnels_to_native(boolean) to service_role;

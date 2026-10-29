@@ -56,7 +56,8 @@ export function AddToCalendar({ booking }: { booking: PublicBooking }) {
         <CalendarPlus aria-hidden className="size-[17px]" strokeWidth={2} />
         Add to Google Calendar
       </a>
-      <a className="bk-secondary w-full" href={booking.icsUrl} download="call.ics">
+      {/* No download attribute: iOS then offers "Add to Calendar" (the route serves it inline). */}
+      <a className="bk-secondary w-full" href={booking.icsUrl}>
         <CalendarPlus aria-hidden className="size-[17px]" strokeWidth={2} />
         Add to Apple or Outlook
       </a>

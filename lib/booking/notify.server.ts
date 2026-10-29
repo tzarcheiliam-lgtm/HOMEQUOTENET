@@ -117,8 +117,15 @@ function senderOf(deps: NotifyDeps): EmailSender | null {
 
 // --- manage links --------------------------------------------------------------------------------
 
+let warnedFallback = false;
 export function bookingLinkSecret(): string | null {
-  return process.env.BOOKING_LINK_SECRET?.trim() || process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || null;
+  const own = process.env.BOOKING_LINK_SECRET?.trim();
+  if (!own && process.env.NODE_ENV === 'production' && !warnedFallback) {
+    warnedFallback = true;
+    // Rotating the service role key would then break every homeowner's manage link.
+    console.warn('[booking] BOOKING_LINK_SECRET is not set: manage links fall back to the service role key.');
+  }
+  return own || process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || null;
 }
 
 /** The booking's manage token (43-char base64url, same shape as newManageToken). Null without a secret. */
@@ -427,25 +434,24 @@ export async function sendBookingReminder(kind: BookingKind, id: string, reminde
   return { kind, id, notice, email, sms, hostEmails: 0 };
 }
 
-const CANCEL_MARKER = 'booking_cancel_notice';
-
 /**
- * Cancellation notice to the guest and the hosts. Homeowner appointments are
- * de-duplicated by a lead_activities marker (so the tick backstop and the
- * request that cancelled never both send); sales calls rely on the caller
- * (cancel_sales_appointment answers `already` on a repeat).
+ * Cancellation notice to the guest and the hosts, at most once per booking:
+ * the row is claimed first (cancel_notified_at null -> now), so the request
+ * that cancelled and the tick backstop never both send. A claimed notice that
+ * then fails is logged, not retried.
  */
 export async function sendBookingCancellation(kind: BookingKind, id: string, deps: NotifyDeps = {}, opts: { actorKind?: BookingActorKind | null } = {}): Promise<NoticeResult | null> {
   const db = db0(deps);
   const now = nowOf(deps);
+  const { data: claimed, error } = await db.from(TABLE[kind]).update({ cancel_notified_at: now.toISOString() })
+    .eq('id', id).is('cancel_notified_at', null).eq('status', 'cancelled').not('calendar_id', 'is', null).select('id');
+  if (error || !(claimed as any[] | null)?.length) return null;
   const b = await loadBooking(db, kind, id);
   if (!b || b.status !== 'cancelled' || !b.calendarId) return null;
   if (kind === 'appointment' && b.leadId) {
-    const { data: marked } = await db.from('lead_activities').select('id').eq('lead_id', b.leadId).contains('metadata', { [CANCEL_MARKER]: id }).limit(1);
-    if ((marked as any[] | null)?.length) return null;
     await db.from('lead_activities').insert({
       lead_id: b.leadId, type: 'system', body: 'Cancellation notice sent',
-      metadata: { [CANCEL_MARKER]: id, appointment_id: id, ...(b.contractorId ? { contractor_id: b.contractorId } : {}) },
+      metadata: { appointment_id: id, ...(b.contractorId ? { contractor_id: b.contractorId } : {}) },
     });
   }
   await voidQueuedTexts(db, b, b.rescheduleCount);

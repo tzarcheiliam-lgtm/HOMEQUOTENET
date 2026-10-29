@@ -35,12 +35,16 @@ export interface PublicBooking {
   inviteeTimeZone: string | null;
   meetingType: PublicMeetingType;
   hostName: string;
+  /** Whose calendar: decides the wording (sales calls get email only). Null for an old external booking. */
+  kind: PublicCalendar['kind'] | null;
+  /** A number the homeowner can call about the booking (manage page), E.164 or as entered. */
+  hostPhone: string | null;
   durationMinutes: number;
   firstName: string | null;
   /** Last four digits of the number we will call, e.g. "0100". */
   phoneHint: string | null;
   videoLink: string | null;
-  /** Self-service page (present only right after booking, or on the manage page itself). */
+  /** Self-service page (derived from the booking, so present after a refresh too; null for an external booking). */
   manageUrl: string | null;
   /** .ics download for Apple / Outlook (same availability as manageUrl). */
   icsUrl: string | null;

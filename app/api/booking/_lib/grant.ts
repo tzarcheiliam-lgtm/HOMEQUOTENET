@@ -31,8 +31,14 @@ export const TICKET_TTL_SECONDS = 7 * 86_400;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const SUB_TOKEN = /^[0-9a-f]{20,200}$/;
 
+let warnedFallback = false;
 function key(): Buffer | null {
-  const secret = process.env.BOOKING_TICKET_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const own = process.env.BOOKING_TICKET_SECRET?.trim();
+  if (!own && process.env.NODE_ENV === 'production' && !warnedFallback) {
+    warnedFallback = true;
+    console.warn('[booking] BOOKING_TICKET_SECRET is not set: booking tickets fall back to the service role key (rotating it ends open tickets).');
+  }
+  const secret = own || process.env.SUPABASE_SERVICE_ROLE_KEY;
   return secret ? createHmac('sha256', secret).update('hqn-booking-ticket-v1').digest() : null;
 }
 

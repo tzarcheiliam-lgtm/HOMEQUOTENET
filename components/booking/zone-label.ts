@@ -19,6 +19,23 @@ export function zoneLabel(ms: number, timeZone: string): string {
   return abbr && !/^GMT[+-]/.test(abbr) ? `${generic} (${abbr})` : generic;
 }
 
+/**
+ * The label for a list of times from `fromMs` to `toMs`: "Pacific Time (PST)",
+ * or just "Pacific Time" when the range crosses a daylight-saving change (the
+ * abbreviation would be wrong for part of it; each time is still exact).
+ */
+export function zoneLabelRange(fromMs: number, toMs: number, timeZone: string): string {
+  if (zoneAbbreviation(fromMs, timeZone) === zoneAbbreviation(toMs, timeZone)) return zoneLabel(fromMs, timeZone);
+  try {
+    const generic = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'longGeneric' })
+      .formatToParts(new Date(fromMs)).find((p) => p.type === 'timeZoneName')?.value;
+    if (generic && !/^GMT[+-]/.test(generic)) return generic;
+  } catch {
+    /* fall through */
+  }
+  return zoneLabel(fromMs, timeZone);
+}
+
 /** "Los Angeles" from "America/Los_Angeles". */
 export const zoneCity = (timeZone: string) => timeZone.split('/').pop()?.replace(/_/g, ' ') ?? timeZone;
 

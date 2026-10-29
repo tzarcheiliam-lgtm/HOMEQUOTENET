@@ -172,14 +172,14 @@ describe('homeowner booking (network funnel -> HomeQuote team calendar)', () => 
     expect((await q(`select 1 from public.notification_events where type='appointment_booked' and entity_id=$1`, [ap.id])).length).toBe(1);
   });
 
-  it('a second try or a refresh gets the existing booking back (no manage link), never a second one', async () => {
+  it('a second try or a refresh gets the existing booking back (same manage link), never a second one', async () => {
     const again = await book(s.ticket, slot);
     expect(again.status).toBe(409);
     const body = (await again.json()) as any;
     expect(body).toMatchObject({ ok: false, error: 'already_booked' });
-    expect(body.booking).toMatchObject({ startsAt: slot, manageUrl: null, icsUrl: null });
+    expect(body.booking).toMatchObject({ startsAt: slot, manageUrl: `/booking/manage/${manage}`, icsUrl: `/booking/manage/${manage}/calendar.ics` });
     const refresh = await slotsFor(s.ticket);
-    expect(refresh.body.booked).toMatchObject({ startsAt: slot, status: 'scheduled' });
+    expect(refresh.body.booked).toMatchObject({ startsAt: slot, status: 'scheduled', manageUrl: `/booking/manage/${manage}` });
     expect(refresh.body.slots).toEqual([]);
     expect((await q(`select 1 from public.appointments where lead_id=$1`, [s.leadId])).length).toBe(1);
   });
@@ -222,6 +222,19 @@ describe('homeowner booking (network funnel -> HomeQuote team calendar)', () => 
     expect(((await late.json()) as any).error).toBe('not_active');
     expect((await manageSlotsGET(req(`/api/booking/manage/${manage}/slots`), ctx(manage))).status).toBe(409);
     expect(await (await icsGET(req(`/api/booking/manage/${manage}/ics`, { origin: null }), ctx(manage))).text()).toContain('STATUS:CANCELLED');
+  });
+
+  it('after a cancel, the funnel offers times again (not "You’re booked") and can book once more', async () => {
+    const refresh = await slotsFor(s.ticket);
+    expect(refresh.body.booked).toBeNull();
+    expect(refresh.body.slots.length).toBeGreaterThan(0);
+    const res = await book(s.ticket, refresh.body.slots[0].start);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as any;
+    expect(body.booking.status).toBe('scheduled');
+    expect(tokenOf(body.booking.manageUrl)).not.toBe(manage);
+    expect((await q(`select status from public.appointments where lead_id=$1 order by created_at`, [s.leadId])).map((r) => r.status)).toEqual(['cancelled', 'scheduled']);
+    expect((await book(s.ticket, refresh.body.slots.at(-1).start)).status).toBe(409);
   });
 
   it('unknown or malformed manage tokens are not found', async () => {

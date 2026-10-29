@@ -6,7 +6,7 @@ import { formatDayHeading, formatTime } from '@/lib/booking/format';
 import { groupSlotsByDay } from '@/lib/booking/slots';
 import { nextIndex } from './flow-state';
 import type { PublicSlot } from './types';
-import { sameClock, zoneCity, zoneLabel } from './zone';
+import { sameClock, zoneCity, zoneLabelRange } from './zone';
 import './booking.css';
 
 /**
@@ -14,10 +14,14 @@ import './booking.css';
  * times as stacked full-width blue buttons. Mobile first.
  *
  * - Days and times are grouped in the viewer's zone, which is always named
- *   ("Times are in Pacific Time (PDT)"); when the calendar's zone has a
+ *   ("Times are in Pacific Time (PDT)", or "Pacific Time" when the list
+ *   crosses a daylight-saving change); when the calendar's zone has a
  *   different clock the homeowner can switch to it.
  * - Three days at first, then "Show more days"; six times per day, then
  *   "N more times". New content only ever appears below what was tapped.
+ *   The parent may own that state (`expanded`), so going back from the
+ *   confirm view keeps what the homeowner had opened.
+ * - One column of times on phones; 2–3 columns once the picker is wide.
  * - Each day is a listbox labelled by its heading: one Tab stop per day,
  *   arrow keys / Home / End move between its times, Enter or Space picks one.
  * - `current` (rescheduling) is shown in place but cannot be picked.
@@ -38,17 +42,27 @@ export interface SlotPickerProps {
   initialDays?: number;
   perDay?: number;
   disabled?: boolean;
+  /** Controlled "Show more days" / "N more times" state (kept by the parent across views). */
+  expanded?: PickerExpansion;
+  onExpandedChange?: (next: PickerExpansion) => void;
+}
+
+export interface PickerExpansion {
+  dayCount: number;
+  openDays: ReadonlySet<string>;
 }
 
 const MORE_DAYS = 3;
 
 export function SlotPicker({
   slots, timeZone, zoneChoices = [], onTimeZoneChange, selected = null, current = null, onSelect,
-  headingLevel = 3, initialDays = 3, perDay = 6, disabled = false,
+  headingLevel = 3, initialDays = 3, perDay = 6, disabled = false, expanded, onExpandedChange,
 }: SlotPickerProps) {
   const uid = useId();
-  const [dayCount, setDayCount] = useState(initialDays);
-  const [openDays, setOpenDays] = useState<ReadonlySet<string>>(() => new Set());
+  const [own, setOwn] = useState<PickerExpansion>(() => ({ dayCount: initialDays, openDays: new Set() }));
+  const state = expanded ?? own;
+  const update = (next: PickerExpansion) => (onExpandedChange ? onExpandedChange(next) : setOwn(next));
+  const { dayCount, openDays } = state;
   const lists = useRef(new Map<string, HTMLDivElement | null>());
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -61,6 +75,7 @@ export function SlotPicker({
   const shown = days.slice(0, dayCount);
   const H = `h${headingLevel}` as 'h2' | 'h3' | 'h4';
   const firstMs = withCurrent[0]?.startMs ?? Date.now();
+  const lastMs = withCurrent.reduce((m, s) => Math.max(m, s.startMs), firstMs);
   const switchTo = zoneChoices.find((z) => z !== timeZone && !sameClock(z, timeZone, firstMs)) ?? null;
 
   /** After revealing more, focus the first new time (the button that was pressed may be gone). */
@@ -84,9 +99,9 @@ export function SlotPicker({
   }
 
   return (
-    <div ref={rootRef} className="bk" data-booking-slot-picker="">
+    <div ref={rootRef} className="bk bk-picker" data-booking-slot-picker="">
       <p className="bk-copy text-[14.5px] leading-[21px] text-[var(--bk-muted)]" data-booking-zone="">
-        Times are in {zoneLabel(firstMs, timeZone)}.
+        Times are in {zoneLabelRange(firstMs, lastMs, timeZone)}.
         {switchTo && onTimeZoneChange ? (
           <>
             {' '}
@@ -115,7 +130,7 @@ export function SlotPicker({
                 role="listbox"
                 aria-labelledby={headingId}
                 aria-disabled={disabled || undefined}
-                className="mt-3 flex flex-col gap-2.5"
+                className="bk-times mt-3"
                 onKeyDown={(e) => onKeyDown(e, day.date)}
               >
                 {visible.map((slot) => {
@@ -129,6 +144,7 @@ export function SlotPicker({
                       role="option"
                       aria-selected={isSel}
                       aria-disabled={isCur || disabled || undefined}
+                      data-current={isCur || undefined}
                       tabIndex={slot.startMs === focusStart ? 0 : -1}
                       className="bk-slot"
                       data-slot-start={start}
@@ -146,7 +162,7 @@ export function SlotPicker({
                   type="button"
                   className="bk-link mt-1"
                   onClick={() => {
-                    setOpenDays((prev) => new Set(prev).add(day.date));
+                    update({ dayCount, openDays: new Set(openDays).add(day.date) });
                     focusLater(`[data-booking-day="${day.date}"]`, perDay);
                   }}
                 >
@@ -162,7 +178,7 @@ export function SlotPicker({
       {days.length > shown.length ? (
         <button type="button" className="bk-secondary mt-7 w-full" onClick={() => {
           const next = days[shown.length];
-          setDayCount((n) => n + MORE_DAYS);
+          update({ dayCount: dayCount + MORE_DAYS, openDays });
           // The button stays while more days remain; once it goes, focus would be lost.
           if (next && days.length <= shown.length + MORE_DAYS) focusLater(`[data-booking-day="${next.date}"]`, 0);
         }}>

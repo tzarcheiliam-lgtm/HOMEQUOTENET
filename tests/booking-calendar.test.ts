@@ -322,9 +322,9 @@ describe('reschedule / cancel / status actions', () => {
     expect((await actions.cancelCalendarEvent({ kind: 'visit', id: APPT })).ok).toBe(false);
   });
 
-  it('cancels a sales meeting for staff, once', async () => {
+  it('cancels a sales meeting for the setter who booked it, once', async () => {
     m.profile = SETTER;
-    world({ sales: { id: SALES, calendar_id: null, scheduled_at: '2026-11-03T17:00:00Z', status: 'scheduled' } });
+    world({ sales: { id: SALES, calendar_id: null, scheduled_at: '2026-11-03T17:00:00Z', status: 'scheduled', partner_id: SETTER.id } });
     m.book.cancelSalesAppointment.mockResolvedValue({ ok: true, id: SALES, already: true });
     expect(await actions.cancelCalendarEvent({ kind: 'sales_appointment', id: SALES })).toEqual({ ok: true });
     expect(m.notify).not.toHaveBeenCalled(); // `already`: nothing new to tell anyone
@@ -350,12 +350,29 @@ describe('reschedule / cancel / status actions', () => {
     expect((await actions.setCalendarEventStatus({ kind: 'appointment', id: APPT, status: 'completed' })).ok).toBe(false);
   });
 
+  it('never lets a setter move or cancel another setter’s or a self-booked sales meeting (setter credit)', async () => {
+    m.profile = SETTER;
+    const msg = 'Only an admin or the setter who booked this meeting can change it.';
+    for (const partner of [null, U(99)]) {
+      world({ calendars: [{ ...CAL_TEAM, id: U(3), kind: 'sales' }], sales: { id: SALES, calendar_id: U(3), scheduled_at: '2026-11-03T17:00:00Z', status: 'scheduled', partner_id: partner } });
+      expect(await actions.cancelCalendarEvent({ kind: 'sales_appointment', id: SALES })).toEqual({ ok: false, error: msg });
+      expect(await actions.rescheduleCalendarEvent({ kind: 'sales_appointment', id: SALES, startsAt: '2026-11-03T18:00:00Z' })).toEqual({ ok: false, error: msg });
+      expect(await actions.setCalendarEventStatus({ kind: 'sales_appointment', id: SALES, status: 'no_show' })).toEqual({ ok: false, error: msg });
+    }
+    expect(m.book.cancelSalesAppointment).not.toHaveBeenCalled();
+    expect(m.book.rescheduleSalesAppointment).not.toHaveBeenCalled();
+    // An admin may.
+    m.profile = { id: U(13), role: 'admin', contractor_id: null, contractor_role: null };
+    m.book.cancelSalesAppointment.mockResolvedValue({ ok: true, id: SALES });
+    expect(await actions.cancelCalendarEvent({ kind: 'sales_appointment', id: SALES })).toEqual({ ok: true });
+  });
+
   it('leaves sales meeting status to the RLS write rule (admin or the booking setter)', async () => {
     m.profile = SETTER;
-    world({ sales: { id: SALES, calendar_id: null, scheduled_at: '2026-10-01T17:00:00Z', status: 'confirmed' }, updated: false });
+    world({ sales: { id: SALES, calendar_id: null, scheduled_at: '2026-10-01T17:00:00Z', status: 'confirmed', partner_id: SETTER.id }, updated: false });
     expect(await actions.setCalendarEventStatus({ kind: 'sales_appointment', id: SALES, status: 'completed' }))
       .toEqual({ ok: false, error: 'Only an admin or the setter who booked this meeting can change it.' });
-    world({ sales: { id: SALES, calendar_id: null, scheduled_at: '2026-10-01T17:00:00Z', status: 'cancelled' } });
+    world({ sales: { id: SALES, calendar_id: null, scheduled_at: '2026-10-01T17:00:00Z', status: 'cancelled', partner_id: SETTER.id } });
     expect((await actions.setCalendarEventStatus({ kind: 'sales_appointment', id: SALES, status: 'no_show' })).ok).toBe(false);
   });
 

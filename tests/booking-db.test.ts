@@ -176,8 +176,12 @@ describe('book_appointment: team calendar from a network funnel', () => {
     ]);
     expect([a.ok, b.ok].sort()).toEqual([false, true]);
     expect([a.error, b.error].filter(Boolean)).toEqual(['slot_taken']);
-    // The partial unique index is the backstop behind the lock.
-    await expect(q(`insert into public.appointments(lead_id, calendar_id, scheduled_at) values ($1,$2,$3)`, [other, team, la(DAY, 13)])).rejects.toThrow();
+    // Writes that skip the RPCs are guarded too (same lock, no overlap), with the unique index behind it.
+    await expect(q(`insert into public.appointments(lead_id, calendar_id, scheduled_at) values ($1,$2,$3)`, [other, team, la(DAY, 13)])).rejects.toThrow(/already booked/);
+    await expect(q(`insert into public.appointments(lead_id, calendar_id, scheduled_at, ends_at) values ($1,$2,$3,$4)`, [other, team, la(DAY, 13, 15), la(DAY, 13, 45)])).rejects.toThrow(/already booked/);
+    const side = (await one(`insert into public.appointments(lead_id, calendar_id, scheduled_at, ends_at) values ($1,$2,$3,$4) returning id`, [other, team, la(DAY2, 9), la(DAY2, 9, 30)])).id;
+    await expect(q(`update public.appointments set scheduled_at=$2, ends_at=$3 where id=$1`, [side, la(DAY, 13), la(DAY, 13, 30)])).rejects.toThrow(/already booked/);
+    await q(`update public.appointments set status='cancelled' where id=$1`, [side]);
   });
 
   it('checks notice, horizon, hours, exceptions and the daily cap', async () => {
@@ -187,6 +191,9 @@ describe('book_appointment: team calendar from a network funnel', () => {
     expect((await r(new Date(Date.now() + 20 * 86_400_000).toISOString())).error).toBe('too_far');
     expect((await r(la(DAY, 8))).error).toBe('outside_hours');
     expect((await r(la(DAY, 16, 45))).error).toBe('outside_hours');
+    // Off the 30-minute grid, or not a whole minute: refused even inside the hours.
+    expect((await r(la(DAY, 11, 7))).error).toBe('invalid_time');
+    expect((await r(new Date(Date.parse(la(DAY, 11)) + 13_000).toISOString())).error).toBe('invalid_time');
     let sat = DAY; while (weekdayOfDate(sat) !== 6) sat = addDays(sat, 1);
     expect((await r(la(sat, 10))).error).toBe('outside_hours');
     await q(`insert into public.booking_calendar_exceptions(calendar_id, kind, date_start, date_end, start_minute, end_minute) values ($1,'available',$2,$2,600,720)`, [team, sat]);
@@ -227,6 +234,17 @@ describe('book_appointment: team calendar from a network funnel', () => {
     expect((await one(`select public.reschedule_appointment($1,$2) as r`, [randomUUID(), la(DAY, 15)])).r.error).toBe('not_found');
     // The freed slot can be booked again.
     expect((await book({ p_calendar: team, p_starts_at: la(DAY, 10, 30), p_lead: await lead('Next'), p_source: 'manual' })).ok).toBe(true);
+  });
+
+  it('lets the same funnel session book again once its call was cancelled', async () => {
+    const again = await book({ p_calendar: team, p_starts_at: la(DAY2, 14), p_session: s.id, p_session_hash: s.hash, p_source: 'funnel', p_actor_kind: 'homeowner' });
+    expect(again).toMatchObject({ ok: true });
+    expect(again.appointment_id).not.toBe(apptId);
+    expect(await q(`select 1 from public.funnel_bookings where session_id=$1`, [s.id])).toHaveLength(2);
+    // ...and only once: the new call is live.
+    expect(await book({ p_calendar: team, p_starts_at: la(DAY2, 15), p_session: s.id, p_session_hash: s.hash, p_source: 'funnel' }))
+      .toEqual({ ok: false, error: 'already_booked', appointment_id: again.appointment_id });
+    await q(`select public.cancel_appointment($1)`, [again.appointment_id]);
   });
 });
 
@@ -299,6 +317,23 @@ describe('RLS', () => {
     await expect(as(id.ownerA, () => q(`insert into public.appointments(lead_id, calendar_id, scheduled_at) values ($1,$2,now())`, [l, calA]))).rejects.toThrow(); // lead not theirs
     await expect(as(id.ownerA, () => q(`select public.book_appointment($1, now(), $2)`, [calA, l]))).rejects.toThrow(); // service role only
   });
+
+  it('hosts: an owner adds only its own company’s users; team / sales take only HomeQuote staff', async () => {
+    await expect(as(id.ownerA, () => q(`insert into public.booking_calendar_members(calendar_id,user_id) values ($1,$2)`, [calA, id.ownerB]))).rejects.toThrow();
+    await expect(as(id.ownerA, () => q(`insert into public.booking_calendar_members(calendar_id,user_id) values ($1,$2)`, [calA, id.admin]))).rejects.toThrow();
+    await as(id.ownerA, () => q(`insert into public.booking_calendar_members(calendar_id,user_id) values ($1,$2)`, [calA, id.staffA]));
+    await expect(as(id.admin, () => q(`insert into public.booking_calendar_members(calendar_id,user_id) values ($1,$2)`, [team, id.ownerA]))).rejects.toThrow();
+    await as(id.admin, () => q(`insert into public.booking_calendar_members(calendar_id,user_id) values ($1,$2) on conflict do nothing`, [sales, id.setter]));
+    expect((await q(`select user_id from public.booking_calendar_members where calendar_id=$1`, [sales])).map((r) => r.user_id)).toContain(id.setter);
+    await q(`delete from public.booking_calendar_members where (calendar_id=$1 and user_id=$2) or (calendar_id=$3 and user_id=$4)`, [calA, id.staffA, sales, id.setter]);
+  });
+
+  it('keeps internal helpers off the public API', async () => {
+    await expect(as(null, () => q(`select public.appointment_contractor_id(null, $1)`, [calA]))).rejects.toThrow(/permission denied/);
+    await expect(as(id.ownerB, () => q(`select public.appointment_contractor_id(null, $1)`, [calA]))).rejects.toThrow(/permission denied/);
+    await expect(as(null, () => q(`select public.can_manage_booking_calendar($1)`, [calA]))).rejects.toThrow(/permission denied/);
+    await expect(as(id.admin, () => q(`select public.booking_switch_funnels_to_native(true)`))).rejects.toThrow(/permission denied/);
+  });
 });
 
 describe('sales calendar (contractor sales funnel)', () => {
@@ -349,6 +384,34 @@ describe('sales calendar (contractor sales funnel)', () => {
     expect((await one(`select public.cancel_sales_appointment($1,'No longer interested') as r`, [saId])).r.ok).toBe(true);
     expect(await one(`select status, cancel_reason from public.prospect_sales_appointments where id=$1`, [saId])).toEqual({ status: 'cancelled', cancel_reason: 'No longer interested' });
     expect((await one(`select booking_status from public.contractor_funnel_submissions where submission_id=$1`, [subId])).booking_status).toBe('cancelled');
+  });
+});
+
+describe('booking_switch_funnels_to_native (run after the code deploy)', () => {
+  it('dry-runs, then moves Calendly / network funnels and their not-yet-started sessions to the HomeQuote calendar', async () => {
+    const cal = { calendarProvider: 'calendly', calendarUrl: 'https://calendly.com/homequotenetwork/30min', calendarHeadline: 'Pick a time' };
+    const f1 = (await one(`insert into public.funnels(slug,contractor_id,published,config) values ('calendly-client',$1,true,$2) returning id`, [id.companyB, JSON.stringify(cal)])).id;
+    const f2 = (await one(`insert into public.funnels(slug,contractor_id,published,config) values ('ghl-client',$1,true,$2) returning id`,
+      [id.companyB, JSON.stringify({ calendarProvider: 'ghl', calendarUrl: 'https://api.leadconnectorhq.com/widget/booking/x', calendarId: 'x' })])).id;
+    const fresh = await session(f1, await lead('Fresh'));
+    await q(`update public.funnel_sessions set contact_submitted_at=null, config_snapshot=$2 where id=$1`, [fresh.id, JSON.stringify(cal)]);
+    const atCalendar = await session(f1, await lead('AtCal'));
+    await q(`update public.funnel_sessions set config_snapshot=$2 where id=$1`, [atCalendar.id, JSON.stringify(cal)]);
+
+    const dry = (await one(`select public.booking_switch_funnels_to_native() as r`)).r;
+    expect(dry).toMatchObject({ applied: false, sessions: 0, ghl_left_alone: ['ghl-client'] });
+    expect(dry.funnels).toEqual(expect.arrayContaining(['calendly-client', 'pool-masters-la']));
+    expect(dry.funnels).not.toContain('ghl-client');
+    expect((await one(`select config from public.funnels where id=$1`, [f1])).config.calendarProvider).toBe('calendly');
+
+    const done = (await one(`select public.booking_switch_funnels_to_native(true) as r`)).r;
+    expect(done).toMatchObject({ applied: true, sessions: 1, still_mentioning_calendly: [] });
+    expect((await one(`select config from public.funnels where id=$1`, [f1])).config).toEqual({ calendarProvider: 'homequote', calendarHeadline: 'Pick a time' });
+    expect((await one(`select config from public.funnels where id=$1`, [f2])).config.calendarProvider).toBe('ghl');
+    expect((await one(`select config_snapshot from public.funnel_sessions where id=$1`, [fresh.id])).config_snapshot.calendarProvider).toBe('homequote');
+    expect((await one(`select config_snapshot from public.funnel_sessions where id=$1`, [atCalendar.id])).config_snapshot.calendarProvider).toBe('calendly');
+    // Idempotent.
+    expect((await one(`select public.booking_switch_funnels_to_native(true) as r`)).r).toMatchObject({ funnels: [], sessions: 0 });
   });
 });
 

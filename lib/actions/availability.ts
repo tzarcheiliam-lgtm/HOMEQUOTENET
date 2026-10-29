@@ -33,6 +33,7 @@ function fail(e: unknown): { error: string } {
 
 function refresh() {
   revalidatePath('/app/availability');
+  revalidatePath('/app/calendar/settings');
   revalidatePath('/app/contractors/[id]', 'page');
 }
 

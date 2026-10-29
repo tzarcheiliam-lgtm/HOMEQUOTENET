@@ -5,8 +5,8 @@ import { cn } from '@/lib/utils';
 import { NowLine } from './now-line';
 import { dayLabel, openBands, statusStyle, type CalendarEvent, type HourRule, type PlacedEvent } from './view';
 
-/** 48px an hour: a 30-minute call is 24px, enough for its name and time on one line. */
-export const PX_PER_MINUTE = 0.8;
+/** 60px an hour: a 30-minute call is 30px, enough for its start time and name on one line. */
+export const PX_PER_MINUTE = 1;
 
 const hourLabel = (h: number) => (h === 0 || h === 24 ? '12 AM' : h === 12 ? '12 PM' : h < 12 ? `${h} AM` : `${h - 12} PM`);
 
@@ -79,7 +79,7 @@ export function TimeGrid({
             {(placedByDay[d] ?? []).map((p) => {
               const s = statusStyle(p.event.kind, p.event.status);
               const top = Math.max(0, (p.startMin - startHour * 60) * PX_PER_MINUTE);
-              const h = Math.max(20, (p.endMin - p.startMin) * PX_PER_MINUTE - 2);
+              const h = Math.max(28, (p.endMin - p.startMin) * PX_PER_MINUTE - 2);
               return (
                 <button
                   key={`${p.event.kind}:${p.event.id}`}
@@ -99,7 +99,11 @@ export function TimeGrid({
                   }}
                   aria-label={`${p.event.title}, ${formatTime(p.event.startMs, timeZone)}, ${s.label}`}
                 >
-                  <span className="block truncate font-semibold">{p.event.title}</span>
+                  {/* Short blocks put the start time in front of the name, so a busy day can be scanned. */}
+                  <span className="block truncate font-semibold">
+                    {h < 34 ? <span className="mr-1 font-normal tabular-nums opacity-80">{formatTime(p.event.startMs, timeZone).replace(/ [AP]M$/, '')}</span> : null}
+                    {p.event.title}
+                  </span>
                   {h >= 34 ? (
                     <span className="block truncate opacity-80">
                       {formatTime(p.event.startMs, timeZone)}

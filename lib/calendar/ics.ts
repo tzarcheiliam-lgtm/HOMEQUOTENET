@@ -46,7 +46,12 @@ export function icsDate(ms: number): string {
   return `${p(d.getUTCFullYear(), 4)}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}T${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}Z`;
 }
 
-export function buildCalendar(events: IcsEvent[], opts: { name: string; nowMs?: number; method?: 'PUBLISH' | 'REQUEST' | 'CANCEL' }): string {
+/**
+ * `feed: false` builds a single invite (one booking to add, not a calendar to
+ * subscribe to): no calendar name or refresh headers, which Outlook and Apple
+ * would otherwise treat as a new calendar.
+ */
+export function buildCalendar(events: IcsEvent[], opts: { name: string; nowMs?: number; method?: 'PUBLISH' | 'REQUEST' | 'CANCEL'; feed?: boolean }): string {
   const now = opts.nowMs ?? Date.now();
   const lines: string[] = [
     'BEGIN:VCALENDAR',
@@ -54,10 +59,8 @@ export function buildCalendar(events: IcsEvent[], opts: { name: string; nowMs?: 
     'PRODID:-//HomeQuote Network//Appointments//EN',
     'CALSCALE:GREGORIAN',
     `METHOD:${opts.method ?? 'PUBLISH'}`,
-    `X-WR-CALNAME:${escapeText(opts.name)}`,
-    'REFRESH-INTERVAL;VALUE=DURATION:PT1H',
-    'X-PUBLISHED-TTL:PT1H',
   ];
+  if (opts.feed !== false) lines.push(`X-WR-CALNAME:${escapeText(opts.name)}`, 'REFRESH-INTERVAL;VALUE=DURATION:PT1H', 'X-PUBLISHED-TTL:PT1H');
   for (const e of events) {
     lines.push(
       'BEGIN:VEVENT',

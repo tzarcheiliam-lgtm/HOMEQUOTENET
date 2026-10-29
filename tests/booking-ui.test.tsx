@@ -7,7 +7,7 @@ import { ManageBooking } from '@/components/booking/manage-booking';
 import { callDetails, callTitle, googleCalendarLink } from '@/components/booking/calendar-links';
 import { flowReducer, initialFlow, nextIndex, type FlowState } from '@/components/booking/flow-state';
 import type { PublicBooking, PublicCalendar, PublicSlot } from '@/components/booking/types';
-import { sameClock, zoneCity, zoneLabel } from '@/components/booking/zone';
+import { sameClock, zoneCity, zoneLabel, zoneLabelRange } from '@/components/booking/zone';
 
 /**
  * The homeowner booking UI (components/booking/**): the Buildoly-style picker
@@ -26,7 +26,7 @@ const slots = [...day('2026-12-01', [9, 10, 11, 12]), ...day('2026-12-02', [13])
 const calendar: PublicCalendar = { hostName: 'Pool Masters LA', kind: 'contractor', timeZone: LA, durationMinutes: 30, meetingType: 'phone' };
 const booking: PublicBooking = {
   status: 'scheduled', startsAt: at('2026-12-01', 9, 30), endsAt: at('2026-12-01', 10), timeZone: LA, inviteeTimeZone: LA, meetingType: 'phone',
-  hostName: 'Pool Masters LA', durationMinutes: 30, firstName: 'Sam', phoneHint: '0123', videoLink: null,
+  hostName: 'Pool Masters LA', kind: 'contractor', hostPhone: '+18186436888', durationMinutes: 30, firstName: 'Sam', phoneHint: '0123', videoLink: null,
   manageUrl: '/booking/manage/' + 'a'.repeat(43), icsUrl: '/api/booking/manage/' + 'a'.repeat(43) + '/ics', canChange: true,
 };
 const picker = (p: Partial<Parameters<typeof SlotPicker>[0]> = {}) =>
@@ -107,10 +107,19 @@ describe('BookingFlow and BookedView', () => {
     expect(h).toContain(`href="${booking.manageUrl}"`);
   });
 
-  it('after a refresh (no manage link) points to the confirmation message instead', () => {
+  it('without a manage link (an old external booking) points to the confirmation email, never the text', () => {
     const h = renderToStaticMarkup(<BookedView booking={{ ...booking, manageUrl: null, icsUrl: null }} timeZone={LA} />);
-    expect(h).toContain('Use the link in your confirmation text or email');
+    expect(h).toContain('Use the link in your confirmation email');
+    expect(h).not.toContain('text or email');
     expect(h).not.toContain('Google Calendar');
+  });
+
+  it('promises a text only to homeowners, and can leave the heading to the host page', () => {
+    expect(renderToStaticMarkup(<BookedView booking={booking} timeZone={LA} />)).toContain('We’ll text and email you the details');
+    const sales = renderToStaticMarkup(<BookedView booking={{ ...booking, kind: 'sales', hostName: 'HomeQuote' }} timeZone={LA} hideHeading />);
+    expect(sales).toContain('We’ll email you the details');
+    expect(sales).not.toContain('text and email');
+    expect(sales).not.toContain('You’re booked');
   });
 });
 
@@ -173,6 +182,14 @@ describe('flowReducer', () => {
     expect(flowReducer(cb, { type: 'back' }).view).toBe('pick');
   });
 
+  it('"Try again" shows the skeleton while it reloads; a callback can be asked for when times will not load', () => {
+    const down = flowReducer(initialFlow, { type: 'load_failed', message: 'Booking is temporarily unavailable.' });
+    expect(flowReducer(down, { type: 'reload' })).toMatchObject({ view: 'loading', message: null });
+    const cb = flowReducer(down, { type: 'open_callback' });
+    expect(cb.view).toBe('callback');
+    expect(flowReducer(cb, { type: 'back' }).view).toBe('unavailable');
+  });
+
   it('moves list focus with the arrow keys, Home and End', () => {
     expect(nextIndex('ArrowDown', 0, 3)).toBe(1);
     expect(nextIndex('ArrowDown', 2, 3)).toBe(2);
@@ -195,6 +212,9 @@ describe('calendar links and zones', () => {
 
   it('names zones plainly', () => {
     expect(zoneLabel(Date.parse(at('2026-07-01', 9)), LA)).toBe('Pacific Time (PDT)');
+    // A list that crosses the Nov 1 change drops the abbreviation (PDT would be wrong for half of it).
+    expect(zoneLabelRange(Date.parse(at('2026-10-30', 9)), Date.parse(at('2026-11-03', 9)), LA)).toBe('Pacific Time');
+    expect(zoneLabelRange(Date.parse(at('2026-11-03', 9)), Date.parse(at('2026-11-10', 9)), LA)).toBe('Pacific Time (PST)');
     expect(zoneCity('America/Los_Angeles')).toBe('Los Angeles');
     expect(sameClock('America/Los_Angeles', 'America/Tijuana', Date.parse(at('2026-12-01', 9)))).toBe(true);
     expect(sameClock('America/Los_Angeles', 'America/New_York')).toBe(false);

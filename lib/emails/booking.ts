@@ -233,7 +233,7 @@ export function bookingIcs(e: {
       status: e.cancelled ? 'CANCELLED' : 'CONFIRMED',
       sequence: e.sequence,
     }],
-    { name: 'HomeQuote Network', method: e.cancelled ? 'CANCEL' : 'PUBLISH', nowMs: e.nowMs }
+    { name: 'HomeQuote Network', method: e.cancelled ? 'CANCEL' : 'PUBLISH', nowMs: e.nowMs, feed: false }
   );
 }
 

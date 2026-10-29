@@ -128,7 +128,9 @@ export function FunnelBookingScreen({ spec, selection, contractor, result, embed
       >
         {ticket ? (
           // Loads the open times, books under the calendar lock and shows "You're booked" (also after a refresh).
-          <BookingFlow grant={ticket} heading={step.bookingTitle} headingLevel={2} />
+          // The page title already says "Book your free call": the card opens with one light sentence, then the
+          // times (as on the Buildoly screen), so the first times show without scrolling on small phones.
+          <BookingFlow grant={ticket} heading={null} intro={step.bookingTitle} headingLevel={2} />
         ) : booked ? (
           <div className="flex items-start gap-3 motion-safe:animate-[funnel-fade_180ms_ease-out]" role="status">
             <span className="mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-[color:var(--fn-blue)] text-white" aria-hidden="true">
