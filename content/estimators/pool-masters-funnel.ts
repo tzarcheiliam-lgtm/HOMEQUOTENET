@@ -113,9 +113,8 @@ export const POOL_MASTERS_FUNNEL: FunnelSpec = {
     headline: 'Your estimate is ready.',
     subline: 'Where should we send it?',
     cta: 'Get my estimate',
-    askAddress: false,
-    // Four fields only (owner: "too many questions"); ownership is confirmed on the call.
-    askHomeowner: false,
+    // Name, email, phone, home address, then this (owner: ask it, in words that make sense).
+    homeowner: { label: 'Is this pool at your home?', yes: 'Yes, it’s my home', no: 'No, I rent' },
     trustLine: 'Licensed & insured · CSLB #1112793',
   },
   bookingStep: {
@@ -127,5 +126,6 @@ export const POOL_MASTERS_FUNNEL: FunnelSpec = {
     callPrompt: 'Prefer to talk now? Call',
   },
   configurator: POOL_MASTERS_CONFIGURATOR,
-  photoNote: POOL_MASTERS_CONFIGURATOR.photoNote,
+  // Footer only (owner: no badge on the photos).
+  photoNote: 'Photos show example designs, AI-assisted from Pool Masters projects.',
 };

@@ -358,7 +358,6 @@ function StepScreen({
           photos={photos}
           selected={picked}
           fit={isView ? 'cover' : 'contain'}
-          caption={isView && spec.photoNote ? 'Example design · AI-assisted' : undefined}
           priority={first}
         />
       </div>

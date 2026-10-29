@@ -106,11 +106,6 @@ export function FunnelLanding({ spec, contractor, designHref }: { spec: FunnelSp
               draggable={false}
               className="fn-hero-photo absolute inset-0 h-full w-full select-none object-cover object-[50%_72%]"
             />
-            {spec.photoNote ? (
-              <span className="pointer-events-none absolute bottom-3 left-3 rounded-[4px] bg-white/85 px-1.5 py-0.5 text-[11px] font-medium leading-[14px] text-[#3b3935] backdrop-blur-[2px] lg:bottom-4 lg:left-4">
-                Example design · AI-assisted
-              </span>
-            ) : null}
           </div>
         </section>
 

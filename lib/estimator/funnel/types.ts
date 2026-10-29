@@ -101,14 +101,14 @@ export type FunnelContactStep = {
   subline: string;
   /** Submit button, e.g. "Get my estimate". */
   cta: string;
-  /** Show an optional street-address field (ZIP is always asked: it gates the service area). */
-  askAddress: boolean;
   /**
-   * Ask "Do you own this home?" (default false: the funnel keeps to the four
-   * fields; the lead is marked "home ownership not asked online" and it is
-   * confirmed on the call or at the on-site visit).
+   * The ownership question under the address, e.g. "Is this pool at your home?"
+   * with "Yes, it's my home" / "No, I rent" (the lead's homeowner yes / no).
+   * Always asked: the lead funnel's qualification rules read it, so it is never
+   * assumed. The address (Google suggestions when GOOGLE_PLACES_API_KEY is set)
+   * is always asked too: its ZIP gates the service area.
    */
-  askHomeowner?: boolean;
+  homeowner: { label: string; yes: string; no: string };
   /** Trust line under the button; only truthful facts (no reviews or ratings unless real and published). */
   trustLine: string;
 };
@@ -141,7 +141,7 @@ export type FunnelSpec = {
   configurator?: ConfiguratorSpec;
   /** Template answers every design starts from when there is no configurator (it has its own baseAnswers). */
   baseAnswers?: Answers;
-  /** Shown once (e.g. on the price card or under the photo): photos are example designs. */
+  /** One quiet line in the page footer (and under the embed's column): photos are example designs. Never on a photo. */
   photoNote?: string;
 };
 
