@@ -6,6 +6,7 @@ import { signingMaintenance } from '@/lib/signing/service';
 import { retryPendingAduQuizLeads } from '@/lib/adu-quiz/leads.server';
 import { checkBridgeHealth } from '@/lib/sms/health';
 import { notifyAdmins } from '@/lib/sms/health-notify';
+import { runTextReminders } from '@/lib/sms/reminders';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { processWorkflowTick, pruneWorkflowHistory } from '@/lib/workflows/runtime.server';
 
@@ -40,6 +41,9 @@ export async function POST(request: Request) {
     // Texting: alert the team if texts are waiting and the Mac bridge is not sending them. Best effort.
     let sms: unknown = null;
     try { sms = await checkBridgeHealth(createAdminClient(), { notify: notifyAdmins }); } catch { sms = { error: 'texting health check failed' }; }
+    // Reminder texts for booked meetings and follow-ups when homeowners don't reply. Best effort.
+    let reminders: unknown = null;
+    try { reminders = await runTextReminders(createAdminClient()); } catch { reminders = { error: 'text reminders failed' }; }
     // ADU quiz leads whose webhook delivery failed. Best effort; a failure never affects the tick.
     let aduQuiz: unknown = null;
     try {
@@ -47,7 +51,7 @@ export async function POST(request: Request) {
     } catch {
       aduQuiz = { error: 'adu quiz retry failed' };
     }
-    return NextResponse.json({ ...result, retention, notifications, calendar, signing, sms, aduQuiz }, { status: result.failures ? 207 : 200 });
+    return NextResponse.json({ ...result, retention, notifications, calendar, signing, sms, reminders, aduQuiz }, { status: result.failures ? 207 : 200 });
   } catch {
     return NextResponse.json({ error: 'Workflow processing unavailable' }, { status: 503 });
   }

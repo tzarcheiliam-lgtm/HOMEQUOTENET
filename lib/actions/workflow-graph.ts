@@ -1,6 +1,6 @@
 'use server';
 
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { requireProfile } from '@/lib/auth';
@@ -12,6 +12,7 @@ import { claimAndExecuteWorkflowRuns, processWorkflowEvent } from '@/lib/workflo
 import { loadLeadPreviewContext } from '@/lib/workflows/graph/context.server';
 import { resolveTemplateEmail } from '@/lib/workflows/actions.server';
 import { loadIntegrationReadiness } from '@/lib/workflows/graph/readiness.server';
+import { hashGraph } from '@/lib/workflows/graph/hash';
 import {
   CALL_OUTCOMES,
   dryRunGraph,
@@ -20,7 +21,6 @@ import {
   hasBlockingIssues,
   parseWorkflowGraph,
   sampleContext,
-  semanticGraph,
   templateFitsOwner,
   templateGraphFor,
   triggerOf,
@@ -48,7 +48,6 @@ export interface GraphActionResult<T = unknown> {
 const fail = <T = unknown>(message: string, extra: Partial<GraphActionResult<T>> = {}): GraphActionResult<T> => ({ ok: false, message, ...extra });
 const uuid = z.string().uuid();
 
-const hashGraph = (g: WorkflowGraph) => createHash('sha256').update(semanticGraph(g)).digest('hex');
 
 async function audit(actor: string, action: string, metadata: Record<string, unknown>) {
   await createAdminClient().from('audit_logs').insert({ actor_id: actor, action, metadata });
