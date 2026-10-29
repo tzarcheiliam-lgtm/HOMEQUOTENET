@@ -158,6 +158,17 @@ describe('a call booked on a HomeQuote calendar gets exactly one set of reminder
     expect(await sendBookingReminder('appointment', c.id, '24h', deps(at('2026-10-22T17:30:00Z')))).toMatchObject({ email: 'sent', sms: 'text_reminders' });
   });
 
+  it('no form consent but they texted us back (a Meta lead): reminder texts go', async () => {
+    const c = await nativeCall({ consent: false, startsAt: '2026-10-23T19:30:00Z' });
+    // A two-way text conversation with us (the opening text and their reply).
+    const conv = (await one(`insert into public.sms_conversations(lead_id, sender_name, phone_e164, status) values ($1,'HomeQuote',$2,'handoff') returning id`, [c.leadId, c.phone])).id;
+    await q(`insert into public.sms_messages(conversation_id, lead_id, direction, body, status) values ($1,$2,'out','Hey Pat, call or text?','sent'),($1,$2,'in','Text please','received')`, [conv, c.leadId]);
+    await run(at('2026-10-22T17:05:00Z'));
+    const t = await outTexts(c.phone);
+    expect(t.filter((m: any) => m.reminder_step === 'day_before')).toHaveLength(1);
+    expect(await q(`select 1 from public.sms_reminders where ref_id=$1 and detail='The homeowner did not agree to texts.'`, [c.id])).toHaveLength(0);
+  });
+
   it('describes the booking for the reminder wording', () => {
     expect(homeownerHow({ calendar_id: null })).toBe('free estimate visit');
     expect(homeownerHow({ calendar_id: 'c', meeting_type: 'phone', scheduled_at: CALL, ends_at: '2026-10-23T17:40:00Z' })).toBe('quick 10-minute call');

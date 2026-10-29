@@ -13,8 +13,10 @@ vi.mock('@/lib/calendar/sync.server', () => ({ flushCalendarSyncSoon: vi.fn() })
 
 import { callBookedText, joinTimes, pickOpenTimes, slotLabel, takenText, threeSpread, visitBookedText } from '@/lib/sms/scheduling';
 import { openTimesBlock, systemPromptFor, SMS_SYSTEM_PROMPT } from '@/lib/sms/agent';
-import { handleInbound } from '@/lib/sms/service';
+import { handleInbound, startSmsForConsentedLead } from '@/lib/sms/service';
 import { loadBookingOptions } from '@/lib/sms/scheduling.server';
+import { runTextReminders } from '@/lib/sms/reminders';
+import { planRebook, rebookText } from '@/lib/sms/scheduling';
 
 const LA = 'America/Los_Angeles';
 const at = (iso: string) => Date.parse(iso);
@@ -88,7 +90,7 @@ describe('booking over text (real migrations, PGlite)', () => {
   }, 180_000);
   afterAll(async () => { await db?.close(); });
   beforeEach(async () => {
-    await q(`update public.sms_settings set enabled=true, stopped_at=null, daily_cap=500 where id`);
+    await q(`update public.sms_settings set enabled=true, stopped_at=null, daily_cap=500, window_start_hour=0, window_end_hour=24, reminder_config='{}' where id`);
   });
 
   /** A lead in an active AI text conversation, optionally assigned to a contractor. */
@@ -107,7 +109,7 @@ describe('booking over text (real migrations, PGlite)', () => {
     }
     const from = `+1${phone.replace(/\D/g, '')}`;
     await q(`insert into public.sms_conversations(lead_id, contractor_id, sender_name, phone_e164, status) values ($1,$2,$3,$4,'active')`, [leadId, contractorId, opts.contractor ? 'Pool Masters' : 'HomeQuote', from]);
-    await q(`insert into public.sms_messages(conversation_id, lead_id, direction, body, status, ai) select id, lead_id, 'out', 'Hey Amber, it''s Pool Masters. Call or text?', 'sent', false from public.sms_conversations where lead_id=$1`, [leadId]);
+    await q(`insert into public.sms_messages(conversation_id, lead_id, direction, body, status, ai, created_at) select id, lead_id, 'out', 'Hey Amber, it''s Pool Masters. Call or text?', 'sent', false, $2 from public.sms_conversations where lead_id=$1`, [leadId, new Date(NOW.getTime() - 3_600_000).toISOString()]);
     return { leadId, contractorId, assignmentId, from };
   }
   const reply = (over: Record<string, unknown> = {}) =>
@@ -211,5 +213,75 @@ describe('booking over text (real migrations, PGlite)', () => {
     await text(c.from, 'text', agent, { booking: async () => ({ visit: null, call: null, alreadyBooked: false }) });
     expect((agent.mock.calls[0] as any)[0].openTimes).toEqual({ alreadyBooked: false, visit: null, call: null });
     expect((await outs(c.leadId)).at(-1).body).toBe('what day and time usually work best?');
+  });
+
+  describe('re-offering times when a booking handoff goes cold', () => {
+    const DAY = 86_400_000;
+    const later = (ms: number) => new Date(NOW.getTime() + ms);
+    const askedForTime = () => reply({ message: 'got it, the team will text to confirm the exact time', appointment_time: 'saturday morning', handoff: true });
+    const noTimes = async () => ({ visit: null, call: null, alreadyBooked: false });
+
+    it('marks a booking handoff, then a day later re-offers three real times and takes the conversation back', async () => {
+      const c = await convo({ contractor: true });
+      await text(c.from, 'saturday morning', askedForTime(), { booking: noTimes });
+      expect((await q(`select status from public.sms_conversations where lead_id=$1`, [c.leadId]))[0].status).toBe('handoff');
+      expect(await q(`select 1 from public.sms_reminders where step='await_booking' and ref_id=(select id from public.sms_conversations where lead_id=$1)`, [c.leadId])).toHaveLength(1);
+
+      await runTextReminders(sb, { now: later(DAY / 2) }); // not yet
+      expect((await outs(c.leadId)).filter((m: any) => m.reminder_step === 'rebook_1')).toHaveLength(0);
+
+      await runTextReminders(sb, { now: later(DAY + 600_000) });
+      const [re] = (await outs(c.leadId)).filter((m: any) => m.reminder_step === 'rebook_1');
+      expect(re.body).toMatch(/^Hi Amber, still want to get your free estimate on the calendar\? I have .+ at .+, .+ or .+\. Any of those work\?$/);
+      expect((await q(`select status, mode from public.sms_conversations where lead_id=$1`, [c.leadId]))[0]).toEqual({ status: 'active', mode: 'text' });
+      // Once only, and the ordinary follow-ups stay out of it.
+      await runTextReminders(sb, { now: later(DAY + 900_000) });
+      expect((await outs(c.leadId)).filter((m: any) => m.reminder_kind === 'no_reply')).toHaveLength(1);
+    });
+
+    it('stays out of it when a person already texted them or booked them', async () => {
+      const a = await convo({ contractor: true });
+      await text(a.from, 'saturday morning', askedForTime(), { booking: noTimes });
+      await q(`insert into public.sms_messages(conversation_id, lead_id, direction, body, status, ai, created_at) select id, lead_id, 'out', 'Hi Amber, Liam here, does 10am Sat work?', 'sent', false, now() + interval '1 hour' from public.sms_conversations where lead_id=$1`, [a.leadId]);
+      await runTextReminders(sb, { now: later(DAY + 600_000) });
+      expect((await outs(a.leadId)).filter((m: any) => m.reminder_step === 'rebook_1')).toHaveLength(0);
+      expect((await q(`select detail from public.sms_reminders where step='rebook_1' and ref_id=(select id from public.sms_conversations where lead_id=$1)`, [a.leadId]))[0].detail).toMatch(/texted them/);
+
+      const b = await convo({ contractor: true });
+      await text(b.from, 'saturday morning', askedForTime(), { booking: noTimes });
+      await q(`update public.leads set status='appointment_set' where id=$1`, [b.leadId]);
+      await runTextReminders(sb, { now: later(DAY + 600_000) });
+      expect((await outs(b.leadId)).filter((m: any) => m.reminder_step === 'rebook_1')).toHaveLength(0);
+    });
+
+    it('never re-engages a handoff that was not about booking (upset, off-topic, not a fit)', async () => {
+      const c = await convo({ contractor: true });
+      await text(c.from, 'this is ridiculous', reply({ message: 'sorry about that, someone from the team will reach out', handoff: true, handoff_reason: 'upset' }), { booking: noTimes });
+      expect(await q(`select 1 from public.sms_reminders where step='await_booking' and ref_id=(select id from public.sms_conversations where lead_id=$1)`, [c.leadId])).toHaveLength(0);
+    });
+
+    it('plans day 1 and day 3, and words the call version with who calls', () => {
+      const h = new Date('2026-10-28T18:00:00Z');
+      expect(planRebook(h).map((s) => [s.step, s.dueAt.toISOString()])).toEqual([['rebook_1', '2026-10-29T18:00:00.000Z'], ['rebook_2', '2026-10-31T18:00:00.000Z']]);
+      const times = [1, 2, 3].map((i) => ({ id: `c${i}`, kind: 'call' as const, startMs: 0, endMs: 0, label: `Mon, Nov ${i + 1} at 9:00 AM` }));
+      expect(rebookText('rebook_1', { kind: 'call', times, firstName: 'Amber', sender: 'Pool Masters', callWho: 'Liam' }))
+        .toBe('Hi Amber, still want that quick call? Liam can call you Mon, Nov 2 at 9:00 AM, Mon, Nov 3 at 9:00 AM or Mon, Nov 4 at 9:00 AM. Which works?');
+      expect(rebookText('rebook_2', { kind: 'visit', times, firstName: null, sender: 'Pool Masters' })).toMatch(/^Last check-in from Pool Masters: I can still do .+ for your free estimate\./);
+    });
+  });
+
+  it('texts a lead from any other connected source when it came with text consent, and never without', async () => {
+    const yes = randomUUID();
+    const no = randomUUID();
+    await q(`insert into public.leads(id, first_name, phone, state, status, source, consent_granted, answers) values
+      ($1,'Kim','(818) 555-0301','CA','new','webhook',true,'{"Project":"Kitchen remodel"}'),
+      ($2,'Lou','(818) 555-0302','CA','new','webhook',false,'{}')`, [yes, no]);
+    const r = await startSmsForConsentedLead(sb, yes, NOW);
+    expect(r.started).toBe(true);
+    const [first] = await outs(yes);
+    expect(first.body).toMatch(/Kim/);
+    expect(first.body).toMatch(/kitchen remodel/);
+    expect(await startSmsForConsentedLead(sb, no, NOW)).toEqual({ started: false, reason: 'no_consent' });
+    expect(await outs(no)).toHaveLength(0);
   });
 });

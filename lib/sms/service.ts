@@ -3,7 +3,7 @@ export { DEFAULT_SETTINGS, loadSettings, type SmsSettings } from './core';
 import { normalizeUsPhone } from '@/lib/ai-calling/phone';
 import { nextEligible, resolveZones } from '@/lib/ai-calling/timezone';
 import { runSmsAgent, type AgentInput, type AgentResult, type OpenTimesForAgent, type SmsTurn } from './agent';
-import { callBookedText, takenText, threeSpread, visitBookedText, type OpenTime } from './scheduling';
+import { AWAIT_BOOKING_STEP, callBookedText, takenText, threeSpread, visitBookedText, type OpenTime } from './scheduling';
 import { bookCall, bookVisit, loadBookingOptions, NO_OPTIONS, noteBooked, type BookingOptions } from './scheduling.server';
 import type { Alert } from './health';
 import { notifyAdmins } from './health-notify';
@@ -118,14 +118,20 @@ export function metaProject(answers: Record<string, string>): string | null {
  * also needs the same switches as a contractor funnel: contractor_funnels_enabled and the contractor's texting_enabled). Idempotent (one conversation per lead) and never throws.
  */
 export const startSmsForMetaLead = (db: Db, leadId: string, now = new Date(), source: { contractorId?: string | null; senderName?: string | null } = {}): Promise<StartResult> => withSkipNote(db, leadId, startSmsForMetaLeadInner(db, leadId, now, source));
-async function startSmsForMetaLeadInner(db: Db, leadId: string, now: Date, source: { contractorId?: string | null; senderName?: string | null }): Promise<StartResult> {
+/**
+ * Any other connected lead source (webhooks, other ad platforms): the same opening text, assistant and follow-ups, but
+ * only when the lead arrived with text consent (consent_granted), so nothing is sent without it.
+ */
+export const startSmsForConsentedLead = (db: Db, leadId: string, now = new Date(), source: { contractorId?: string | null; senderName?: string | null } = {}): Promise<StartResult> =>
+  withSkipNote(db, leadId, startSmsForMetaLeadInner(db, leadId, now, source, 'consented'));
+async function startSmsForMetaLeadInner(db: Db, leadId: string, now: Date, source: { contractorId?: string | null; senderName?: string | null }, kind: 'meta' | 'consented' = 'meta'): Promise<StartResult> {
   try {
     const settings = await loadSettings(db);
     if (!isLive(settings)) return { started: false, reason: 'off' };
     const { data: existing } = await db.from('sms_conversations').select('id').eq('lead_id', leadId).maybeSingle();
     if (existing) return { started: false, reason: 'exists' };
-    const { data: lead } = await db.from('leads').select('id,first_name,phone,state,zip,source,answers').eq('id', leadId).maybeSingle();
-    if (!lead || lead.source !== 'meta') return { started: false, reason: 'no_lead' };
+    const { data: lead } = await db.from('leads').select('id,first_name,phone,state,zip,source,answers,consent_granted').eq('id', leadId).maybeSingle();
+    if (!lead || (kind === 'meta' ? lead.source !== 'meta' : lead.consent_granted !== true)) return { started: false, reason: kind === 'meta' ? 'no_lead' : 'no_consent' };
     const contractorId = source.contractorId ?? null;
     if (contractorId) {
       if (!settings.contractor_funnels_enabled) return { started: false, reason: 'contractor_funnel_off' };
@@ -164,6 +170,14 @@ export interface InboundDeps {
   agent?: (input: AgentInput) => Promise<AgentResult>; now?: () => Date; aiConfigured?: boolean; notify?: (alert: Alert) => Promise<void>;
   /** Open times to offer (default: the contractor's visit availability and the lead's booking calendar). */
   booking?: (c: { id: string; lead_id: string; sender_name: string; contractor_id?: string | null }, now: Date) => Promise<BookingOptions>;
+}
+
+/**
+ * Marks a conversation handed to a person to book a time (not for upset / off-topic handoffs), so the reminder runner
+ * can re-offer real times if it is still not booked a day later (lib/sms/reminders.ts, "re-offer times").
+ */
+async function markAwaitingBooking(db: Db, conversationId: string, now: Date) {
+  await db.from('sms_reminders').insert({ kind: 'no_reply', ref_id: conversationId, step: AWAIT_BOOKING_STEP, anchor_at: now.toISOString(), status: 'skipped', detail: 'Handed to a person to book a time.' });
 }
 
 /** The open times as the assistant sees them. */
@@ -356,13 +370,17 @@ async function bookPicked(
     const times = pool ? threeSpread(pool.times.filter((t) => t.startMs !== picked.startMs), pool.timeZone) : [];
     await queue(db, c, finalizeOutbound(takenText(times)), { ai: true, sendAfter: pause() });
     await db.from('sms_conversations').update({ ...base, status: times.length ? 'active' : 'handoff', mode: picked.kind === 'call' ? 'call' : 'text' }).eq('id', c.id);
-    if (!times.length) await note(db, c.lead_id, `Text conversation needs a person: the time they picked (${picked.label}) was taken and no other open times were found.`, { needs_attention: true });
+    if (!times.length) {
+      await note(db, c.lead_id, `Text conversation needs a person: the time they picked (${picked.label}) was taken and no other open times were found.`, { needs_attention: true });
+      await markAwaitingBooking(db, c.id, now);
+    }
     return { handled: true, replied: true, reason: 'slot_taken' };
   }
   if (!outcome.ok) {
     await queue(db, c, "Got it! Someone from the team will text you shortly to lock that in.", { ai: true, sendAfter: pause() });
     await db.from('sms_conversations').update({ ...base, status: 'handoff' }).eq('id', c.id);
     await note(db, c.lead_id, `Text conversation needs a person: they picked ${picked.label} but it could not be booked automatically. Please book it by hand.`, { needs_attention: true });
+    await markAwaitingBooking(db, c.id, now);
     return { handled: true, replied: true, reason: 'booking_failed' };
   }
 
@@ -463,6 +481,8 @@ async function replyWithAgent(db: Db, c: { id: string; lead_id: string; sender_n
       }).catch(() => undefined);
     }
   }
+  // Handed off to get a time booked (not because they're upset or off-topic): re-offer times later if nobody books it.
+  if (result.handoff && !result.close && result.qualification !== 'unqualified' && (visitRequest || result.mode === 'call')) await markAwaitingBooking(db, c.id, now);
   if (done) {
     const label = result.close ? 'closed' : visitRequest ? 'wants a visit' : result.mode === 'call' ? 'wants a call' : 'ready for a person';
     await note(db, c.lead_id, `Text conversation ${label} (${result.qualification}). ${result.summary}${visitRequest ? ` Requested visit time: ${visitRequest} (not confirmed yet).` : ''}${result.call_time ? ` Best time: ${result.call_time}.` : ''}${result.handoff_reason ? ` Reason: ${result.handoff_reason}` : ''}`, { needs_attention: !result.close });

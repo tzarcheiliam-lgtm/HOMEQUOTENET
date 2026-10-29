@@ -1467,6 +1467,16 @@ Built-in, always-on (switchable) texting through the Mac bridge, with every text
 - The **Appointment reminders by text** workflow template now notes it duplicates the built-in reminders.
 - **Known gaps**: a next-day meeting booked after 10:00 gets no YES-request text (and so no unconfirmed alert); homeowner time zone comes from state/ZIP (fallback LA); reschedules done outside the app actions are picked up by the 5-minute tick.
 - **Calls booked on a HomeQuote calendar (§45, migration 0070)**: this runner is their only source of reminder texts (no "booked" step: the booking system's confirmation text covers it; who-calls line; lead consent required; R points to the manage link in the email). Booking confirmations / reschedules / cancellations and all emails stay in `lib/booking`. Details in §45 "Reminders: one set per booking".
+- **Nurture for every lead (2026-10-29, no migration):**
+  - **Reminders for calls booked on a calendar:** they no longer need the form's consent flag when the homeowner has texted us back (any inbound `sms_messages` for the lead). Meta Instant Form leads, most leads, never carry the flag but are in a two-way conversation. Visits never needed it.
+  - **Re-offer times (step 4 of `runTextReminders`):**
+    - When the assistant hands a conversation off to get a time booked (a visit request, a call request, or a booking that failed / was taken with no other times), `markAwaitingBooking` writes an `sms_reminders` marker (`kind no_reply`, `step await_booking`, anchor = handoff). Upset, off-topic, closed and unqualified handoffs get none.
+    - A day later (`rebook_1`) and three days later (`rebook_2`), if the conversation is still `handoff`, the lead is still open, nobody has texted them by hand (outbound `ai=false`, not a reminder / workflow), no `contact_attempt` / `appointment` activity was logged, and nothing is booked, the assistant texts three real open times (`rebookText` + `threeSpread`, visit or call by the conversation's mode).
+    - It then sets the conversation back to `active`, so their reply gets booked.
+    - The ordinary no-reply follow-ups skip conversations with a marker in the last 10 days.
+  - **Leads from other connected sources:** non-Meta intake leads (`ingestLead`) that arrive with `consent_granted` get the opening text, assistant and follow-ups (`startSmsForConsentedLead`); never without consent.
+  - **Still not nurtured automatically:** leads typed in by staff (`createLead`) and leads with no consent and no reply. Email nurture is not built.
+  - Automation Map entries: `sms_consented_first_text`, `sms_rebook`. Tests in `tests/sms-booking.test.ts` and `tests/booking-reminders-single.test.ts`.
 - **Tests**: `tests/sms-reminders.test.ts` (planner incl. DST, wording, replies, chips; PGlite: contractor texts once per step, YES/R, unconfirmed alert once, DNC/company phone/STOP, reschedule re-arm, cancelled, switches, homeowner reminders + YES, follow-ups 1/3/7 → close → reply reopens, a reply stops them).
 
 ## 44. Automation Map — every automation in one place (migration 0069, 2026-10-29; NOT yet applied)

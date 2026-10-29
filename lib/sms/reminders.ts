@@ -14,6 +14,8 @@ import { finalizeOutbound, projectLabel, SENDER_HOUSE } from './rules';
 import { resolveHostContact } from '@/lib/booking/host-contact';
 import { mapHostFields } from '@/lib/booking/types';
 import { callMinutes, prettyPhone } from '@/lib/emails/booking';
+import { AWAIT_BOOKING_STEP, planRebook, rebookText, threeSpread } from './scheduling';
+import { loadBookingOptions } from './scheduling.server';
 
 /**
  * Reminder texts and follow-ups through the Mac bridge (no-show prevention). Runs every 5 minutes from the workflow
@@ -26,7 +28,9 @@ import { callMinutes, prettyPhone } from '@/lib/emails/booking';
  *      texts; lib/booking sends the instant booking / reschedule / cancellation text and every email (incl. the
  *      24 h / 1 h reminder emails with the manage link), so the "booked" step is left out and the text names who calls
  *      and from which number;
- *   3. homeowner conversations that went quiet: follow-ups on the configured days, then the request is closed.
+ *   3. homeowner conversations that went quiet: follow-ups on the configured days, then the request is closed;
+ *   4. homeowner conversations handed to a person to book a time and still not booked a day later: the assistant
+ *      re-offers three real open times (then once more on day 3) and takes the conversation back so it can book.
  * Every step is claimed in sms_reminders before its text is queued (unique per meeting time), so nothing is sent
  * twice and a rescheduled meeting gets its reminders again. All texting rules apply: texting on, opt-outs,
  * do-not-call, the daily limit and texting hours.
@@ -186,6 +190,13 @@ export async function runTextReminders(db: Db, deps: ReminderDeps = {}): Promise
     ]);
     const leadById = new Map((leads ?? []).map((l: any) => [l.id, l]));
     const coById = new Map((cos ?? []).map((c: any) => [c.id, c]));
+    // Texting with us counts as agreeing to texts about their own booking: Meta Instant Form leads (most leads) never
+    // carry the form's consent flag, yet they are already in a two-way text conversation with us.
+    const consentIds = leadIds.filter((id) => (leadById.get(id) as any)?.consent_granted !== true);
+    const { data: replied } = consentIds.length
+      ? await db.from('sms_messages').select('lead_id').eq('direction', 'in').in('lead_id', consentIds).limit(5000)
+      : { data: [] };
+    const textedBack = new Set(((replied ?? []) as any[]).map((m) => m.lead_id));
     for (const a of list) {
       const as = a.assignment_id ? (assignById.get(a.assignment_id) as any) : null;
       const leadId = as?.lead_id ?? a.lead_id ?? null;
@@ -206,7 +217,7 @@ export async function runTextReminders(db: Db, deps: ReminderDeps = {}): Promise
       if (!step) continue;
       const skip = (why: string) => claim('home_appointment', a.id, step.step, scheduledAt, 'skipped', why);
       if (lead.archived_at) { await skip('The lead is archived.'); continue; }
-      if (native && lead.consent_granted !== true) { await skip('The homeowner did not agree to texts.'); continue; }
+      if (native && lead.consent_granted !== true && !textedBack.has(lead.id)) { await skip('The homeowner did not agree to texts.'); continue; }
       const phone = normalizeUsPhone(lead.phone);
       if (!phone) { await skip('The lead has no valid US phone number.'); continue; }
       if (await optedOut(phone)) { await skip('This number opted out of texts.'); continue; }
@@ -240,6 +251,58 @@ export async function runTextReminders(db: Db, deps: ReminderDeps = {}): Promise
     }
   }
 
+  // ---------------------------------------------------------------- 4. re-offer times when a booking handoff went cold
+  // (runs before the follow-ups, which leave these conversations to this step)
+  const rebooking = new Set<string>();
+  if (cfg.followups.enabled) {
+    const { data: marks } = await db.from('sms_reminders').select('ref_id,anchor_at').eq('kind', 'no_reply').eq('step', AWAIT_BOOKING_STEP)
+      .gte('anchor_at', new Date(now.getTime() - 10 * 86_400_000).toISOString()).limit(500);
+    const latest = new Map<string, Date>();
+    for (const m of (marks ?? []) as any[]) {
+      const t = new Date(m.anchor_at);
+      if (!latest.has(m.ref_id) || t > latest.get(m.ref_id)!) latest.set(m.ref_id, t);
+    }
+    for (const id of latest.keys()) rebooking.add(id);
+    const ids = [...latest.keys()];
+    const logged = await loggedFor('no_reply', ids);
+    const { data: convs } = ids.length ? await db.from('sms_conversations').select('id,lead_id,contractor_id,status,workflow_owned,sender_name,phone_e164,mode,ai_turns').in('id', ids) : { data: [] };
+    for (const c of (convs ?? []) as any[]) {
+      const anchor = latest.get(c.id)!;
+      if (c.status !== 'handoff' || c.workflow_owned || !c.lead_id) continue; // someone (or the assistant) picked it back up
+      const step = await pickDue('no_reply', c.id, anchor, planRebook(anchor), logged);
+      if (!step) continue;
+      const skip = (why: string) => claim('no_reply', c.id, step.step, anchor, 'skipped', why);
+      const { data: lead } = await db.from('leads').select('id,first_name,state,zip,status,archived_at').eq('id', c.lead_id).maybeSingle();
+      if (!lead || (lead as any).archived_at) { await skip('The lead is archived.'); continue; }
+      if (!['new', 'contact_attempted', 'qualified', 'assigned'].includes((lead as any).status)) { await skip('The lead has moved on (booked, lost or closed).'); continue; }
+      // A person is on it: they texted, or logged a call, since the handoff.
+      const since = anchor.toISOString();
+      const { data: personText } = await db.from('sms_messages').select('id').eq('conversation_id', c.id).eq('direction', 'out').eq('ai', false)
+        .is('reminder_kind', null).is('workflow_step_run_id', null).gt('created_at', since).limit(1);
+      if (personText?.length) { await skip('Someone from the team texted them after the handoff.'); continue; }
+      const { data: touched } = await db.from('lead_activities').select('id').eq('lead_id', c.lead_id).in('type', ['contact_attempt', 'appointment']).gt('created_at', since).limit(1);
+      if (touched?.length) { await skip('Someone from the team followed up after the handoff.'); continue; }
+      if (await optedOut(c.phone_e164)) { await skip('This number opted out of texts.'); continue; }
+      const options = await loadBookingOptions(db, { id: c.id, lead_id: c.lead_id, sender_name: c.sender_name, contractor_id: c.contractor_id }, now).catch(() => null);
+      if (!options || options.alreadyBooked) { await skip(options?.alreadyBooked ? 'They are already booked.' : 'Open times could not be loaded.'); continue; }
+      const pool = c.mode === 'call' ? (options.call ?? options.visit) : (options.visit ?? options.call);
+      if (!pool) { await skip('No open times to offer.'); continue; }
+      const zones = resolveZones({ state: (lead as any).state, zip: (lead as any).zip }) ?? DEFAULT_ZONES;
+      const sendAfter = nextEligible(now, zones, window) ?? now;
+      if (sendAfter > step.until) { await skip('Outside texting hours until it was too late to be useful.'); continue; }
+      if (await dailyCapReached()) continue;
+      const times = threeSpread(pool.times, pool.timeZone);
+      const body = finalizeOutbound(rebookText(step.step, { kind: pool.kind, times, firstName: (lead as any).first_name, sender: c.sender_name, callWho: pool.kind === 'call' ? options.call?.callerFirstName : null }));
+      const rid = await claim('no_reply', c.id, step.step, anchor, 'queued');
+      if (!rid) continue;
+      const msgId = await queue(db, c, body, { ai: true, sendAfter, reminder: { kind: 'no_reply', ref: c.id, step: step.step } });
+      await db.from('sms_reminders').update({ message_id: msgId ?? null }).eq('id', rid);
+      // The assistant takes the conversation back so it can book the time they reply with.
+      await db.from('sms_conversations').update({ status: 'active', mode: pool.kind === 'call' ? 'call' : 'text', updated_at: now.toISOString() }).eq('id', c.id);
+      await note(db, c.lead_id, `Still not booked ${step.step === 'rebook_1' ? 'a day' : 'three days'} after the handoff, so the texting assistant re-offered times: ${times.map((t) => t.label).join(', ')}.`, { followup: true });
+    }
+  }
+
   // ---------------------------------------------------------------- 3. homeowner follow-ups when they go quiet
   if (cfg.followups.enabled) {
     const { data: convs } = await db.from('sms_conversations').select('id,lead_id,status,workflow_owned,sender_name,phone_e164,last_inbound_at,created_at')
@@ -252,6 +315,7 @@ export async function runTextReminders(db: Db, deps: ReminderDeps = {}): Promise
     const outBy = new Map<string, any[]>();
     for (const m of (msgs ?? []) as any[]) outBy.set(m.conversation_id, [...(outBy.get(m.conversation_id) ?? []), m]);
     for (const c of list) {
+      if (rebooking.has(c.id)) continue; // re-offering times (step 4) owns this conversation's follow-ups
       const outs = outBy.get(c.id) ?? [];
       if (outs.some((m) => m.status === 'queued' || m.status === 'sending')) continue; // something is already on its way
       const sent = outs.filter((m) => m.status === 'sent').map((m) => new Date(m.sent_at ?? m.created_at)).sort((x, y) => +x - +y);

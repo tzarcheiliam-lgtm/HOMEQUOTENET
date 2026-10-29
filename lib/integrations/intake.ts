@@ -6,7 +6,7 @@ import { sendLeadEmailsSoon } from '@/lib/leads/notify';
 import { flushNotificationsSoon } from '@/lib/notifications/outbox';
 import { after } from 'next/server';
 import { smsConfigured, smsMetaLeadsEnabled } from '@/lib/sms/config';
-import { startSmsForMetaLead } from '@/lib/sms/service';
+import { startSmsForConsentedLead, startSmsForMetaLead } from '@/lib/sms/service';
 import { selectActiveAgreement } from '@/lib/outcomes/pricing';
 import type { PricingAgreement } from '@/lib/types';
 import type { IntakeContext, IntakeResult, NormalizedLead } from './types';
@@ -290,6 +290,9 @@ export async function ingestLead(
   // Meta Instant Form leads get the same automatic opening text as funnel leads (needs SMS_META_LEADS=1 and /app/texting on).
   if (ctx.provider === 'meta' && smsConfigured() && smsMetaLeadsEnabled()) {
     after(async () => { try { await startSmsForMetaLead(admin, lead.id, new Date(), { contractorId: ctx.contractorId ?? null, senderName: ctx.senderName ?? null }); } catch { /* never blocks lead intake */ } });
+  } else if (ctx.provider !== 'meta' && normalized.consent_granted === true && smsConfigured()) {
+    // Every other connected source gets the same opening text and follow-ups, when the lead agreed to texts.
+    after(async () => { try { await startSmsForConsentedLead(admin, lead.id, new Date(), { contractorId: ctx.contractorId ?? null, senderName: ctx.senderName ?? null }); } catch { /* never blocks lead intake */ } });
   }
   return {
     status: 'created',

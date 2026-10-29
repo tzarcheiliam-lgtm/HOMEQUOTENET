@@ -154,3 +154,33 @@ export function takenText(times: OpenTime[]): string {
     ? `Ah, that time just got taken. I can do ${joinTimes(times)}. Which works?`
     : `Ah, that time just got taken. Someone from the team will text you shortly with a few new times.`;
 }
+
+/**
+ * Handed to a person to book a time and still not booked: the assistant re-offers real times, a day later and again
+ * three days later (each with half a day of slack for texting hours), then stops. The anchor is the handoff.
+ */
+export const AWAIT_BOOKING_STEP = 'await_booking';
+export type RebookStep = 'rebook_1' | 'rebook_2';
+export function planRebook(handoffAt: Date): { step: RebookStep; dueAt: Date; until: Date }[] {
+  const h = handoffAt.getTime();
+  const DAY = 86_400_000;
+  return [
+    { step: 'rebook_1', dueAt: new Date(h + DAY), until: new Date(h + 1.5 * DAY) },
+    { step: 'rebook_2', dueAt: new Date(h + 3 * DAY), until: new Date(h + 3.5 * DAY) },
+  ];
+}
+
+/** The re-offer text: real times, one tap to answer. */
+export function rebookText(step: RebookStep, c: { kind: BookingKind; times: OpenTime[]; firstName: string | null; sender: string; callWho?: string | null }): string {
+  const list = joinTimes(c.times);
+  const name = c.firstName?.trim() ? ` ${c.firstName.trim().split(/\s+/)[0]}` : '';
+  if (c.kind === 'call') {
+    const who = c.callWho?.trim() || 'We';
+    return step === 'rebook_1'
+      ? `Hi${name}, still want that quick call? ${who} can call you ${list}. Which works?`
+      : `Last check-in from ${c.sender}: ${who} can still call you ${list}. Just reply with the one that works.`;
+  }
+  return step === 'rebook_1'
+    ? `Hi${name}, still want to get your free estimate on the calendar? I have ${list}. Any of those work?`
+    : `Last check-in from ${c.sender}: I can still do ${list} for your free estimate. Just reply with the one that works.`;
+}
