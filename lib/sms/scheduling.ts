@@ -1,0 +1,156 @@
+/**
+ * Real open times for the texting assistant, so it can offer a homeowner a few
+ * specific times in one text and book the one they pick, instead of asking
+ * "weekday or weekend?", then "morning or afternoon?", then "which day?".
+ *
+ * Two kinds, chosen by how the homeowner wants to continue:
+ *   visit  they would rather text: the free in-home estimate visit, booked on the
+ *          contractor's on-site availability (lib/availability, 60-minute visits)
+ *   call   they would rather talk: the quick call on the HomeQuote calendar the
+ *          lead books into (lib/booking: the contractor's or the team calendar)
+ *
+ * Pure (no I/O): picking what to offer, the lines the assistant sees, and the
+ * texts sent after a booking.
+ */
+import { formatTime } from '@/lib/booking/format';
+
+export type BookingKind = 'visit' | 'call';
+
+export interface OpenTime {
+  /** What the assistant passes back to book it: v1…, c1… */
+  id: string;
+  kind: BookingKind;
+  startMs: number;
+  endMs: number;
+  /** "Tue, Nov 3 at 9:00 AM" in the time zone the homeowner is told. */
+  label: string;
+}
+
+/** Days with open times, and times per day, given to the assistant. */
+export const OFFER_DAYS = 6;
+const PER_DAY = 3;
+/** Never offer anything sooner than this: a visit or call needs a little notice. */
+export const MIN_LEAD_MS = 3 * 3_600_000;
+
+const dayFmt = new Map<string, Intl.DateTimeFormat>();
+function dayKeyIn(ms: number, timeZone: string): string {
+  let f = dayFmt.get(timeZone);
+  if (!f) {
+    f = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' });
+    dayFmt.set(timeZone, f);
+  }
+  return f.format(new Date(ms));
+}
+const hourIn = (ms: number, timeZone: string) =>
+  Number(new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', hourCycle: 'h23' }).format(new Date(ms)));
+
+/** "Tue, Nov 3 at 9:00 AM" */
+export function slotLabel(ms: number, timeZone: string): string {
+  const day = new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(ms));
+  return `${day} at ${formatTime(ms, timeZone)}`;
+}
+
+/**
+ * From every bookable start, a short, varied menu: the first few days that have
+ * openings, and on each up to one morning, one midday and one afternoon time
+ * (the earliest in each). Enough for the assistant to offer three times that fit
+ * whatever the homeowner said ("mornings", "Nov 3 or Nov 6"), small enough to
+ * keep the prompt short.
+ */
+export function pickOpenTimes(
+  slots: { startMs: number; endMs: number }[],
+  kind: BookingKind,
+  timeZone: string,
+  nowMs: number,
+  opts: { days?: number; perDay?: number } = {}
+): OpenTime[] {
+  const days = opts.days ?? OFFER_DAYS;
+  const perDay = opts.perDay ?? PER_DAY;
+  const byDay = new Map<string, { startMs: number; endMs: number }[]>();
+  for (const s of [...slots].sort((a, b) => a.startMs - b.startMs)) {
+    if (s.startMs < nowMs + MIN_LEAD_MS) continue;
+    const k = dayKeyIn(s.startMs, timeZone);
+    if (!byDay.has(k) && byDay.size >= days) continue;
+    const list = byDay.get(k) ?? [];
+    list.push(s);
+    byDay.set(k, list);
+  }
+  const out: OpenTime[] = [];
+  const prefix = kind === 'visit' ? 'v' : 'c';
+  for (const list of byDay.values()) {
+    const bucket = (s: { startMs: number }) => {
+      const h = hourIn(s.startMs, timeZone);
+      return h < 12 ? 0 : h < 15 ? 1 : 2;
+    };
+    const chosen: { startMs: number; endMs: number }[] = [];
+    for (const b of [0, 1, 2]) {
+      const first = list.find((s) => bucket(s) === b);
+      if (first) chosen.push(first);
+    }
+    // A short day (one bucket only): fill with the next starts an hour or more apart.
+    for (const s of list) {
+      if (chosen.length >= perDay) break;
+      if (!chosen.includes(s) && chosen.every((c) => Math.abs(c.startMs - s.startMs) >= 3_600_000)) chosen.push(s);
+    }
+    for (const s of chosen.slice(0, perDay).sort((a, b) => a.startMs - b.startMs)) {
+      out.push({ id: `${prefix}${out.length + 1}`, kind, startMs: s.startMs, endMs: s.endMs, label: slotLabel(s.startMs, timeZone) });
+    }
+  }
+  return out;
+}
+
+/** Three times spread over different days where possible, for a reply the server writes itself. */
+export function threeSpread(times: OpenTime[], timeZone: string): OpenTime[] {
+  const seen = new Set<string>();
+  const firstPerDay = times.filter((t) => {
+    const k = dayKeyIn(t.startMs, timeZone);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  const pick = firstPerDay.slice(0, 3);
+  for (const t of times) if (pick.length < 3 && !pick.includes(t)) pick.push(t);
+  return pick.sort((a, b) => a.startMs - b.startMs);
+}
+
+/** "Tue, Nov 3 at 9:00 AM, Wed, Nov 4 at 11:00 AM or Thu, Nov 5 at 2:00 PM" */
+export function joinTimes(times: OpenTime[]): string {
+  const labels = times.map((t) => t.label);
+  if (labels.length <= 1) return labels.join('');
+  return `${labels.slice(0, -1).join(', ')} or ${labels.at(-1)}`;
+}
+
+export interface BookedCopy {
+  firstName: string | null;
+  label: string;
+  /** visit: the company coming out ("Pool Masters"). call: who calls ("Liam from Pool Masters"). */
+  who: string;
+  /** call: minutes, and the number they will call from, if known. */
+  minutes?: number;
+  fromPhone?: string | null;
+  callerFirstName?: string | null;
+}
+
+const hi = (name: string | null) => (name?.trim() ? ` ${name.trim().split(/\s+/)[0]}` : '');
+
+/** The text sent the moment a visit is booked (in place of the automatic "you're booked" reminder text). */
+export function visitBookedText(c: BookedCopy): string {
+  return `You're all set${hi(c.firstName)}! Free estimate visit with ${c.who} on ${c.label}. We'll text the day before to confirm. Need a different time? Just reply R.`;
+}
+
+/** The text sent the moment a call is booked (in place of the booking system's own confirmation text). */
+export function callBookedText(c: BookedCopy): string {
+  const mins = c.minutes ?? 10;
+  const length = `${mins <= 15 ? 'quick ' : ''}${mins}-minute call`;
+  const caller = c.callerFirstName?.trim() || 'We';
+  const from = c.fromPhone ? ` from ${c.fromPhone}` : '';
+  const verb = caller === 'We' ? "We'll call you" : `${caller} will call you`;
+  return `You're booked${hi(c.firstName)}: a ${length} with ${c.who}, ${c.label}. ${verb} at this number${from}. Need a different time? Just reply R.`;
+}
+
+/** The pick was taken in the meantime (or no longer fits): offer fresh times. */
+export function takenText(times: OpenTime[]): string {
+  return times.length
+    ? `Ah, that time just got taken. I can do ${joinTimes(times)}. Which works?`
+    : `Ah, that time just got taken. Someone from the team will text you shortly with a few new times.`;
+}

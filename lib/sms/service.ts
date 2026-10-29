@@ -2,7 +2,9 @@ import 'server-only';
 export { DEFAULT_SETTINGS, loadSettings, type SmsSettings } from './core';
 import { normalizeUsPhone } from '@/lib/ai-calling/phone';
 import { nextEligible, resolveZones } from '@/lib/ai-calling/timezone';
-import { runSmsAgent, type AgentInput, type AgentResult, type SmsTurn } from './agent';
+import { runSmsAgent, type AgentInput, type AgentResult, type OpenTimesForAgent, type SmsTurn } from './agent';
+import { callBookedText, takenText, threeSpread, visitBookedText, type OpenTime } from './scheduling';
+import { bookCall, bookVisit, loadBookingOptions, NO_OPTIONS, noteBooked, type BookingOptions } from './scheduling.server';
 import type { Alert } from './health';
 import { notifyAdmins } from './health-notify';
 import { DEFAULT_ZONES, MAX_AI_TURNS } from './config';
@@ -158,7 +160,21 @@ async function startSmsForMetaLeadInner(db: Db, leadId: string, now: Date, sourc
 
 export interface InboundInput { phone: string; body: string; guid: string; receivedAt?: string }
 export type InboundResult = { handled: boolean; reason?: string; replied?: boolean };
-export interface InboundDeps { agent?: (input: AgentInput) => Promise<AgentResult>; now?: () => Date; aiConfigured?: boolean; notify?: (alert: Alert) => Promise<void> }
+export interface InboundDeps {
+  agent?: (input: AgentInput) => Promise<AgentResult>; now?: () => Date; aiConfigured?: boolean; notify?: (alert: Alert) => Promise<void>;
+  /** Open times to offer (default: the contractor's visit availability and the lead's booking calendar). */
+  booking?: (c: { id: string; lead_id: string; sender_name: string; contractor_id?: string | null }, now: Date) => Promise<BookingOptions>;
+}
+
+/** The open times as the assistant sees them. */
+function forAgent(o: BookingOptions): OpenTimesForAgent {
+  const brief = (t: OpenTime[]) => t.map(({ id, label }) => ({ id, label }));
+  return {
+    alreadyBooked: o.alreadyBooked,
+    visit: o.visit ? { with: o.visit.who, times: brief(o.visit.times) } : null,
+    call: o.call ? { with: o.call.who, minutes: o.call.minutes, times: brief(o.call.times) } : null,
+  };
+}
 
 /** A text from a lead arrived on the Mac. Stores it, honors STOP, and (while the AI owns the conversation) queues a reply. */
 export async function handleInbound(db: Db, input: InboundInput, deps: InboundDeps = {}): Promise<InboundResult> {
@@ -311,6 +327,61 @@ export async function queueWorkflowText(db: Db, input: { leadId: string; body: s
   }
 }
 
+/**
+ * Books the time the lead picked and sends the confirmation (the assistant's own line is not sent). The confirmation is
+ * filed as the appointment's "booked" reminder text, so the reminder runner doesn't send a second one and YES / R replies
+ * work right away; the conversation then belongs to a person, which also keeps the booking system's own confirmation
+ * text from going out twice. A time taken in the meantime gets three fresh ones; any other failure goes to a person.
+ */
+async function bookPicked(
+  db: Db,
+  c: { id: string; lead_id: string; sender_name: string; ai_turns: number; contractor_id?: string | null },
+  picked: OpenTime,
+  options: BookingOptions,
+  result: AgentResult,
+  deps: InboundDeps,
+  now: Date,
+): Promise<InboundResult> {
+  const pause = () => new Date(now.getTime() + 3000 + Math.floor(Math.random() * 4000));
+  const { data: lead } = await db.from('leads').select('id,first_name,last_name,phone,email').eq('id', c.lead_id).maybeSingle();
+  const l = (lead ?? { id: c.lead_id, first_name: null, last_name: null, phone: null, email: null }) as { id: string; first_name: string | null; last_name: string | null; phone: string | null; email: string | null };
+  const visit = picked.kind === 'visit' ? options.visit : null;
+  const call = picked.kind === 'call' ? options.call : null;
+  const outcome = visit ? await bookVisit(db, visit, picked, c.lead_id, now) : call ? await bookCall(db, call, picked, l) : { ok: false as const, reason: 'error' as const };
+  const base = { ai_turns: c.ai_turns + 1, qualification: result.qualification, summary: result.summary, updated_at: now.toISOString() };
+
+  if (!outcome.ok && outcome.reason === 'taken') {
+    const fresh = await (deps.booking ?? ((x, n) => loadBookingOptions(db, x, n)))(c, now).catch(() => NO_OPTIONS);
+    const pool = picked.kind === 'visit' ? fresh.visit : fresh.call;
+    const times = pool ? threeSpread(pool.times.filter((t) => t.startMs !== picked.startMs), pool.timeZone) : [];
+    await queue(db, c, finalizeOutbound(takenText(times)), { ai: true, sendAfter: pause() });
+    await db.from('sms_conversations').update({ ...base, status: times.length ? 'active' : 'handoff', mode: picked.kind === 'call' ? 'call' : 'text' }).eq('id', c.id);
+    if (!times.length) await note(db, c.lead_id, `Text conversation needs a person: the time they picked (${picked.label}) was taken and no other open times were found.`, { needs_attention: true });
+    return { handled: true, replied: true, reason: 'slot_taken' };
+  }
+  if (!outcome.ok) {
+    await queue(db, c, "Got it! Someone from the team will text you shortly to lock that in.", { ai: true, sendAfter: pause() });
+    await db.from('sms_conversations').update({ ...base, status: 'handoff' }).eq('id', c.id);
+    await note(db, c.lead_id, `Text conversation needs a person: they picked ${picked.label} but it could not be booked automatically. Please book it by hand.`, { needs_attention: true });
+    return { handled: true, replied: true, reason: 'booking_failed' };
+  }
+
+  const body = finalizeOutbound(visit
+    ? visitBookedText({ firstName: l.first_name, label: picked.label, who: visit.who })
+    : callBookedText({ firstName: l.first_name, label: picked.label, who: call!.who, minutes: call!.minutes, fromPhone: call!.fromPhone, callerFirstName: call!.callerFirstName }));
+  const msgId = await queue(db, c, body, { ai: true, sendAfter: pause(), reminder: { kind: 'home_appointment', ref: outcome.appointmentId, step: 'booked' } });
+  await db.from('sms_reminders').insert({ kind: 'home_appointment', ref_id: outcome.appointmentId, step: 'booked', anchor_at: outcome.startsAt, status: 'queued', message_id: msgId ?? null, detail: 'Confirmation sent by the texting assistant.' });
+  await db.from('sms_conversations').update({ ...base, status: 'handoff', mode: visit ? 'text' : 'call' }).eq('id', c.id);
+  await noteBooked(db, c.lead_id, picked.kind, picked.label, visit ? visit.who : call!.who);
+  await (deps.notify ?? notifyAdmins)({
+    title: visit ? 'A lead booked a visit' : 'A lead booked a call',
+    body: `Booked by text: ${visit ? 'free estimate visit' : `${call!.minutes}-minute call`} ${picked.label}.`,
+    url: `/app/leads/${c.lead_id}`,
+    linkLabel: 'Open the lead',
+  }).catch(() => undefined);
+  return { handled: true, replied: true, reason: visit ? 'booked_visit' : 'booked_call' };
+}
+
 async function replyWithAgent(db: Db, c: { id: string; lead_id: string; sender_name: string; ai_turns: number; mode?: string | null; call_time_preference?: string | null }, deps: InboundDeps, now: Date): Promise<InboundResult> {
   const settings = await loadSettings(db);
   const handoff = async (reason: string) => {
@@ -341,16 +412,22 @@ async function replyWithAgent(db: Db, c: { id: string; lead_id: string; sender_n
     ? (await loadContractorTexting(db, (convoRow as { contractor_id: string }).contractor_id)).extraInstructions
     : null;
   const extraInstructions = [settings.bot_extra_instructions?.trim(), coExtra?.trim() ? `For ${c.sender_name} specifically: ${coExtra.trim()}` : null].filter(Boolean).join('\n\n') || null;
+  // Real open times, so the assistant can offer a few and book one (never fails the reply).
+  const target = { ...c, contractor_id: (convoRow as { contractor_id?: string | null } | null)?.contractor_id ?? null };
+  const options = await (deps.booking ?? ((x, n) => loadBookingOptions(db, x, n)))(target, now).catch(() => NO_OPTIONS);
   let result: AgentResult;
   try {
     result = await (deps.agent ?? runSmsAgent)({
       senderName: c.sender_name, firstName: (lead?.first_name as string | null) ?? null, project: metaAnswers ? metaProject(metaAnswers) : projectLabel(snap.industry),
-      extraInstructions,
+      extraInstructions, openTimes: forAgent(options),
       known: metaAnswers ?? readAnswers((session?.answers ?? {}) as Record<string, unknown>, snap), formQualified: (session?.qualified as boolean | null) ?? null, history,
     });
   } catch {
     return handoff('the assistant could not reply');
   }
+  // They accepted one of the offered times: book it and confirm with the exact time.
+  const picked = result.book_slot && !result.close ? [...(options.visit?.times ?? []), ...(options.call?.times ?? [])].find((t) => t.id === result.book_slot) : undefined;
+  if (picked) return bookPicked(db, target, picked, options, result, deps, now);
   // They picked a day for the visit: that is the goal, so the conversation goes to a person to confirm the time.
   const visitRequest = result.appointment_time && !result.close ? result.appointment_time : null;
   if (visitRequest) result = { ...result, handoff: true };
