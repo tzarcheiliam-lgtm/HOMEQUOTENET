@@ -244,7 +244,7 @@ describe('role-aware links', () => {
   });
 });
 
-describe('HomeQuote booking calendar hosts (0068 booking_calendar_members)', () => {
+describe('HomeQuote booking calendar hosts (0070 booking_calendar_members)', () => {
   const booked = (calendarId: string, over: Partial<NotificationEvent> = {}) =>
     event({ type: 'appointment_booked', entity_type: 'appointment', entity_id: 'appt-1', lead_id: 'lead-1', contractor_id: null, payload: { appointmentId: 'appt-1', calendarId, scheduledAt: '2026-10-30T17:00:00Z' }, ...over });
   beforeEach(() => {

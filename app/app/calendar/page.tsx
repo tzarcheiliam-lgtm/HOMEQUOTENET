@@ -20,7 +20,7 @@ import { loadCalendarEvents } from './data.server';
 export const metadata = { title: 'Calendar · HomeQuote Network' };
 
 /**
- * HomeQuote's own booking calendar (0068). Staff (admin, setter) switch
+ * HomeQuote's own booking calendar (0070). Staff (admin, setter) switch
  * between the HomeQuote team calendar, HomeQuote sales and every contractor's;
  * a contractor sees only its own. Day / week; click a booking for details,
  * reschedule, cancel or held / no-show; "Book a call" books on someone's
@@ -57,7 +57,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     return (
       <div className="space-y-4">
         <PageHeader title="Calendar" />
-        <EmptyState icon={CalendarDays} title="No booking calendar yet" description="Calendars appear here once migration 0068 is applied." />
+        <EmptyState icon={CalendarDays} title="No booking calendar yet" description="Calendars appear here once migration 0070 is applied." />
       </div>
     );
   }

@@ -107,7 +107,7 @@ export default async function AvailabilityPage({
         backLabel="All contractors"
       />
       <CalendarNotice code={one('calendar')} />
-      {/* These hours are for on-site visits; the 30-minute calls homeowners book online have their own calendar (0068). */}
+      {/* These hours are for on-site visits; the 30-minute calls homeowners book online have their own calendar (0070). */}
       <p className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
         Hours for the calls homeowners book online are set on the{' '}
         <Link href={isContractor ? '/app/calendar/settings' : `/app/calendar?contractor=${contractorId}`} className="font-medium text-foreground underline underline-offset-4">booking calendar</Link>.

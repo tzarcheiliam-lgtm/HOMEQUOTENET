@@ -11,7 +11,7 @@ export interface AppointmentDetail {
   scheduledAt: string | null;
   /** Set on HomeQuote-calendar bookings (their own length); else the caller's default length applies. */
   endsAt?: string | null;
-  /** HomeQuote booking calendar (0068), when booked through one. */
+  /** HomeQuote booking calendar (0070), when booked through one. */
   calendarId?: string | null;
   status: string;
   location: string | null;

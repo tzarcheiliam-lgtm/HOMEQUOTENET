@@ -1,6 +1,6 @@
 /**
  * Pure slot computation for booking calendars. Mirrors the SQL re-check in
- * booking_slot_problem (migration 0068) and reuses the DST-safe availability
+ * booking_slot_problem (migration 0070) and reuses the DST-safe availability
  * engine in lib/availability (rules, exceptions, buffer, daily cap, external busy).
  * The SQL check is the authority at booking time; this only decides what to offer.
  */

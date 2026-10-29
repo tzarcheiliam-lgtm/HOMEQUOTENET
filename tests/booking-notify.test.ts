@@ -138,7 +138,7 @@ beforeAll(async () => {
       [uid, role, company, crole, role === 'admin' ? 'Liam Admin' : 'Olive Owner']);
   }
   await q(`insert into public.funnels(id,slug,contractor_id,published,config) values ($1,'pool-masters-la',$2,true,'{}')`, [id.funnelA, id.companyA]);
-  await db.exec(readFileSync('supabase/migrations/0068_native_booking_calendars.sql', 'utf8'));
+  await db.exec(readFileSync('supabase/migrations/0070_native_booking_calendars.sql', 'utf8'));
   team = (await one(`select id from public.booking_calendars where kind='team'`)).id;
   sales = (await one(`select id from public.booking_calendars where kind='sales'`)).id;
   calA = (await one(`select id from public.booking_calendars where kind='contractor'`)).id;
@@ -289,7 +289,7 @@ describe('reschedule and cancel', () => {
 });
 
 describe('reminders', () => {
-  it('sends the 1 h and 24 h reminders once each, skipping cancelled calls and fresh confirmations', async () => {
+  it('sends the 1 h and 24 h reminder emails once each (no texts), skipping cancelled calls and fresh confirmations', async () => {
     const l = await lead();
     const soon = await appt(l, team, new Date(Date.now() + 50 * 60_000).toISOString(), { created_at: new Date(Date.now() - 3 * 86_400_000).toISOString(), confirmed_at: new Date(Date.now() - 3 * 86_400_000).toISOString() });
     const l2 = await lead();
@@ -298,10 +298,12 @@ describe('reminders', () => {
     const justMoved = await appt(l3, team, new Date(Date.now() + 22 * 3_600_000).toISOString(), { created_at: new Date(Date.now() - 3 * 86_400_000).toISOString(), confirmed_at: new Date(Date.now() - 30 * 60_000).toISOString() });
 
     const r = await runBookingNotifications({ ...deps(), limit: 200 });
-    expect(r.notices.find((n) => n.id === soon)).toMatchObject({ notice: 'reminder_1h', email: 'sent', sms: 'queued' });
-    expect(r.notices.find((n) => n.id === tomorrow)).toMatchObject({ notice: 'reminder_24h', email: 'sent', sms: 'queued' });
+    // Emails only: the reminder TEXTS come from runTextReminders (tests/booking-reminders-single.test.ts).
+    expect(r.notices.find((n) => n.id === soon)).toMatchObject({ notice: 'reminder_1h', email: 'sent', sms: 'text_reminders' });
+    expect(r.notices.find((n) => n.id === tomorrow)).toMatchObject({ notice: 'reminder_24h', email: 'sent', sms: 'text_reminders' });
     expect(r.notices.find((n) => n.id === justMoved)).toMatchObject({ notice: 'reminder_24h', email: 'just_confirmed' });
-    expect((await texts(l))[0].body).toContain('starts in about an hour');
+    expect(sent.find((m) => m.subject.startsWith('Reminder') || /starts|reminder/i.test(m.text))).toBeTruthy();
+    for (const x of [l, l2, l3]) expect(await texts(x)).toHaveLength(0);
     expect(sent.filter((m) => m.toEmail === 'admin@t.test')).toHaveLength(0); // hosts are not reminded
 
     const again = await runBookingNotifications({ ...deps(), limit: 200 });

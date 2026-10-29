@@ -27,6 +27,8 @@ import { SalesAppointmentBadge } from '@/components/calls/disposition-badge';
 import { AppointmentStatusControl } from '@/components/calls/appointment-status-control';
 import { fmtDateTime, fmtPhone, telHref } from '@/components/calls/format';
 import { CreditControl, SaleBadge, SaleOutcomeControl } from '@/components/calls/sale-outcome-control';
+import { reminderChip, type ReminderChip } from '@/lib/sms/reminder-status';
+import { createClient } from '@/lib/supabase/server';
 import { AppointmentsCalendar, type CalendarItem } from '@/components/calls/appointments-calendar';
 import { gridRange, monthFrom, monthGrid, shiftMonth } from '@/lib/calls/calendar-grid';
 import { dayKey } from '@/lib/calls/goals';
@@ -76,6 +78,17 @@ export default async function SalesAppointmentsPage({
       : { partner, status, upcoming: when === 'upcoming', needsDecision }
   );
   const adds = await listCalendarAdds(rows.map((r) => r.id));
+  // Reminder texts (admins can read them; RLS returns nothing for callers, or before migration 0068).
+  const chips = new Map<string, ReminderChip>();
+  if (rows.length) {
+    const { data: rem } = await (await createClient()).from('sms_reminders').select('ref_id,step,status,anchor_at,created_at').eq('kind', 'sales_meeting').in('ref_id', rows.map((r) => r.id));
+    for (const a of rows) {
+      const mine = (rem ?? []).filter((r) => r.ref_id === a.id && new Date(r.anchor_at as string).getTime() === new Date(a.scheduled_at).getTime());
+      const chip = reminderChip(mine as { step: string; status: string; created_at: string }[], a.confirmed_at);
+      if (chip) chips.set(a.id, chip);
+    }
+  }
+  const chipEl = (id: string) => { const c = chips.get(id); return c ? <span className={cn('mt-1 inline-block rounded-full border px-2 py-0.5 text-xs', c.tone === 'good' ? 'border-emerald-500/50 text-emerald-700 dark:text-emerald-300' : c.tone === 'warn' ? 'border-amber-500/60 text-amber-700 dark:text-amber-300' : 'text-muted-foreground')}>{c.label}</span> : null; };
   const site = siteUrl();
   const nowMs = Date.now();
   const calendarOf = (a: (typeof rows)[number]): AddToCalendarProps => {
@@ -239,7 +252,7 @@ export default async function SalesAppointmentsPage({
                         {a.company_name}
                       </Link>
                     </div>
-                    <SalesAppointmentBadge value={a.status} />
+                    <div className="flex flex-col items-end"><SalesAppointmentBadge value={a.status} />{chipEl(a.id)}</div>
                   </div>
                   <dl className="space-y-0.5 text-sm">
                     {a.decision_maker_name ? (
@@ -358,6 +371,7 @@ export default async function SalesAppointmentsPage({
                     </TableCell>
                     <TableCell>
                       <SalesAppointmentBadge value={a.status} />
+                      {chipEl(a.id)}
                       {a.confirmed_at ? (
                         <span className="block text-xs text-muted-foreground">
                           Confirmed {fmtDateTime(a.confirmed_at)}

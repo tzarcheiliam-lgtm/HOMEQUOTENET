@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { recordAutomationRun } from '@/lib/automations/runs.server';
 import { equalSecret } from '@/lib/funnels/server';
 import { runCalendarMaintenance } from '@/lib/calendar/sync.server';
 import { runNotificationMaintenance } from '@/lib/notifications/outbox';
@@ -7,6 +8,7 @@ import { retryPendingAduQuizLeads } from '@/lib/adu-quiz/leads.server';
 import { runBookingNotifications } from '@/lib/booking/reminders.server';
 import { checkBridgeHealth } from '@/lib/sms/health';
 import { notifyAdmins } from '@/lib/sms/health-notify';
+import { runTextReminders } from '@/lib/sms/reminders';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { processWorkflowTick, pruneWorkflowHistory } from '@/lib/workflows/runtime.server';
 
@@ -18,6 +20,7 @@ export async function POST(request: Request) {
   if (!expected || !equalSecret(request.headers.get('authorization') ?? '', `Bearer ${expected}`)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  const startedAt = new Date();
   try {
     const result = await processWorkflowTick();
     const retention = await pruneWorkflowHistory();
@@ -41,7 +44,8 @@ export async function POST(request: Request) {
     // Texting: alert the team if texts are waiting and the Mac bridge is not sending them. Best effort.
     let sms: unknown = null;
     try { sms = await checkBridgeHealth(createAdminClient(), { notify: notifyAdmins }); } catch { sms = { error: 'texting health check failed' }; }
-    // Native calendar bookings: confirmations, 24 h / 1 h reminders, cancellation notices. Best effort.
+    // Native calendar bookings: confirmations (email + text), 24 h / 1 h reminder EMAILS, cancellation notices. Best effort.
+    // Runs before the reminder texts so a booking's confirmation always goes first.
     let bookings: unknown = null;
     try {
       const r = await runBookingNotifications();
@@ -49,6 +53,10 @@ export async function POST(request: Request) {
     } catch {
       bookings = { error: 'booking notifications failed' };
     }
+    // Reminder texts for booked meetings (sales meetings, on-site visits AND calendar calls: the only reminder texts)
+    // and follow-ups when homeowners don't reply. Best effort.
+    let reminders: unknown = null;
+    try { reminders = await runTextReminders(createAdminClient()); } catch { reminders = { error: 'text reminders failed' }; }
     // ADU quiz leads whose webhook delivery failed. Best effort; a failure never affects the tick.
     let aduQuiz: unknown = null;
     try {
@@ -56,8 +64,11 @@ export async function POST(request: Request) {
     } catch {
       aduQuiz = { error: 'adu quiz retry failed' };
     }
-    return NextResponse.json({ ...result, retention, notifications, calendar, signing, sms, bookings, aduQuiz }, { status: result.failures ? 207 : 200 });
+    const body = { ...result, retention, notifications, calendar, signing, sms, reminders, bookings, aduQuiz };
+    await recordAutomationRun('workflow_tick', startedAt, !result.failures, body);
+    return NextResponse.json(body, { status: result.failures ? 207 : 200 });
   } catch {
+    await recordAutomationRun('workflow_tick', startedAt, false, { error: 'Workflow processing unavailable' });
     return NextResponse.json({ error: 'Workflow processing unavailable' }, { status: 503 });
   }
 }

@@ -1,5 +1,5 @@
 -- =============================================================================
--- 0068 — HomeQuote-native booking calendars (replaces Calendly for bookings)
+-- 0070 — HomeQuote-native booking calendars (replaces Calendly for bookings)
 --
 --   booking_calendars             one bookable calendar: a contractor's own
 --                                 (kind 'contractor', one per contractor), the

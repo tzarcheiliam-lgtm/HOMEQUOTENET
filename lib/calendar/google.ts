@@ -216,7 +216,7 @@ type CalendarUser = { role: string; contractor_id: string | null; is_active?: bo
 /**
  * Who may connect their own Google Calendar: contractor users (their company's
  * appointments) and HomeQuote admins / setters, who host the team and sales
- * booking calendars (0068) and whose busy time those calendars must respect.
+ * booking calendars (0070) and whose busy time those calendars must respect.
  */
 export function mayConnectGoogleCalendar(me: CalendarUser): boolean {
   if (me.is_active === false) return false;

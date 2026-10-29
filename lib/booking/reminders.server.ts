@@ -15,7 +15,8 @@ import {
  * Booking notices on the 5-minute /api/workflows/tick:
  *   1. confirmations not sent yet (new bookings and reschedules whose
  *      request-time notifyBookingSoon did not run),
- *   2. due 24 h / 1 h reminders (claim_booking_reminders: at most once),
+ *   2. due 24 h / 1 h reminder EMAILS (claim_booking_reminders: at most once;
+ *      the reminder TEXTS come from runTextReminders, lib/sms/reminders.ts),
  *   3. cancellations (homeowner calls and sales meetings) in the last day with no notice yet.
  * It also counts enabled workflows cloned from the old "Appointment
  * confirmation" templates. The workflow engines skip those for calendar
@@ -58,7 +59,7 @@ export async function runBookingNotifications(deps: NotifyDeps & { limit?: numbe
     try { if (keep(await sendBookingConfirmation(p.kind, p.id, d))) out.confirmations++; } catch { /* next one */ }
   }
 
-  // 2. Reminders.
+  // 2. Reminder emails (texts: runTextReminders).
   for (const r of await claimBookingReminders(limit * 2, db)) {
     try {
       if (keep(await sendBookingReminder(r.kind, r.id, r.reminder, d))) out.reminders++;

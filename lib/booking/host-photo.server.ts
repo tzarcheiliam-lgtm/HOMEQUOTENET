@@ -7,7 +7,7 @@ import path from 'node:path';
  * 256 px square JPEG on white (logos are wide and transparent; contact apps
  * crop to a circle and show transparency as black). Read from disk (traced
  * into the function, next.config.ts) or, failing that, from the site itself.
- * Never an outside URL: the path is checked here and by the 0068 column check.
+ * Never an outside URL: the path is checked here and by the 0070 column check.
  * Cached per path for the life of the instance. Null when anything fails:
  * the card is still useful without a photo.
  */

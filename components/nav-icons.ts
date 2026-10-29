@@ -28,6 +28,7 @@ import {
   Sparkles,
   Clapperboard,
   KeyRound,
+  Radar,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -37,6 +38,7 @@ export const NAV_ICONS: Record<string, LucideIcon> = {
   Sparkles,
   Clapperboard,
   KeyRound,
+  Radar,
   MessageSquare,
   FileSignature,
   FileStack,

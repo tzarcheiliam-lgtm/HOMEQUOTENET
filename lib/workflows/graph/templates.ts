@@ -344,7 +344,7 @@ export const GRAPH_TEMPLATES: readonly GraphTemplate[] = [
     icon: 'CalendarClock',
     name: 'Appointment reminders by text',
     summary: 'Text the homeowner the day before and again 2 hours before. Skips a reminder if the appointment changed.',
-    description: 'When an appointment is booked it waits until 24 hours before (or texts right away if it is sooner), checks the appointment is still on, and sends a reminder. Then it waits until 2 hours before and sends a short heads-up. Cancelling, rescheduling, completing or a no-show stops it. Replies are saved on the lead and passed to workflows; add "Alert me when a lead texts back" so someone sees them.',
+    description: 'When an appointment is booked it waits until 24 hours before (or texts right away if it is sooner), checks the appointment is still on, and sends a reminder. Then it waits until 2 hours before and sends a short heads-up. Cancelling, rescheduling, completing or a no-show stops it. Replies are saved on the lead and passed to workflows; add "Alert me when a lead texts back" so someone sees them. Note: Texting → Reminders & follow-ups already sends appointment reminders to homeowners; turn that off there before publishing this, or they get both.',
     requires: [TEXTING_NEEDS, 'Appointments recorded with a date and time'],
     graph: appointmentTexts('network'),
     contractorGraph: appointmentTexts('contractor'),

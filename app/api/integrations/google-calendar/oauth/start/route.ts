@@ -9,7 +9,7 @@ const COOKIE_PATH = '/api/integrations/google-calendar/oauth/callback';
 /**
  * A user connects their own Google Calendar: contractor users (their company's
  * appointments), and HomeQuote admins / setters who host the team or sales
- * booking calendars (0068; the connection has no contractor then).
+ * booking calendars (0070; the connection has no contractor then).
  */
 export async function GET(request: NextRequest) {
   const me = await getProfile();

@@ -31,7 +31,7 @@ import type { Profile } from '@/lib/types';
  * booking-calendar settings.
  *
  * Every action first reads the calendar / booking / lead through the
- * signed-in user's OWN client, so RLS (0068) decides whether they may see it,
+ * signed-in user's OWN client, so RLS (0070) decides whether they may see it,
  * then applies the role rules in components/calendar/access.ts (a contractor
  * works only its own calendar). Only then does the service-role booking RPC
  * run, which re-checks the slot under the calendar lock. Status changes and

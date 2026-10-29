@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- rows come from the untyped Supabase client, as elsewhere in lib/data */
 import type { CalendarHostFields } from './host-contact';
 /**
- * HomeQuote-native booking calendars (migration 0068). Shared types, error
+ * HomeQuote-native booking calendars (migration 0070). Shared types, error
  * codes and row mappers. Times are UTC ISO strings / epoch ms everywhere;
  * wall-clock minutes only appear in rules, in the calendar's own zone.
  */
@@ -166,7 +166,7 @@ export const DEFAULT_CALENDAR: Omit<BookingCalendar, 'id' | 'kind' | 'contractor
  * Homeowner calls (HomeQuote team calendar, every contractor calendar; owner's
  * decision 2026-10-29): Liam calls each homeowner for a quick 10-minute call to
  * qualify and book the on-site visit. Starts every 15 minutes (9:00, 9:15 …)
- * with 5 minutes between calls. Seeded in 0068 and used by
+ * with 5 minutes between calls. Seeded in 0070 and used by
  * ensure_contractor_booking_calendar.
  */
 export const HOMEOWNER_CALL = { durationMinutes: 10, slotStepMinutes: 15, bufferMinutes: 5 } as const;

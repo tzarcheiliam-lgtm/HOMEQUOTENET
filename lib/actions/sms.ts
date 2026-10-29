@@ -6,6 +6,8 @@ import { requireRole } from '@/lib/auth';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { MAX_EXTRA_INSTRUCTIONS } from '@/lib/sms/agent';
 import { openingTemplateProblem } from '@/lib/sms/rules';
+import { reminderTemplateProblem } from '@/lib/sms/reminder-config';
+import { FOLLOW_UP_STEPS, MEETING_STEPS } from '@/lib/sms/reminder-plan';
 
 export type SmsActionState = { ok: boolean; message?: string; error?: string } | undefined;
 const refresh = (leadId?: string) => { revalidatePath('/app/texting'); if (leadId) revalidatePath(`/app/leads/${leadId}`); };
@@ -120,4 +122,45 @@ export async function saveContractorTextingWording(_prev: SmsActionState, fd: Fo
   if (error) return { ok: false, error: 'Could not save. Has the latest database update been applied?' };
   revalidatePath(`/app/contractors/${contractorId}`);
   return { ok: true, message: 'Saved. New texts use it right away.' };
+}
+
+/**
+ * Reminder texts and follow-ups (sms_settings.reminder_config). Sent as one JSON field from the Texting page.
+ * Blank wording means "use the built-in default", so only changed texts are stored.
+ */
+export async function saveReminderSettings(_prev: SmsActionState, fd: FormData): Promise<SmsActionState> {
+  const me = await requireRole(['admin']);
+  let raw: Record<string, unknown>;
+  try { raw = JSON.parse(String(fd.get('config') ?? '{}')); } catch { return { ok: false, error: 'Could not read the settings.' }; }
+  const r = (v: unknown) => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
+  const cleanTemplates = (t: unknown, keys: readonly string[]) => {
+    const out: Record<string, string> = {};
+    for (const k of keys) {
+      const v = typeof r(t)[k] === 'string' ? (r(t)[k] as string).trim() : '';
+      if (!v) continue;
+      const problem = reminderTemplateProblem(v);
+      if (problem) throw new Error(problem);
+      out[k] = v;
+    }
+    return out;
+  };
+  let stored: Record<string, unknown>;
+  try {
+    const c = r(raw.contractor), h = r(raw.homeowner), f = r(raw.followups);
+    const days = Array.isArray(f.days) ? f.days.map(Number) : [];
+    if (days.some((d) => !Number.isInteger(d) || d < 1 || d > 30)) throw new Error('Follow-up days must be whole days from 1 to 30.');
+    if (new Set(days).size !== days.length || days.length < 1 || days.length > 3) throw new Error('Pick one to three different follow-up days.');
+    stored = {
+      contractor: { enabled: c.enabled !== false, host: String(c.host ?? '').trim().slice(0, 40), brand: String(c.brand ?? '').trim().slice(0, 40), templates: cleanTemplates(c.templates, MEETING_STEPS) },
+      homeowner: { enabled: h.enabled !== false, templates: cleanTemplates(h.templates, MEETING_STEPS) },
+      followups: { enabled: f.enabled !== false, days: [...days].sort((a, b) => a - b), templates: cleanTemplates(f.templates, FOLLOW_UP_STEPS) },
+      unconfirmedAlert: raw.unconfirmedAlert !== false,
+    };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Check the settings.' };
+  }
+  const { error } = await createAdminClient().from('sms_settings').update({ reminder_config: stored, updated_by: me.id, updated_at: new Date().toISOString() }).eq('id', true);
+  if (error) return { ok: false, error: /reminder_config/.test(error.message) ? 'Run database migration 0068 first.' : 'Could not save.' };
+  refresh();
+  return { ok: true, message: 'Saved.' };
 }

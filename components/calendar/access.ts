@@ -1,6 +1,6 @@
 /**
  * Who may do what on a booking calendar (in-app calendar page + lib/actions/booking).
- * Mirrors the 0068 RLS so the UI never offers what the database would refuse:
+ * Mirrors the 0070 RLS so the UI never offers what the database would refuse:
  *   admin              every calendar: view, book, change, settings
  *   setter             every calendar: view, book, change; settings read-only
  *   contractor owner   their own company's calendar: view, book, change, settings

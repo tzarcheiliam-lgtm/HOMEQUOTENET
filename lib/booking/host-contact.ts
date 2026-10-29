@@ -1,5 +1,5 @@
 /**
- * Who calls the homeowner: the "host contact" of a booking calendar (0068
+ * Who calls the homeowner: the "host contact" of a booking calendar (0070
  * columns booking_calendars.host_*). It drives the homeowner-facing wording
  * ("Liam from Pool Masters will call you at the number ending 0123"), the
  * contact card on the "You're booked" screen and the vCard behind

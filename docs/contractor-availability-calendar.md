@@ -2,7 +2,7 @@
 
 Shipped in migration `0047_contractor_availability_calendar_sync.sql`. Read `HOMEQUOTE_CONTEXT.md` §24 for the technical summary.
 
-> **Two kinds of hours (since migration 0068).** This page is about **on-site visits** that HomeQuote staff schedule for a contractor. The free **30-minute calls homeowners book online** (and contractor prospects book with HomeQuote sales) run on HomeQuote's own **booking calendars**, set up on `/app/calendar/settings`: Mon–Fri 9:00–17:00 Pacific by default, 30-minute calls, 15-minute buffer, 2 hours' notice, 14 days ahead. See `HOMEQUOTE_CONTEXT.md` §43. A contractor's booking calendar treats its on-site visits as busy time, and the same Google connection blocks busy time on both.
+> **Two kinds of hours (since migration 0070).** This page is about **on-site visits** that HomeQuote staff schedule for a contractor. The free **30-minute calls homeowners book online** (and contractor prospects book with HomeQuote sales) run on HomeQuote's own **booking calendars**, set up on `/app/calendar/settings`: Mon–Fri 9:00–17:00 Pacific by default, 30-minute calls, 15-minute buffer, 2 hours' notice, 14 days ahead. See `HOMEQUOTE_CONTEXT.md` §43. A contractor's booking calendar treats its on-site visits as busy time, and the same Google connection blocks busy time on both.
 
 ## What contractors get (`/app/availability`)
 - **Booking rules**: time zone, default appointment length, buffer between appointments, minimum notice, max appointments per day, and the switch "only take appointments during my weekly hours".

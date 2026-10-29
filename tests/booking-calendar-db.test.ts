@@ -10,7 +10,7 @@ import { fakeSupabase } from './helpers/pglite-supabase';
  * The in-app calendar's server actions (lib/actions/booking.ts) on the REAL
  * migration chain in PGlite: the user's client really runs as that user (RLS
  * applies), the service-role client as the table owner, and the booking RPCs
- * are the real 0068 ones. Settings writes, "book a call on behalf", slot
+ * are the real 0070 ones. Settings writes, "book a call on behalf", slot
  * access and the lead search are exercised per role. Nothing leaves the test.
  */
 let db: PGlite;

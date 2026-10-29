@@ -19,7 +19,7 @@ import {
 type Db = ReturnType<typeof createAdminClient>;
 
 /**
- * Server-side booking API over the 0068 RPCs (service role). Every write is
+ * Server-side booking API over the 0070 RPCs (service role). Every write is
  * re-checked in SQL under a per-calendar lock, so these never double-book; the
  * only thing checked here first is the hosts' Google busy time, which SQL
  * cannot see. Callers must already have verified who is asking (funnel session

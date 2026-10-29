@@ -49,6 +49,7 @@ const GROUP_BY_LABEL: Record<string, NavGroup> = {
   Integrations: 'Administration',
   'Lead Intake': 'Administration',
   'Audit Log': 'Administration',
+  'Automation Map': 'Administration',
 };
 
 /** Items in display order, bucketed by heading (ungrouped items first). */
@@ -207,6 +208,13 @@ const BASE_NAV_ITEMS: NavItem[] = [
     icon: 'Clapperboard',
     roles: ['admin'],
     newTab: true,
+  },
+  // Every automation HomeQuote runs, with live on/off, last run and counts; admin only.
+  {
+    label: 'Automation Map',
+    href: '/app/automations',
+    icon: 'Radar',
+    roles: ['admin'],
   },
   // Keys that let Claude (MCP) look things up and act in HomeQuote; admin only.
   {

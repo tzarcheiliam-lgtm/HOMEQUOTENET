@@ -24,7 +24,7 @@ const KIND_HELP: Record<string, string> = {
 };
 
 /**
- * Settings of one booking calendar (0068): rules, weekly hours, hosts.
+ * Settings of one booking calendar (0070): rules, weekly hours, hosts.
  * Admins edit any calendar; a contractor owner edits their own; setters and
  * contractor staff read. Reads go through the user's client (RLS); the
  * actions re-check the role before writing.

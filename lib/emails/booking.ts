@@ -1,5 +1,5 @@
 /**
- * Emails for HomeQuote-native calendar bookings (migration 0068): what the
+ * Emails for HomeQuote-native calendar bookings (migration 0070): what the
  * homeowner (or contractor prospect, for sales calls) gets on booking,
  * reschedule, cancel and the 24 h / 1 h reminders, and what the host gets on
  * booking, reschedule and cancel. Pure: no I/O, so previews and tests render

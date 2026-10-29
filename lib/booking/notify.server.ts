@@ -27,27 +27,33 @@ import { mapHostFields, type BookingActorKind } from './types';
 type Db = ReturnType<typeof createAdminClient>;
 
 /**
- * Automatic booking notices for HomeQuote-native calendars (0068). Not tied to
+ * Automatic booking notices for HomeQuote-native calendars (0070). Not tied to
  * any workflow being enabled.
  *
  *   guest (homeowner, or the contractor prospect on a sales call):
  *     email on book / reschedule / cancel / 24 h + 1 h reminders, with the
  *     self-service manage link, an "Add to calendar" link and an .ics invite;
- *     text through the Mac bridge (queueWorkflowText: texting switch, opt-outs,
- *     contractor switches, person-owned conversations, daily cap, texting
- *     hours). A text that could only go out after the call starts is not queued.
- *     Sales prospects have no text path (sms_conversations need a lead): email only.
+ *     homeowner text on book / reschedule / cancel through the Mac bridge
+ *     (queueWorkflowText: texting switch, opt-outs, contractor switches,
+ *     person-owned conversations, daily cap, texting hours). A text that could
+ *     only go out after the call starts is not queued.
+ *     REMINDER TEXTS are not sent from here: lib/sms/reminders.ts
+ *     (runTextReminders, migration 0068) is the single source of reminder texts
+ *     for these calls and for sales meetings (day before with YES / R, 8 AM,
+ *     2 hours before…), so a booking gets one set. Sales prospects get no
+ *     booking text from here (runTextReminders sends their "booked" text).
  *   host (booking_calendar_members with notify; else the contractor's users):
  *     email on book / reschedule / cancel. Push comes from the existing
  *     notification_events path (DB triggers), Google sync from calendar_sync_jobs.
  *
  * At most once per change: the confirmation is claimed by stamping
  * appointments.confirmed_at / prospect_sales_appointments.booking_confirmed_at
- * (a reschedule clears it, so the new time is confirmed again), reminders by
- * claim_booking_reminders, a cancellation by a lead_activities marker. Texts
- * also carry a deterministic sms_messages.workflow_step_run_id per
- * (booking, purpose, reschedule_count), so a repeat never queues twice and a
- * reschedule / cancel can void texts still waiting for texting hours.
+ * (a reschedule clears it, so the new time is confirmed again), reminder
+ * emails by claim_booking_reminders, a cancellation by a lead_activities
+ * marker. Texts also carry a deterministic sms_messages.workflow_step_run_id
+ * per (booking, purpose, reschedule_count), so a repeat never queues twice and
+ * a reschedule / cancel can void texts still waiting for texting hours, the
+ * reminder texts runTextReminders queued for the old time included.
  * A failed send is not retried (a duplicate is worse than a miss).
  *
  * Manage links: the raw token is never stored, so the link is DERIVED, HMAC of
@@ -399,14 +405,29 @@ async function sendHostEmails(db: Db, b: Booking, notice: HostNotice, deps: Noti
   return sent;
 }
 
-/** Texts from earlier versions of this booking that are still waiting (texting hours) are dropped. */
-async function voidQueuedTexts(db: Db, b: Booking, upToVersion: number): Promise<void> {
-  if (b.kind !== 'appointment') return;
-  const keys: string[] = [];
-  for (let v = Math.max(0, upToVersion - 20); v <= upToVersion; v++) {
-    for (const p of ['confirm', 'r24', 'r1'] as const) keys.push(bookingTextKey(b.kind, b.id, p, v));
+const VOIDED = { status: 'failed', error: 'Booking changed before this text was sent' };
+
+/**
+ * Texts from earlier versions of this booking that are still waiting (texting
+ * hours) are dropped: our own confirmations, and the reminder texts
+ * runTextReminders queued for a time that is no longer the booking's (all of
+ * them once it is cancelled). sms_reminders keeps its rows, so a step is not
+ * re-sent for the old time; the new time re-arms by its own anchor.
+ */
+async function voidQueuedTexts(db: Db, b: Booking, upToVersion: number, cancelled = false): Promise<void> {
+  if (b.kind === 'appointment') {
+    const keys: string[] = [];
+    for (let v = Math.max(0, upToVersion - 20); v <= upToVersion; v++) {
+      for (const p of ['confirm', 'r24', 'r1'] as const) keys.push(bookingTextKey(b.kind, b.id, p, v));
+    }
+    await db.from('sms_messages').update(VOIDED).in('workflow_step_run_id', keys).eq('status', 'queued');
   }
-  await db.from('sms_messages').update({ status: 'failed', error: 'Booking changed before this text was sent' }).in('workflow_step_run_id', keys).eq('status', 'queued');
+  // sms_reminders arrives with 0068; without it there is nothing to void.
+  const { data: rows, error } = await db.from('sms_reminders').select('message_id, anchor_at')
+    .eq('kind', b.kind === 'appointment' ? 'home_appointment' : 'sales_meeting').eq('ref_id', b.id).not('message_id', 'is', null);
+  if (error) return;
+  const stale = ((rows ?? []) as any[]).filter((r) => cancelled || ms(r.anchor_at) !== b.startMs).map((r) => r.message_id as string);
+  if (stale.length) await db.from('sms_messages').update(VOIDED).in('id', stale).eq('status', 'queued');
 }
 
 // --- notices -------------------------------------------------------------------------------------
@@ -438,7 +459,11 @@ export async function sendBookingConfirmation(kind: BookingKind, id: string, dep
   return { kind, id, notice, email, sms, hostEmails };
 }
 
-/** 24 h / 1 h reminder (already claimed by claim_booking_reminders). Guest only. */
+/**
+ * 24 h / 1 h reminder EMAIL (already claimed by claim_booking_reminders). Guest
+ * only. No text: the reminder texts come from runTextReminders
+ * (lib/sms/reminders.ts), so the result's sms is always 'text_reminders'.
+ */
 export async function sendBookingReminder(kind: BookingKind, id: string, reminder: '24h' | '1h', deps: NotifyDeps = {}): Promise<NoticeResult | null> {
   const db = db0(deps);
   const now = nowOf(deps);
@@ -447,12 +472,11 @@ export async function sendBookingReminder(kind: BookingKind, id: string, reminde
   if (!b || !b.live || !b.calendarId || b.startMs <= now.getTime()) return null;
   // A (re)confirmation that just went out already told them the time.
   const quietMs = reminder === '24h' ? 6 * 3_600_000 : 15 * 60_000;
-  if (b.confirmedAt && now.getTime() - ms(b.confirmedAt) < quietMs) return { kind, id, notice, email: 'just_confirmed', sms: 'just_confirmed', hostEmails: 0 };
+  if (b.confirmedAt && now.getTime() - ms(b.confirmedAt) < quietMs) return { kind, id, notice, email: 'just_confirmed', sms: 'text_reminders', hostEmails: 0 };
   const token = await ensureManageToken(db, kind, id, b.manageTokenHash, deps.linkSecret !== undefined ? deps.linkSecret : bookingLinkSecret());
   const ctx = guestContext(b, token, siteOf(deps));
   const email = await sendGuestEmail(b, notice, ctx, deps, token);
-  const sms = await sendGuestText(db, b, notice, ctx, now);
-  return { kind, id, notice, email, sms, hostEmails: 0 };
+  return { kind, id, notice, email, sms: 'text_reminders', hostEmails: 0 };
 }
 
 /**
@@ -475,7 +499,7 @@ export async function sendBookingCancellation(kind: BookingKind, id: string, dep
       metadata: { appointment_id: id, ...(b.contractorId ? { contractor_id: b.contractorId } : {}) },
     });
   }
-  await voidQueuedTexts(db, b, b.rescheduleCount);
+  await voidQueuedTexts(db, b, b.rescheduleCount, true);
   if (b.startMs <= now.getTime()) return { kind, id, notice: 'cancelled', email: 'past', sms: 'past', hostEmails: 0 };
   const ctx = guestContext(b, null, siteOf(deps));
   const email = await sendGuestEmail(b, 'cancelled', ctx, deps, null);

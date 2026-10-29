@@ -9,14 +9,17 @@ import { buildCatalogue } from '@/lib/workflows/ai-builder/catalogue';
 import { assembleGraph, checkGraph } from '@/lib/workflows/ai-builder/check';
 import { explainGraphText } from '@/lib/workflows/ai-builder/explain';
 import { parseWorkflowGraph, triggerOf } from '@/lib/workflows/graph';
+import { hashGraph } from '@/lib/workflows/graph/hash';
 import { sendPushNotification } from '@/lib/notifications/service';
+import { AREA_LABELS, AUTOMATIONS } from '@/lib/automations/registry';
+import { automationStatuses } from '@/lib/automations/status.server';
 import type { McpKey, McpScope } from './keys';
 
 /**
  * The HomeQuote tools Claude gets over MCP. Every tool runs on the server with the service role, acting for the admin
  * who created the key, and only does what its scope allows:
  *   read  - look up leads, appointments, texting, workflows and the business summary
- *   write - add a lead note, change a lead's pipeline status, save a workflow as an UNPUBLISHED draft
+ *   write - add a lead note, change a lead's pipeline status, save a new workflow or change an existing one as an UNPUBLISHED draft
  *   text  - text a homeowner through the Mac bridge (every texting rule still applies)
  *   assign - PROPOSE assigning a lead to contractors; it only happens when the admin taps Approve in HomeQuote
  * Nothing here publishes a workflow, deletes anything, assigns a lead without the admin's approval, places calls or touches billing.
@@ -50,6 +53,26 @@ export interface ToolDef {
 }
 
 const readOnly = { readOnlyHint: true };
+
+/** The { nodes, edges, settings? } shape Claude sends (positions are laid out on the server). */
+const WORKFLOW_INPUT: Json = {
+  type: 'object', required: ['nodes', 'edges'],
+  properties: {
+    nodes: { type: 'array', items: { type: 'object', required: ['id', 'type'], properties: { id: { type: 'string' }, type: { type: 'string' }, name: { type: 'string' }, config: { type: 'object' } } } },
+    edges: { type: 'array', items: { type: 'object', required: ['source', 'sourceHandle', 'target'], properties: { source: { type: 'string' }, sourceHandle: { type: 'string' }, target: { type: 'string' } } } },
+    settings: { type: 'object' },
+  },
+};
+
+/** A visual (graph) workflow and its draft, for get_workflow / update_workflow_draft. Classic workflows are refused. */
+async function loadGraphWorkflow(db: Db, id: string) {
+  const { data: w } = await db.from('workflows').select('id,name,description,engine,graph_status,contractor_id,is_template,archived_at').eq('id', id).maybeSingle();
+  if (!w || (w as any).is_template) fail('No workflow with that id.');
+  if ((w as any).engine !== 'graph') fail('This is a classic (list-style) workflow. Only visual workflows can be read and edited here; open it in the app to change it.');
+  const { data: d } = await db.from('workflow_graph_drafts').select('graph,revision').eq('workflow_id', id).maybeSingle();
+  if (!d) fail('This workflow has no saved steps yet.');
+  return { w: w as any, graph: parseWorkflowGraph((d as any).graph), revision: (d as any).revision as number };
+}
 
 export const TOOLS: ToolDef[] = [
   {
@@ -143,7 +166,7 @@ export const TOOLS: ToolDef[] = [
       const contractorIds = [...new Set((assigns ?? []).map((a: any) => a.contractor_id))];
       const [{ data: msgs }, { data: appts }, { data: cos }] = await Promise.all([
         convo ? db.from('sms_messages').select('direction,body,status,created_at').eq('conversation_id', (convo as any).id).order('created_at', { ascending: false }).limit(20) : Promise.resolve({ data: [] }),
-        // appointments.lead_id (0068) also covers calls on the HomeQuote team calendar before any contractor is assigned.
+        // appointments.lead_id (0070) also covers calls on the HomeQuote team calendar before any contractor is assigned.
         db.from('appointments').select('id,assignment_id,scheduled_at,status,location').eq('lead_id', id),
         contractorIds.length ? db.from('contractors').select('id,name').in('id', contractorIds) : Promise.resolve({ data: [] }),
       ]);
@@ -177,7 +200,7 @@ export const TOOLS: ToolDef[] = [
       let q = db.from('appointments').select('id,assignment_id,lead_id,contact_name,scheduled_at,status,location').gte('scheduled_at', from.toISOString()).lte('scheduled_at', to.toISOString());
       const status = str(args.status, 40); if (status) q = q.eq('status', status);
       const { data: appts } = await q.order('scheduled_at', { ascending: true }).limit(200);
-      // Team-calendar calls (0068) have no assignment yet: filter the nulls, and read the lead from appointments.lead_id.
+      // Team-calendar calls (0070) have no assignment yet: filter the nulls, and read the lead from appointments.lead_id.
       const assignIds = [...new Set((appts ?? []).map((a: any) => a.assignment_id).filter(Boolean))];
       const { data: assigns } = assignIds.length ? await db.from('lead_assignments').select('id,lead_id,contractor_id').in('id', assignIds) : { data: [] };
       const byAssign = new Map((assigns ?? []).map((a: any) => [a.id, a]));
@@ -208,6 +231,27 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: 'list_automations',
+    title: 'Automation map',
+    description: 'Every automation HomeQuote runs on its own (schedulers, texting, reminders, alerts, Meta, calls, workflows): whether each is on, off, not active or needs a look, when it last ran and how many times in 7 days. Optional filter by state.',
+    scope: 'read',
+    inputSchema: { type: 'object', properties: { state: { type: 'string', enum: ['on', 'off', 'dormant', 'not_set_up', 'attention'], description: 'Only automations in this state.' } } },
+    annotations: readOnly,
+    run: async (db, args) => {
+      const { statuses, workflows } = await automationStatuses(db as never);
+      const byId = new Map(statuses.map((s) => [s.id, s]));
+      const want = typeof args.state === 'string' ? args.state : null;
+      return {
+        link: link('/app/automations'),
+        automations: AUTOMATIONS.filter((a) => !want || byId.get(a.id)?.state === want).map((a) => {
+          const st = byId.get(a.id);
+          return { name: a.name, area: AREA_LABELS[a.area], when: a.when, what: a.what, state: st?.state, note: st?.note, last_ran: st?.lastRunAt ?? null, last_7_days: st?.count7d ?? null };
+        }),
+        workflows: workflows.map((w) => ({ name: w.name, live: w.live, status: w.status, trigger: w.triggerType, runs_7_days: w.runs7d, failed_7_days: w.failed7d, last_run: w.lastRunAt, link: link(`/app/workflows/${w.id}`) })),
+      };
+    },
+  },
+  {
     name: 'texting_overview',
     title: 'Texting overview',
     description: 'Is automatic texting on, is the Mac bridge connected, texts waiting to send, and conversations that need a person.',
@@ -218,7 +262,7 @@ export const TOOLS: ToolDef[] = [
       const [{ data: s }, { count: waiting }, { data: needs }] = await Promise.all([
         db.from('sms_settings').select('enabled,stopped_at,bridge_last_seen_at,window_start_hour,window_end_hour,daily_cap').eq('id', true).maybeSingle(),
         db.from('sms_messages').select('id', { count: 'exact', head: true }).eq('direction', 'out').eq('status', 'queued'),
-        db.from('sms_conversations').select('lead_id,summary,updated_at').eq('status', 'handoff').order('updated_at', { ascending: false }).limit(10),
+        db.from('sms_conversations').select('lead_id,summary,updated_at').eq('status', 'handoff').not('lead_id', 'is', null).order('updated_at', { ascending: false }).limit(10),
       ]);
       const ids = (needs ?? []).map((c: any) => c.lead_id);
       const { data: leads } = ids.length ? await db.from('leads').select('id,first_name,last_name').in('id', ids) : { data: [] };
@@ -265,15 +309,38 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: 'get_workflow',
+    title: 'Read a workflow',
+    description: 'The current DRAFT of one visual workflow, in the same { nodes, edges, settings } shape create_workflow_draft takes, plus its revision number. Call this before update_workflow_draft: change what you need and send the whole workflow back with this revision.',
+    scope: 'read',
+    inputSchema: { type: 'object', required: ['workflow_id'], properties: { workflow_id: { type: 'string', description: 'Workflow id from list_workflows.' } } },
+    annotations: readOnly,
+    summarize: (a) => `workflow=${String(a.workflow_id ?? '').slice(0, 36)}`,
+    run: async (db, args) => {
+      const id = uuid(args.workflow_id, 'workflow_id');
+      const { w, graph, revision } = await loadGraphWorkflow(db, id);
+      return {
+        id, name: w.name, description: w.description ?? null, status: w.graph_status, archived: !!w.archived_at,
+        for: w.contractor_id ? 'one contractor' : 'HomeQuote network', contractor_id: w.contractor_id ?? null, revision,
+        workflow: {
+          nodes: graph.nodes.map((n) => ({ id: n.id, type: n.type, ...(n.name ? { name: n.name } : {}), config: n.config })),
+          edges: graph.edges.map((e) => ({ source: e.source, sourceHandle: e.sourceHandle, target: e.target })),
+          settings: graph.settings,
+        },
+        explanation: explainGraphText(graph), link: link(`/app/workflows/${id}`),
+      };
+    },
+  },
+  {
     name: 'workflow_building_guide',
     title: 'How to build a workflow',
-    description: 'The exact step types, triggers, wait events, merge fields, condition fields and limits HomeQuote workflows support right now, with the config shape for each step. Read this before create_workflow_draft.',
+    description: 'The exact step types, triggers, wait events, merge fields, condition fields and limits HomeQuote workflows support right now, with the config shape for each step. Read this before create_workflow_draft or update_workflow_draft.',
     scope: 'read',
     inputSchema: { type: 'object', properties: {} },
     annotations: readOnly,
     run: async () => {
       const c = buildCatalogue();
-      return `${c.text}\n\nTo save one, call create_workflow_draft with { name, workflow: { nodes: [{ id, type, name?, config }], edges: [{ source, sourceHandle, target }], settings? } }. Exactly one node has id "trigger". The draft is checked with the same rules as the in-app builder and is NEVER published: the admin reviews, tests and publishes it in the app.`;
+      return `${c.text}\n\nTo save one, call create_workflow_draft with { name, workflow: { nodes: [{ id, type, name?, config }], edges: [{ source, sourceHandle, target }], settings? } }. Exactly one node has id "trigger". The draft is checked with the same rules as the in-app builder and is NEVER published: the admin reviews, tests and publishes it in the app.\n\nTo change an existing visual workflow, call get_workflow { workflow_id } first, edit its nodes/edges/settings, then call update_workflow_draft { workflow_id, revision, workflow } with the revision get_workflow returned (send the whole workflow, not just the changed step). This only changes the draft: if the workflow is live, the published version keeps running until the admin publishes the new draft in the app. Classic (list-style) workflows cannot be edited here.`;
     },
   },
   {
@@ -325,14 +392,7 @@ export const TOOLS: ToolDef[] = [
         name: { type: 'string', description: 'Short name, up to 120 characters.' },
         summary: { type: 'string', description: 'One or two sentences saying what it does.' },
         contractor_id: { type: 'string', description: 'Scope it to one contractor (id from list_contractors). Omit for a HomeQuote network workflow.' },
-        workflow: {
-          type: 'object', required: ['nodes', 'edges'],
-          properties: {
-            nodes: { type: 'array', items: { type: 'object', required: ['id', 'type'], properties: { id: { type: 'string' }, type: { type: 'string' }, name: { type: 'string' }, config: { type: 'object' } } } },
-            edges: { type: 'array', items: { type: 'object', required: ['source', 'sourceHandle', 'target'], properties: { source: { type: 'string' }, sourceHandle: { type: 'string' }, target: { type: 'string' } } } },
-            settings: { type: 'object' },
-          },
-        },
+        workflow: WORKFLOW_INPUT,
       },
     },
     summarize: (a) => `name=${String(a.name ?? '').slice(0, 80)}`,
@@ -357,6 +417,57 @@ export const TOOLS: ToolDef[] = [
       if (dErr) { await db.from('workflows').update({ archived_at: new Date().toISOString() }).eq('id', id); fail('Could not save the workflow steps.'); }
       await db.from('audit_logs').insert({ actor_id: key.actorId, action: 'workflow.graph.mcp_create', metadata: { workflow_id: id, contractor_id: contractorId, key_id: key.id } }).then(() => undefined, () => undefined);
       return { saved: true, status: 'draft (not published)', workflow_id: id, link: link(`/app/workflows/${id}`), explanation: explainGraphText(graph), warnings: checked.warnings, next: 'Open the link to review it, run a dry run and publish it.' };
+    },
+  },
+  {
+    name: 'update_workflow_draft',
+    title: 'Change a workflow draft',
+    description: 'Replace the DRAFT of an existing visual workflow (call get_workflow first and send its revision with the whole edited workflow). It is checked with the in-app builder\'s rules; problems come back so you can fix them. This never publishes: a live workflow keeps running its published version until the admin publishes the draft in the app.',
+    scope: 'write',
+    inputSchema: {
+      type: 'object',
+      required: ['workflow_id', 'revision', 'workflow'],
+      properties: {
+        workflow_id: { type: 'string', description: 'Workflow id from list_workflows or get_workflow.' },
+        revision: { type: 'number', description: 'The revision get_workflow returned. If the draft changed since, the save is refused.' },
+        name: { type: 'string', description: 'New name, up to 120 characters. Omit to keep it.' },
+        summary: { type: 'string', description: 'New one or two sentence description. Omit to keep it.' },
+        workflow: WORKFLOW_INPUT,
+      },
+    },
+    summarize: (a) => `workflow=${String(a.workflow_id ?? '').slice(0, 36)} revision=${typeof a.revision === 'number' ? a.revision : '?'}`,
+    run: async (db, args, key) => {
+      const id = uuid(args.workflow_id, 'workflow_id');
+      const revision = typeof args.revision === 'number' && Number.isInteger(args.revision) && args.revision >= 1 ? args.revision : fail('revision must be the number get_workflow returned.');
+      const wfName = args.name === undefined || args.name === null ? undefined : str(args.name, 120) ?? fail('The name cannot be empty.');
+      const summary = args.summary === undefined || args.summary === null ? undefined : str(args.summary, 2000) ?? null;
+      const { w, graph: before } = await loadGraphWorkflow(db, id);
+      if (w.archived_at) fail('This workflow is archived and cannot be changed.');
+      const wf = args.workflow as any;
+      if (!wf || !Array.isArray(wf.nodes) || !Array.isArray(wf.edges ?? [])) fail('workflow needs nodes and edges arrays.');
+      const checked = checkGraph(assembleGraph({ nodes: wf.nodes, edges: wf.edges ?? [], settings: wf.settings }), { contractorId: w.contractor_id ?? null, catalogue: buildCatalogue() });
+      if (!checked.graph) fail(`The workflow has problems. Fix these and try again:\n- ${checked.errors.join('\n- ')}`);
+      let graph = checked.graph!;
+      // Same steps as before (only their settings changed): keep the admin's canvas layout instead of the automatic one.
+      const oldPos = new Map(before.nodes.map((n) => [n.id, n.position]));
+      if (graph.nodes.every((n) => oldPos.has(n.id))) graph = { ...graph, nodes: graph.nodes.map((n) => ({ ...n, position: oldPos.get(n.id)! })) };
+      const { data: saved, error } = await db.from('workflow_graph_drafts')
+        .update({ graph, revision: revision + 1, content_hash: hashGraph(graph), updated_by: key.actorId, updated_at: new Date().toISOString() })
+        .eq('workflow_id', id).eq('revision', revision).select('revision');
+      if (error) fail('Could not save the workflow.');
+      if (!Array.isArray(saved) || saved.length === 0) fail('This workflow was changed since you read it. Call get_workflow again and re-apply your change.');
+      const patch: Json = { updated_by: key.actorId };
+      if (wfName) patch.name = wfName;
+      if (summary !== undefined) patch.description = summary;
+      await db.from('workflows').update(patch).eq('id', id);
+      await db.from('audit_logs').insert({ actor_id: key.actorId, action: 'workflow.graph.mcp_update', metadata: { workflow_id: id, key_id: key.id, revision: revision + 1 } }).then(() => undefined, () => undefined);
+      const status = w.graph_status as string;
+      return {
+        saved: true, revision: revision + 1, status, explanation: explainGraphText(graph), warnings: checked.warnings, link: link(`/app/workflows/${id}`),
+        next: status === 'published' || status === 'paused'
+          ? 'This changed the draft only. The live version keeps running until you publish the draft in HomeQuote.'
+          : 'Open the link to review and publish.',
+      };
     },
   },
   {

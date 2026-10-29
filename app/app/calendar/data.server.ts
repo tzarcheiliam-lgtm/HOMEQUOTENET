@@ -5,7 +5,7 @@ import { designsByLead, mapAppointmentRow, mapSalesRow, type CalendarEvent, type
 
 /**
  * Events on one booking calendar in a window, read through the SIGNED-IN
- * user's client so RLS decides what they see (0068: staff everything; a
+ * user's client so RLS decides what they see (0070: staff everything; a
  * contractor only rows on its own calendar or for leads assigned to it).
  *   team / contractor  calls on the calendar (appointments.calendar_id)
  *   contractor         + the company's on-site visits (no calendar), which block the calendar too

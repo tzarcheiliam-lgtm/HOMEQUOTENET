@@ -94,8 +94,8 @@ beforeAll(async () => {
   const poolConfig = { ...JSON.parse(readFileSync('content/funnels/clients/pool-masters-la.json', 'utf8')), calendarProvider: 'calendly' };
   await q(`insert into public.funnels(id,slug,contractor_id,published,config) values ($1,'bathroom-remodel-api',null,true,'{}'),($2,'pool-masters-la',$3,true,$4)`,
     [ids.house, ids.pool, ids.poolCo, JSON.stringify(poolConfig)]);
-  // Re-run 0068 so the seeds see the admin (team / sales hosts) and Pool Masters (its calendar).
-  await db.exec(readFileSync('supabase/migrations/0068_native_booking_calendars.sql', 'utf8'));
+  // Re-run 0070 so the seeds see the admin (team / sales hosts) and Pool Masters (its calendar).
+  await db.exec(readFileSync('supabase/migrations/0070_native_booking_calendars.sql', 'utf8'));
 }, 180_000);
 afterAll(async () => { await db?.close(); });
 beforeEach(() => { resetRateLimits(); h.meta = []; h.notices = []; });

@@ -9,6 +9,7 @@ import { requireCallWorkspace, requireRole } from '@/lib/auth';
 import { listCallers, nextProspectIdFor, nextProspectInContext, type ProspectFilters } from '@/lib/data/prospects';
 import { contextFrom, contextQuery, hasListContext, withContext } from '@/lib/calls/context';
 import { flushNotificationsSoon } from '@/lib/notifications/outbox';
+import { runTextRemindersSoon } from '@/lib/sms/reminders';
 import {
   prospectPatchFor,
   validateOutcome,
@@ -204,6 +205,7 @@ export async function logCallOutcome(
     });
     if (sErr) return { ok: false, error: sErr.message };
     flushNotificationsSoon();
+    runTextRemindersSoon();
   }
 
   revalidatePath('/app/calls');
@@ -354,6 +356,7 @@ export async function setSalesAppointmentStatus(fd: FormData): Promise<void> {
   if (error) throw new Error(error.message);
 
   flushNotificationsSoon();
+  runTextRemindersSoon();
   revalidatePath('/app/calls/appointments');
   revalidatePath(`/app/calls/${appt.prospect_id}`);
 }

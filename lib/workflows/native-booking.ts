@@ -1,7 +1,7 @@
 /**
  * Built-in booking notices vs the old appointment workflow templates.
  *
- * Calls booked on a HomeQuote booking calendar (migration 0068) get their
+ * Calls booked on a HomeQuote booking calendar (migration 0070) get their
  * confirmation, 24 h / 1 h reminders and cancellation notice automatically
  * (lib/booking/notify.server.ts). Workflows cloned from the "Appointment
  * Confirmation" templates would send the same messages a second time, so the

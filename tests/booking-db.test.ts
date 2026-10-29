@@ -11,7 +11,7 @@ vi.mock('server-only', () => ({}));
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => { throw new Error('tests pass their own db'); } }));
 
 /**
- * Migration 0068 (native booking calendars) on the REAL migration chain in
+ * Migration 0070 (native booking calendars) on the REAL migration chain in
  * PGlite: seeds, RLS, the booking RPCs (re-check + lock), funnel side effects,
  * reschedule / cancel, the sales path, reminders, and lib/booking on top.
  * Times are computed from the real clock (the RPCs use now()).
@@ -76,15 +76,15 @@ beforeAll(async () => {
   }
   await q(`insert into public.funnels(id,slug,contractor_id,published,config) values ($1,'bathroom-remodel-t',null,true,'{}'),($2,'pool-masters-la',$3,true,'{}')`,
     [id.houseFunnel, id.funnelA, id.companyA]);
-  // Re-running 0068 is safe (idempotent) and now seeds Pool Masters, found by its client funnel.
-  await db.exec(readFileSync('supabase/migrations/0068_native_booking_calendars.sql', 'utf8'));
+  // Re-running 0070 is safe (idempotent) and now seeds Pool Masters, found by its client funnel.
+  await db.exec(readFileSync('supabase/migrations/0070_native_booking_calendars.sql', 'utf8'));
   team = (await one(`select id from public.booking_calendars where kind='team'`)).id;
   sales = (await one(`select id from public.booking_calendars where kind='sales'`)).id;
   calA = (await one(`select id from public.booking_calendars where kind='contractor' and contractor_id=$1`, [id.companyA])).id;
 }, 120_000);
 afterAll(async () => { await db?.close(); });
 
-describe('0068 schema + seeds', () => {
+describe('0070 schema + seeds', () => {
   it('seeds team, sales and Pool Masters with 9–5 Mon–Fri Los Angeles: 10-minute homeowner calls every 15 minutes, 30-minute sales calls', async () => {
     const cals = await q(`select kind, name, timezone, duration_minutes, slot_step_minutes, buffer_minutes, min_notice_minutes, horizon_days, max_per_day, meeting_type, active,
                                  host_display_name, host_first_name, host_org, host_phone, host_email, host_photo_path, host_note

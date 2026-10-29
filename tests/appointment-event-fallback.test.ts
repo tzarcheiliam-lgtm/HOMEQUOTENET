@@ -4,7 +4,7 @@ vi.mock('server-only', () => ({}));
 
 import { mapAppointment, toIcsEvent } from '@/lib/calendar/appointment-event.server';
 
-// HomeQuote team-calendar bookings (0068) can exist before any contractor is matched:
+// HomeQuote team-calendar bookings (0070) can exist before any contractor is matched:
 // no assignment, so the lead comes from appointments.lead_id, then the booking contact.
 describe('appointment event mapping without an assignment', () => {
   it('reads the lead through appointments.lead_id and keeps the calendar and end time', () => {

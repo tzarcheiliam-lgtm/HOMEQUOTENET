@@ -20,6 +20,7 @@ import { nextLeadToCall } from '@/lib/data/leads';
 import { leadFormToObject, leadInputSchema } from '@/lib/validation/leads';
 import { enqueueNotificationEvent, flushNotificationsSoon } from '@/lib/notifications/outbox';
 import { flushCalendarSyncSoon } from '@/lib/calendar/sync.server';
+import { runTextRemindersSoon } from '@/lib/sms/reminders';
 import { checkContractorSlot } from '@/lib/availability/enforce.server';
 import { parseWallTime } from '@/lib/availability/time';
 import { DEFAULT_TZ } from '@/components/calls/format';
@@ -735,6 +736,7 @@ export async function scheduleAppointment(
   }
   flushNotificationsSoon();
   flushCalendarSyncSoon();
+  runTextRemindersSoon();
   return { success: true };
 }
 
@@ -765,5 +767,6 @@ export async function updateAppointmentStatus(
   }
   flushNotificationsSoon();
   flushCalendarSyncSoon();
+  runTextRemindersSoon();
   if (leadId) revalidateLead(leadId);
 }

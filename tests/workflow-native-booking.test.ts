@@ -4,7 +4,7 @@ import { eventIdempotencyKey, planWorkflow, type Workflow, type WorkflowEvaluati
 import { SUPERSEDED_WORKFLOW_TEMPLATES, supersededByNativeBooking } from '@/lib/workflows/native-booking';
 
 /**
- * Calendar bookings (0068) get built-in confirmations and reminders, so the
+ * Calendar bookings (0070) get built-in confirmations and reminders, so the
  * workflows cloned from the old "Appointment Confirmation" templates must not
  * text / email the homeowner a second time. On-site visits (no calendar) and
  * custom workflows are unaffected.
