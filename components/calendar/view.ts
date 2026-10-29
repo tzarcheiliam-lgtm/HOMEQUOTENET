@@ -50,6 +50,8 @@ export interface CalendarEvent {
   cancelReason: string | null;
   rescheduleCount: number;
   design: DesignSummary | null;
+  /** A sales meeting booked from a call (no booking calendar): its time is changed with Edit on the prospect, not the slot picker. */
+  handBooked?: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -340,6 +342,7 @@ export function mapSalesRow(r: Record<string, any>): CalendarEvent | null {
     cancelReason: str(r.cancel_reason),
     rescheduleCount: Number(r.reschedule_count ?? 0) || 0,
     design: null,
+    handBooked: !r.calendar_id,
   };
 }
 

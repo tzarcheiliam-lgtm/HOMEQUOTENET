@@ -111,6 +111,24 @@ async function assertCallerOwns(prospectId: string, userId: string, isAdmin: boo
   };
 }
 
+/* ---- One live sales meeting per prospect -------------------------------- */
+
+const OPEN_MEETING: SalesAppointmentStatus[] = ['scheduled', 'confirmed', 'rescheduled'];
+type OpenMeeting = { id: string; scheduled_at: string; ends_at?: string | null };
+type MeetingDetails = { decision_maker_name: string | null; time_zone: string; appointment_type: string | null; contact_info: string | null; notes: string | null };
+
+/** The update for an existing meeting: new details, and if the time moved, a reschedule (confirmation and reminder stamps reset). */
+function meetingPatch(m: OpenMeeting, at: string, d: MeetingDetails) {
+  const moved = new Date(m.scheduled_at).getTime() !== new Date(at).getTime();
+  const base = { decision_maker_name: d.decision_maker_name, time_zone: d.time_zone, appointment_type: d.appointment_type, contact_info: d.contact_info, notes: d.notes };
+  if (!moved) return base;
+  const duration = m.ends_at ? new Date(m.ends_at).getTime() - new Date(m.scheduled_at).getTime() : null;
+  return {
+    ...base, scheduled_at: at, status: 'rescheduled' as const, confirmed_at: null,
+    ...(duration !== null ? { ends_at: new Date(new Date(at).getTime() + duration).toISOString() } : {}),
+  };
+}
+
 /* ---- Log a call outcome --------------------------------------------------- */
 
 export async function logCallOutcome(
@@ -187,22 +205,23 @@ export async function logCallOutcome(
     .eq('id', prospectId);
   if (pErr) return { ok: false, error: pErr.message };
 
-  // 3. A booked sales call gets its own record so it can be tracked to completion.
+  // 3. A booked sales call gets its own record so it can be tracked to completion. A prospect has ONE live meeting:
+  // booking again (to reschedule or fix details) updates the open one instead of adding a duplicate.
   if (outcome === 'appointment_booked' && input.appointment_at) {
-    const { error: sErr } = await supabase.from('prospect_sales_appointments').insert({
-      prospect_id: prospectId,
-      partner_id: me.id,
-      call_attempt_id: attempt.id,
-      decision_maker_name: input.decision_maker_name,
-      scheduled_at: input.appointment_at,
-      time_zone: timeZone,
-      appointment_type: input.appointment_type,
-      contact_info: input.contact_info,
-      status: 'scheduled',
-      notes: input.notes,
-      created_by: me.id,
-      updated_by: me.id,
-    });
+    const { data: openMeeting } = await supabase.from('prospect_sales_appointments').select('id,scheduled_at,ends_at')
+      .eq('prospect_id', prospectId).in('status', OPEN_MEETING).order('scheduled_at', { ascending: false }).limit(1).maybeSingle();
+    const details: MeetingDetails = {
+      decision_maker_name: input.decision_maker_name ?? null, time_zone: timeZone, appointment_type: input.appointment_type ?? null,
+      contact_info: input.contact_info ?? null, notes: input.notes ?? null,
+    };
+    const { error: sErr } = openMeeting
+      ? await supabase.from('prospect_sales_appointments')
+        .update({ ...meetingPatch(openMeeting as OpenMeeting, input.appointment_at, details), call_attempt_id: attempt.id, updated_by: me.id })
+        .eq('id', (openMeeting as OpenMeeting).id)
+      : await supabase.from('prospect_sales_appointments').insert({
+        ...details, prospect_id: prospectId, partner_id: me.id, call_attempt_id: attempt.id, scheduled_at: input.appointment_at,
+        status: 'scheduled', created_by: me.id, updated_by: me.id,
+      });
     if (sErr) return { ok: false, error: sErr.message };
     flushNotificationsSoon();
     runTextRemindersSoon();
@@ -488,4 +507,48 @@ export async function setEmailOptOut(fd: FormData): Promise<void> {
   });
   revalidatePath(`/app/calls/${id}`);
   revalidatePath('/app/calls/emails');
+}
+
+export type EditMeetingState = { ok: true; message: string } | { ok: false; error: string; fieldErrors?: Record<string, string> } | undefined;
+
+/**
+ * The Edit button on a sales meeting: change the time, call type, contact info, decision maker and notes of the SAME
+ * meeting (never a new one). Moving the time marks it rescheduled, keeps the prospect's appointment time in sync and
+ * re-arms the reminder texts. Allowed for admins and the partner who booked it.
+ */
+export async function updateSalesAppointment(_prev: EditMeetingState, fd: FormData): Promise<EditMeetingState> {
+  const me = await requireCallWorkspace();
+  const id = str(fd, 'id');
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return { ok: false, error: 'Missing meeting' };
+  const timeZone = opt(fd, 'time_zone') ?? 'America/Los_Angeles';
+  const at = toInstant(opt(fd, 'appointment_date'), opt(fd, 'appointment_time'), timeZone);
+  const fieldErrors: Record<string, string> = {};
+  if (!at) fieldErrors.appointment_date = 'Pick the date and time.';
+  const type = opt(fd, 'appointment_type');
+  if (!type || !['phone', 'video', 'in_person'].includes(type)) fieldErrors.appointment_type = 'Pick how you will meet.';
+  const decisionMaker = opt(fd, 'decision_maker_name');
+  if (!decisionMaker) fieldErrors.decision_maker_name = 'Who are you meeting with?';
+  const contact = opt(fd, 'contact_info');
+  if (!contact) fieldErrors.contact_info = 'Add a phone, email or meeting link.';
+  if (Object.keys(fieldErrors).length) return { ok: false, error: 'Check the highlighted fields', fieldErrors };
+
+  const supabase = await createClient();
+  const { data: m } = await supabase.from('prospect_sales_appointments').select('id,prospect_id,partner_id,status,scheduled_at,ends_at').eq('id', id).maybeSingle();
+  if (!m) return { ok: false, error: 'Meeting not found or not accessible' };
+  if (me.role !== 'admin' && m.partner_id !== me.id) return { ok: false, error: 'Only the person who booked this meeting can change it' };
+  if (!OPEN_MEETING.includes(m.status as SalesAppointmentStatus)) return { ok: false, error: 'This meeting is already finished or cancelled. Book a new one from the contractor.' };
+
+  const patch = meetingPatch(m as OpenMeeting, at!, { decision_maker_name: decisionMaker, time_zone: timeZone, appointment_type: type, contact_info: contact, notes: opt(fd, 'notes') });
+  const moved = 'scheduled_at' in patch;
+  const { error } = await supabase.from('prospect_sales_appointments').update({ ...patch, updated_by: me.id }).eq('id', id);
+  if (error) return { ok: false, error: error.message };
+  if (moved) {
+    await supabase.from('contractor_prospects').update({ appointment_at: at, updated_by: me.id }).eq('id', m.prospect_id);
+  }
+  flushNotificationsSoon();
+  runTextRemindersSoon();
+  revalidatePath('/app/calls/appointments');
+  revalidatePath(`/app/calls/${m.prospect_id}`);
+  revalidatePath('/app/calendar');
+  return { ok: true, message: moved ? 'Meeting moved' : 'Meeting updated' };
 }
