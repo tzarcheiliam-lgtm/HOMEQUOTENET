@@ -1,15 +1,15 @@
 import type { Metadata } from 'next';
-import Image from 'next/image';
-import Link from 'next/link';
-import { ArrowUpRight, Check } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { site } from '@/content/site';
 import { generalContractorPhotos as photos } from '@/content/industry-photos';
+import { photos as poolPhotos } from '@/content/photos';
+import { ProjectFinder, type FinderCategory } from '@/components/marketing/project-finder';
 import { baseOpenGraph } from '@/lib/site-metadata';
 import './home.css';
 
 const title = 'Book a Remodeling Appointment | HomeQuote Network';
 const description =
-  'Planning a bathroom, kitchen or ADU project? Book a free in-home remodeling appointment. No obligation.';
+  'Planning a bathroom, kitchen, ADU or pool project? Find your project, get your price and book a free in-home appointment. No obligation.';
 
 export const metadata: Metadata = {
   title: { absolute: title },
@@ -19,12 +19,16 @@ export const metadata: Metadata = {
   twitter: { card: 'summary_large_image', title, description },
 };
 
-/** Each choice goes to a live funnel. */
-const projects = [
-  { name: 'Bathroom', note: 'Five quick questions', href: '/estimate/bathroom-remodel', photo: photos.bathroom },
-  { name: 'Kitchen', note: 'Five quick questions', href: '/estimate/kitchen-remodel', photo: photos.openKitchen },
-  { name: 'ADU', note: 'Design it, then book', href: '/adu-quiz', photo: photos.hero },
-] as const;
+/**
+ * Each category goes to a live flow. Bathroom uses the instant estimator
+ * (ballpark price range, then booking); the rest are short booking funnels.
+ */
+const categories: FinderCategory[] = [
+  { id: 'bathroom', name: 'Bathroom', note: 'Get a ballpark price, then book', href: '/estimator/bathroom-remodel', photo: photos.bathroom },
+  { id: 'kitchen', name: 'Kitchen', note: 'Five quick questions, then book', href: '/estimate/kitchen-remodel', photo: photos.openKitchen },
+  { id: 'adu', name: 'ADU', note: 'Design it, then book', href: '/adu-quiz', photo: photos.hero },
+  { id: 'pool', name: 'Pool', note: 'A few questions, then book', href: '/estimate/pool-remodeling', photo: poolPhotos.heroPool },
+];
 
 const headline = 'Book your remodeling appointment.'.split(' ');
 
@@ -54,7 +58,7 @@ export default function HomePage() {
           ))}
         </h1>
         <p className="ho-fade mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-base font-medium text-[var(--ho-ink-soft)]" style={{ ['--w' as string]: headline.length }}>
-          {['Free', 'No obligation', 'Pick your project to start'].map((t) => (
+          {['Free', 'No obligation', 'Find your project in seconds'].map((t) => (
             <span key={t} className="inline-flex items-center gap-2">
               <Check className="size-4 text-[var(--ho-blue)]" aria-hidden="true" />
               {t}
@@ -62,31 +66,9 @@ export default function HomePage() {
           ))}
         </p>
 
-        <ul className="mt-12 grid gap-5 sm:grid-cols-3 sm:gap-6">
-          {projects.map((p, i) => (
-            <li key={p.href}>
-              <Link href={p.href} className="ho-pick" style={{ ['--i' as string]: i }}>
-                <Image
-                  src={p.photo.src}
-                  alt=""
-                  width={p.photo.width}
-                  height={p.photo.height}
-                  sizes="(min-width: 640px) 360px, 100vw"
-                  priority={i === 0}
-                />
-                <span className="ho-pick-label">
-                  <span>
-                    <span className="block text-2xl font-semibold tracking-tight">{p.name}</span>
-                    <span className="mt-1 block text-sm text-white/85">{p.note}</span>
-                  </span>
-                  <span className="ho-pick-go">
-                    <ArrowUpRight className="size-5" aria-hidden="true" />
-                  </span>
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <div className="mt-10">
+          <ProjectFinder categories={categories} />
+        </div>
 
         <p className="mt-12 text-base text-[var(--ho-ink-soft)]">
           Prefer to talk?{' '}
