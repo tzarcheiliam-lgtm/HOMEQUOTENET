@@ -70,7 +70,8 @@ export const leadRequestSchema = z.object({
     (v) => (typeof v === 'string' ? normalizeZip(v) ?? v : v),
     z.string({ required_error: 'Enter the property’s 5-digit ZIP code.' }).regex(/^\d{5}$/, 'Enter a valid five-digit ZIP code.'),
   ),
-  homeowner: z.enum(['yes', 'no'], { errorMap: () => ({ message: 'Tell us whether you own the home.' }) }),
+  // Required except on a funnel that does not ask it (the route checks: homeownerRequired).
+  homeowner: z.enum(['yes', 'no'], { errorMap: () => ({ message: 'Tell us whether you own the home.' }) }).optional(),
   // Optional: the configurator does not ask it (the funnel's timeline question then stays open).
   timeline: z.enum(LEAD_TIMELINES.map((t) => t.id) as [string, ...string[]], { errorMap: () => ({ message: 'Choose when you want to start.' }) }).optional(),
   contact,
@@ -519,7 +520,10 @@ export function buildLeadPayload(input: LeadPayloadInput): LeadPayload {
   const projectQ = template.questions.find((q) => q.role === 'project');
   const project = projectQ ? picksFor(projectQ, answers)[0] : undefined;
 
-  const base = funnelAnswersFor(funnel.config, { zip: request.zip, homeowner: request.homeowner, timeline: request.timeline, project, trade: template.trade });
+  // A funnel that keeps to four fields never asks about ownership: it is assumed for the
+  // qualification rules and listed as "not asked online" for the call / on-site visit.
+  const homeownerAsked = request.homeowner !== undefined;
+  const base = funnelAnswersFor(funnel.config, { zip: request.zip, homeowner: request.homeowner ?? 'yes', timeline: request.timeline, project, trade: template.trade });
   const qualified = qualifyLead(funnel.config, base);
   const areaValid = areaValidFor(funnel.config, base);
 
@@ -527,7 +531,10 @@ export function buildLeadPayload(input: LeadPayloadInput): LeadPayload {
   const picks = describePicks(template, answers);
   const siteVisit = estimate.siteVisitItems.map((i) => i.label);
   // Questions the page never asked (the configurator skips the property questions): check them on site.
-  const notAsked = estimate.unanswered.map((id) => template.questions.find((q) => q.id === id)).filter((q) => q !== undefined).map((q) => q.summaryLabel ?? q.label);
+  const notAsked = [
+    ...estimate.unanswered.map((id) => template.questions.find((q) => q.id === id)).filter((q) => q !== undefined).map((q) => q.summaryLabel ?? q.label),
+    ...(homeownerAsked ? [] : ['Owns the home (not asked online)']),
+  ];
   const geometry = estimate.geometry;
   const [sizeKey, sizeText] = describeSize(template, geometry);
   const source = estimatorSourceLabel(template);
@@ -598,7 +605,7 @@ export function buildLeadPayload(input: LeadPayloadInput): LeadPayload {
           likedLooks: likedLooks.map((l) => l.src),
           note: request.note ?? null,
           timeline: request.timeline ?? null,
-          homeowner: request.homeowner,
+          homeowner: request.homeowner ?? 'not_asked',
           ...(design
             ? {
                 ...(design.funnel ? { funnel: design.funnel } : {}),

@@ -42,7 +42,7 @@ export function StepPhoto({
   const shown = layers.find((l) => l.ids.includes(selected)) ?? layers[0];
 
   return (
-    <div className="relative aspect-[7/4] w-full overflow-hidden rounded-[12px] bg-white lg:aspect-[16/9]">
+    <div className="fn-photo relative w-full overflow-hidden rounded-[12px] bg-white">
       {layers.map((layer) => {
         const on = layer === shown;
         const contain = fit === 'contain' && !layer.photo.isFallback;
@@ -57,14 +57,15 @@ export function StepPhoto({
             aria-hidden={on ? undefined : true}
             loading="eager"
             decoding="async"
-            fetchPriority={on && priority ? 'high' : 'auto'}
+            // The visible layer first; the others (needed only on a tap) never compete with it.
+            fetchPriority={on ? (priority ? 'high' : 'auto') : 'low'}
             draggable={false}
             onError={() => {
               if (layer.photo.isFallback) return;
               const original = photos.find(([id]) => layer.ids.includes(id))?.[1];
               if (original?.fallback) setFailed((f) => ({ ...f, [original.src]: true }));
             }}
-            className={`fn-layer absolute inset-0 h-full w-full select-none ${contain ? 'object-contain p-3' : 'object-cover'} ${on ? 'opacity-100' : 'opacity-0'}`}
+            className={`fn-layer absolute inset-0 h-full w-full select-none ${contain ? 'scale-[1.3] object-contain' : 'object-cover'} ${on ? 'opacity-100' : 'opacity-0'}`}
           />
         );
       })}

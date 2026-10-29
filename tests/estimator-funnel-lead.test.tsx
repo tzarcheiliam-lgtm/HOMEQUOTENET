@@ -86,7 +86,7 @@ const fields = {
   consent: true,
 };
 const request = () =>
-  funnelLeadRequest({ spec, selection: picks, fields, consentText: estimatorConsentText(contractor.contractorName), measurement: false });
+  funnelLeadRequest({ spec, selection: picks, fields, consentText: estimatorConsentText(contractor.contractorName), measurement: false, consentOnSubmit: true });
 
 const post = (body: unknown) =>
   POST(
@@ -119,6 +119,19 @@ describe('contact step request', () => {
     expect(errors.name).toMatch(/first and last name/);
     expect(firstInvalid(errors)).toBe('name');
     expect(funnelContactErrors({ ...fields })).toEqual({});
+  });
+  it('the four-field form (no ownership question, agree-on-submit) only checks name, email, phone and ZIP', () => {
+    const rules = { askHomeowner: false, consentOnSubmit: true };
+    const errors = funnelContactErrors({ name: '', email: '', phone: '', zip: '', homeowner: '', consent: false }, rules);
+    expect(Object.keys(errors)).toEqual(['name', 'email', 'phone', 'zip']);
+    expect(funnelContactErrors({ ...fields, homeowner: '', consent: false }, rules)).toEqual({});
+    expect(spec.contactStep.askHomeowner).toBeFalsy();
+  });
+  it('agree-on-submit sends consent with the exact wording, and no ownership answer it never asked', () => {
+    const body = funnelLeadRequest({ spec, selection: picks, fields: { ...fields, homeowner: '', consent: false }, consentText: 'x', measurement: false, consentOnSubmit: true });
+    expect(body.contact.consent).toBe(true);
+    expect(body.consentText).toBe('x');
+    expect('homeowner' in body).toBe(false);
   });
   it('sends the picks, the contact and the exact consent wording, never a price', () => {
     const body = request();
@@ -174,6 +187,27 @@ describe('funnel lead route', () => {
     expect(url.searchParams.get('name')).toBe('Jordan Rivera');
     expect(url.searchParams.get('email')).toBe('jordan@example.test');
   });
+  it('without the ownership question the lead still qualifies, marked "not asked online"', async () => {
+    const body = await (await post(request())).json();
+    expect(request().homeowner).toBeUndefined();
+    expect(body.qualified).toBe(true);
+    const meta = (activity().metadata as { estimator: { homeowner: string } }).estimator;
+    expect(meta.homeowner).toBe('not_asked');
+    expect((rpcArgs().p_answers as Record<string, string>).estimator_check_on_site).toContain('Owns the home (not asked online)');
+  });
+  it('a request without the funnel picks still has to answer the ownership question', async () => {
+    const { funnel: _f, ...rest } = request();
+    void _f;
+    const res = await post(rest);
+    expect(res.status).toBe(422);
+    expect((await res.json()).errors.homeowner).toBeTruthy();
+  });
+  it('a funnel set to stop unqualified visitors says nothing was saved', async () => {
+    m.funnel = { ...(m.funnel as object), config: { ...funnelConfig, unqualifiedAction: 'stop' } };
+    const body = await (await post({ ...request(), homeowner: 'no' })).json();
+    expect(body).toMatchObject({ ok: true, qualified: false, saved: false });
+    expect(m.rpc).not.toHaveBeenCalled();
+  });
   it('a renter is saved for review without a booking link', async () => {
     const body = await (await post({ ...request(), homeowner: 'no' })).json();
     expect(body.ok).toBe(true);
@@ -198,7 +232,8 @@ describe('funnel lead route', () => {
 
 describe('booking screen helpers', () => {
   it('names the picks over the range', () => {
-    expect(priceEyebrow(spec, picks)).toBe('Classic · Luxe · Add a spa · Ballpark price');
+    expect(priceEyebrow(spec, picks)).toBe('Classic · Luxe · With spa');
+    expect(priceEyebrow(spec, { size: 'estate', finish: 'standard', extras: 'backyard' })).toBe('Estate · Standard · Full backyard');
     expect(priceRange({ low: 65000, high: 106500 })).toBe('$65,000 – $106,500');
     expect(priceRange({ low: null, high: null })).toBeNull();
   });
@@ -244,7 +279,14 @@ describe('screens render', () => {
     expect(html).toMatch(/type="tel"/);
     expect(html).toMatch(/inputMode="numeric"/i);
     expect(html).toContain(estimatorConsentText(contractor.contractorName).replace(/'/g, '&#x27;'));
+    expect(html).toContain('By tapping');
     expect(html).toContain('CSLB #1112793');
+    // Four fields, no ownership question, no consent checkbox, the measurement box never pre-ticked.
+    expect(html.match(/data-text=""/g)).toHaveLength(4);
+    expect(html).not.toContain('Do you own this home?');
+    expect(html).not.toMatch(/data-field="consent"/);
+    expect(html).not.toMatch(/type="checkbox"[^>]*checked/);
+    expect(html).toMatch(/enterKeyHint="go"|enterkeyhint="go"/i);
     expect(html).not.toMatch(/★|reviews/i);
   });
   it('the booking step: picks, range, ballpark and example-price wording, financing without payments, call link', () => {
@@ -258,10 +300,10 @@ describe('screens render', () => {
     const html = renderToStaticMarkup(
       <FunnelBookingScreen slug="pool-masters" spec={spec} contractor={contractor} template={pub} selection={picks} result={result} embedded={false} headingId="h" />,
     );
-    expect(html).toContain('Book your free consultation');
-    expect(html.replace(/<[^>]+>/g, '')).toContain('Classic · Luxe · Add a spa · Ballpark price');
+    expect(html).toContain('Book your free on-site estimate');
+    expect(html.replace(/<[^>]+>/g, '')).toContain('Classic · Luxe · With spa');
     expect(html).toContain(priceRange(result.estimate)!);
-    expect(html).toContain('Ballpark, not a quote');
+    expect(html).toContain('Ballpark price, not a quote');
     expect(html).toContain('Example prices');
     expect(html).toContain('Financing available');
     expect(html).not.toMatch(/\/mo\b|per month/i);

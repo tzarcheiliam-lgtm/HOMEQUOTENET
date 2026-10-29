@@ -145,6 +145,19 @@ export function readStored(spec: FunnelSpec, slug: string, storage: StorageLike 
   }
 }
 
+/**
+ * The stored lead result when it was priced for exactly these picks, else null:
+ * after a pick changes, the booking step (and its range) is closed until the
+ * contact step is sent again. A result saved before results carried their
+ * picks is treated as stale.
+ */
+export function resultFor(spec: FunnelSpec, result: FunnelLeadResult | null | undefined, selection: FunnelSelection): FunnelLeadResult | null {
+  if (!result?.selection) return null;
+  const a = normalizeFunnelSelection(spec, result.selection);
+  const b = normalizeFunnelSelection(spec, selection);
+  return spec.steps.every((s) => a[s.id] === b[s.id]) ? result : null;
+}
+
 export function writeStored(slug: string, value: StoredFunnel, storage: StorageLike | null = session()): void {
   try {
     storage?.setItem(storageKey(slug), JSON.stringify(value));

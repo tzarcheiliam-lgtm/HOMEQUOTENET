@@ -9,7 +9,8 @@ export const metadata: Metadata = {
 
 // The simple funnel's face (components/estimator/funnel/funnel.css explains the pick); only .es-fn uses it.
 // Variable axis (no fixed weights): the funnel uses in-between weights to match Buildoly's lighter articulat-cf.
-const funnelFont = Inter_Tight({ subsets: ['latin'], variable: '--font-funnel', display: 'swap' });
+// Not preloaded: the builder and configurator pages under this layout never use it (a metric-matched fallback keeps the swap still).
+const funnelFont = Inter_Tight({ subsets: ['latin'], variable: '--font-funnel', display: 'swap', preload: false });
 
 /**
  * Shell for the contractor-branded estimator page (/estimator/[slug]): no

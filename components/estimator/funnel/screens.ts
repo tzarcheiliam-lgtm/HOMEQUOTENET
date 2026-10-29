@@ -22,6 +22,13 @@ export type FunnelLeadResult = {
   calendarUrl?: string;
   /** For the scheduler prefill (Calendly name / email params). */
   contact: { firstName: string; lastName: string; email: string };
+  /**
+   * The picks this result was priced for (normalized). The shell only opens the
+   * booking step while the current picks equal these; older stored results lack it.
+   */
+  selection?: FunnelSelection;
+  /** false: nothing was saved (an unqualified visitor on a funnel set to 'stop'). */
+  saved?: boolean;
 };
 
 export type FunnelContactScreenProps = {
@@ -37,6 +44,8 @@ export type FunnelContactScreenProps = {
   headingId: string;
   /** The lead went through: the shell stores the result and opens the booking step. */
   onDone: (result: FunnelLeadResult) => void;
+  /** These exact picks were already sent: show a link to the estimate instead of asking again (no second lead). */
+  onOpenSent?: () => void;
 };
 
 export type FunnelBookingScreenProps = {

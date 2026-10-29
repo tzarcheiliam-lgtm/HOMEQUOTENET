@@ -51,6 +51,8 @@ export type FunnelOption = {
   title: string;
   /** One grey line, e.g. "About 30 × 15 ft". */
   subtitle: string;
+  /** Shorter title for the one-line recap on the price card, e.g. "Full backyard". Default: title. */
+  short?: string;
   /** Configurator model id this option selects (needs FunnelSpec.configurator). */
   model?: string;
   /** Configurator row ids this option turns on (needs FunnelSpec.configurator). */
@@ -101,6 +103,12 @@ export type FunnelContactStep = {
   cta: string;
   /** Show an optional street-address field (ZIP is always asked: it gates the service area). */
   askAddress: boolean;
+  /**
+   * Ask "Do you own this home?" (default false: the funnel keeps to the four
+   * fields; the lead is marked "home ownership not asked online" and it is
+   * confirmed on the call or at the on-site visit).
+   */
+  askHomeowner?: boolean;
   /** Trust line under the button; only truthful facts (no reviews or ratings unless real and published). */
   trustLine: string;
 };
@@ -108,7 +116,7 @@ export type FunnelContactStep = {
 export type FunnelBookingStep = {
   /** e.g. "Book your free consultation". */
   headline: string;
-  /** Small caps over the range; `{options}` is replaced with the picked option titles joined by " · ". */
+  /** Small caps over the range; `{options}` is replaced with the picked options' short titles (or titles) joined by " · ". */
   priceEyebrow: string;
   /** Line under the range, e.g. "Ballpark, not a quote: ...". */
   priceNote: string;

@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { Check, Loader2, ShieldCheck } from 'lucide-react';
+import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { ArrowRight, Loader2 } from 'lucide-react';
 import { tidyPhone } from '@/components/estimator/configurator/result/booking-state';
 import { estimatorConsentText, funnelContactErrors, newSubmissionId, submitEstimatorLead, type EstimatorLeadRequest } from '@/lib/estimator/lead-client';
 import type { FunnelContactScreenProps } from '../screens';
@@ -19,14 +19,17 @@ import {
 
 /**
  * The funnel's contact step: "Your estimate is ready. / Where should we send it?"
- * Name, email, phone, ZIP (it gates the service area), "do you own this home"
- * (the funnel's qualification rule), the funnel's consent wording with its
- * checkbox (the lead route checks both), then the lead POST with the picks.
+ * Buildoly's shape: four fields (name, email, phone, ZIP: it gates the service
+ * area), then the button, with the consent wording in small print right under
+ * it: tapping the button is the agreement (agree-on-submit; the lead route
+ * still checks the exact wording). "Do you own this home?" is asked only when
+ * the spec says so (contactStep.askHomeowner). Then the lead POST with the picks.
  * The server prices the picks and answers with the estimate; onSuccess hands it
  * to the shell (onDone), which stores it and opens the booking screen.
  *
- * Built so the first submit goes through: specific messages per field, focus on
- * the first one to fix, everything typed is kept (and survives a reload), one
+ * Built so the first submit goes through: one specific message at a time (the
+ * first field to fix gets it and the focus; a field is also checked when left),
+ * Return moves to the next field and only the last one submits, everything typed is kept (and survives a reload), one
  * automatic retry on a network error with the same submission id (never two
  * leads), the button locked while sending, a changed consent wording shown in place.
  *
@@ -54,12 +57,14 @@ const fieldBad = 'border-[#c4281c] focus:shadow-[0_0_0_1px_#c4281c]';
 
 type TextKey = 'name' | 'email' | 'phone' | 'zip' | 'address';
 
-export function FunnelContactScreen({ slug, spec, selection, contractor, headingId, onDone }: FunnelContactScreenProps) {
+export function FunnelContactScreen({ slug, spec, selection, contractor, headingId, onDone, onOpenSent }: FunnelContactScreenProps) {
   const uid = useId();
   const step = spec.contactStep;
+  const askHomeowner = step.askHomeowner === true;
+  const rules = { askHomeowner, consentOnSubmit: true };
   const [fields, setFields] = useState<FunnelContactFields>(emptyFunnelFields);
-  // The contractor's default (opt_out = on); the visitor can untick it.
-  const [measurement, setMeasurement] = useState(contractor.adMeasurement === 'opt_out');
+  // Never pre-ticked (same as the configurator): only the visitor's own tick sends browser ids to Meta.
+  const [measurement, setMeasurement] = useState(false);
   const [consentWording, setConsentWording] = useState(() => estimatorConsentText(contractor.contractorName));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [sending, setSending] = useState(false);
@@ -104,16 +109,18 @@ export function FunnelContactScreen({ slug, spec, selection, contractor, heading
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (sendingRef.current) return;
-    const local = funnelContactErrors(fields);
-    if (Object.keys(local).length) {
-      setErrors(local);
+    const local = funnelContactErrors(fields, rules);
+    const first = firstInvalid(local);
+    if (first) {
+      // One message at a time, on the field that gets the focus: never a wall of red.
+      setErrors({ [first]: local[first] });
       setFocusTick((n) => n + 1);
       return;
     }
     sendingRef.current = true;
     setSending(true);
     setErrors({});
-    const draft = funnelLeadRequest({ spec, selection, fields, consentText: consentWording, measurement });
+    const draft = funnelLeadRequest({ spec, selection, fields, consentText: consentWording, measurement, consentOnSubmit: true });
     const body = JSON.stringify(draft);
     if (!submission.current || submission.current.body !== body) submission.current = { id: newSubmissionId(), body };
     const res = await submitEstimatorLead(slug, { ...draft, tracking: readTracking(measurement), submissionId: submission.current.id });
@@ -127,21 +134,43 @@ export function FunnelContactScreen({ slug, spec, selection, contractor, heading
         qualified: res.qualified,
         calendarUrl: res.calendarUrl,
         contact: { firstName: draft.contact.firstName, lastName: draft.contact.lastName, email: draft.contact.email },
+        selection: draft.funnel,
+        saved: res.saved,
       });
       return;
     }
     if (res.consentText) {
-      // The wording changed since the page loaded: show the new one and ask for the box again.
+      // The wording changed since the page loaded: show the new one; the next tap agrees to it.
       setConsentWording(res.consentText);
-      setFields((f) => ({ ...f, consent: false }));
     }
     setErrors(placeErrors(res.errors));
     setFocusTick((n) => n + 1);
   };
 
+  /** Leaving a field that has something in it checks just that field (an empty one waits for the submit). */
+  const check = (key: TextKey, value: string) => {
+    if (key === 'address' || !value.trim()) return;
+    const message = funnelContactErrors({ ...fields, [key]: value }, rules)[key];
+    setErrors((e) => {
+      if ((e[key] ?? undefined) === message) return e;
+      const next = { ...e };
+      if (message) next[key] = message;
+      else delete next[key];
+      return next;
+    });
+  };
+
+  /** The keyboard says "Next": go to the next field instead of submitting the form. */
+  const onEnter = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter' || e.currentTarget.enterKeyHint !== 'next') return;
+    e.preventDefault();
+    const inputs = Array.from(formRef.current?.querySelectorAll<HTMLInputElement>('input[data-text]') ?? []);
+    inputs[inputs.indexOf(e.currentTarget) + 1]?.focus();
+  };
+
   const general = formErrors(errors);
-  const fieldCount = Object.keys(errors).length - general.length;
   const err = (key: string) => errors[key];
+  const lastText: TextKey = step.askAddress ? 'address' : 'zip';
 
   const text = (key: TextKey, label: string, extra: Record<string, string | number | boolean>) => (
     <div>
@@ -149,19 +178,20 @@ export function FunnelContactScreen({ slug, spec, selection, contractor, heading
         <input
           id={`${uid}-${key}`}
           data-field={key}
+          data-text=""
           name={key}
           value={fields[key]}
           placeholder=" "
           onChange={(e) => set(key, e.target.value)}
-          // Only when tidying changes it, so a blur never clears an error or shifts the layout under the pointer.
-          onBlur={
-            key === 'phone'
-              ? () => {
-                  const tidy = tidyPhone(fields.phone);
-                  if (tidy !== fields.phone) set('phone', tidy);
-                }
-              : undefined
-          }
+          onKeyDown={onEnter}
+          onBlur={() => {
+            if (key === 'phone') {
+              const tidy = tidyPhone(fields.phone);
+              if (tidy !== fields.phone) set('phone', tidy);
+              check('phone', tidy);
+            } else check(key, fields[key]);
+          }}
+          enterKeyHint={key === lastText ? 'go' : 'next'}
           aria-invalid={err(key) ? true : undefined}
           aria-describedby={err(key) ? `${uid}-${key}-e` : undefined}
           className={`${fieldBase} ${err(key) ? fieldBad : fieldOk}`}
@@ -180,14 +210,28 @@ export function FunnelContactScreen({ slug, spec, selection, contractor, heading
 
   return (
     <div className="w-full" data-funnel-contact="">
-      <h1 id={headingId} tabIndex={-1} className="fn-h1 text-balance outline-none">
+      <h1 id={headingId} tabIndex={-1} className="fn-h1 outline-none">
         {step.headline}
-        <span className="block text-[var(--fn-muted-strong)]">{step.subline}</span>
+        <span className="block text-pretty text-[var(--fn-muted-strong)]">{step.subline}</span>
       </h1>
+
+      {onOpenSent ? (
+        <button
+          type="button"
+          onClick={onOpenSent}
+          className="mt-5 flex w-full touch-manipulation items-center justify-between gap-3 rounded-[8px] bg-white px-[15px] py-3 text-left text-[15px] leading-5 text-[var(--fn-text)] shadow-[0_0_0_1px_var(--fn-line)] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[var(--fn-focus)]"
+          data-funnel-sent=""
+        >
+          <span>You&rsquo;ve already sent this design.</span>
+          <span className="inline-flex shrink-0 items-center gap-1 font-medium text-[color:var(--fn-blue-ink)]">
+            See your estimate <ArrowRight aria-hidden="true" className="size-4" />
+          </span>
+        </button>
+      ) : null}
 
       <form ref={formRef} onSubmit={submit} noValidate className="mt-6" data-funnel-contact-form="">
         <div className="space-y-3">
-          {text('name', 'Name', { type: 'text', autoComplete: 'name', autoCapitalize: 'words', maxLength: 160, enterKeyHint: 'next' })}
+          {text('name', 'Name', { type: 'text', autoComplete: 'name', autoCapitalize: 'words', maxLength: 160 })}
           {text('email', 'Email', {
             type: 'email',
             autoComplete: 'email',
@@ -196,13 +240,13 @@ export function FunnelContactScreen({ slug, spec, selection, contractor, heading
             autoCorrect: 'off',
             spellCheck: false,
             maxLength: 254,
-            enterKeyHint: 'next',
           })}
-          {text('phone', 'Phone number', { type: 'tel', autoComplete: 'tel', inputMode: 'tel', maxLength: 30, enterKeyHint: 'next' })}
-          {text('zip', 'ZIP code', { type: 'text', autoComplete: 'postal-code', inputMode: 'numeric', maxLength: 10, enterKeyHint: step.askAddress ? 'next' : 'done' })}
-          {step.askAddress ? text('address', 'Street address (optional)', { type: 'text', autoComplete: 'street-address', maxLength: 300, enterKeyHint: 'done' }) : null}
+          {text('phone', 'Phone number', { type: 'tel', autoComplete: 'tel', inputMode: 'tel', maxLength: 30 })}
+          {text('zip', 'ZIP code', { type: 'text', autoComplete: 'postal-code', inputMode: 'numeric', maxLength: 10 })}
+          {step.askAddress ? text('address', 'Street address (optional)', { type: 'text', autoComplete: 'street-address', maxLength: 300 }) : null}
         </div>
 
+        {askHomeowner ? (
         <fieldset className="mt-5" aria-describedby={err('homeowner') ? `${uid}-homeowner-e` : undefined}>
           <legend className="text-[15px] font-medium text-[var(--fn-ink)]">Do you own this home?</legend>
           <div className="mt-2 grid grid-cols-2 gap-3">
@@ -223,7 +267,7 @@ export function FunnelContactScreen({ slug, spec, selection, contractor, heading
                 >
                   <input
                     type="radio"
-                    name={`${uid}-homeowner`}
+                    name={`${slug}-homeowner`}
                     value={value}
                     checked={on}
                     onChange={() => set('homeowner', value)}
@@ -237,6 +281,7 @@ export function FunnelContactScreen({ slug, spec, selection, contractor, heading
           </div>
           <FieldError id={`${uid}-homeowner-e`}>{err('homeowner')}</FieldError>
         </fieldset>
+        ) : null}
 
         {/* Honeypot: hidden, inert, and named so browser autofill leaves it alone. */}
         <div hidden inert aria-hidden="true" className="hidden">
@@ -246,51 +291,7 @@ export function FunnelContactScreen({ slug, spec, selection, contractor, heading
           </label>
         </div>
 
-        <div className="mt-5">
-          <label className="flex cursor-pointer touch-manipulation items-start gap-3 text-[13px] leading-[19px] text-[var(--fn-muted)]">
-            <span className="relative mt-px inline-flex size-[22px] shrink-0">
-              <input
-                type="checkbox"
-                data-field="consent"
-                checked={fields.consent}
-                onChange={(e) => set('consent', e.target.checked)}
-                aria-invalid={err('consent') ? true : undefined}
-                aria-describedby={err('consent') ? `${uid}-consent-e` : undefined}
-                className={`peer size-[22px] cursor-pointer appearance-none rounded-[5px] border bg-white transition-colors duration-150 checked:border-[color:var(--fn-blue)] checked:bg-[color:var(--fn-blue)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--fn-blue)] motion-reduce:transition-none ${
-                  err('consent') ? 'border-[#c4281c]' : 'border-[#b8b8bd]'
-                }`}
-              />
-              <Check aria-hidden="true" strokeWidth={3} className="pointer-events-none absolute inset-[4px] size-[14px] text-white opacity-0 peer-checked:opacity-100" />
-            </span>
-            <span>
-              {consentWording}{' '}
-              <a href="/privacy" target="_blank" rel="noreferrer" className="underline underline-offset-2">
-                Privacy
-              </a>
-              {' · '}
-              <a href="/terms" target="_blank" rel="noreferrer" className="underline underline-offset-2">
-                Terms
-              </a>
-            </span>
-          </label>
-          <FieldError id={`${uid}-consent-e`} className="pl-[34px]">
-            {err('consent')}
-          </FieldError>
-          <label className="mt-3 flex cursor-pointer items-center gap-3 text-[12px] leading-[18px] text-[var(--fn-muted)]">
-            <input
-              type="checkbox"
-              checked={measurement}
-              onChange={(e) => setMeasurement(e.target.checked)}
-              className="ml-[3px] size-4 shrink-0 accent-[color:var(--fn-blue)]"
-            />
-            <span>Allow optional advertising measurement</span>
-          </label>
-        </div>
-
         <div role="alert" aria-live="assertive" className="mt-4 empty:mt-0">
-          {fieldCount > 0 && general.length === 0 ? (
-            <p className="text-[14px] font-medium text-[#c4281c]">{fieldCount === 1 ? 'One thing to fix above.' : `${fieldCount} things to fix above.`}</p>
-          ) : null}
           {general.map((message) => (
             <p
               key={message}
@@ -307,14 +308,36 @@ export function FunnelContactScreen({ slug, spec, selection, contractor, heading
           type="submit"
           disabled={sending}
           aria-busy={sending || undefined}
-          className="fn-btn mt-4 h-12 w-full gap-2 px-4 text-[16px] disabled:cursor-wait"
+          aria-describedby={`${uid}-consent`}
+          className="fn-btn mt-5 h-12 w-full gap-2 px-4 text-[17px] disabled:cursor-wait lg:h-[52px] lg:text-[18px]"
         >
           {sending ? <Loader2 aria-hidden="true" className="size-[18px] animate-spin motion-reduce:animate-none" /> : null}
           {sending ? 'Getting your estimate…' : step.cta}
         </button>
-        <p className="mt-3 flex items-start gap-2 text-[14px] leading-5 text-[var(--fn-muted)]">
-          <ShieldCheck aria-hidden="true" className="mt-px size-4 shrink-0 text-[color:var(--fn-blue)]" strokeWidth={2.2} />
-          <span>{step.trustLine}</span>
+        {step.trustLine ? <p className="mt-3 text-center text-[14px] leading-5 text-[var(--fn-muted)]">{step.trustLine}</p> : null}
+
+        {/* Agree-on-submit: the exact wording the server checks, right under the button. */}
+        <p id={`${uid}-consent`} className="mt-4 text-[12px] leading-[17px] text-[var(--fn-muted)]" data-funnel-consent="">
+          By tapping &ldquo;{step.cta}&rdquo;: {consentWording}
+        </p>
+        <p className="-ml-2 mt-0.5 flex flex-wrap items-center text-[12px] leading-[17px] text-[var(--fn-muted)]">
+          <a href="/privacy" target="_blank" rel="noreferrer" className="inline-flex min-h-8 items-center px-2 underline underline-offset-2">
+            Privacy
+          </a>
+          <span aria-hidden="true">·</span>
+          <a href="/terms" target="_blank" rel="noreferrer" className="inline-flex min-h-8 items-center px-2 underline underline-offset-2">
+            Terms
+          </a>
+          <span aria-hidden="true">·</span>
+          <label className="inline-flex min-h-8 cursor-pointer touch-manipulation items-center gap-1.5 px-2">
+            <input
+              type="checkbox"
+              checked={measurement}
+              onChange={(e) => setMeasurement(e.target.checked)}
+              className="size-3.5 shrink-0 accent-[color:var(--fn-blue)]"
+            />
+            <span>Allow optional ad measurement</span>
+          </label>
         </p>
       </form>
     </div>

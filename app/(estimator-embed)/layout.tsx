@@ -8,7 +8,8 @@ export const metadata: Metadata = {
 };
 
 // Same funnel face as app/(estimator)/layout.tsx; only .es-fn uses it.
-const funnelFont = Inter_Tight({ subsets: ['latin'], variable: '--font-funnel', display: 'swap' });
+// Not preloaded: the builder and configurator pages under this layout never use it (a metric-matched fallback keeps the swap still).
+const funnelFont = Inter_Tight({ subsets: ['latin'], variable: '--font-funnel', display: 'swap', preload: false });
 
 /**
  * Bare shell for the iframe embed: no site header or footer, but the same

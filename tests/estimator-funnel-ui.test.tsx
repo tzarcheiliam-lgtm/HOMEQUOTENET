@@ -14,6 +14,7 @@ import {
   progress,
   readStored,
   resolvePhoto,
+  resultFor,
   screenParam,
   screenUrl,
   stepCta,
@@ -108,6 +109,16 @@ describe('funnel screens and URL', () => {
     expect(readStored(SPEC, 'pool-masters', blocked)).toBeNull();
     expect(() => writeStored('pool-masters', { v: 1, selection: base }, blocked)).not.toThrow();
   });
+
+  it('a lead result only opens the booking step for the picks it was priced for', () => {
+    const sel = { size: 'classic', finish: 'luxe', extras: 'spa' };
+    const result = { estimate: { low: 1, high: 2 } as never, qualified: true, contact: { firstName: 'A', lastName: 'B', email: 'a@b.co' }, selection: sel };
+    expect(resultFor(SPEC, result, { ...sel })).toBe(result);
+    expect(resultFor(SPEC, result, { ...sel, extras: 'backyard' })).toBeNull();
+    // Saved before results carried their picks: stale.
+    expect(resultFor(SPEC, { ...result, selection: undefined }, sel)).toBeNull();
+    expect(resultFor(SPEC, null, sel)).toBeNull();
+  });
 });
 
 describe('funnel photos', () => {
@@ -195,7 +206,7 @@ describe('funnel landing', () => {
     expect(t).toContain(SPEC.landing.announcement.replace('&', '&amp;'));
     expect(html).toContain('aria-label="Dismiss announcement"');
     expect(t).toContain('Backyard pools,');
-    expect(t).toContain(SPEC.landing.subline);
+    expect(t).toContain(SPEC.landing.subline.replace(/-/g, '\u2011'));
     expect(html.match(/href="\/estimator\/pool-masters\/design"/g)!.length).toBeGreaterThanOrEqual(2);
     expect(html).toContain(`srcSet="${SPEC.landing.heroPhoto.srcSm} 1200w, ${SPEC.landing.heroPhoto.src} 1800w"`);
     expect(html).toContain('tel:+18186436888');

@@ -19,6 +19,7 @@ import {
   progress,
   readStored,
   resolvePhoto,
+  resultFor,
   sameScreen,
   screenOrder,
   screenParam,
@@ -90,8 +91,10 @@ export function Funnel({
   selectionRef.current = selection;
   const screenRef = useRef(screen);
   screenRef.current = screen;
-  const resultRef = useRef(result);
-  resultRef.current = result;
+  // The result only counts for the picks it was priced for (else the booking step is closed).
+  const current = resultFor(spec, result, selection);
+  const currentRef = useRef(current);
+  currentRef.current = current;
 
   /* ---------------- Restore once, then keep URL + storage in step ---------------- */
 
@@ -101,8 +104,8 @@ export function Funnel({
     if (stored && !fromUrl) sel = stored.selection;
     const res = stored?.result ?? null;
     let scr = screenRef.current;
-    // The booking step needs a sent lead; without one (new tab, cleared storage) the contact step opens.
-    if (scr.kind === 'book' && !res) scr = { kind: 'contact' };
+    // The booking step needs a lead sent for these picks; without one (new tab, cleared storage, edited URL) the contact step opens.
+    if (scr.kind === 'book' && !resultFor(spec, res, sel)) scr = { kind: 'contact' };
     setSelection(sel);
     setResult(res);
     setScreen(scr);
@@ -111,7 +114,7 @@ export function Funnel({
 
     const onPop = () => {
       let next = parseScreen(spec, new URLSearchParams(window.location.search).get('step'));
-      if (next.kind === 'book' && !resultRef.current) next = { kind: 'contact' };
+      if (next.kind === 'book' && !currentRef.current) next = { kind: 'contact' };
       const cur = screenRef.current;
       setDirection(screenOrder(spec, next) < screenOrder(spec, cur) ? 'back' : 'fwd');
       setScreen(next);
@@ -128,6 +131,13 @@ export function Funnel({
     const url = screenUrl(spec, window.location.pathname, screen, selection, window.location.search);
     if (url !== `${window.location.pathname}${window.location.search}`) window.history.replaceState(window.history.state, '', url);
   }, [hydrated, slug, spec, selection, screen, result]);
+
+  // ?step=book whose picks no longer match the sent ones (or with nothing sent): back to the contact step.
+  useEffect(() => {
+    if (!hydrated || screen.kind !== 'book' || current) return;
+    setScreen({ kind: 'contact' });
+    window.history.replaceState({ fn: 'contact' }, '', screenUrl(spec, window.location.pathname, { kind: 'contact' }, selectionRef.current, window.location.search));
+  }, [hydrated, screen, current, spec]);
 
   /* ---------------- Navigation ---------------- */
 
@@ -172,11 +182,12 @@ export function Funnel({
   const onDone = useCallback(
     (res: FunnelLeadResult) => {
       setResult(res);
-      resultRef.current = res;
+      currentRef.current = res;
       go({ kind: 'book' });
     },
     [go],
   );
+  const openSent = useCallback(() => go({ kind: 'book' }), [go]);
 
   /* ---------------- Preload the next step's photos while this one is looked at ---------------- */
 
@@ -237,7 +248,7 @@ export function Funnel({
                 onContinue={() => go(nextScreen(spec, screen))}
               />
             ) : screen.kind === 'contact' ? (
-              <div className="pt-[22px] lg:pt-10">
+              <div className="min-h-[560px] pt-[22px] lg:pt-10">
                 <FunnelContactScreen
                   slug={slug}
                   spec={spec}
@@ -247,17 +258,18 @@ export function Funnel({
                   embedded={embedded}
                   headingId={HEADING_ID}
                   onDone={onDone}
+                  onOpenSent={current ? openSent : undefined}
                 />
               </div>
-            ) : result ? (
+            ) : current ? (
               <div className="pt-6 lg:pt-8">
                 <FunnelBookingScreen
                   slug={slug}
                   spec={spec}
                   contractor={contractor}
                   template={template}
-                  selection={selection}
-                  result={result}
+                  selection={current.selection ?? selection}
+                  result={current}
                   embedded={embedded}
                   headingId={HEADING_ID}
                 />
@@ -267,6 +279,12 @@ export function Funnel({
               <div className="min-h-[60vh]" aria-busy="true" />
             )}
           </div>
+          {/* The embed has no footer: the photo note (and the licence line) go under the column instead. */}
+          {embedded && (spec.photoNote || contractor.licenseLabel) ? (
+            <p className="mt-8 text-[12px] leading-[17px] text-[var(--fn-muted)]">
+              {[spec.photoNote, contractor.licenseLabel].filter(Boolean).join(' · ')}
+            </p>
+          ) : null}
         </div>
       </Main>
       {embedded ? null : <FunnelFooter contractor={contractor} note={spec.photoNote} />}
@@ -340,11 +358,11 @@ function StepScreen({
           photos={photos}
           selected={picked}
           fit={isView ? 'cover' : 'contain'}
-          caption={isView && spec.photoNote ? 'Example design' : undefined}
+          caption={isView && spec.photoNote ? 'Example design · AI-assisted' : undefined}
           priority={first}
         />
       </div>
-      <h1 id={HEADING_ID} tabIndex={-1} className="fn-h1 mt-[18px] text-balance outline-none lg:mt-7 lg:text-[30px]">
+      <h1 id={HEADING_ID} tabIndex={-1} className="fn-h1 mt-[18px] text-balance outline-none lg:mt-7">
         {step.label}
       </h1>
       <fieldset className="mt-5 lg:mt-6">

@@ -1,6 +1,6 @@
 import { calendarFrameUrl } from '@/components/estimator/configurator/result/booking-state';
 import { formatRange } from '@/lib/estimator/engine';
-import { pickedTitles } from '@/lib/estimator/funnel/engine';
+import { pickedOptions } from '@/lib/estimator/funnel/engine';
 import type { FunnelSelection, FunnelSpec } from '@/lib/estimator/funnel/types';
 import type { Estimate } from '@/lib/estimator/types';
 
@@ -9,9 +9,10 @@ import type { Estimate } from '@/lib/estimator/types';
  * tests/estimator-funnel-lead.test.ts.
  */
 
-/** "Classic · Luxe · Add a spa · Ballpark price" (shown in small caps). */
+/** "Classic · Luxe · With spa" (shown in small caps): each pick's short title, or its title. */
 export function priceEyebrow(spec: Pick<FunnelSpec, 'steps' | 'bookingStep'>, selection: FunnelSelection): string {
-  return spec.bookingStep.priceEyebrow.replace('{options}', pickedTitles(spec as FunnelSpec, selection).join(' · '));
+  const picks = pickedOptions(spec as FunnelSpec, selection).map((o) => o.short ?? o.title);
+  return spec.bookingStep.priceEyebrow.replace('{options}', picks.join(' · '));
 }
 
 /** "$65,000 – $106,500", or null when the estimate has no range (then the screen says it is priced on site). */

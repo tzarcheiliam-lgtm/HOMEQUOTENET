@@ -1,21 +1,22 @@
 'use client';
 
-import { Fragment, useEffect, useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { CalendarCheck, Check, ExternalLink, Phone } from 'lucide-react';
 import { telHref } from '@/components/estimator/shell/facts';
 import type { FunnelBookingScreenProps } from '../screens';
 import { bookingFrameUrl, priceEyebrow, priceRange, readCalendlyMessage } from './state';
 
 /**
- * The funnel's last screen: "Book your free consultation".
- * 1. The price card: the picks, the ballpark range from the server, the
- *    ballpark wording (plus "example prices" while prices are unconfirmed) and
+ * The funnel's last screen: "Book your free on-site estimate".
+ * 1. The price card: the picks on one line, the ballpark range from the server,
+ *    one sentence of ballpark wording (plus "example prices" while prices are unconfirmed) and
  *    "Financing available" with the lender disclosure behind "See details".
  *    Never a monthly payment.
  * 2. The booking card: the contractor's Calendly inline (name / email
  *    prefilled by the server), sized to its content, with a button that opens
  *    it in a new tab (also the only option inside the /embed iframe). An
- *    unqualified lead (renter, outside the service area) is told we will call.
+ *    unqualified lead (outside the service area) is told we will call, or,
+ *    when nothing was saved (result.saved false), to call us.
  * 3. "Prefer to talk now? Call (818) 643-6888".
  *
  * Draws only its content column from the heading down (props: ../screens.ts);
@@ -64,24 +65,17 @@ export function FunnelBookingScreen({ spec, selection, contractor, result, embed
 
       {/* Price card */}
       <section aria-labelledby={`${uid}-price`} className="mt-6 rounded-[16px] bg-white p-5 shadow-[0_0_0_1px_rgba(0,0,0,0.08)]" data-funnel-price="">
-        <p id={`${uid}-price`} className="text-[12px] font-semibold uppercase leading-4 tracking-[0.08em] text-[var(--fn-muted)]">
-          {/* Breaks only between picks, never inside "Add a spa". */}
-          {priceEyebrow(spec, selection)
-            .split(' · ')
-            .map((part, i, all) => (
-              <Fragment key={i}>
-                <span className="whitespace-nowrap">{i < all.length - 1 ? `${part} ·` : part}</span>
-                {i < all.length - 1 ? ' ' : null}
-              </Fragment>
-            ))}
+        <p id={`${uid}-price`} className="text-[12px] font-medium uppercase leading-4 tracking-[0.06em] text-[var(--fn-muted)]">
+          {priceEyebrow(spec, selection)}
         </p>
         <p className="mt-2.5 text-[clamp(26px,8vw,34px)] font-medium leading-[1.1] tracking-[-0.02em] text-[var(--fn-ink)] tabular-nums [text-wrap:balance]">
           {range ?? 'Priced at your free on-site visit'}
         </p>
-        <p className="mt-2.5 text-[15px] leading-[22px] text-[var(--fn-text)] [text-wrap:pretty]">{step.priceNote}</p>
-        {examplePrices ? (
-          <p className="mt-1.5 text-[12.5px] leading-[18px] text-[var(--fn-muted)]">Example prices, not yet confirmed by {contractor.contractorName}.</p>
-        ) : null}
+        <p className="mt-2.5 text-[15px] leading-[22px] text-[var(--fn-text)] [text-wrap:pretty]">
+          {step.priceNote}
+          {/* While prices are unconfirmed: one quiet clause in the same paragraph, not a second notice. */}
+          {examplePrices ? <span className="text-[var(--fn-muted)]"> Example prices, not yet confirmed.</span> : null}
+        </p>
         {step.financingLabel ? (
           <div className="mt-4">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -95,7 +89,7 @@ export function FunnelBookingScreen({ spec, selection, contractor, result, embed
                   aria-expanded={details}
                   aria-controls={`${uid}-fin`}
                   onClick={() => setDetails((d) => !d)}
-                  className="relative text-[15px] font-medium text-[color:var(--fn-blue)] after:absolute after:-inset-x-2 after:-inset-y-3 after:content-[''] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--fn-blue)]"
+                  className="relative text-[15px] font-medium text-[color:var(--fn-blue-ink)] after:absolute after:-inset-x-2 after:-inset-y-3 after:content-[''] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--fn-blue)]"
                 >
                   {details ? 'Hide details' : 'See details'}
                 </button>
@@ -132,7 +126,7 @@ export function FunnelBookingScreen({ spec, selection, contractor, result, embed
           </div>
         ) : calendarUrl ? (
           <>
-            <h2 id={`${uid}-book`} className="text-[17px] leading-[24px] text-[var(--fn-text)] [text-wrap:pretty]">
+            <h2 id={`${uid}-book`} className="text-[17px] font-medium leading-[24px] text-[var(--fn-ink)] [text-wrap:pretty]">
               {step.bookingTitle}
             </h2>
             {embedded ? null : (
@@ -163,6 +157,15 @@ export function FunnelBookingScreen({ spec, selection, contractor, result, embed
               {embedded ? 'Pick a time' : 'Open the calendar in a new tab'}
             </a>
           </>
+        ) : result.saved === false ? (
+          <div>
+            <h2 id={`${uid}-book`} className="text-[19px] font-medium leading-tight text-[var(--fn-ink)]">
+              {firstName ? `Thanks, ${firstName}.` : 'Thank you.'} We can&rsquo;t book this one online.
+            </h2>
+            <p className="mt-1.5 text-[15px] leading-[22px] text-[var(--fn-text)]">
+              It may be outside the area we serve. Give {contractor.contractorName} a call and we&rsquo;ll tell you what we can do.
+            </p>
+          </div>
         ) : (
           <div>
             <h2 id={`${uid}-book`} className="text-[19px] font-medium leading-tight text-[var(--fn-ink)]">

@@ -66,6 +66,8 @@ export function funnelLeadRequest(input: {
   fields: FunnelContactFields;
   consentText: string;
   measurement: boolean;
+  /** The consent wording is shown under the button ("By tapping …"), no checkbox. */
+  consentOnSubmit?: boolean;
 }): EstimatorLeadRequest {
   const { spec, fields } = input;
   const selection = normalizeFunnelSelection(spec, input.selection);
@@ -75,14 +77,16 @@ export function funnelLeadRequest(input: {
     answers: funnelAnswers(spec, selection),
     funnel: selection,
     zip: normalizeZip(fields.zip) ?? fields.zip.trim(),
-    homeowner: fields.homeowner === 'no' ? 'no' : 'yes',
+    // Only when the form asks it (FunnelContactStep.askHomeowner); the server marks it "not asked" otherwise.
+    ...(spec.contactStep.askHomeowner ? { homeowner: fields.homeowner === 'no' ? ('no' as const) : ('yes' as const) } : {}),
     ...(address ? { note: `Address: ${address.slice(0, 300)}` } : {}),
     contact: {
       firstName: name.firstName,
       lastName: name.lastName,
       email: fields.email.trim(),
       phone: fields.phone.trim(),
-      consent: fields.consent,
+      // Agree-on-submit: the wording sits under the button, so sending is the agreement.
+      consent: input.consentOnSubmit ? true : fields.consent,
       website: fields.website,
     },
     consentText: input.consentText,

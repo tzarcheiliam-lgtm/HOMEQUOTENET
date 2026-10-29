@@ -117,6 +117,9 @@ async function handle(request: Request, context: Context): Promise<Response> {
   const where = { origin: request.headers.get('origin') && originAllowed(request) ? request.headers.get('origin')! : origin, slug };
   const spec = configuratorSpecFor(contractor);
   const funnelSpec = funnelSpecFor(contractor);
+  // Only a funnel whose contact step keeps to four fields may leave ownership out.
+  const homeownerRequired = !(funnelSpec && lead.funnel && !funnelSpec.contactStep.askHomeowner);
+  if (homeownerRequired && !lead.homeowner) return reply({ ok: false, errors: { homeowner: 'Tell us whether you own the home.' } }, 422);
   let answers = sanitizeEstimatorAnswers(template, lead.answers);
   let estimate = computeEstimate(template, { answers, dimensions: lead.dimensions });
   let design: ConfiguratorLeadDesign | undefined;
@@ -150,7 +153,7 @@ async function handle(request: Request, context: Context): Promise<Response> {
       request: lead, answers, estimate, likedLooks, design,
     });
     // A funnel set to stop unqualified visitors keeps its rule: they see the range, nothing is saved.
-    if (!payload.qualified && funnel.config.unqualifiedAction === 'stop') return reply({ ok: true, estimate, qualified: false });
+    if (!payload.qualified && funnel.config.unqualifiedAction === 'stop') return reply({ ok: true, estimate, qualified: false, saved: false });
 
     // Same hourly per-visitor cap as the funnel session route (only a daily hash is retained, never the raw IP).
     const address = request.headers.get('x-vercel-forwarded-for') ?? request.headers.get('x-forwarded-for') ?? 'local';

@@ -28,7 +28,11 @@ export type EstimatorLeadRequest = {
   /** "Anything else we should know?" */
   note?: string;
   zip: string;
-  homeowner: 'yes' | 'no';
+  /**
+   * Required by the server, except for a funnel (experience 'funnel') whose
+   * contact step does not ask it (FunnelContactStep.askHomeowner false).
+   */
+  homeowner?: 'yes' | 'no';
   /** Optional: the one-page configurator does not ask it (the funnel's timeline question then stays open). */
   timeline?: LeadTimeline;
   contact: {
@@ -76,6 +80,8 @@ export type EstimatorLeadResponse =
       calendarUrl?: string;
       /** Short-lived token for the optional photoreal render (absent when renders are off). */
       renderToken?: string;
+      /** false when nothing was saved (an unqualified visitor on a funnel set to 'stop'). */
+      saved?: boolean;
     }
   | {
       ok: false;
@@ -182,14 +188,25 @@ export const FUNNEL_FIELD_ORDER = ['name', 'email', 'phone', 'zip', 'homeowner',
  * name field. Server errors on firstName / lastName belong to "name" too
  * (funnelErrorKey).
  */
-export function funnelContactErrors(input: FunnelContactInput): Record<string, string> {
+export function funnelContactErrors(
+  input: FunnelContactInput,
+  /**
+   * askHomeowner false: the form has no ownership question (FunnelContactStep.askHomeowner).
+   * consentOnSubmit: the consent wording sits under the button and tapping it is the
+   * agreement (no checkbox), so there is no box to tick.
+   */
+  opts: { askHomeowner?: boolean; consentOnSubmit?: boolean } = {},
+): Record<string, string> {
+  const { askHomeowner = true, consentOnSubmit = false } = opts;
   const split = splitFullName(input.name);
   const errors = leadFieldErrors({ ...input, firstName: split?.firstName ?? input.name.trim(), lastName: split?.lastName ?? '' });
   const out: Record<string, string> = {};
   if (!input.name.trim()) out.name = 'Enter your name.';
   else if (!split) out.name = 'Enter your first and last name, like Jane Smith.';
   else if (errors.firstName || errors.lastName) out.name = 'Use 80 characters or fewer for each name.';
-  for (const key of ['email', 'phone', 'zip', 'homeowner', 'consent'] as const) if (errors[key]) out[key] = errors[key];
+  for (const key of ['email', 'phone', 'zip'] as const) if (errors[key]) out[key] = errors[key];
+  if (askHomeowner && errors.homeowner) out.homeowner = errors.homeowner;
+  if (!consentOnSubmit && errors.consent) out.consent = errors.consent;
   return out;
 }
 
