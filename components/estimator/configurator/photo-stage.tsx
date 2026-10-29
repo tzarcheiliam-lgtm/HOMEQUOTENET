@@ -187,7 +187,7 @@ export function PhotoStage({ spec, view, onView, photo, next, idle, toast, capti
         })}
       </div>
 
-      {model ? <SizePlan model={model} models={models} caption={showCaption ? caption : null} /> : null}
+      {model ? <SizePlan model={model} models={models} caption={showCaption ? caption : null} hiddenOnPhone={collapsed} /> : null}
 
       {toast ? (
         <div key={toast.id} aria-hidden="true" className="es-cfg-toast pointer-events-none absolute inset-x-0 top-12 flex justify-center px-4 sm:top-16">
@@ -214,7 +214,18 @@ const dims = (m: ConfiguratorModel) => m.dimensions.match(/\d+(\.\d+)?/g)?.map(N
  * The chosen size to scale (the photos show one example pool): every size as
  * a faint outline, the chosen one filled, with its name and measurements.
  */
-export function SizePlan({ model, models, caption }: { model: ConfiguratorModel; models: ConfiguratorModel[]; caption: string | null }) {
+export function SizePlan({
+  model,
+  models,
+  caption,
+  hiddenOnPhone = false,
+}: {
+  model: ConfiguratorModel;
+  models: ConfiguratorModel[];
+  caption: string | null;
+  /** Phones with the photo shrunk to a strip: leave the photo clear. */
+  hiddenOnPhone?: boolean;
+}) {
   const maxW = Math.max(...models.map((m) => dims(m)[0]));
   const maxH = Math.max(...models.map((m) => dims(m)[1]));
   const box = { w: 64, h: 34 };
@@ -225,8 +236,12 @@ export function SizePlan({ model, models, caption }: { model: ConfiguratorModel;
   };
   const on = rect(model);
   return (
-    <div className="pointer-events-none absolute bottom-2 left-2.5 flex items-center gap-2.5 rounded-xl bg-white/92 py-1.5 pl-2 pr-3 shadow-[0_4px_18px_-8px_rgba(0,0,0,.4)] backdrop-blur-sm sm:bottom-4 sm:left-4">
-      <svg aria-hidden="true" width={box.w} height={box.h} viewBox={`0 0 ${box.w} ${box.h}`} className="shrink-0">
+    <div
+      className={`pointer-events-none absolute bottom-2 left-2.5 items-center gap-2 rounded-lg bg-white/92 py-1 pl-1.5 pr-2.5 shadow-[0_4px_18px_-8px_rgba(0,0,0,.4)] backdrop-blur-sm sm:bottom-4 sm:left-4 sm:gap-2.5 sm:rounded-xl sm:py-1.5 sm:pl-2 sm:pr-3 ${
+        hiddenOnPhone ? 'hidden lg:flex' : 'flex'
+      }`}
+    >
+      <svg aria-hidden="true" viewBox={`0 0 ${box.w} ${box.h}`} className="h-[22px] w-[42px] shrink-0 sm:h-[34px] sm:w-[64px]">
         {models.map((m) => {
           const r = rect(m);
           return <rect key={m.id} x={r.x} y={r.y} width={r.width} height={r.height} rx={1.5} fill="none" stroke="#b9b3a9" strokeDasharray="2 2" strokeWidth={1} />;
@@ -244,10 +259,10 @@ export function SizePlan({ model, models, caption }: { model: ConfiguratorModel;
         />
       </svg>
       <span className="min-w-0 leading-tight">
-        <span className="block text-[12.5px] font-semibold text-[#111]">
+        <span className="block text-[12px] font-semibold text-[#111] sm:text-[12.5px]">
           {model.name} <span className="font-normal tabular-nums text-[#4a463f]">· {model.dimensions}</span>
         </span>
-        <span className="block text-[10.5px] text-[#5f5a52]">{caption ? `To scale · ${caption}` : 'Your size, to scale'}</span>
+        <span className="block text-[10px] text-[#5f5a52] sm:text-[10.5px]">{caption ? `To scale · ${caption}` : 'Your size, to scale'}</span>
       </span>
     </div>
   );

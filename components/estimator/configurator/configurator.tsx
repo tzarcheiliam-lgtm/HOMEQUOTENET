@@ -225,7 +225,6 @@ export function Configurator({ spec, template, contractor, manifest = null, embe
   const examplePrices = !template.pricesConfirmed;
   // Real finished jobs (never AI): the spec's list, else the contractor's gallery.
   const projects = spec.projects?.length ? spec.projects : (contractor.gallery ?? []);
-  const top = embedded ? 'top-0' : 'top-14 lg:top-16';
   // The embed layout already wraps the page in <main id="main">.
   const Main = embedded ? 'div' : 'main';
 

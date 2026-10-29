@@ -84,7 +84,7 @@ export function ConfiguratorBooking({ slug, contractor, selection, answers, embe
   useEffect(() => {
     if (!done) return;
     doneRef.current?.focus({ preventScroll: true });
-    doneRef.current?.scrollIntoView({ block: 'nearest', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+    doneRef.current?.scrollIntoView({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
   }, [done]);
 
   const set = <K extends keyof BookingFields>(key: K, value: BookingFields[K]) => {
@@ -329,7 +329,7 @@ function BookingDone({
           <Check className="size-4" strokeWidth={2.6} />
         </span>
         <div>
-          <h3 ref={headingRef} tabIndex={-1} className="text-[19px] font-semibold leading-tight text-[#111] outline-none">
+          <h3 ref={headingRef} tabIndex={-1} className="scroll-mt-24 text-[19px] font-semibold leading-tight text-[#111] outline-none">
             {done.firstName ? `Thanks, ${done.firstName}.` : 'Thank you.'} Your design is with {contractor.contractorName}.
           </h3>
           <p className="mt-1.5 text-[14.5px] leading-[22px] text-[#4a463f]">

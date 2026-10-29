@@ -49,7 +49,7 @@ export function ConfiguratorResultPage(props: ConfiguratorResultPageProps) {
 
       <ResultGallery
         photos={photos}
-        note={`${photoNote} Each view shows the picks it can${unpictured.length ? `; ${listOf(unpictured.map((r) => r.label.toLowerCase()))} ${unpictured.length === 1 ? 'is' : 'are'} priced, not pictured` : ''}.`}
+        note={`${photoNote} Each view shows the picks it can${unpictured.length ? `. Priced, not pictured: ${listOf(unpictured.map((r) => r.label.toLowerCase()))}` : ''}.`}
       />
 
       <p className="mt-8 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#5f5a52]">Your {contractor.contractorName} design</p>

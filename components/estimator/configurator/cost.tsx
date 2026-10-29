@@ -134,7 +134,7 @@ export function TotalBar({
           onClick={() => onOpen(!open)}
           className="group/total min-w-0 touch-manipulation rounded-lg text-left focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--cfg-accent)]"
         >
-          <span className="block whitespace-nowrap text-[clamp(18px,5.2vw,26px)] font-semibold leading-tight tracking-[-0.02em] tabular-nums text-[#111]" aria-hidden="true">
+          <span className="block whitespace-nowrap text-[clamp(18px,5vw,22px)] font-semibold leading-tight tracking-[-0.02em] tabular-nums text-[#111]" aria-hidden="true">
             {moneyRange(shown)}
           </span>
           <span className="mt-1 flex items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-[0.14em] text-[#6d675d] group-hover/total:text-[#111]">
@@ -148,7 +148,7 @@ export function TotalBar({
         <button
           type="button"
           onClick={onContinue}
-          className="ml-auto inline-flex h-12 shrink-0 touch-manipulation items-center justify-center rounded-xl bg-[var(--cfg-accent)] px-5 text-[15px] font-semibold text-white transition-[background-color,scale] duration-150 hover:bg-[var(--cfg-accent-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--cfg-accent)] active:scale-[.98] motion-reduce:transition-none sm:px-8"
+          className="ml-auto inline-flex h-12 shrink-0 touch-manipulation items-center justify-center rounded-xl bg-[var(--cfg-accent)] px-4 text-[15px] font-semibold text-white transition-[background-color,scale] duration-150 hover:bg-[var(--cfg-accent-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--cfg-accent)] active:scale-[.98] motion-reduce:transition-none sm:px-6"
         >
           {continueLabel}
         </button>

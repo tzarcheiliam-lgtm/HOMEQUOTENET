@@ -34,14 +34,14 @@ export function ModelPicker({
   return (
     <fieldset>
       <legend className="mb-1 text-[15px] font-semibold text-[#111]">Your pool&rsquo;s size</legend>
-      <p className="mb-3 text-[12.5px] leading-[18px] text-[#5f5a52]">Pick the closest. We measure it at the free site visit.</p>
+      <p className="mb-3 text-[12.5px] leading-[18px] text-[#5f5a52]">Pick the closest; we measure it at the free site visit.</p>
       <div className="grid grid-cols-3 gap-2">
         {models.map((m) => {
           const on = m.id === value;
           return (
             <label
               key={m.id}
-              className={`relative flex cursor-pointer flex-col rounded-2xl border bg-white px-3 pb-2.5 pt-3 transition-[border-color,box-shadow] duration-150 motion-reduce:transition-none ${focusRing} ${
+              className={`relative flex cursor-pointer flex-col rounded-2xl border bg-white px-2.5 pb-2.5 pt-2.5 transition-[border-color,box-shadow] sm:px-3 sm:pt-3 duration-150 motion-reduce:transition-none ${focusRing} ${
                 on ? 'border-[#111] shadow-[0_0_0_1px_#111]' : 'border-[#e4e0d8] hover:border-[#bdb7ab]'
               }`}
             >
@@ -49,7 +49,7 @@ export function ModelPicker({
               <PoolGlyph model={m} models={models} on={on} />
               <span className="mt-2 text-[15px] font-semibold leading-5 text-[#111]">{m.name}</span>
               <span className="text-[13px] tabular-nums text-[#5f5a52]">{m.dimensions}</span>
-              <span className="mt-1 text-[12px] tabular-nums text-[#5f5a52]">{totals[m.id] ? fromLabel(totals[m.id]) : ''}</span>
+              <span className="mt-1 whitespace-nowrap text-[11.5px] tabular-nums text-[#5f5a52] sm:text-[12px]">{totals[m.id] ? fromLabel(totals[m.id]) : ''}</span>
             </label>
           );
         })}
