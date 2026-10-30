@@ -89,11 +89,27 @@ export type FunnelStep = {
   defaultOption?: string;
   photo: FunnelPhotoRule;
   /**
-   * How the photo fills the card: 'cover' (room photos) or 'contain' (plan
-   * drawings on white, zoomed in a little). Default: 'cover' for view and
-   * matrix rules, 'contain' for option rules. Fallback photos always cover.
+   * How the photo fills the card: 'cover' (fills the card, its edges cropped
+   * where the photo's shape differs from the card's) or 'contain' (the whole
+   * photo, on `photoBackdrop`). Default: FunnelSpec.photoFrame.fit, else
+   * 'cover' for view and matrix rules and 'contain' for option rules (the pool).
+   * See stepPhotoFrame (lib/estimator/funnel/engine.ts).
    */
   photoFit?: 'cover' | 'contain';
+  /**
+   * Scale of a contained photo (1 = the whole photo). Default:
+   * FunnelSpec.photoFrame.zoom, else 1.3 (the pool's plan drawings and
+   * follow-up photos, zoomed in past their white margins). Ignored for 'cover'.
+   */
+  photoZoom?: number;
+  /**
+   * What fills the card around a contained photo: 'white' (plan drawings on
+   * white) or 'blur' (a soft, blurred copy of the same photo, for room photos
+   * shown whole). Default: FunnelSpec.photoFrame.backdrop, else 'white'.
+   * With 'white' a fallback photo always covers the card; with 'blur' it is
+   * shown whole too.
+   */
+  photoBackdrop?: 'white' | 'blur';
   /** Primary button text. Default "Continue" (FunnelSpec.finalCta on whichever step is last on the path). */
   cta?: string;
   /**
@@ -239,6 +255,15 @@ export type FunnelSpec = {
   configurator?: ConfiguratorSpec;
   /** Template answers every design starts from when there is no configurator (it has its own baseAnswers). */
   baseAnswers?: Answers;
+  /**
+   * Default photo framing of every step (each step's photoFit / photoZoom /
+   * photoBackdrop wins). Unset (the pool): option rules contain at 1.3 on
+   * white, view and matrix rules cover. The bathroom and kitchen show every
+   * room photo whole ({ fit: 'contain', zoom: 1, backdrop: 'blur' }): the
+   * 3:2 photos are taller than the card (7:4, 2.8:1 on short phones, 2.2:1
+   * on laptops), so 'cover' cut off their top and bottom.
+   */
+  photoFrame?: FunnelPhotoFrame;
   /** One quiet line in the page footer (and under the embed's column): photos are example designs. Never on a photo. */
   photoNote?: string;
   /**
@@ -247,6 +272,9 @@ export type FunnelSpec = {
    */
   designDescription?: string;
 };
+
+/** How a step's photo sits in its card (FunnelStep.photoFit / photoZoom / photoBackdrop). */
+export type FunnelPhotoFrame = { fit?: 'cover' | 'contain'; zoom?: number; backdrop?: 'white' | 'blur' };
 
 /** What the homeowner picked: option id per step id (steps not shown on this path have no entry). */
 export type FunnelSelection = Record<string, string>;

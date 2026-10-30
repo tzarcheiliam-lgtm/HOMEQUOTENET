@@ -17,7 +17,7 @@ type Db = ReturnType<typeof createAdminClient>;
  */
 export interface LeadDesign {
   slug: string;
-  /** 'pool' | 'bathroom' (the noun in "New Luxe pool lead", "your pool design"). */
+  /** 'pool' | 'bathroom' | 'kitchen' (the noun in "New Luxe pool lead", "your pool design"). */
   noun: string;
   /** The finish pick when the funnel has one ("Luxe", "Standard"); null otherwise. */
   tier: string | null;
@@ -33,7 +33,7 @@ export interface LeadDesign {
   shareUrl: string | null;
 }
 
-const NOUN: Record<string, string> = { pool: 'pool', bathroom: 'bathroom' };
+const NOUN: Record<string, string> = { pool: 'pool', bathroom: 'bathroom', kitchen: 'kitchen' };
 
 export function designFromEstimator(meta: any, siteUrl: string): LeadDesign | null {
   const est = meta?.estimator;

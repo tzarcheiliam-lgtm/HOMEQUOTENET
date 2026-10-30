@@ -74,6 +74,7 @@ import {
   normalizeFunnelSelection,
   photoKey,
   stepOptionPhotos,
+  stepPhotoFrame,
 } from '@/lib/estimator/funnel/engine';
 import { estimatorConsentText } from '@/lib/estimator/lead-client';
 import { getEstimator } from '@/lib/estimator/registry';
@@ -198,10 +199,14 @@ describe('photos', () => {
     expect(Object.keys(stepOptionPhotos(SPEC, 'tub', { size: 'guest', layout: 'combo' }))).toEqual(['soaking', 'clawfoot', 'stone']);
   });
 
-  it('room photos cover the card; the size plans sit on white', () => {
-    expect(SPEC.steps.map((s) => s.photoFit ?? (s.photo.kind === 'option' ? 'contain' : 'cover'))).toEqual(['contain', 'cover', 'cover', 'cover', 'cover', 'cover']);
-    // Pool: unchanged (plans and follow-ups contain, configurator views cover).
-    expect(POOL_MASTERS_FUNNEL.steps.every((s) => s.photoFit === undefined)).toBe(true);
+  it('every photo is shown whole: room photos on a blurred copy of themselves, the size plans on white', () => {
+    expect(SPEC.steps.map((s) => stepPhotoFrame(SPEC, s))).toEqual([
+      { fit: 'contain', zoom: 1, backdrop: 'white' },
+      ...Array.from({ length: 5 }, () => ({ fit: 'contain', zoom: 1, backdrop: 'blur' })),
+    ]);
+    // Pool: unchanged (plans and follow-ups contain at 1.3 on white, configurator views cover).
+    expect(POOL_MASTERS_FUNNEL.photoFrame).toBeUndefined();
+    expect(POOL_MASTERS_FUNNEL.steps.every((s) => s.photoFit === undefined && s.photoZoom === undefined && s.photoBackdrop === undefined)).toBe(true);
   });
 });
 

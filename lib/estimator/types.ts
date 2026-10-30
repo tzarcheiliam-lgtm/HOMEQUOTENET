@@ -251,8 +251,15 @@ export type OptionOverride = {
 /** A look photo; `thumb` is an optional smaller copy the picker tiles load instead of `src`. */
 export type GalleryImage = { src: string; alt: string; caption?: string; thumb?: string };
 
-/** Trades with a template (lib/estimator/registry.ts TEMPLATES). Kitchen slots in here later. */
-export type EstimatorTrade = 'pool' | 'bathroom';
+/**
+ * Trades with a template (lib/estimator/registry.ts TEMPLATES). Kitchen has a
+ * template but no live builder (components/estimator/builders): it runs the
+ * simple funnel only (experience 'funnel').
+ */
+export type EstimatorTrade = 'pool' | 'bathroom' | 'kitchen';
+
+/** Trades with a live builder adapter and builder copy (components/estimator/builders). */
+export type BuilderTrade = Exclude<EstimatorTrade, 'kitchen'>;
 
 export type ContractorEstimatorConfig = {
   /** URL segment, e.g. "pool-masters". */

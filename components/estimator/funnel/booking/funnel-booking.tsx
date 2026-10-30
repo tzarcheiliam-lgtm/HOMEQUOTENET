@@ -8,7 +8,7 @@ import { exampleFinancingDisclosure, exampleFinancingLine, syncDemoFinancing } f
 import type { FunnelBookingScreenProps } from '../screens';
 import { bookingFrameUrl, plainBookingTitle, priceEyebrow, priceRange, readCalendlyMessage } from './state';
 import { ShareDesignButton } from './share-design';
-import { shareDesignPath, shareMessage } from '@/lib/estimator/share';
+import { designNoun, shareDesignPath, shareMessage } from '@/lib/estimator/share';
 
 /**
  * The funnel's last screen: "Book your free call".
@@ -83,7 +83,7 @@ export function FunnelBookingScreen({
   const monthly = example ? exampleFinancingLine(result.estimate.low, example) : null;
   // "Send my design to my partner": the signed link from the lead route (shows the ballpark), else the picks alone.
   const shareUrl = result.shareUrl ?? shareDesignPath(slug, spec, selection);
-  const share = shareMessage(contractor.contractorName, template.trade === 'bathroom' ? 'bathroom' : 'pool');
+  const share = shareMessage(contractor.contractorName, designNoun(template.trade));
 
   useEffect(() => {
     setHost(window.location.hostname);

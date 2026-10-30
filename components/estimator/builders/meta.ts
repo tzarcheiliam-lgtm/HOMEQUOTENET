@@ -1,4 +1,4 @@
-import type { EstimatorTrade } from '@/lib/estimator/types';
+import type { BuilderTrade } from '@/lib/estimator/types';
 import { BATH_EXAMPLE_IMAGES, BATH_HERO_VIDEO, HERO_IMAGES } from '../scene/hero-images';
 import { heroCopy } from '../shell/estimator-hero';
 import type { ExampleImages, ExampleMedia, ExampleVideo, HeroCopy } from './types';
@@ -20,7 +20,8 @@ export type TradeMeta = {
   shareImage: { url: string; alt: string } | null;
 };
 
-export const TRADE_META: Record<EstimatorTrade, TradeMeta> = {
+/** Builder trades only: kitchen runs the simple funnel and has no builder (tradeMeta('kitchen') is null). */
+export const TRADE_META: Record<BuilderTrade, TradeMeta> = {
   pool: {
     hero: { withRenders: heroCopy(true), withoutRenders: heroCopy(false) },
     exampleImages: {
@@ -65,7 +66,7 @@ export const TRADE_META: Record<EstimatorTrade, TradeMeta> = {
 
 /** The plain-data builder facts for a trade, or null for a trade without a live builder. */
 export function tradeMeta(trade: string): TradeMeta | null {
-  return Object.hasOwn(TRADE_META, trade) ? TRADE_META[trade as EstimatorTrade] : null;
+  return Object.hasOwn(TRADE_META, trade) ? TRADE_META[trade as BuilderTrade] : null;
 }
 
 /**

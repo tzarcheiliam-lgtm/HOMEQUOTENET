@@ -306,6 +306,11 @@ const PROJECT_ALIASES: Record<string, Record<string, string[]>> = {
     full: ['full_remodel'],
     refresh: ['other'],
   },
+  // The kitchen-remodel funnel's own services (content/funnels/kitchen-remodel.json); both qualify.
+  kitchen: {
+    full: ['full_remodel'],
+    refresh: ['cabinets_counters'],
+  },
 };
 
 function projectAliases(trade: string, project: string | undefined): string[] {
@@ -598,7 +603,7 @@ export function buildLeadPayload(input: LeadPayloadInput): LeadPayload {
     `${source}: ballpark ${range} (not a quote${template.pricesConfirmed ? '' : '; example prices'})`,
     ...(address ? [`Home address: ${address}${details?.verified ? ' (picked from Google suggestions)' : ' (typed)'}`] : []),
     ...(mapUrl ? [`Map: ${mapUrl}`] : []),
-    `Homeowner: ${request.homeowner === 'yes' ? 'yes, the pool is at their home' : 'no, they rent'}`,
+    `Homeowner: ${request.homeowner === 'yes' ? (template.trade === 'pool' ? 'yes, the pool is at their home' : 'yes, they own the home') : 'no, they rent'}`,
     ...(design ? ['Their design:', ...design.summary.map((d) => `- ${d}`)] : []),
     ...(design ? ['Price lines:'] : []),
     ...estimate.lines.map((l) => `- ${l.label}: ${formatRange(l.low, l.high)}`),

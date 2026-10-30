@@ -2,7 +2,7 @@ import { defaultSelection, photoFor as configuratorPhotoKey, photoSrc as configu
 import type { ConfiguratorSelection, Range } from '../configurator/types.ts';
 import { computeEstimate } from '../engine.ts';
 import type { Answers, ContractorEstimatorConfig, Estimate, EstimatorTemplate } from '../types.ts';
-import type { FunnelOption, FunnelPhoto, FunnelSelection, FunnelSpec, FunnelStep } from './types.ts';
+import type { FunnelOption, FunnelPhoto, FunnelPhotoFrame, FunnelSelection, FunnelSpec, FunnelStep } from './types.ts';
 
 /*
  * Pure helpers for the simple mobile funnel: default selection, selection ->
@@ -179,6 +179,23 @@ export function funnelPhoto(spec: FunnelSpec, stepId: string, selection: FunnelS
   if (!cfg || !view) return { src: spec.landing.heroPhoto.src, srcSm: spec.landing.heroPhoto.srcSm, alt: spec.landing.heroAlt };
   const photo = configuratorPhotoSrc(cfg, photoKey(spec, step.id, sel));
   return { src: photo.src, srcSm: smallVariant(photo.src), alt: photo.alt, fallback: { src: view.fallback.src, alt: view.fallback.alt } };
+}
+
+/** The pool's plan drawings and follow-up photos: contained, zoomed in past their white margins. */
+export const DEFAULT_CONTAIN_ZOOM = 1.3;
+
+/**
+ * How a step's photo sits in its card: the step's own photoFit / photoZoom /
+ * photoBackdrop, else the spec's photoFrame, else the pool's look (option
+ * rules contain at 1.3 on white, view and matrix rules cover). `zoom` is 1
+ * for 'cover'.
+ */
+export function stepPhotoFrame(spec: FunnelSpec, step: FunnelStep): Required<FunnelPhotoFrame> {
+  const d = spec.photoFrame ?? {};
+  const fit = step.photoFit ?? d.fit ?? (step.photo.kind === 'option' ? 'contain' : 'cover');
+  const rawZoom = fit === 'contain' ? step.photoZoom ?? d.zoom ?? DEFAULT_CONTAIN_ZOOM : 1;
+  const zoom = Number.isFinite(rawZoom) && rawZoom > 0 ? rawZoom : 1;
+  return { fit, zoom, backdrop: step.photoBackdrop ?? d.backdrop ?? 'white' };
 }
 
 /** The photo for each option of a step with the rest of the selection unchanged (preload these so a tap swaps instantly). */
