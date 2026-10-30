@@ -157,11 +157,14 @@ describe('the bathroom funnel spec', () => {
 });
 
 describe('photos', () => {
-  const KEYS = new Set([
-    'size-guest', 'size-full', 'size-primary',
-    ...['walkin', 'combo', 'spa'].flatMap((l) => ['standard', 'luxe'].map((f) => `layout-${l}-${f}`)),
-    'shower-frameless', 'shower-curbless', 'shower-bench', 'tub-soaking', 'tub-clawfoot', 'tub-stone', 'vanity-single', 'vanity-double', 'vanity-floating',
-  ]);
+  // Every photo the spec names (a room photo per size x layout x finish, follow-ups edited from them).
+  const KEYS = new Set(
+    SPEC.steps.flatMap((s) => {
+      const r = s.photo;
+      const ps = r.kind === 'option' ? Object.values(r.photos) : r.kind === 'variants' ? r.photos.map((v) => v.photo) : r.kind === 'matrix' ? Object.values(r.photos).flatMap((x) => Object.values(x)) : [];
+      return ps.map((p) => p.src.match(/\/([^/]+)\.webp$/)![1]);
+    }),
+  );
   const file = (src: string) => existsSync(join(PUBLIC, src.replace(/^\//, '')));
 
   it('every shown step on every path has a photo from the agreed set, each with an existing fallback', () => {
@@ -185,15 +188,17 @@ describe('photos', () => {
     expect(used).toEqual(KEYS);
   });
 
-  it('the layout photo follows the finish, and the finish photo shows the layout (a walk-in until it is picked)', () => {
-    expect(funnelPhoto(SPEC, 'layout', { size: 'full', finish: 'luxe', layout: 'spa' }).src).toBe('/estimator/bathroom/funnel/layout-spa-luxe.webp');
-    expect(photoKey(SPEC, 'layout', { size: 'full', finish: 'standard', layout: 'combo' })).toBe('layout-combo-standard');
-    expect(funnelPhoto(SPEC, 'finish', { size: 'full', finish: 'luxe' }).src).toBe('/estimator/bathroom/funnel/layout-walkin-luxe.webp');
-    const swaps = stepOptionPhotos(SPEC, 'layout', { size: 'full', finish: 'standard' });
+  it('the layout photo follows the size and the finish, and the finish photo shows the layout (a walk-in until it is picked)', () => {
+    expect(funnelPhoto(SPEC, 'layout', { size: 'primary', finish: 'luxe', layout: 'spa' }).src).toBe('/estimator/bathroom/funnel/layout-spa-luxe.webp');
+    expect(funnelPhoto(SPEC, 'layout', { size: 'full', finish: 'luxe', layout: 'spa' }).src).toBe('/estimator/bathroom/funnel/layout-spa-luxe-full.webp');
+    expect(photoKey(SPEC, 'layout', { size: 'guest', finish: 'standard', layout: 'combo' })).toBe('layout-combo-standard-guest');
+    expect(funnelPhoto(SPEC, 'finish', { size: 'full', finish: 'luxe' }).src).toBe('/estimator/bathroom/funnel/layout-walkin-luxe-full.webp');
+    const swaps = stepOptionPhotos(SPEC, 'layout', { size: 'guest', finish: 'standard' });
     expect(Object.fromEntries(Object.entries(swaps).map(([k, p]) => [k, p.src.split('/').pop()]))).toEqual({
-      walkin: 'layout-walkin-standard.webp',
-      combo: 'layout-combo-standard.webp',
-      spa: 'layout-spa-standard.webp',
+      walkin: 'layout-walkin-standard-guest.webp',
+      combo: 'layout-combo-standard-guest.webp',
+      // A freestanding tub does not fit a 5 x 8 room (site visit): the nearest size's spa bath.
+      spa: 'layout-spa-standard-full.webp',
     });
     // Follow-up photos are asked for (preloaded) even while their step is hidden.
     expect(Object.keys(stepOptionPhotos(SPEC, 'tub', { size: 'guest', layout: 'combo' }))).toEqual(['soaking', 'clawfoot', 'stone']);

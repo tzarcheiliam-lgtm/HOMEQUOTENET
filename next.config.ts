@@ -5,6 +5,15 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR || '.next',
   // pdf.js / OCR / fonts load assets from node_modules + lib/signing/assets at runtime.
   serverExternalPackages: ['pdfjs-dist', 'tesseract.js', '@napi-rs/canvas', 'fontkit'],
+  // Code that reads public/ at runtime with a dynamic path (the vCard logo, the funnel photo
+  // checks) makes the tracer pull in ALL of public/, including ~55 MB of estimator photos that no
+  // function reads. Keep those photos (served statically) out of every function: the extra size
+  // pushed the deployment past Vercel's function limit.
+  outputFileTracingExcludes: {
+    '/**': ['./public/estimator/**'],
+    '/estimator/**': ['./public/**'],
+    '/embed/**': ['./public/**'],
+  },
   outputFileTracingIncludes: {
     '/app/documents/**': ['./lib/signing/assets/**', './node_modules/pdfjs-dist/standard_fonts/**', './node_modules/pdfjs-dist/cmaps/**', './node_modules/pdfjs-dist/wasm/**', './node_modules/pdfjs-dist/iccs/**', './node_modules/tesseract.js-core/**'],
     // Contracts render PDFs in server actions: the Unicode font and the HomeQuote logo must ship with those routes.

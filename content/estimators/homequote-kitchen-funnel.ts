@@ -1,4 +1,4 @@
-import type { FunnelPhoto, FunnelSpec } from '@/lib/estimator/funnel/types';
+import type { FunnelPhoto, FunnelPhotoRule, FunnelPhotoVariant, FunnelSpec } from '@/lib/estimator/funnel/types';
 
 /*
  * HomeQuote Network's simple mobile kitchen funnel (experience 'funnel'): the
@@ -49,13 +49,15 @@ const WOOD_ISLAND = stock('kitchen-remodel-wood-cabinets-island.webp', 'Bright k
 const MARBLE_ISLAND = stock('open-kitchen-marble-island.webp', 'Open-plan kitchen with a large marble-topped island and white cabinets');
 const OPEN_LIVING = stock('living-room-kitchen-wood-accents.webp', 'Open living room and kitchen with wood-panelled walls');
 
+type Size = 'compact' | 'medium' | 'large';
 type Layout = 'l' | 'u' | 'island';
 type Finish = 'standard' | 'luxe';
 
+const SIZE_WORDS: Record<Size, string> = { compact: 'Compact kitchen', medium: 'Medium kitchen', large: 'Large open kitchen' };
 const LAYOUT_WORDS: Record<Layout, string> = {
   l: 'an L-shaped layout',
   u: 'a U-shaped layout',
-  island: 'a large island',
+  island: 'an island',
 };
 const FINISH_WORDS: Record<Finish, string> = {
   standard: 'white shaker cabinets, quartz counters, a subway tile backsplash and stainless appliances',
@@ -67,13 +69,95 @@ const LAYOUT_FALLBACK: Record<Layout, Record<Finish, { src: string; alt: string 
   island: { standard: MARBLE_ISLAND, luxe: MARBLE_ISLAND },
 };
 
-/** The room photo for a layout and finish ("layout-island-luxe"): the same kitchen, the choice swapped. */
-function layoutPhoto(layout: Layout, finish: Finish): FunnelPhoto {
-  return photo(`layout-${layout}-${finish}`, `Remodeled kitchen with ${LAYOUT_WORDS[layout]}, ${FINISH_WORDS[finish]} (AI-generated example design)`, LAYOUT_FALLBACK[layout][finish]);
+/*
+ * Every step after the size shows the kitchen the homeowner picked (size) with
+ * their earlier picks still in it (finish, layout), so the design visibly
+ * accumulates. Files: the large kitchen keeps the original keys
+ * ("layout-island-luxe"); the smaller ones add the size ("layout-l-standard-compact").
+ * A combination without its own photo falls back to the nearest one
+ * (the layout first, then the nearest size, then the finish), e.g. an island in a
+ * compact kitchen (a site-visit item) shows the medium island kitchen.
+ */
+const sized = (key: string, size: Size) => (size === 'large' ? key : `${key}-${size}`);
+
+/** The room photo files that exist per size: [layout, finish]. */
+const ROOMS: Record<Size, [Layout, Finish][]> = {
+  compact: [['l', 'standard'], ['l', 'luxe'], ['u', 'standard'], ['u', 'luxe']],
+  medium: [['l', 'standard'], ['l', 'luxe'], ['u', 'standard'], ['u', 'luxe'], ['island', 'standard'], ['island', 'luxe']],
+  large: [['l', 'standard'], ['l', 'luxe'], ['u', 'standard'], ['u', 'luxe'], ['island', 'standard'], ['island', 'luxe']],
+};
+const SIZES: Size[] = ['compact', 'medium', 'large'];
+
+/** The room photo for a size, layout and finish ("layout-l-standard-compact"). */
+function layoutPhoto(size: Size, layout: Layout, finish: Finish): FunnelPhoto {
+  return photo(sized(`layout-${layout}-${finish}`, size), `${SIZE_WORDS[size]} with ${LAYOUT_WORDS[layout]}, ${FINISH_WORDS[finish]} (AI-generated example design)`, LAYOUT_FALLBACK[layout][finish]);
 }
 
-const byFinish = (layout: Layout) => ({ standard: layoutPhoto(layout, 'standard'), luxe: layoutPhoto(layout, 'luxe') });
-const byLayout = (finish: Finish) => ({ l: layoutPhoto('l', finish), u: layoutPhoto('u', finish), island: layoutPhoto('island', finish) });
+const ROOM_VARIANTS: FunnelPhotoVariant[] = SIZES.flatMap((size) =>
+  ROOMS[size].map(([layout, finish]) => ({ when: { size, layout, finish }, photo: layoutPhoto(size, layout, finish) })),
+);
+
+/** The room photos as a step's rule: the finish step follows size + layout, the layout step size + finish. */
+function roomRule(other: 'layout' | 'finish'): FunnelPhotoRule {
+  // The other pick first: a room that cannot have the layout (site visit) shows the nearest size that has it.
+  return { kind: 'variants', by: [{ stepId: other }, { stepId: 'size', ordered: true }], photos: ROOM_VARIANTS };
+}
+
+/** A follow-up option the room photo already shows: that room photo itself, for the rooms `match` picks. */
+function roomAs(stepId: string, optionId: string, match: (layout: Layout, finish: Finish) => boolean): FunnelPhotoVariant[] {
+  return ROOM_VARIANTS.filter((v) => match(v.when.layout as Layout, v.when.finish as Finish)).map((v) => ({ when: { ...v.when, [stepId]: optionId }, photo: v.photo }));
+}
+
+/**
+ * Follow-up photos edited from a room photo, per [size, layout, finish] that has
+ * them. The large luxe island kitchen keeps its original key ("cabinets-wood");
+ * the others add the room ("cabinets-wood-island-standard-medium").
+ */
+function edits(stepId: string, optionId: string, rooms: [Size, Layout, Finish][], alt: string, fallback: { src: string; alt: string }): FunnelPhotoVariant[] {
+  return rooms.map(([size, layout, finish]) => {
+    const original = size === 'large' && layout === 'island' && finish === 'luxe';
+    const key = stepId === 'island' ? `${stepId}-${optionId}-${finish}-${size}` : `${stepId}-${optionId}-${layout}-${finish}-${size}`;
+    return { when: { [stepId]: optionId, size, layout, finish }, photo: photo(original ? `${stepId}-${optionId}` : key, alt, fallback) };
+  });
+}
+
+/**
+ * No U-shaped kitchen has its own wood / two-tone photo yet: a U path shows the L-shaped one of the
+ * nearest size (two runs of the same cabinets) rather than an island kitchen. Listed after the exact photos.
+ */
+const uAsL = (vs: FunnelPhotoVariant[]): FunnelPhotoVariant[] => vs.filter((v) => v.when.layout === 'l').map((v) => ({ ...v, when: { ...v.when, layout: 'u' } }));
+
+/**
+ * Follow-ups match the layout first (never an island on an L path, never a tub on a walk-in path), then the
+ * size (the nearest one, as the layout step shows), then the finish.
+ */
+const FOLLOW_BY = [{ stepId: 'layout' }, { stepId: 'size', ordered: true }, { stepId: 'finish' }];
+
+/** Wood and two-tone cabinets with their own photo: edits of these rooms. */
+const WOOD_ROOMS: [Size, Layout, Finish][] = [
+  ['large', 'island', 'luxe'],
+  ['medium', 'island', 'standard'],
+  ['medium', 'island', 'luxe'],
+  ['medium', 'l', 'standard'],
+  ['compact', 'l', 'standard'],
+];
+const TWOTONE_ROOMS: [Size, Layout, Finish][] = [
+  ['medium', 'island', 'standard'],
+  ['medium', 'island', 'luxe'],
+  ['medium', 'l', 'standard'],
+  ['compact', 'l', 'standard'],
+];
+/** Prep island and island sink: edits of these island kitchens (a standard island path shows the luxe one of its size). */
+const ISLAND_ROOMS: [Size, Layout, Finish][] = [
+  ['large', 'island', 'luxe'],
+  ['medium', 'island', 'luxe'],
+];
+
+/** The appliance close-ups of the large kitchen's cooking wall (also shown for a medium kitchen). */
+function applianceCloseUp(id: string, alt: string, fallback: { src: string; alt: string }): FunnelPhotoVariant[] {
+  const p = photo(`appliances-${id}`, alt, fallback);
+  return [{ when: { appliances: id, size: 'large' }, photo: p }, { when: { appliances: id, size: 'medium' }, photo: p }];
+}
 
 function sizePlan(id: string, dims: string, room: string, fallback: { src: string; alt: string }): FunnelPhoto {
   return photo(`size-${id}`, `Top-down plan of a ${room} about ${dims} (to scale, AI-generated)`, fallback);
@@ -150,8 +234,8 @@ export const HOMEQUOTE_KITCHEN_FUNNEL: FunnelSpec = {
           },
         },
       ],
-      // The same kitchen in each finish, with the layout picked next (the island until then).
-      photo: { kind: 'matrix', stepId: 'layout', photos: { standard: byLayout('standard'), luxe: byLayout('luxe') } },
+      // The kitchen picked on step 1 in each finish, with the layout picked next (the island until then).
+      photo: roomRule('layout'),
     },
     {
       id: 'layout',
@@ -162,8 +246,8 @@ export const HOMEQUOTE_KITCHEN_FUNNEL: FunnelSpec = {
         { id: 'u', title: 'U-shaped', subtitle: 'Cabinets on three walls', answers: { layout: ['u_shape'] } },
         { id: 'island', title: 'Kitchen with island', short: 'Island kitchen', subtitle: 'Wall cabinets plus an island', answers: { layout: ['island'] } },
       ],
-      // e.g. layout-island-luxe: the layout in the finish picked before.
-      photo: { kind: 'matrix', stepId: 'finish', photos: { l: byFinish('l'), u: byFinish('u'), island: byFinish('island') } },
+      // e.g. layout-l-luxe-compact: the layout in the kitchen and finish picked before.
+      photo: roomRule('finish'),
     },
     // ---- Follow-ups: only when they apply (design options; one tap each).
     {
@@ -175,13 +259,23 @@ export const HOMEQUOTE_KITCHEN_FUNNEL: FunnelSpec = {
         { id: 'wood', title: 'Warm wood', short: 'Wood cabinets', subtitle: 'Stained oak or walnut', answers: { cabinetFinish: ['wood'] } },
         { id: 'twotone', title: 'Two-tone', short: 'Two-tone cabinets', subtitle: 'White and wood together', answers: { cabinetFinish: ['two_tone'] } },
       ],
+      // The kitchen so far in each colour. White = the room photo on a standard path (white shaker) and on a
+      // luxe L / U path (soft-white); two-tone = the room photo on a luxe island path (white perimeter, oak island).
       photo: {
-        kind: 'option',
-        photos: {
-          white: photo('cabinets-white', 'Kitchen with soft-white painted cabinets on the walls and the island, and brass hardware (AI-generated example design)', MARBLE_ISLAND),
-          wood: photo('cabinets-wood', 'Kitchen with warm white-oak wood cabinets on the walls and the island (AI-generated example design)', WOOD_ISLAND),
-          twotone: photo('cabinets-twotone', 'Kitchen with two-tone cabinets: soft-white cabinets on the walls and a white-oak island (AI-generated example design)', OPEN_LIVING),
-        },
+        kind: 'variants',
+        by: FOLLOW_BY,
+        photos: [
+          // (The medium luxe island is stone, so that kitchen reads white too; the large one has an oak island.)
+          ...roomAs('cabinets', 'white', (layout, finish) => finish === 'standard' || layout !== 'island').concat(
+            roomAs('cabinets', 'white', (layout, finish) => layout === 'island' && finish === 'luxe').filter((v) => v.when.size === 'medium'),
+          ),
+          { when: { cabinets: 'white', size: 'large', layout: 'island', finish: 'luxe' }, photo: photo('cabinets-white', 'Kitchen with soft-white painted cabinets on the walls and the island, and brass hardware (AI-generated example design)', MARBLE_ISLAND) },
+          ...edits('cabinets', 'wood', WOOD_ROOMS, 'Kitchen with warm white-oak wood cabinets (AI-generated example design)', WOOD_ISLAND),
+          ...uAsL(edits('cabinets', 'wood', WOOD_ROOMS, 'Kitchen with warm white-oak wood cabinets (AI-generated example design)', WOOD_ISLAND)),
+          ...roomAs('cabinets', 'twotone', (layout, finish) => layout === 'island' && finish === 'luxe').filter((v) => v.when.size === 'large'),
+          ...edits('cabinets', 'twotone', TWOTONE_ROOMS, 'Kitchen with two-tone cabinets: soft-white and white-oak wood together (AI-generated example design)', OPEN_LIVING),
+          ...uAsL(edits('cabinets', 'twotone', TWOTONE_ROOMS, 'Kitchen with two-tone cabinets: soft-white and white-oak wood together (AI-generated example design)', OPEN_LIVING)),
+        ],
       },
     },
     {
@@ -194,13 +288,15 @@ export const HOMEQUOTE_KITCHEN_FUNNEL: FunnelSpec = {
         { id: 'seating', title: 'Seating island with waterfall edge', short: 'Waterfall island', subtitle: 'Stools, stone down both ends', answers: { islandStyle: ['seating'] } },
         { id: 'sink', title: 'Island with sink', short: 'Island sink', subtitle: 'The sink moves to the island', answers: { islandStyle: ['sink'] } },
       ],
+      // The island kitchen so far with each island: the seating island = the room photo itself.
       photo: {
-        kind: 'option',
-        photos: {
-          prep: photo('island-prep', 'Compact white-oak prep island with deep drawers and a stone top, no seating (AI-generated example design)', MARBLE_ISLAND),
-          seating: photo('island-seating', 'Kitchen island with waterfall quartzite edges and three counter stools (AI-generated example design)', MARBLE_ISLAND),
-          sink: photo('island-sink', 'Kitchen island with a sink and a brass faucet, waterfall edges and counter stools (AI-generated example design)', WOOD_ISLAND),
-        },
+        kind: 'variants',
+        by: FOLLOW_BY,
+        photos: [
+          ...roomAs('island', 'seating', (layout) => layout === 'island'),
+          ...edits('island', 'prep', ISLAND_ROOMS, 'Prep island with deep drawers and a stone top, no seating (AI-generated example design)', MARBLE_ISLAND),
+          ...edits('island', 'sink', ISLAND_ROOMS, 'Kitchen island with a sink and a tall faucet, and counter stools (AI-generated example design)', WOOD_ISLAND),
+        ],
       },
     },
     {
@@ -214,14 +310,19 @@ export const HOMEQUOTE_KITCHEN_FUNNEL: FunnelSpec = {
         { id: 'pro', title: 'Pro range & hood', subtitle: 'Pro-style range and a big hood', answers: { appliances: ['pro'] } },
         { id: 'panel', title: 'Panel-ready built-ins', short: 'Built-in appliances', subtitle: 'Hidden behind cabinet panels', answers: { appliances: ['panel'] } },
       ],
-      // A closer view of the cooking wall (same kitchen), so the three packages read apart on a phone.
+      // Large and medium: a closer view of the large kitchen's cooking wall, so the three packages read apart on a phone.
+      // Compact: the compact luxe kitchen itself (pro range = the room photo), the other packages edited from the U-shaped one.
       photo: {
-        kind: 'option',
-        photos: {
-          stainless: photo('appliances-stainless', 'Cooking wall with a stainless slide-in range, a stainless chimney hood, a stainless French-door fridge and dishwasher (AI-generated example design)', WOOD_ISLAND),
-          pro: photo('appliances-pro', 'Cooking wall with a six-burner pro-style range under a white plaster hood and a paneled fridge column (AI-generated example design)', WOOD_ISLAND),
-          panel: photo('appliances-panel', 'Cooking wall with built-in wall ovens, a flush induction cooktop and appliances hidden behind cabinet panels (AI-generated example design)', MARBLE_ISLAND),
-        },
+        kind: 'variants',
+        by: [{ stepId: 'size', ordered: true }, { stepId: 'layout' }],
+        photos: [
+          ...applianceCloseUp('stainless', 'Cooking wall with a stainless slide-in range, a stainless chimney hood, a stainless French-door fridge and dishwasher (AI-generated example design)', WOOD_ISLAND),
+          ...applianceCloseUp('pro', 'Cooking wall with a six-burner pro-style range under a white plaster hood and a paneled fridge column (AI-generated example design)', WOOD_ISLAND),
+          ...applianceCloseUp('panel', 'Cooking wall with built-in wall ovens, a flush induction cooktop and appliances hidden behind cabinet panels (AI-generated example design)', MARBLE_ISLAND),
+          ...roomAs('appliances', 'pro', (layout, finish) => finish === 'luxe').filter((v) => v.when.size === 'compact'),
+          { when: { appliances: 'stainless', size: 'compact', layout: 'u' }, photo: photo('appliances-stainless-u-compact', 'Compact kitchen with a stainless range, chimney hood, French-door fridge and dishwasher (AI-generated example design)', WOOD_ISLAND) },
+          { when: { appliances: 'panel', size: 'compact', layout: 'u' }, photo: photo('appliances-panel-u-compact', 'Compact kitchen with a flush induction cooktop, a wall oven and appliances hidden behind cabinet panels (AI-generated example design)', MARBLE_ISLAND) },
+        ],
       },
     },
   ],
@@ -253,6 +354,8 @@ export const HOMEQUOTE_KITCHEN_FUNNEL: FunnelSpec = {
     reviewText: 'We book free consultations online with homeowners. Your details are saved, and the {name} team will review them before we can confirm a fit.',
   },
   // Every funnel photo is in public/ (a missing one would show its stock fallback, whose alt text says so).
+  // "Your design: Full bath · Luxe · Walk-in shower" under the photo from step 2 on (the design they are building).
+  designRecap: { label: 'Your design' },
   photoNote: 'Photos are AI-generated example designs, not finished projects.',
   designDescription: 'Three quick picks, then a ballpark price for your {noun} and a free in-home consultation with a licensed local contractor, through {name}.',
 };

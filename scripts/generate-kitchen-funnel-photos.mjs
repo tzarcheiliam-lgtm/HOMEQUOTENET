@@ -32,7 +32,7 @@
  * Usage
  *   KIE_KEY_FILE=<path> node scripts/generate-kitchen-funnel-photos.mjs credits
  *   KIE_KEY_FILE=<path> node scripts/generate-kitchen-funnel-photos.mjs generate [key ...] [--force]
- *   node scripts/generate-kitchen-funnel-photos.mjs export
+ *   node scripts/generate-kitchen-funnel-photos.mjs export [key ...]
  *   node scripts/generate-kitchen-funnel-photos.mjs sheet
  *   (KIE_API_KEY=... works instead of KIE_KEY_FILE; the key is read at run time, never printed.)
  *
@@ -267,6 +267,141 @@ const JOBS = [
   },
 ];
 
+
+// ------------------------------------------------------------------ smaller kitchens (2026-10-30)
+// The jobs above are the LARGE open kitchen (16 x 18). The funnel now shows the kitchen the
+// homeowner picked on step 1: COMPACT (10 x 10, L or U, no island: an island there is a site-visit
+// item and the funnel shows the medium island photo) and MEDIUM (12 x 14). Each size has a
+// text-to-image master drawn with the large master as a STYLE reference (same house), then edits.
+// Keys end in -compact / -medium (the large keys keep their old names). Follow-ups are edits of
+// the MATCHING layout photo (size x finish x layout), so the design visibly accumulates.
+
+const STYLE_REF =
+  'Use the reference image ONLY as the style reference for the same house: the same warm-white walls and ceiling, light wide-plank white-oak floor, ' +
+  'soft-white painted inset cabinetry, white-oak accents, honed white quartzite with soft grey veining, brushed-brass hardware, the same windows with green foliage outside ' +
+  'and the same soft daylight. Do NOT copy its room size or layout: draw the different, smaller kitchen described below. ';
+
+const COMPACT_ROOM =
+  'Photorealistic, magazine-quality interior photograph (architectural-digest style) of a newly remodeled COMPACT kitchen, only 10 feet by 10 feet, NO island. ' +
+  'Camera: eye level (about 5 feet high) standing in the open doorway, looking straight at the back wall, one-point perspective, wide-angle lens, perfectly vertical lines. ' +
+  'The room is small and tight: the back wall is only 10 feet wide and both side walls are close and clearly visible at the left and right of the frame, ' +
+  'with a narrow walkway of wood floor between the cabinet runs. The WHOLE kitchen fits in the frame: a little ceiling at the top, a little floor at the bottom. ' +
+  'One window on the back wall, to the right, above the sink, with soft daylight and green foliage outside. Recessed lights off, bright and airy. ' +
+  'Clean, styled, uncluttered: a wooden cutting board, a small bowl of lemons, one small plant. ';
+
+const MEDIUM_ROOM =
+  'Photorealistic, magazine-quality interior photograph (architectural-digest style) of a newly remodeled MEDIUM kitchen, 12 feet wide by 14 feet deep, ' +
+  'clearly smaller than a large open kitchen. Camera: eye level (about 5 feet high) from the dining side looking straight at the 12-foot back wall, one-point perspective, ' +
+  'wide-angle lens, perfectly vertical lines. The WHOLE kitchen fits in the frame with margin: some ceiling at the top, a strip of wood floor at the bottom, the left and right walls visible. ' +
+  'ONE window on the back wall, right of center, above the sink, with soft daylight and green foliage outside. Recessed lights off, bright and airy. ' +
+  'Clean, styled, uncluttered: a wooden cutting board, a bowl of lemons, one small plant. ';
+
+const LUXE_SMALL =
+  'Luxe finishes: custom soft warm-white painted inset cabinetry with unlacquered brushed-brass knobs and pulls, thick honed white quartzite countertops with soft grey veining ' +
+  'and a matching full-height quartzite backsplash, a stainless PRO-STYLE range with red knobs under a smooth white plaster range hood, a brushed-brass bridge faucet over an undermount sink. ';
+
+const TWO_TONE_RUNS =
+  'Make the cabinets TWO-TONE: all BASE (lower) cabinets become rift-cut natural white-oak inset cabinetry with a warm honey tone and visible straight grain, ' +
+  'while the upper cabinets and the tall refrigerator column stay painted white. Countertops, backsplash, hood, range and walls stay exactly the same.';
+const TWO_TONE_ISLAND =
+  'Make the cabinets TWO-TONE: the ISLAND cabinetry becomes rift-cut natural white-oak with a warm honey tone and visible straight grain, ' +
+  'while all perimeter cabinets stay painted white. Countertops, backsplash, hood, range and walls stay exactly the same.';
+const ALL_WOOD =
+  'Make ALL the cabinets warm natural WOOD: every base and upper cabinet, the refrigerator panels and the island (if any) become rift-cut natural white-oak ' +
+  'cabinetry with a warm honey tone and visible straight grain, keeping the same door style and hardware. Countertops, backsplash, hood, range and walls stay exactly the same.';
+const PREP_ISLAND =
+  'Replace only the island with a smaller PREP ISLAND in the same place, in the same cabinet colour: a compact work island with deep drawers on the camera side, ' +
+  'a stone top with a simple squared edge and no waterfall, NO overhang and NO stools, a wooden cutting board and a bowl of lemons on top. Keep the pendant lights.';
+const SINK_ISLAND =
+  'Move the sink into the island: in the middle of the same island add a large undermount sink with a tall gooseneck faucet (same metal as the other hardware), ' +
+  'clearly visible on the island top. Keep the island edges and the stools. On the back wall, under the window, the old sink and faucet are removed and replaced by plain countertop.';
+
+const SMALL_JOBS = [
+  // Compact (10 x 10): U-shaped luxe master, L edit, standard finishes.
+  {
+    key: 'layout-u-luxe-compact',
+    from: null,
+    refRaw: 'layout-island-luxe',
+    prompt:
+      STYLE_REF + COMPACT_ROOM +
+      'A small U-SHAPED kitchen: base cabinets with countertop and upper cabinets run along the back wall, the LEFT wall and the RIGHT wall, forming a tight U open toward the camera. ' +
+      'On the back wall, left of the window, a 36-inch pro-style range under its plaster hood; the sink under the window. At the near end of the LEFT run a tall built-in refrigerator column behind soft-white panels. ' +
+      LUXE_SMALL + NO,
+  },
+  {
+    key: 'layout-l-luxe-compact',
+    from: 'layout-u-luxe-compact',
+    prompt:
+      'Turn this into an L-SHAPED kitchen: remove the whole RIGHT-hand run of cabinets (base cabinets, countertop and upper cabinets on the right wall) so the right wall is plain warm-white ' +
+      'painted wall with open wood floor in front of it. Keep the back-wall run and the left-wall run with the refrigerator column exactly as they are.' + KEEP,
+  },
+  { key: 'layout-u-standard-compact', from: 'layout-u-luxe-compact', prompt: STANDARD + KEEP },
+  { key: 'layout-l-standard-compact', from: 'layout-l-luxe-compact', prompt: STANDARD + KEEP },
+
+  // Medium (12 x 14): island luxe master (L along the back and left walls + a modest island), L / U edits, standard finishes.
+  {
+    key: 'layout-island-luxe-medium',
+    from: null,
+    refRaw: 'layout-island-luxe',
+    prompt:
+      STYLE_REF + MEDIUM_ROOM +
+      'Cabinets with countertop and upper cabinets along the back wall and along the LEFT wall (an L), the range centered-left on the back wall under a smooth white plaster hood, ' +
+      'the sink under the window, a tall built-in refrigerator column at the near end of the left run. In the middle of the room a MODEST island about 6 feet long ' +
+      'in rift-cut natural white oak (two-tone with the white perimeter) with a quartzite top, waterfall edges at both ends and TWO light-wood counter stools; ' +
+      'one woven pendant light above it. Open wood floor around the island. ' +
+      LUXE_SMALL + NO,
+  },
+  {
+    key: 'layout-l-luxe-medium',
+    from: 'layout-island-luxe-medium',
+    prompt: 'Remove the kitchen island, its stools and the pendant light completely so the middle of the room is open wood floor. Keep both cabinet runs exactly as they are.' + KEEP,
+  },
+  {
+    key: 'layout-u-luxe-medium',
+    from: 'layout-island-luxe-medium',
+    prompt:
+      'Remove the kitchen island, its stools and the pendant light completely. Turn the kitchen into a U-SHAPED kitchen: add matching soft-white base cabinets with the same quartzite countertop ' +
+      'and upper cabinets along the RIGHT wall, coming toward the camera and joining the back-wall run in the right corner, so the cabinets form a U that opens toward the camera. Open floor in the middle.' + KEEP,
+  },
+  { key: 'layout-island-standard-medium', from: 'layout-island-luxe-medium', prompt: STANDARD + ' The island keeps its place and size but becomes a white shaker island with a plain quartz top and NO waterfall edge, with the same two stools.' + KEEP },
+  { key: 'layout-l-standard-medium', from: 'layout-l-luxe-medium', prompt: STANDARD + KEEP },
+  { key: 'layout-u-standard-medium', from: 'layout-u-luxe-medium', prompt: STANDARD + KEEP },
+
+  // Follow-ups, edits of the matching layout photo (size x finish x layout), most common paths first.
+  // Options the layout photo already shows are not generated: the funnel spec shows the layout photo itself
+  // (white cabinets on a standard path and on a luxe L / U path, the seating island, the compact pro range).
+  { key: 'cabinets-wood-island-standard-medium', from: 'layout-island-standard-medium', prompt: ALL_WOOD + KEEP },
+  { key: 'cabinets-twotone-island-standard-medium', from: 'layout-island-standard-medium', prompt: TWO_TONE_ISLAND + KEEP },
+  // The medium luxe master drew a stone island on a white perimeter: white = that room photo; two-tone gets an oak island.
+  { key: 'cabinets-twotone-island-luxe-medium', from: 'layout-island-luxe-medium', prompt: TWO_TONE_ISLAND + KEEP },
+  { key: 'cabinets-wood-island-luxe-medium', from: 'layout-island-luxe-medium', prompt: ALL_WOOD + KEEP },
+  { key: 'island-prep-luxe-medium', from: 'layout-island-luxe-medium', prompt: PREP_ISLAND + KEEP },
+  { key: 'island-sink-luxe-medium', from: 'layout-island-luxe-medium', prompt: SINK_ISLAND + KEEP },
+  { key: 'cabinets-wood-l-standard-medium', from: 'layout-l-standard-medium', prompt: ALL_WOOD + KEEP },
+  { key: 'cabinets-twotone-l-standard-medium', from: 'layout-l-standard-medium', prompt: TWO_TONE_RUNS + KEEP },
+  {
+    key: 'appliances-stainless-u-compact',
+    from: 'layout-u-luxe-compact',
+    prompt:
+      'Change only the appliances to a classic STAINLESS-STEEL PACKAGE: replace the pro range with a 30-inch stainless slide-in range with NO red knobs, replace the plaster hood with a slim ' +
+      'stainless-steel chimney wall hood, replace the paneled refrigerator column with a stainless-steel French-door refrigerator in the same place, and show a stainless dishwasher next to the sink.' + KEEP,
+  },
+  {
+    key: 'appliances-panel-u-compact',
+    from: 'layout-u-luxe-compact',
+    prompt:
+      'Change only the appliances to PANEL-READY BUILT-INS that disappear into the cabinetry: remove the range and put soft-white cabinet drawers with brass pulls in its place, with a flush black ' +
+      'induction cooktop set into the countertop above them; remove the plaster hood and continue the backsplash and upper cabinets across that wall; the refrigerator stays hidden behind ' +
+      'soft-white panels; add a built-in wall oven in a tall cabinet; the dishwasher hidden behind a matching panel. No visible stainless steel anywhere.' + KEEP,
+  },
+  { key: 'cabinets-wood-l-standard-compact', from: 'layout-l-standard-compact', prompt: ALL_WOOD + KEEP },
+  { key: 'cabinets-twotone-l-standard-compact', from: 'layout-l-standard-compact', prompt: TWO_TONE_RUNS + KEEP },
+  // Not generated yet (the 800-credit budget of 2026-10-30): the standard medium island's prep / sink options show the luxe ones.
+  // { key: 'island-prep-standard-medium', from: 'layout-island-standard-medium', prompt: PREP_ISLAND + KEEP },
+  // { key: 'island-sink-standard-medium', from: 'layout-island-standard-medium', prompt: SINK_ISLAND + KEEP },
+];
+JOBS.push(...SMALL_JOBS);
+
 /** Options the master already shows: exported under their own key, same raw. */
 const ALIASES = [
   { key: 'cabinets-twotone', raw: 'layout-island-luxe' },
@@ -393,6 +528,11 @@ async function cmdGenerate(args) {
       inputs.push(await upload(raw(job.from), job.from));
     }
     if (job.ref) inputs.push(await upload(path.join(ROOT, job.ref), path.basename(job.ref, path.extname(job.ref))));
+    // refRaw: another raw key used only as a style reference (a new kitchen in the same house).
+    if (job.refRaw) {
+      if (!existsSync(raw(job.refRaw))) throw new Error(`${job.key}: reference ${job.refRaw} has no raw image yet`);
+      inputs.push(await upload(raw(job.refRaw), job.refRaw));
+    }
     const out = await run(job.prompt, inputs);
     await download(out, raw(job.key));
     console.log('done', job.key, `${Math.round((Date.now() - t) / 1000)}s`);
@@ -405,15 +545,17 @@ const PHOTO_KEYS = () => [
   ...ALIASES,
 ];
 
-async function cmdExport() {
+async function cmdExport(only = []) {
   mkdirSync(OUT, { recursive: true });
   for (const { key, raw: r } of PHOTO_KEYS()) {
+    if (only.length && !only.includes(key)) continue;
     if (!existsSync(raw(r))) { console.log('MISSING', key); continue; }
     const a = await webpUnder(raw(r), W, MAX_KB, path.join(OUT, `${key}.webp`));
     const b = await webpUnder(raw(r), W_SM, MAX_KB_SM, path.join(OUT, `${key}-sm.webp`));
     console.log(key.padEnd(24), `${a.kb} KB q${a.q}`, `| sm ${b.kb} KB q${b.q}`);
   }
   for (const { key, raw: r, ft } of SIZES) {
+    if (only.length && !only.includes(key)) continue;
     if (!existsSync(raw(r))) { console.log('MISSING', key); continue; }
     const canvas = await sizeCanvas(raw(r), ft);
     const a = await webpUnder(canvas, W, MAX_KB, path.join(OUT, `${key}.webp`));
@@ -451,7 +593,7 @@ const [cmd, ...args] = process.argv.slice(2);
 const cmds = {
   credits: async () => console.log('credits', await credits()),
   generate: () => cmdGenerate(args),
-  export: cmdExport,
+  export: () => cmdExport(args),
   sheet: cmdSheet,
 }[cmd];
 if (!cmds) {

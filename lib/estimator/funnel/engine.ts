@@ -2,7 +2,7 @@ import { defaultSelection, photoFor as configuratorPhotoKey, photoSrc as configu
 import type { ConfiguratorSelection, Range } from '../configurator/types.ts';
 import { computeEstimate } from '../engine.ts';
 import type { Answers, ContractorEstimatorConfig, Estimate, EstimatorTemplate } from '../types.ts';
-import type { FunnelOption, FunnelPhoto, FunnelPhotoFrame, FunnelSelection, FunnelSpec, FunnelStep } from './types.ts';
+import type { FunnelOption, FunnelPhoto, FunnelPhotoFrame, FunnelPhotoRule, FunnelPhotoVariant, FunnelSelection, FunnelSpec, FunnelStep } from './types.ts';
 
 /*
  * Pure helpers for the simple mobile funnel: default selection, selection ->
@@ -56,6 +56,19 @@ export function activeSteps(spec: FunnelSpec, selection: FunnelSelection): Funne
 export function pickedOptions(spec: FunnelSpec, selection: FunnelSelection): FunnelOption[] {
   const sel = normalizeFunnelSelection(spec, selection);
   return activeSteps(spec, sel).map((s) => s.options.find((o) => o.id === sel[s.id])!);
+}
+
+/**
+ * The "Your design: ..." recap on the step at `index` of the path: the short titles
+ * (else titles; '' left out) of the picks on the steps up to and including this one.
+ * Empty on the first step or when the spec has no designRecap.
+ */
+export function designRecap(spec: FunnelSpec, selection: FunnelSelection, index: number): string[] {
+  if (!spec.designRecap || index < 1) return [];
+  return pickedOptions(spec, selection)
+    .slice(0, index + 1)
+    .map((o) => o.short ?? o.title)
+    .filter((t) => t.trim() !== '');
 }
 
 /** Picked option titles in step order, e.g. ["Classic", "Luxe", "Add a spa", "Zero-edge spa"]. */
@@ -138,14 +151,16 @@ export function smallVariant(src: string): string | undefined {
 /**
  * The image key a step shows for a selection: "<stepId>-<optionId>" for an
  * option rule (e.g. "size-classic"), "<stepId>-<optionId>-<otherPick>" for a
- * matrix rule (e.g. "layout-walkin-luxe"), the configurator image key for a
- * view rule (e.g. "aerial-porcelain-pebble-spa").
+ * matrix rule (e.g. "layout-walkin-luxe"), the photo's file name for a
+ * variants rule (e.g. "layout-walkin-luxe-guest"), the configurator image key
+ * for a view rule (e.g. "aerial-porcelain-pebble-spa").
  */
 export function photoKey(spec: FunnelSpec, stepId: string, selection: FunnelSelection): string {
   const step = stepOf(spec, stepId) ?? spec.steps[0];
   const sel = normalizeFunnelSelection(spec, selection);
   if (step.photo.kind === 'option') return `${step.id}-${optionPick(step, selection)}`;
   if (step.photo.kind === 'matrix') return `${step.id}-${optionPick(step, selection)}-${otherPick(spec, step.photo.stepId, selection)}`;
+  if (step.photo.kind === 'variants') return fileKey(bestVariant(spec, step, step.photo, selection).photo.src);
   const cfg = spec.configurator;
   const cfgSel = toConfiguratorSelection(spec, sel);
   if (!cfg || !cfgSel) return step.photo.view;
@@ -164,6 +179,49 @@ function otherPick(spec: FunnelSpec, stepId: string, selection: FunnelSelection 
   return other ? optionPick(other, selection) : '';
 }
 
+/** "/estimator/x/funnel/layout-walkin-luxe-guest.webp" -> "layout-walkin-luxe-guest". */
+function fileKey(src: string): string {
+  return src.replace(/^.*\//, '').replace(/\.[a-z0-9]+$/i, '');
+}
+
+/**
+ * How far a variant is from the picks, one number per `by` step (lower is
+ * closer): 0 the same pick, 1 a wildcard (the variant does not name the step),
+ * 1 + distance for a different pick of an ordered step, 1000 for a different
+ * pick of an unordered step (or an unknown option).
+ */
+function variantDistance(spec: FunnelSpec, rule: Extract<FunnelPhotoRule, { kind: 'variants' }>, v: FunnelPhotoVariant, selection: FunnelSelection | null | undefined): number[] {
+  return rule.by.map(({ stepId, ordered }) => {
+    const want = v.when[stepId];
+    if (want === undefined) return 1;
+    const pick = otherPick(spec, stepId, selection);
+    if (want === pick) return 0;
+    if (!ordered) return 1000;
+    const opts = stepOf(spec, stepId)?.options.map((o) => o.id) ?? [];
+    const a = opts.indexOf(want);
+    const b = opts.indexOf(pick);
+    return a < 0 || b < 0 ? 1000 : 1 + Math.abs(a - b);
+  });
+}
+
+/** The variant shown for THIS step's option and the other picks: the nearest by `by` order (see FunnelPhotoRule 'variants'). */
+function bestVariant(spec: FunnelSpec, step: FunnelStep, rule: Extract<FunnelPhotoRule, { kind: 'variants' }>, selection: FunnelSelection | null | undefined): FunnelPhotoVariant {
+  const own = optionPick(step, selection);
+  const mine = rule.photos.filter((v) => v.when[step.id] === own);
+  const pool = mine.length ? mine : rule.photos;
+  let best = pool[0];
+  let bestD = variantDistance(spec, rule, best, selection);
+  for (const v of pool.slice(1)) {
+    const d = variantDistance(spec, rule, v, selection);
+    const i = d.findIndex((x, k) => x !== bestD[k]);
+    if (i >= 0 && d[i] < bestD[i]) {
+      best = v;
+      bestD = d;
+    }
+  }
+  return best;
+}
+
 /** The photo a step shows for a selection (src, phone-size src, alt and a fallback for a missing file). */
 export function funnelPhoto(spec: FunnelSpec, stepId: string, selection: FunnelSelection): FunnelPhoto {
   const step = stepOf(spec, stepId) ?? spec.steps[0];
@@ -174,6 +232,7 @@ export function funnelPhoto(spec: FunnelSpec, stepId: string, selection: FunnelS
     const row = rule.photos[optionPick(step, selection)] ?? Object.values(rule.photos)[0];
     return row[otherPick(spec, rule.stepId, selection)] ?? Object.values(row)[0];
   }
+  if (rule.kind === 'variants') return bestVariant(spec, step, rule, selection).photo;
   const cfg = spec.configurator;
   const view = cfg?.views.find((v) => v.id === rule.view);
   if (!cfg || !view) return { src: spec.landing.heroPhoto.src, srcSm: spec.landing.heroPhoto.srcSm, alt: spec.landing.heroAlt };
