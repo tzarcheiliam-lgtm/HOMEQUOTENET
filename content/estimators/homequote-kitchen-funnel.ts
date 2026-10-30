@@ -173,7 +173,7 @@ export const HOMEQUOTE_KITCHEN_FUNNEL: FunnelSpec = {
       options: [
         { id: 'white', title: 'White', short: 'White cabinets', subtitle: 'Bright painted white', answers: { cabinetFinish: ['white'] } },
         { id: 'wood', title: 'Warm wood', short: 'Wood cabinets', subtitle: 'Stained oak or walnut', answers: { cabinetFinish: ['wood'] } },
-        { id: 'twotone', title: 'Two-tone', short: 'Two-tone cabinets', subtitle: 'White with a wood island', answers: { cabinetFinish: ['two_tone'] } },
+        { id: 'twotone', title: 'Two-tone', short: 'Two-tone cabinets', subtitle: 'White and wood together', answers: { cabinetFinish: ['two_tone'] } },
       ],
       photo: {
         kind: 'option',
@@ -214,12 +214,13 @@ export const HOMEQUOTE_KITCHEN_FUNNEL: FunnelSpec = {
         { id: 'pro', title: 'Pro range & hood', subtitle: 'Pro-style range and a big hood', answers: { appliances: ['pro'] } },
         { id: 'panel', title: 'Panel-ready built-ins', short: 'Built-in appliances', subtitle: 'Hidden behind cabinet panels', answers: { appliances: ['panel'] } },
       ],
+      // A closer view of the cooking wall (same kitchen), so the three packages read apart on a phone.
       photo: {
         kind: 'option',
         photos: {
-          stainless: photo('appliances-stainless', 'Kitchen with a stainless slide-in range, a stainless chimney hood and a French-door fridge (AI-generated example design)', WOOD_ISLAND),
-          pro: photo('appliances-pro', 'Kitchen with a pro-style range under a white plaster hood and a built-in fridge column (AI-generated example design)', WOOD_ISLAND),
-          panel: photo('appliances-panel', 'Kitchen with a built-in fridge behind cabinet panels and a flush induction cooktop (AI-generated example design)', MARBLE_ISLAND),
+          stainless: photo('appliances-stainless', 'Cooking wall with a stainless slide-in range, a stainless chimney hood, a stainless French-door fridge and dishwasher (AI-generated example design)', WOOD_ISLAND),
+          pro: photo('appliances-pro', 'Cooking wall with a six-burner pro-style range under a white plaster hood and a paneled fridge column (AI-generated example design)', WOOD_ISLAND),
+          panel: photo('appliances-panel', 'Cooking wall with built-in wall ovens, a flush induction cooktop and appliances hidden behind cabinet panels (AI-generated example design)', MARBLE_ISLAND),
         },
       },
     },

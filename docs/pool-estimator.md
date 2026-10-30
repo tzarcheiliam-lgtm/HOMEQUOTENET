@@ -222,6 +222,42 @@ funnel as Pool Masters (`experience: 'funnel'`), published for HomeQuote Network
 The step-by-step builder below is kept working; set `experience: 'builder'` in `content/estimators/homequote-bathroom.ts`
 to serve it again.
 
+## Kitchen simple funnel (`/estimator/kitchen-remodel`)
+
+Since 2026-10-30 `/estimator/kitchen-remodel` (+ `/design`, `/my-design`, `/embed/estimator/kitchen-remodel`) runs the
+same funnel for kitchen remodels, published for HomeQuote Network with the bathroom funnel's shape and network wording.
+Config `content/estimators/homequote-kitchen.ts` (`trade: 'kitchen'`, `experience: 'funnel'` only: kitchen has no
+builder), spec `content/estimators/homequote-kitchen-funnel.ts`; full summary in `HOMEQUOTE_CONTEXT.md` §33.
+
+- **Landing**: "Matched with licensed local kitchen pros", "Kitchens, remodeled just for you", "Design your kitchen in 60
+  seconds and get a ballpark price, with a free in-home consultation.", button "Design your kitchen", hero
+  `funnel/layout-island-luxe`, the HomeQuote horizontal logo. No reviews, no projects.
+- **Steps**: "Select your kitchen." Compact / galley (10 x 10 ft), Medium (12 x 14 ft), Large open kitchen (16 x 18 ft),
+  to-scale plans; "Choose your finish." Standard / Luxe; "Choose your layout." L-shaped / U-shaped / Kitchen with island.
+  Follow-ups: "Choose your cabinets." White / Warm wood / Two-tone (always); "Choose your island." Prep / Seating with
+  waterfall edge / With sink (island layout only); "Choose your appliances." Stainless / Pro range & hood / Panel-ready
+  built-ins (Luxe only: Standard already promises a stainless package). 4 to 6 steps; the last says "Get my estimate";
+  changing an earlier pick drops follow-ups that no longer apply.
+- **Pricing**: new template `lib/estimator/templates/kitchen.ts` + `lib/estimator/catalog/kitchen.ts` (example SoCal
+  prices, `pricesConfirmed: false`, `validateTemplate` clean); every option maps to template answers.
+- **Leads** file under the published `kitchen-remodel` funnel (homeowner yes + full remodel qualify; booking on the
+  HomeQuote team calendar with "Liam from HomeQuote").
+- **Photos**: `public/estimator/kitchen/funnel/<key>.webp` + `-sm`, made by `scripts/generate-kitchen-funnel-photos.mjs`
+  (kie.ai `nano-banana-pro`): one Southern California kitchen, every room photo an edit of `layout-island-luxe`; the
+  appliance options show a closer view of the cooking wall so the three packages read apart on a phone. Each photo has an
+  Unsplash stock fallback labelled as such. The cabinet / island / appliance photos show the island room on every path.
+- **Tests**: `tests/estimator-kitchen-funnel.test.tsx`.
+
+## Step photo framing (`photoFit` / `photoZoom` / `photoBackdrop`)
+
+The funnel photos are 3:2; the photo card is wider (7:4 on phones, wider on short phones and desktop), so `cover` cuts
+their top and bottom. Framing is set per spec (`FunnelSpec.photoFrame`) and per step (`FunnelStep.photoFit`
+'cover' | 'contain', `photoZoom` for contain, `photoBackdrop` 'white' | 'blur'), resolved by `stepPhotoFrame()` in
+`lib/estimator/funnel/engine.ts`. Unset = the pool's look (option photos contain at 1.3 on white, view / matrix photos
+cover), so Pool Masters is unchanged. Bathroom and kitchen show every room photo whole on a blurred copy of itself
+(`{fit: 'contain', zoom: 1, backdrop: 'blur'}`) and their size plans whole on white at zoom 1. The card size does not
+change, so nothing moves and every step still fits one phone screen. Tests: `tests/estimator-funnel-photo-frame.test.tsx`.
+
 ## Bathroom builder (previous experience, `experience: 'builder'`)
 
 The same live-builder experience for bathroom remodels, published for HomeQuote Network (a matching network, not a

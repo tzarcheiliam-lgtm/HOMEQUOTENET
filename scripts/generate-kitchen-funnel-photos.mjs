@@ -17,8 +17,9 @@
  *   pro range + plaster hood, brass hardware, seating island with waterfall edge.
  * - Every other room photo is an image EDIT of the closest photo (FROM below),
  *   so the geometry stays identical: L / U luxe layouts from the master,
- *   standard finishes from the matching luxe layout, cabinet / island /
- *   appliance options from the master.
+ *   standard finishes from the matching luxe layout, cabinet / island options
+ *   from the master; the appliance options are a closer view of the cooking
+ *   wall (appliances-pro from the master, the other two edits of it).
  * - Size photos are clean top-down plan renders on white in the same style as
  *   the bathroom size plans (plan-medium is drawn with the bathroom plan as a
  *   style reference; compact / large are edits of it), composited TO SCALE on
@@ -189,24 +190,37 @@ const JOBS = [
       KEEP,
   },
 
-  // Appliance options: edits of the master. appliances-pro = alias.
+  // Appliance options: a closer view of the cooking wall (from the master, two steps
+  // nearer), so the three packages read apart on a phone; stainless / panel are edits of it.
   {
-    key: 'appliances-stainless',
+    key: 'appliances-pro',
     from: 'layout-island-luxe',
     prompt:
-      'Change only the appliances to a classic STAINLESS-STEEL PACKAGE: replace the pro range with a 36-inch slide-in stainless range with a black glass cooktop, ' +
-      'replace the plaster hood with a slim stainless-steel chimney wall hood, and replace the built-in refrigerator column with a freestanding ' +
-      'stainless-steel French-door refrigerator in the same place, with a stainless dishwasher next to the sink. Cabinets and countertops stay the same.' +
+      'Move the camera a few steps forward, past the island, so the BACK WALL fills the frame: framed from the full refrigerator column at the left edge ' +
+      'to the right-hand window at the right edge, the plaster hood and the top of the upper cabinets inside the frame at the top, and only the near edge of the island ' +
+      'countertop (no stools, no pendants) as a thin strip along the bottom. The 48-inch stainless pro-style range with six burners and red knobs under the smooth white ' +
+      'plaster hood is centered and clearly the hero; the built-in refrigerator column behind soft-white panels stays at the left. Nothing important cut by the frame. ' +
+      'Same kitchen, same materials, same daylight.' +
+      ' Eye-level one-point perspective, straight vertical lines. Photorealistic magazine-quality interior photograph.' +
+      NO,
+  },
+  {
+    key: 'appliances-stainless',
+    from: 'appliances-pro',
+    prompt:
+      'Change only the appliances to a classic STAINLESS-STEEL PACKAGE: replace the pro range with a 30-inch stainless slide-in range with a black glass cooktop and NO red knobs, ' +
+      'replace the plaster hood with a slim stainless-steel chimney wall hood, replace the paneled refrigerator column with a freestanding stainless-steel French-door ' +
+      'refrigerator in the same place, and show a stainless dishwasher next to the sink. Cabinets, countertops and backsplash stay the same.' +
       KEEP,
   },
   {
     key: 'appliances-panel',
-    from: 'layout-island-luxe',
+    from: 'appliances-pro',
     prompt:
-      'Change only the appliances to PANEL-READY BUILT-INS that disappear into the cabinetry: the refrigerator column becomes a fully integrated built-in refrigerator ' +
-      'and freezer hidden behind tall soft-white cabinet panels with long brass pulls (no visible stainless), the pro range is replaced by a flush black induction cooktop ' +
-      'set into the quartzite countertop with soft-white drawers below it and a built-in wall oven, the dishwasher is hidden behind a matching cabinet panel. ' +
-      'Keep the plaster hood. No visible stainless steel anywhere.' +
+      'Change only the appliances to PANEL-READY BUILT-INS that disappear into the cabinetry: remove the range completely and put soft-white cabinet drawers ' +
+      'with brass pulls in its place, with a flush black induction cooktop set into the quartzite countertop above them; remove the plaster hood and continue the ' +
+      'quartzite backsplash and soft-white upper cabinets across that wall; the refrigerator column stays fully hidden behind soft-white cabinet panels with long brass pulls, ' +
+      'next to it a tall cabinet with two built-in wall ovens; the dishwasher hidden behind a matching cabinet panel. No visible stainless steel anywhere.' +
       KEEP,
   },
 
@@ -257,7 +271,6 @@ const JOBS = [
 const ALIASES = [
   { key: 'cabinets-twotone', raw: 'layout-island-luxe' },
   { key: 'island-seating', raw: 'layout-island-luxe' },
-  { key: 'appliances-pro', raw: 'layout-island-luxe' },
 ];
 
 /** Size photos: raw plan + real size, all drawn at one scale (the 18 ft side fills ~92% of the height). */
