@@ -214,8 +214,9 @@ funnel as Pool Masters (`experience: 'funnel'`), published for HomeQuote Network
   homeowners with licensed local contractors; photos are labelled "AI-generated example designs, not finished projects".
 - **Photos**: `public/estimator/bathroom/funnel/<key>.webp` + `-sm` (1800 / 1200 px), made with kie.ai
   `nano-banana-pro` by `scripts/generate-bath-funnel-photos.mjs` (one room, every photo an edit of the master so a
-  swap reads as the same room; vanity options show the vanity wall with no tub or shower in view).
-- **Generic funnel options** used here (the pool keeps its defaults): `matrix` photo rule, `photoFit`,
+  swap reads as the same room; vanity options show the vanity wall with no tub or shower in view). Since 2026-10-30
+  each size has its own room (see "Size-aware photos" below).
+- **Generic funnel options** used here (the pool keeps its defaults): `variants` photo rule (was `matrix`), `designRecap`, `photoFit`,
   `landing.heroFallback/logo`, `bookingStep.noRangeText/followUpText/reviewText`, `designDescription`, `photoNote`.
 - **Tests**: `tests/estimator-bath-funnel.test.tsx`.
 
@@ -245,8 +246,44 @@ builder), spec `content/estimators/homequote-kitchen-funnel.ts`; full summary in
 - **Photos**: `public/estimator/kitchen/funnel/<key>.webp` + `-sm`, made by `scripts/generate-kitchen-funnel-photos.mjs`
   (kie.ai `nano-banana-pro`): one Southern California kitchen, every room photo an edit of `layout-island-luxe`; the
   appliance options show a closer view of the cooking wall so the three packages read apart on a phone. Each photo has an
-  Unsplash stock fallback labelled as such. The cabinet / island / appliance photos show the island room on every path.
+  Unsplash stock fallback labelled as such. Since 2026-10-30 every step shows the chosen size and the picks so far (see
+  "Size-aware photos" below).
 - **Tests**: `tests/estimator-kitchen-funnel.test.tsx`.
+
+## Size-aware photos and the "Your design" recap (bathroom + kitchen, 2026-10-30)
+
+Owner: "If I choose small it doesn't show a small bathroom" and "I want it to feel like they are building it". Every step
+after the size now shows the room picked on step 1 with the earlier picks still in it, so the design visibly accumulates.
+
+- **Rooms**: bathroom guest / hall (5 x 8: narrow, vanity + toilet on one wall, tub-shower or walk-in across the end
+  wall), full (8 x 10: 60-in double vanity, toilet, tub / walk-in / compact spa), primary suite (the original set);
+  kitchen compact (10 x 10: L or U, no island), medium (12 x 14: L + a modest island, or L / U), large (the original set).
+  Each smaller room is a kie.ai `nano-banana-pro` text-to-image master drawn with the original master as a style reference
+  (same house), then edits. Keys add the size (`layout-walkin-luxe-guest`, `layout-l-standard-compact`); the largest
+  size keeps the old keys. Follow-ups are edits of the matching room photo and add the room
+  (`shower-curbless-walkin-standard-full`, `cabinets-wood-l-standard-compact`, `island-sink-luxe-medium`). A follow-up the
+  room photo already shows is that room photo itself (frameless shower, soaking tub, white cabinets on a standard or
+  luxe L / U path, the seating island, the compact pro range).
+- **Engine**: new photo rule `{kind: 'variants', by: [{stepId, ordered?}], photos: [{when, photo}]}`
+  (`lib/estimator/funnel/types.ts` / `engine.ts`): THIS step's option must match; the other steps compare in `by` order
+  (same pick < not named < different pick; an `ordered` step such as size counts the distance, so a missing size falls
+  back to the nearest); ties go to the photo listed first; `photoKey` = the file name. Room photos: `by` layout or finish,
+  then size (a guest spa bath / compact island, site-visit items, show the full / medium room). Follow-ups: layout, then
+  size, then finish. Preloading is unchanged (`stepOptionPhotos` uses the whole selection).
+- **Recap**: `FunnelSpec.designRecap {label}` shows "Your design: Full bath · Luxe · Walk-in shower" under the photo from
+  step 2 on (option `short`, else title; the current step's pick included, so it grows with each tap); the question
+  moves up 8 px so the button stays on screen on an iPhone 14 Pro; hidden on short phones (iPhone SE). Unset for the pool.
+- **Fallbacks** (combinations without their own photo, budget 800 credits): bathroom curbless / bench on a spa path show
+  the walk-in one of that room; primary standard curbless / bench and every primary standard tub show the primary luxe
+  one; guest spa bath = the full bath's spa photos (layout, shower, tub); full standard clawfoot / stone show the full
+  luxe one; the vanity step keeps the original vanity-wall photos (walnut, luxe) for every size and finish. Kitchen:
+  wood / two-tone exist for medium island (standard, luxe), medium L standard, compact L standard and the large luxe
+  island (wood); every other path shows the nearest one with the same layout (a U path shows the L one), else the
+  nearest size; compact island = the medium island kitchen; standard island prep / sink show the luxe one of that size;
+  medium appliances show the large kitchen's cooking-wall close-ups; compact stainless / panel are the U kitchen on an L
+  path too. `scripts/generate-kitchen-funnel-photos.mjs` has the standard medium prep / sink jobs commented out, ready.
+- **Tests**: `tests/estimator-funnel-size-photos.test.ts` (rule semantics, every size x path x step resolves to a file on
+  disk, the finish / layout photos change with the size, continuity, the recap, the pool unchanged).
 
 ## Step photo framing (`photoFit` / `photoZoom` / `photoBackdrop`)
 
