@@ -4,7 +4,7 @@ import './funnel.css';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import { activeSteps, normalizeFunnelSelection, stepOptionPhotos } from '@/lib/estimator/funnel/engine';
+import { activeSteps, normalizeFunnelSelection, stepOptionPhotos, stepPhotoFrame } from '@/lib/estimator/funnel/engine';
 import type { FunnelSelection, FunnelSpec } from '@/lib/estimator/funnel/types';
 import type { ContractorEstimatorConfig, EstimatorTemplate } from '@/lib/estimator/types';
 import { FunnelFooter, FunnelLogo } from './chrome';
@@ -355,8 +355,8 @@ function StepScreen({
     e.preventDefault();
     onContinue();
   };
-  // Room photos cover the card; plan drawings (option rules by default) sit on white, zoomed in a little.
-  const fit = step.photoFit ?? (step.photo.kind === 'option' ? 'contain' : 'cover');
+  // The step's (or the spec's) framing; the pool's default: plans and follow-ups on white zoomed in, views cover.
+  const frame = useMemo(() => stepPhotoFrame(spec, step), [spec, step]);
 
   return (
     <form onSubmit={onSubmit} noValidate>
@@ -364,7 +364,7 @@ function StepScreen({
         <StepPhoto
           photos={photos}
           selected={picked}
-          fit={fit}
+          frame={frame}
           priority={first}
         />
       </div>

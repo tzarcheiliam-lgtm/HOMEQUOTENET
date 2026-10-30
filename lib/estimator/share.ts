@@ -32,3 +32,8 @@ export function shareMessage(contractorName: string, projectNoun: string): { tit
     text: `Here’s the ${projectNoun} I designed with ${contractorName}. Take a look:`,
   };
 }
+
+/** The room or project a design is of, from the template's trade: "pool", "bathroom", "kitchen" ("Here’s the kitchen I designed"). */
+export function designNoun(trade: string): string {
+  return trade === 'bathroom' || trade === 'kitchen' ? trade : 'pool';
+}

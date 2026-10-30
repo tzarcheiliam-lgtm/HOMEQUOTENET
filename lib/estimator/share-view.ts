@@ -6,6 +6,7 @@
  * Pure: the page and the tests use it.
  */
 import { formatRange } from '@/lib/estimator/engine';
+import { designNoun } from '@/lib/estimator/share';
 import { activeSteps, estimateFunnel, funnelPhoto, normalizeFunnelSelection } from '@/lib/estimator/funnel/engine';
 import type { FunnelSelection, FunnelSpec } from '@/lib/estimator/funnel/types';
 import type { EstimatorTemplate } from '@/lib/estimator/types';
@@ -48,5 +49,5 @@ export function sharedDesignView(spec: FunnelSpec, template: EstimatorTemplate, 
     const total = estimateFunnel(spec, template, selection).total;
     range = total && total.high > 0 ? formatRange(total.low, total.high) : null;
   }
-  return { picks, main, recap, range, noun: template.trade === 'bathroom' ? 'bathroom' : 'pool' };
+  return { picks, main, recap, range, noun: designNoun(template.trade) };
 }

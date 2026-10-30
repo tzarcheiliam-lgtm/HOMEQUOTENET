@@ -39,10 +39,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!found) return { title: 'Estimator not found', robots: { index: false, follow: false } };
   const { template, contractor } = found;
   const meta = tradeMeta(template.trade);
+  const funnel = funnelSpecFor(contractor);
   const title = `${titleCase(template.title)} Price Estimator · ${contractor.contractorName}`;
   const description = meta
     ? meta.description(template.projectNoun, contractor.contractorName)
-    : `Get a ballpark price range for your ${template.projectNoun} from ${contractor.contractorName}, then book a free on-site consultation. A ballpark, not a quote.`;
+    : // A funnel-only trade (kitchen) has no builder copy: its own description (network wording for HomeQuote).
+      funnel?.designDescription
+      ? funnel.designDescription.replaceAll('{noun}', template.projectNoun).replaceAll('{name}', contractor.contractorName)
+      : `Get a ballpark price range for your ${template.projectNoun} from ${contractor.contractorName}, then book a free on-site consultation. A ballpark, not a quote.`;
   // Only a share picture that is actually there.
   const share = meta?.shareImage && exampleFileExists(meta.shareImage.url) ? meta.shareImage : null;
   return {

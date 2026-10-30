@@ -117,8 +117,10 @@ export const HOMEQUOTE_BATHROOM_FUNNEL: FunnelSpec = {
           primary: sizePlan('primary', '12 × 14 ft', 'primary suite bathroom', SPA_IDEA),
         },
       },
-      // Plan drawings on white (the room photos below cover the card).
+      // Plan drawings on white, whole (zoom 1: the primary suite's plan fills the photo's height, so any zoom cut it off).
       photoFit: 'contain',
+      photoZoom: 1,
+      photoBackdrop: 'white',
     },
     {
       id: 'finish',
@@ -179,7 +181,6 @@ export const HOMEQUOTE_BATHROOM_FUNNEL: FunnelSpec = {
           bench: photo('shower-bench', 'Walk-in shower with a tiled bench and a recessed niche (AI-generated example design)', idea(`${THUMBS}option-extras-bench.webp`, 'Walk-in shower with a tiled bench (AI-generated example design)')),
         },
       },
-      photoFit: 'cover',
     },
     {
       id: 'tub',
@@ -199,7 +200,6 @@ export const HOMEQUOTE_BATHROOM_FUNNEL: FunnelSpec = {
           stone: photo('tub-stone', 'Sculpted stone freestanding tub (AI-generated example design)', SPA_IDEA),
         },
       },
-      photoFit: 'cover',
     },
     {
       id: 'vanity',
@@ -220,7 +220,6 @@ export const HOMEQUOTE_BATHROOM_FUNNEL: FunnelSpec = {
           floating: photo('vanity-floating', 'Floating walnut double vanity, open below, with two sinks and two round brass mirrors (AI-generated example design)', idea(`${THUMBS}option-vanity-floating.webp`, 'Floating wall-mounted vanity (AI-generated example design)')),
         },
       },
-      photoFit: 'cover',
     },
   ],
   // The last step on the path (3 to 6 steps).
@@ -250,6 +249,8 @@ export const HOMEQUOTE_BATHROOM_FUNNEL: FunnelSpec = {
     followUpText: 'A HomeQuote project specialist will call you shortly to talk through your design and set up a free in-home consultation with a licensed local contractor.',
     reviewText: 'We book free consultations online with homeowners. Your details are saved, and the {name} team will review them before we can confirm a fit.',
   },
+  // Every room photo is shown whole (3:2 photos in a wider card: 'cover' cut off the top and bottom), on a blurred copy of itself.
+  photoFrame: { fit: 'contain', zoom: 1, backdrop: 'blur' },
   photoNote: 'Photos are AI-generated example designs, not finished projects.',
   designDescription: 'Three quick picks, then a ballpark price for your {noun} and a free in-home consultation with a licensed local contractor, through {name}.',
 };

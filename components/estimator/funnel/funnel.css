@@ -170,6 +170,15 @@
   .es-fn .fn-layer {
     transition: opacity 180ms ease-out;
   }
+  /*
+   * Behind a room photo shown whole (photoBackdrop 'blur'): the same photo,
+   * blurred and a little larger so its soft edge stays outside the card, and a
+   * touch darker so the photo's own edge reads.
+   */
+  .es-fn .fn-backdrop {
+    filter: blur(18px) brightness(0.9) saturate(1.05);
+    scale: 1.2;
+  }
 
   /* Screen change: a short fade and 8 px slide in the direction of travel. Never on first paint. */
   @keyframes fn-in-fwd {
