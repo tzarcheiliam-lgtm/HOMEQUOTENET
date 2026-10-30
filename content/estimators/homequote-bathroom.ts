@@ -28,7 +28,7 @@ export const HOMEQUOTE_BATHROOM_ESTIMATOR: ContractorEstimatorConfig = {
   // A network: this line describes the service; it is never shown as a license of its own.
   licenseLabel: 'Connects you with licensed local contractors',
   network: true,
-  logoUrl: '/images/brand/homequote-network-logo.webp',
+  logoUrl: '/brand/homequote-logo-primary-horizontal-tight.png',
   funnelSlug: 'bathroom-remodel',
   calendarProvider: 'homequote',
   revealRange: 'after_contact',

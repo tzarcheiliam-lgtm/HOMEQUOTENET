@@ -95,8 +95,8 @@ export const HOMEQUOTE_BATHROOM_FUNNEL: FunnelSpec = {
       src: '/estimator/hero/bath-example-photo.webp',
       alt: 'A remodeled bathroom with a glass walk-in shower and a floating vanity (AI-generated example design)',
     },
-    // The round network badge is too small to read in the header on its own.
-    logo: { aspect: 1, wordmark: 'HomeQuote Network' },
+    // The current HomeQuote horizontal logo, cropped to the artwork so it reads at header size.
+    logo: { aspect: 1200 / 283 },
     // No projects (the network has no jobs of its own) and no reviews (none of its own to show).
   },
   steps: [

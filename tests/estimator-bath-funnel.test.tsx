@@ -295,7 +295,7 @@ describe('pages', () => {
     expect(t).toContain('Matched with licensed local bathroom pros');
     expect(html).toContain('href="/estimator/bathroom-remodel/design"');
     expect(t).toContain('HomeQuote Network');
-    expect(html).toContain('homequote-network-logo');
+    expect(html).toContain('homequote-logo-primary-horizontal-tight');
     expect(t).not.toMatch(/customers say|Recent .* projects|CSLB/);
     expect(t).toContain('Photos are AI-generated example designs');
     // The hero: the new photo, or the existing example while it is not made yet.
