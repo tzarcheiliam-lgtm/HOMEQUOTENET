@@ -36,6 +36,8 @@ export type FunnelLeadResult = {
   homeowner?: 'yes' | 'no';
   /** "Send my design to my partner": the signed read-only design page path the lead route returned. */
   shareUrl?: string;
+  /** Short-lived token for an optional AI render (roofing: "See it on your house"); absent when renders are off. */
+  renderToken?: string;
 };
 
 export type FunnelContactScreenProps = {

@@ -13,7 +13,7 @@ const params = (slug: string) => ({ params: Promise.resolve({ slug }) });
 
 describe('estimator registry', () => {
   it('publishes pool-masters and nothing else', () => {
-    expect(ESTIMATOR_SLUGS).toEqual(['pool-masters', 'bathroom-remodel', 'kitchen-remodel', 'adu']);
+    expect(ESTIMATOR_SLUGS).toEqual(['pool-masters', 'bathroom-remodel', 'kitchen-remodel', 'adu', 'roofing']);
     expect(getEstimator('pool-masters')).not.toBeNull();
   });
 
@@ -67,7 +67,7 @@ describe('estimator registry', () => {
 
 describe('estimator pages', () => {
   it('prerenders every registered slug', () => {
-    expect(generateStaticParams()).toEqual([{ slug: 'pool-masters' }, { slug: 'bathroom-remodel' }, { slug: 'kitchen-remodel' }, { slug: 'adu' }]);
+    expect(generateStaticParams()).toEqual([{ slug: 'pool-masters' }, { slug: 'bathroom-remodel' }, { slug: 'kitchen-remodel' }, { slug: 'adu' }, { slug: 'roofing' }]);
   });
 
   it('public page is noindex while prices are examples', async () => {

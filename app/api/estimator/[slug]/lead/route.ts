@@ -25,6 +25,7 @@ import { signRenderToken } from '@/lib/estimator/render';
 import { signBookingTicket } from '@/app/api/booking/_lib/grant';
 import { speedAlertSoon } from '@/lib/booking/recovery.server';
 import { signedSharePath } from '@/lib/estimator/share.server';
+import { roofLeadMeasure } from '@/lib/estimator/roofing/roof.server';
 
 /**
  * Instant estimator lead capture. One request = one finished estimate + contact.
@@ -124,7 +125,9 @@ async function handle(request: Request, context: Context): Promise<Response> {
   let estimate = computeEstimate(template, { answers, dimensions: lead.dimensions });
   let design: ConfiguratorLeadDesign | undefined;
   if (funnelSpec && lead.funnel) {
-    ({ answers, estimate, design } = funnelLeadDesign(funnelSpec, template, lead.funnel, where));
+    // Roofing: the roof the server measured (signature checked) or the home-size band, never a browser price.
+    const measured = funnelSpec.addressFirst?.kind === 'roof' ? roofLeadMeasure(slug, lead.roof) : undefined;
+    ({ answers, estimate, design } = funnelLeadDesign(funnelSpec, template, lead.funnel, where, measured));
   } else if (spec && lead.configurator) {
     ({ answers, estimate, design } = configuratorLeadDesign(spec, template, lead.configurator, where));
   }
