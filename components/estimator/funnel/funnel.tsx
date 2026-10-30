@@ -7,6 +7,7 @@ import { ArrowLeft } from 'lucide-react';
 import { activeSteps, designRecap, normalizeFunnelSelection, stepOptionPhotos, stepPhotoFrame } from '@/lib/estimator/funnel/engine';
 import type { FunnelSelection, FunnelSpec } from '@/lib/estimator/funnel/types';
 import type { ContractorEstimatorConfig, EstimatorTemplate } from '@/lib/estimator/types';
+import { FunnelAddressScreen } from './address/funnel-address';
 import { FunnelFooter, FunnelLogo } from './chrome';
 import type { FunnelLeadResult } from './screens';
 import { FunnelBookingScreen, FunnelContactScreen } from './slots';
@@ -242,7 +243,17 @@ export function Funnel({
         <div className="mx-auto w-full max-w-[624px] px-8 pb-12 lg:pb-16 lg:pt-2">
           {label ? <StepBar label={label} value={progress(spec, screen, selection)} onBack={canGoBack ? back : undefined} /> : null}
           <div key={screenParam(screen)} className={enter}>
-            {screen.kind === 'step' ? (
+            {screen.kind === 'address' ? (
+              // Roofing: the address and the roof, before the design steps.
+              <FunnelAddressScreen
+                slug={slug}
+                spec={spec}
+                missing={missing}
+                headingId={HEADING_ID}
+                onContinue={() => go(nextScreen(spec, screen, selectionRef.current))}
+                onRoofChange={() => setResult(null)}
+              />
+            ) : screen.kind === 'step' ? (
               <StepScreen
                 spec={spec}
                 index={screen.index}

@@ -1,14 +1,17 @@
 import { HOMEQUOTE_BATHROOM_ESTIMATOR } from '@/content/estimators/homequote-bathroom';
 import { HOMEQUOTE_KITCHEN_ESTIMATOR } from '@/content/estimators/homequote-kitchen';
+import { HOMEQUOTE_ROOFING_ESTIMATOR } from '@/content/estimators/homequote-roofing';
 import { POOL_MASTERS_ESTIMATOR } from '@/content/estimators/pool-masters';
 import { BATHROOM_CATALOG } from './catalog/bathroom.ts';
 import { KITCHEN_CATALOG } from './catalog/kitchen.ts';
 import { POOL_CATALOG } from './catalog/pool.ts';
+import { ROOFING_CATALOG } from './catalog/roofing.ts';
 import { applyContractorConfig } from './config.ts';
 
 import { BATHROOM_TEMPLATE } from './templates/bathroom.ts';
 import { KITCHEN_TEMPLATE } from './templates/kitchen.ts';
 import { POOL_TEMPLATE } from './templates/pool.ts';
+import { ROOFING_TEMPLATE } from './templates/roofing.ts';
 import type { ContractorEstimatorConfig, EstimatorCatalog, EstimatorTemplate, EstimatorTrade } from './types.ts';
 
 /** Re-exported for callers that already import the registry. */
@@ -20,11 +23,12 @@ export type RegisteredEstimator = {
   contractor: ContractorEstimatorConfig;
 };
 
-/** The default template and option catalog per trade (kitchen: funnel only, no live builder). */
+/** The default template and option catalog per trade (kitchen, roofing: funnel only, no live builder). */
 export const TEMPLATES: Record<EstimatorTrade, { template: EstimatorTemplate; catalog: EstimatorCatalog }> = {
   pool: { template: POOL_TEMPLATE, catalog: POOL_CATALOG },
   bathroom: { template: BATHROOM_TEMPLATE, catalog: BATHROOM_CATALOG },
   kitchen: { template: KITCHEN_TEMPLATE, catalog: KITCHEN_CATALOG },
+  roofing: { template: ROOFING_TEMPLATE, catalog: ROOFING_CATALOG },
 };
 
 /*
@@ -37,6 +41,7 @@ const CONTRACTORS: Record<string, ContractorEstimatorConfig> = {
   [POOL_MASTERS_ESTIMATOR.slug]: POOL_MASTERS_ESTIMATOR,
   [HOMEQUOTE_BATHROOM_ESTIMATOR.slug]: HOMEQUOTE_BATHROOM_ESTIMATOR,
   [HOMEQUOTE_KITCHEN_ESTIMATOR.slug]: HOMEQUOTE_KITCHEN_ESTIMATOR,
+  [HOMEQUOTE_ROOFING_ESTIMATOR.slug]: HOMEQUOTE_ROOFING_ESTIMATOR,
 };
 
 /** Slugs with a published estimator (used by pages and the lead route). */
