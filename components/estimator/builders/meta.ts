@@ -20,7 +20,7 @@ export type TradeMeta = {
   shareImage: { url: string; alt: string } | null;
 };
 
-/** Builder trades only: kitchen runs the simple funnel and has no builder (tradeMeta('kitchen') is null). */
+/** Builder trades only: kitchen and ADU run the simple funnel and have no builder (tradeMeta('kitchen') is null). */
 export const TRADE_META: Record<BuilderTrade, TradeMeta> = {
   pool: {
     hero: { withRenders: heroCopy(true), withoutRenders: heroCopy(false) },

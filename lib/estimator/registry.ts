@@ -1,11 +1,14 @@
+import { HOMEQUOTE_ADU_ESTIMATOR } from '@/content/estimators/homequote-adu';
 import { HOMEQUOTE_BATHROOM_ESTIMATOR } from '@/content/estimators/homequote-bathroom';
 import { HOMEQUOTE_KITCHEN_ESTIMATOR } from '@/content/estimators/homequote-kitchen';
 import { POOL_MASTERS_ESTIMATOR } from '@/content/estimators/pool-masters';
+import { ADU_CATALOG } from './catalog/adu.ts';
 import { BATHROOM_CATALOG } from './catalog/bathroom.ts';
 import { KITCHEN_CATALOG } from './catalog/kitchen.ts';
 import { POOL_CATALOG } from './catalog/pool.ts';
 import { applyContractorConfig } from './config.ts';
 
+import { ADU_TEMPLATE } from './templates/adu.ts';
 import { BATHROOM_TEMPLATE } from './templates/bathroom.ts';
 import { KITCHEN_TEMPLATE } from './templates/kitchen.ts';
 import { POOL_TEMPLATE } from './templates/pool.ts';
@@ -20,11 +23,12 @@ export type RegisteredEstimator = {
   contractor: ContractorEstimatorConfig;
 };
 
-/** The default template and option catalog per trade (kitchen: funnel only, no live builder). */
+/** The default template and option catalog per trade (kitchen, ADU: funnel only, no live builder). */
 export const TEMPLATES: Record<EstimatorTrade, { template: EstimatorTemplate; catalog: EstimatorCatalog }> = {
   pool: { template: POOL_TEMPLATE, catalog: POOL_CATALOG },
   bathroom: { template: BATHROOM_TEMPLATE, catalog: BATHROOM_CATALOG },
   kitchen: { template: KITCHEN_TEMPLATE, catalog: KITCHEN_CATALOG },
+  adu: { template: ADU_TEMPLATE, catalog: ADU_CATALOG },
 };
 
 /*
@@ -37,6 +41,7 @@ const CONTRACTORS: Record<string, ContractorEstimatorConfig> = {
   [POOL_MASTERS_ESTIMATOR.slug]: POOL_MASTERS_ESTIMATOR,
   [HOMEQUOTE_BATHROOM_ESTIMATOR.slug]: HOMEQUOTE_BATHROOM_ESTIMATOR,
   [HOMEQUOTE_KITCHEN_ESTIMATOR.slug]: HOMEQUOTE_KITCHEN_ESTIMATOR,
+  [HOMEQUOTE_ADU_ESTIMATOR.slug]: HOMEQUOTE_ADU_ESTIMATOR,
 };
 
 /** Slugs with a published estimator (used by pages and the lead route). */

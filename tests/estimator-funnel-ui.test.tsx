@@ -320,11 +320,11 @@ describe('funnel pages', () => {
   });
 
   it('only funnel contractors get /design; others are sent to their main page', async () => {
-    expect(designParams()).toEqual([{ slug: 'pool-masters' }, { slug: 'bathroom-remodel' }, { slug: 'kitchen-remodel' }]);
+    expect(designParams()).toEqual([{ slug: 'pool-masters' }, { slug: 'bathroom-remodel' }, { slug: 'kitchen-remodel' }, { slug: 'adu' }]);
     // The bathroom page set back to the builder: no /design.
     HOMEQUOTE_BATHROOM_ESTIMATOR.experience = 'builder';
     try {
-      expect(designParams()).toEqual([{ slug: 'pool-masters' }, { slug: 'kitchen-remodel' }]);
+      expect(designParams()).toEqual([{ slug: 'pool-masters' }, { slug: 'kitchen-remodel' }, { slug: 'adu' }]);
       await expect(FunnelDesignPage({ params: Promise.resolve({ slug: 'bathroom-remodel' }), searchParams: Promise.resolve({}) })).rejects.toThrow(
         'REDIRECT /estimator/bathroom-remodel',
       );

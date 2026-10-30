@@ -11,7 +11,10 @@ const DATASET = '29178560738497902';
 const qualified: Record<string, Answers> = {
   'bathroom-remodel': { service: 'full_remodel', zip: '90210', homeowner: 'yes', timeline: '3_6_months', address: '12 Main St, Beverly Hills, CA' },
   'kitchen-remodel': { service: 'full_remodel', zip: '90210', homeowner: 'yes', timeline: '3_6_months', address: '12 Main St, Beverly Hills, CA' },
+  adu: { service: 'detached', zip: '90210', homeowner: 'yes', timeline: '3_6_months', address: '12 Main St, Beverly Hills, CA' },
 };
+/** A pick that is not a project the funnel qualifies (a small job, or not sure yet for an ADU). */
+const SMALL: Record<string, string> = { 'bathroom-remodel': 'repair', 'kitchen-remodel': 'appliances_flooring', adu: 'unsure' };
 
 describe.each(FUNNEL_PRESETS.map((p) => [p.slug, p] as const))('%s funnel', (slug) => {
   const config = presetConfig(slug);
@@ -38,7 +41,7 @@ describe.each(FUNNEL_PRESETS.map((p) => [p.slug, p] as const))('%s funnel', (slu
 
   it.each([
     ['a renter', { homeowner: 'no' }],
-    ['a small repair / fixture swap', { service: slug === 'bathroom-remodel' ? 'repair' : 'appliances_flooring' }],
+    ['a small repair / fixture swap (an ADU: not sure yet)', { service: SMALL[slug] }],
     ['a project outside the scope', { service: 'other' }],
   ])('does not qualify %s', (_label, change) => {
     expect(qualify(config, { ...qualified[slug], ...change })).toBe(false);
@@ -52,12 +55,12 @@ describe.each(FUNNEL_PRESETS.map((p) => [p.slug, p] as const))('%s funnel', (slu
   });
 
   it('a renter is decided right away (not "still answering")', () => {
-    expect(qualify(config, { service: 'full_remodel', zip: '90210', homeowner: 'no' })).toBe(false);
+    expect(qualify(config, { service: qualified[slug].service, zip: '90210', homeowner: 'no' })).toBe(false);
   });
 
   it('is not decided until every shown question is answered', () => {
-    expect(qualify(config, { service: 'full_remodel', zip: '90210' })).toBeNull();
-    expect(qualify(config, { service: 'full_remodel', zip: '90210', homeowner: 'yes' })).toBeNull(); // still needs the address
+    expect(qualify(config, { service: qualified[slug].service, zip: '90210' })).toBeNull();
+    expect(qualify(config, { service: qualified[slug].service, zip: '90210', homeowner: 'yes' })).toBeNull(); // still needs the address
   });
 
   it('asks how soon they want to start but does not turn anyone away for it', () => {
@@ -75,20 +78,20 @@ describe.each(FUNNEL_PRESETS.map((p) => [p.slug, p] as const))('%s funnel', (slu
   });
 });
 
-describe('installing the two funnels', () => {
+describe('installing the house funnels', () => {
   let db: PGlite; let client: any;
   beforeAll(async () => { db = await fullSchema({ supabaseGrants: true }); client = fakeSupabase(db); }, 180_000);
   afterAll(async () => { await db?.close(); });
 
-  it('creates both as unpublished house funnels carrying the dataset, and does it only once', async () => {
+  it('creates each as an unpublished house funnel carrying the dataset, and does it only once', async () => {
     const first = await installPresetFunnels(client, null);
-    expect(first.error).toBeUndefined(); expect(first.created.map((c) => c.slug).sort()).toEqual(['bathroom-remodel', 'kitchen-remodel']); expect(first.existing).toEqual([]);
+    expect(first.error).toBeUndefined(); expect(first.created.map((c) => c.slug).sort()).toEqual(['adu', 'bathroom-remodel', 'kitchen-remodel']); expect(first.existing).toEqual([]);
     const rows = (await db.query<any>(`select slug, status, contractor_id, is_demo, config from public.funnels order by slug`)).rows;
-    expect(rows.map((r) => [r.slug, r.status, r.contractor_id, r.is_demo])).toEqual([['bathroom-remodel', 'draft', null, false], ['kitchen-remodel', 'draft', null, false]]);
+    expect(rows.map((r) => [r.slug, r.status, r.contractor_id, r.is_demo])).toEqual([['adu', 'draft', null, false], ['bathroom-remodel', 'draft', null, false], ['kitchen-remodel', 'draft', null, false]]);
     expect(rows.every((r) => r.config.trackingPixels.metaPixelId === DATASET)).toBe(true);
     const again = await installPresetFunnels(client, null);
-    expect(again.created).toEqual([]); expect(again.existing.sort()).toEqual(['Bathroom remodel', 'Kitchen remodel']);
-    expect((await db.query<any>(`select count(*)::int as n from public.funnels`)).rows[0].n).toBe(2);
+    expect(again.created).toEqual([]); expect(again.existing.sort()).toEqual(['ADU', 'Bathroom remodel', 'Kitchen remodel']);
+    expect((await db.query<any>(`select count(*)::int as n from public.funnels`)).rows[0].n).toBe(3);
   });
   it('never overwrites a funnel someone already edited', async () => {
     await db.query(`update public.funnels set config = jsonb_set(config, '{thankYouPage,headline}', '"Custom"') where slug='kitchen-remodel'`);
