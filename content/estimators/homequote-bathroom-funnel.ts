@@ -1,4 +1,4 @@
-import type { FunnelPhoto, FunnelSpec } from '@/lib/estimator/funnel/types';
+import type { FunnelPhoto, FunnelPhotoRule, FunnelPhotoVariant, FunnelSpec } from '@/lib/estimator/funnel/types';
 
 /*
  * HomeQuote Network's simple mobile bathroom funnel (experience 'funnel'):
@@ -49,9 +49,11 @@ const CURBLESS_IDEA = idea(`${IDEAS}style-modern-spa.webp`, 'Bathroom with a cur
 const COMBO_IDEA = idea(`${IDEAS}style-navy-hall.webp`, 'Hall bathroom with a tub-and-shower combo and a navy vanity (AI-generated example design)');
 const STANDARD_IDEA = idea(`${IDEAS}style-warm-wood.webp`, 'Bathroom with white subway tile, a wood vanity and a white hexagon floor (AI-generated example design)');
 
+type Size = 'guest' | 'full' | 'primary';
 type Layout = 'walkin' | 'combo' | 'spa';
 type Finish = 'standard' | 'luxe';
 
+const SIZE_WORDS: Record<Size, string> = { guest: 'Small guest bathroom', full: 'Full bathroom', primary: 'Primary-suite bathroom' };
 const LAYOUT_WORDS: Record<Layout, string> = {
   walkin: 'a glass walk-in shower',
   combo: 'a tub-and-shower combo',
@@ -67,13 +69,79 @@ const LAYOUT_FALLBACK: Record<Layout, Record<Finish, { src: string; alt: string 
   spa: { standard: SPA_IDEA, luxe: SPA_IDEA },
 };
 
-/** The room photo for a layout and finish ("layout-walkin-luxe"): the same room, the choice swapped. */
-function layoutPhoto(layout: Layout, finish: Finish): FunnelPhoto {
-  return photo(`layout-${layout}-${finish}`, `Remodeled bathroom with ${LAYOUT_WORDS[layout]}, ${FINISH_WORDS[finish]} (AI-generated example design)`, LAYOUT_FALLBACK[layout][finish]);
+/*
+ * Every step after the size shows the room the homeowner picked (size) with
+ * their earlier picks still in it (finish, layout), so the design visibly
+ * accumulates. Files: the primary suite keeps the original keys
+ * ("layout-walkin-luxe"); the smaller rooms add the size ("layout-walkin-luxe-guest").
+ * A combination without its own photo falls back to the nearest one
+ * (the layout first, then the nearest size, then the finish), e.g. a guest bath's
+ * spa bath (a site-visit item there) shows the full bath's spa photo.
+ */
+const sized = (key: string, size: Size) => (size === 'primary' ? key : `${key}-${size}`);
+
+/** The room photo files that exist per size: [layout, finish]. */
+const ROOMS: Record<Size, [Layout, Finish][]> = {
+  guest: [['walkin', 'standard'], ['walkin', 'luxe'], ['combo', 'standard'], ['combo', 'luxe']],
+  full: [['walkin', 'standard'], ['walkin', 'luxe'], ['combo', 'standard'], ['combo', 'luxe'], ['spa', 'standard'], ['spa', 'luxe']],
+  primary: [['walkin', 'standard'], ['walkin', 'luxe'], ['combo', 'standard'], ['combo', 'luxe'], ['spa', 'standard'], ['spa', 'luxe']],
+};
+const SIZES: Size[] = ['guest', 'full', 'primary'];
+
+/** The room photo for a size, layout and finish ("layout-walkin-luxe-guest"). */
+function layoutPhoto(size: Size, layout: Layout, finish: Finish): FunnelPhoto {
+  return photo(sized(`layout-${layout}-${finish}`, size), `${SIZE_WORDS[size]} with ${LAYOUT_WORDS[layout]}, ${FINISH_WORDS[finish]} (AI-generated example design)`, LAYOUT_FALLBACK[layout][finish]);
 }
 
-const byFinish = (layout: Layout) => ({ standard: layoutPhoto(layout, 'standard'), luxe: layoutPhoto(layout, 'luxe') });
-const byLayout = (finish: Finish) => ({ walkin: layoutPhoto('walkin', finish), combo: layoutPhoto('combo', finish), spa: layoutPhoto('spa', finish) });
+const ROOM_VARIANTS: FunnelPhotoVariant[] = SIZES.flatMap((size) =>
+  ROOMS[size].map(([layout, finish]) => ({ when: { size, layout, finish }, photo: layoutPhoto(size, layout, finish) })),
+);
+
+/** The room photos as a step's rule: the finish step follows size + layout, the layout step size + finish. */
+function roomRule(other: 'layout' | 'finish'): FunnelPhotoRule {
+  // The other pick first: a room that cannot have the layout (site visit) shows the nearest size that has it.
+  return { kind: 'variants', by: [{ stepId: other }, { stepId: 'size', ordered: true }], photos: ROOM_VARIANTS };
+}
+
+/**
+ * Follow-ups match the layout first (never an island on an L path, never a tub on a walk-in path), then the
+ * size (the nearest one, as the layout step shows), then the finish.
+ */
+const FOLLOW_BY = [{ stepId: 'layout' }, { stepId: 'size', ordered: true }, { stepId: 'finish' }];
+
+/** The follow-up option a room photo already shows (frameless shower, soaking tub): that room photo itself. */
+function roomAs(stepId: string, optionId: string, layouts: Layout[]): FunnelPhotoVariant[] {
+  return ROOM_VARIANTS.filter((v) => layouts.includes(v.when.layout as Layout)).map((v) => ({ when: { ...v.when, [stepId]: optionId }, photo: v.photo }));
+}
+
+/**
+ * Follow-up photos edited from a room photo, per [size, layout, finish] that has
+ * them. The primary suite's luxe set keeps its original key ("shower-curbless");
+ * the others add the room ("shower-curbless-walkin-luxe-full").
+ */
+function edits(stepId: string, optionId: string, rooms: [Size, Layout, Finish][], alt: string, fallback: { src: string; alt: string }): FunnelPhotoVariant[] {
+  return rooms.map(([size, layout, finish]) => {
+    const original = size === 'primary' && finish === 'luxe';
+    return {
+      when: { [stepId]: optionId, size, layout, finish },
+      photo: photo(original ? `${stepId}-${optionId}` : `${stepId}-${optionId}-${layout}-${finish}-${size}`, alt, fallback),
+    };
+  });
+}
+
+/** Shower options with their own photo (curbless, bench): edits of these walk-in rooms. */
+const SHOWER_ROOMS: [Size, Layout, Finish][] = [
+  ['primary', 'walkin', 'luxe'],
+  ['full', 'walkin', 'standard'],
+  ['full', 'walkin', 'luxe'],
+  ['guest', 'walkin', 'standard'],
+  ['guest', 'walkin', 'luxe'],
+];
+/** Tub options with their own photo (clawfoot, stone): edits of these spa rooms. */
+const TUB_ROOMS: [Size, Layout, Finish][] = [
+  ['primary', 'spa', 'luxe'],
+  ['full', 'spa', 'luxe'],
+];
 
 function sizePlan(id: string, dims: string, room: string, fallback: { src: string; alt: string }): FunnelPhoto {
   return photo(`size-${id}`, `Top-down plan of a ${room} about ${dims} (to scale, AI-generated)`, fallback);
@@ -141,8 +209,8 @@ export const HOMEQUOTE_BATHROOM_FUNNEL: FunnelSpec = {
           addAnswers: { scope: ['extras'], extras: ['rain_head', 'led_mirror'] },
         },
       ],
-      // The same room in each finish, with the layout picked next (a walk-in shower until then).
-      photo: { kind: 'matrix', stepId: 'layout', photos: { standard: byLayout('standard'), luxe: byLayout('luxe') } },
+      // The room picked on step 1 in each finish, with the layout picked next (a walk-in shower until then).
+      photo: roomRule('layout'),
     },
     {
       id: 'layout',
@@ -153,8 +221,8 @@ export const HOMEQUOTE_BATHROOM_FUNNEL: FunnelSpec = {
         { id: 'combo', title: 'Tub & shower combo', short: 'Tub & shower', subtitle: 'A new tub with a shower over it', answers: { bathing: ['tub_shower'] } },
         { id: 'spa', title: 'Spa bath', subtitle: 'Freestanding tub + walk-in shower', answers: { bathing: ['tub_and_shower'] } },
       ],
-      // e.g. layout-spa-luxe: the layout in the finish picked before.
-      photo: { kind: 'matrix', stepId: 'finish', photos: { walkin: byFinish('walkin'), combo: byFinish('combo'), spa: byFinish('spa') } },
+      // e.g. layout-spa-luxe-full: the layout in the room and finish picked before.
+      photo: roomRule('finish'),
     },
     // ---- Follow-ups: only when the picks ask for them (design options; one tap each).
     {
@@ -173,13 +241,15 @@ export const HOMEQUOTE_BATHROOM_FUNNEL: FunnelSpec = {
           addAnswers: { scope: ['extras'], extras: ['bench', 'niche'] },
         },
       ],
+      // The room so far with each shower: frameless = the room photo itself.
       photo: {
-        kind: 'option',
-        photos: {
-          frameless: photo('shower-frameless', 'Walk-in shower behind a single frameless glass panel (AI-generated example design)', WALKIN_IDEA),
-          curbless: photo('shower-curbless', 'Curbless walk-in shower with the floor tile running level into it (AI-generated example design)', CURBLESS_IDEA),
-          bench: photo('shower-bench', 'Walk-in shower with a tiled bench and a recessed niche (AI-generated example design)', idea(`${THUMBS}option-extras-bench.webp`, 'Walk-in shower with a tiled bench (AI-generated example design)')),
-        },
+        kind: 'variants',
+        by: FOLLOW_BY,
+        photos: [
+          ...roomAs('shower', 'frameless', ['walkin', 'spa']),
+          ...edits('shower', 'curbless', SHOWER_ROOMS, 'Curbless walk-in shower with the floor tile running level into it (AI-generated example design)', CURBLESS_IDEA),
+          ...edits('shower', 'bench', SHOWER_ROOMS, 'Walk-in shower with a tiled bench and a recessed niche (AI-generated example design)', idea(`${THUMBS}option-extras-bench.webp`, 'Walk-in shower with a tiled bench (AI-generated example design)')),
+        ],
       },
     },
     {
@@ -192,13 +262,15 @@ export const HOMEQUOTE_BATHROOM_FUNNEL: FunnelSpec = {
         { id: 'clawfoot', title: 'Clawfoot tub', subtitle: 'A classic tub on feet', answers: { tubStyle: ['clawfoot'] } },
         { id: 'stone', title: 'Sculpted stone tub', short: 'Stone tub', subtitle: 'Solid stone-resin, carved look', answers: { tubStyle: ['stone'] } },
       ],
+      // The spa room so far with each tub: soaking = the room photo itself.
       photo: {
-        kind: 'option',
-        photos: {
-          soaking: photo('tub-soaking', 'Freestanding white soaking tub under a window (AI-generated example design)', SPA_IDEA),
-          clawfoot: photo('tub-clawfoot', 'Classic clawfoot tub on brass feet (AI-generated example design)', SPA_IDEA),
-          stone: photo('tub-stone', 'Sculpted stone freestanding tub (AI-generated example design)', SPA_IDEA),
-        },
+        kind: 'variants',
+        by: FOLLOW_BY,
+        photos: [
+          ...roomAs('tub', 'soaking', ['spa']),
+          ...edits('tub', 'clawfoot', TUB_ROOMS, 'Classic clawfoot tub on metal feet (AI-generated example design)', SPA_IDEA),
+          ...edits('tub', 'stone', TUB_ROOMS, 'Sculpted stone freestanding tub (AI-generated example design)', SPA_IDEA),
+        ],
       },
     },
     {
@@ -251,6 +323,8 @@ export const HOMEQUOTE_BATHROOM_FUNNEL: FunnelSpec = {
   },
   // Every room photo is shown whole (3:2 photos in a wider card: 'cover' cut off the top and bottom), on a blurred copy of itself.
   photoFrame: { fit: 'contain', zoom: 1, backdrop: 'blur' },
+  // "Your design: Full bath · Luxe · Walk-in shower" under the photo from step 2 on (the design they are building).
+  designRecap: { label: 'Your design' },
   photoNote: 'Photos are AI-generated example designs, not finished projects.',
   designDescription: 'Three quick picks, then a ballpark price for your {noun} and a free in-home consultation with a licensed local contractor, through {name}.',
 };

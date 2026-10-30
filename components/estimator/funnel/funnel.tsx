@@ -4,7 +4,7 @@ import './funnel.css';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import { activeSteps, normalizeFunnelSelection, stepOptionPhotos, stepPhotoFrame } from '@/lib/estimator/funnel/engine';
+import { activeSteps, designRecap, normalizeFunnelSelection, stepOptionPhotos, stepPhotoFrame } from '@/lib/estimator/funnel/engine';
 import type { FunnelSelection, FunnelSpec } from '@/lib/estimator/funnel/types';
 import type { ContractorEstimatorConfig, EstimatorTemplate } from '@/lib/estimator/types';
 import { FunnelFooter, FunnelLogo } from './chrome';
@@ -357,6 +357,8 @@ function StepScreen({
   };
   // The step's (or the spec's) framing; the pool's default: plans and follow-ups on white zoomed in, views cover.
   const frame = useMemo(() => stepPhotoFrame(spec, step), [spec, step]);
+  // "Your design: Full bath · Luxe · Walk-in shower": the picks so far, growing with each tap (bathroom / kitchen).
+  const recap = designRecap(spec, selection, index);
 
   return (
     <form onSubmit={onSubmit} noValidate>
@@ -367,8 +369,14 @@ function StepScreen({
           frame={frame}
           priority={first}
         />
+        {recap.length > 0 && spec.designRecap ? (
+          <p className="fn-recap mt-[6px] truncate text-[13px] leading-[16px] text-[var(--fn-muted)] lg:mt-3 lg:text-[14px] lg:leading-[20px]" aria-live="polite">
+            <span className="font-[520] text-[var(--fn-ink)]">{spec.designRecap.label}:</span> {recap.join(' · ')}
+          </p>
+        ) : null}
       </div>
-      <h1 id={HEADING_ID} tabIndex={-1} className="fn-h1 mt-[18px] text-balance outline-none lg:mt-7">
+      {/* With the recap the question moves up by about as much, so the button stays on screen (iPhone 14 Pro: 660 px). */}
+      <h1 id={HEADING_ID} tabIndex={-1} className={`fn-h1 ${recap.length > 0 && spec.designRecap ? 'mt-[10px] lg:mt-5' : 'mt-[18px] lg:mt-7'} text-balance outline-none`}>
         {step.label}
       </h1>
       <fieldset className="mt-5 lg:mt-6">

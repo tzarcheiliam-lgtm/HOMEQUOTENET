@@ -208,12 +208,14 @@ describe('the kitchen funnel spec', () => {
 });
 
 describe('photos', () => {
-  const KEYS = new Set([
-    'size-compact', 'size-medium', 'size-large',
-    ...['l', 'u', 'island'].flatMap((l) => ['standard', 'luxe'].map((f) => `layout-${l}-${f}`)),
-    'cabinets-white', 'cabinets-wood', 'cabinets-twotone', 'island-prep', 'island-seating', 'island-sink',
-    'appliances-stainless', 'appliances-pro', 'appliances-panel',
-  ]);
+  // Every photo the spec names (a room photo per size x layout x finish, follow-ups edited from them).
+  const KEYS = new Set(
+    SPEC.steps.flatMap((s) => {
+      const r = s.photo;
+      const ps = r.kind === 'option' ? Object.values(r.photos) : r.kind === 'variants' ? r.photos.map((v) => v.photo) : r.kind === 'matrix' ? Object.values(r.photos).flatMap((x) => Object.values(x)) : [];
+      return ps.map((p) => p.src.match(/\/([^/]+)\.webp$/)![1]);
+    }),
+  );
   const file = (src: string) => existsSync(join(PUBLIC, src.replace(/^\//, '')));
 
   it('every shown step on every path has a photo from the agreed set, each with an existing fallback', () => {
@@ -241,15 +243,17 @@ describe('photos', () => {
     expect(SPEC.photoNote).toBe('Photos are AI-generated example designs, not finished projects.');
   });
 
-  it('the layout photo follows the finish, and the finish photo shows the layout (the island until it is picked)', () => {
-    expect(funnelPhoto(SPEC, 'layout', { finish: 'luxe', layout: 'u' }).src).toBe('/estimator/kitchen/funnel/layout-u-luxe.webp');
-    expect(photoKey(SPEC, 'layout', { finish: 'standard', layout: 'l' })).toBe('layout-l-standard');
-    expect(funnelPhoto(SPEC, 'finish', { finish: 'luxe' }).src).toBe('/estimator/kitchen/funnel/layout-island-luxe.webp');
-    const swaps = stepOptionPhotos(SPEC, 'layout', { finish: 'standard' });
+  it('the layout photo follows the size and the finish, and the finish photo shows the layout (the island until it is picked)', () => {
+    expect(funnelPhoto(SPEC, 'layout', { size: 'large', finish: 'luxe', layout: 'u' }).src).toBe('/estimator/kitchen/funnel/layout-u-luxe.webp');
+    expect(funnelPhoto(SPEC, 'layout', { size: 'medium', finish: 'luxe', layout: 'u' }).src).toBe('/estimator/kitchen/funnel/layout-u-luxe-medium.webp');
+    expect(photoKey(SPEC, 'layout', { size: 'compact', finish: 'standard', layout: 'l' })).toBe('layout-l-standard-compact');
+    expect(funnelPhoto(SPEC, 'finish', { size: 'large', finish: 'luxe' }).src).toBe('/estimator/kitchen/funnel/layout-island-luxe.webp');
+    const swaps = stepOptionPhotos(SPEC, 'layout', { size: 'compact', finish: 'standard' });
     expect(Object.fromEntries(Object.entries(swaps).map(([k, p]) => [k, p.src.split('/').pop()]))).toEqual({
-      l: 'layout-l-standard.webp',
-      u: 'layout-u-standard.webp',
-      island: 'layout-island-standard.webp',
+      l: 'layout-l-standard-compact.webp',
+      u: 'layout-u-standard-compact.webp',
+      // An island in a 10 x 10 kitchen is a site-visit item: the nearest size's island kitchen.
+      island: 'layout-island-standard-medium.webp',
     });
     // Follow-up photos are asked for (preloaded) even while their step is hidden.
     expect(Object.keys(stepOptionPhotos(SPEC, 'appliances', { finish: 'standard' }))).toEqual(['stainless', 'pro', 'panel']);

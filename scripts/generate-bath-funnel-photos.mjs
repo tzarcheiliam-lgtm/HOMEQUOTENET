@@ -26,7 +26,7 @@
  * Usage
  *   KIE_KEY_FILE=<path> node scripts/generate-bath-funnel-photos.mjs credits
  *   KIE_KEY_FILE=<path> node scripts/generate-bath-funnel-photos.mjs generate [key ...] [--force]
- *   node scripts/generate-bath-funnel-photos.mjs export
+ *   node scripts/generate-bath-funnel-photos.mjs export [key ...]
  *   node scripts/generate-bath-funnel-photos.mjs sheet
  *   (KIE_API_KEY=... works instead of KIE_KEY_FILE; the key is read at run time, never printed.)
  *
@@ -251,6 +251,133 @@ const JOBS = [
   },
 ];
 
+
+// ------------------------------------------------------------------ smaller rooms (2026-10-30)
+// The jobs above are the PRIMARY SUITE (12 x 14). The funnel now shows the room the homeowner
+// picked on step 1, so the guest / hall bath (5 x 8) and the full bath (8 x 10) get their own
+// room, each a text-to-image master drawn with the primary master as a STYLE reference (same
+// house: warm-white paint, warm-grey porcelain, walnut, brass, the window and daylight), then
+// edits of it exactly like the primary set. Keys end in -guest / -full (the primary keys keep
+// their old names). Follow-ups are edits of the MATCHING layout photo (size x finish x layout),
+// so each step looks like the same room with the earlier picks still in it.
+
+const STYLE_REF =
+  'Use the reference image ONLY as the style reference for the same house: the same warm-white paint, warm light-grey large-format porcelain tile, ' +
+  'walnut cabinetry, brushed-brass fixtures, round brass-framed mirrors, sheer linen at the window and the same soft white daylight. ' +
+  'Do NOT copy its room size or layout: draw the different, smaller room described below. ';
+
+const GUEST_ROOM =
+  'Photorealistic, magazine-quality interior photograph (architectural-digest style) of a newly remodeled small GUEST / HALL bathroom. ' +
+  'The room is SMALL and NARROW: only 5 feet wide and 8 feet long. Camera: eye level (about 5 feet high) standing in the doorway on one short wall, ' +
+  'looking straight down the length of the room at the far short wall, one-point perspective, wide-angle lens, perfectly vertical lines. ' +
+  'Both long side walls are close to the camera and clearly visible, converging toward the end wall; the end wall is only 5 feet wide and fills about the middle third of the frame. ' +
+  'A small window centered high on the end wall with soft white daylight through sheer linen and a glimpse of green foliage. ' +
+  'On the LEFT wall, nearest the camera, a compact 30-inch single vanity with ONE sink, ONE round mirror and one sconce; farther along the left wall, beyond the vanity, a white toilet. ' +
+  'The right wall is plain with a brass towel bar and a folded white towel. Light ceiling, recessed light off, bright and airy. ';
+
+const FULL_ROOM =
+  'Photorealistic, magazine-quality interior photograph (architectural-digest style) of a newly remodeled FULL bathroom of modest size, 8 feet wide and 10 feet long, ' +
+  'clearly smaller than a primary suite. Camera: eye level (about 5 feet high) standing in the doorway on one short wall, looking straight at the 8-foot back wall, ' +
+  'one-point perspective, wide-angle lens, perfectly vertical lines. Both side walls are close and visible; the back wall fills about the middle half of the frame. ' +
+  'One window centered high on the back wall with soft white daylight through sheer linen and a glimpse of green foliage. ' +
+  'On the LEFT wall a 60-inch floating walnut DOUBLE vanity with two sinks, a white quartz top, two small round brass-framed mirrors and brass sconces, seen in perspective. ' +
+  'On the RIGHT wall, near the camera, a white toilet partly in view. Light ceiling, recessed lights off, bright and airy. Styled and uncluttered: a folded white towel, one small plant. ';
+
+/** The standard downgrade for a smaller room (the primary's STANDARD names a two-sink vanity). */
+const standardFor = (vanity) =>
+  'Downgrade the finishes to a STANDARD builder-grade remodel while keeping the same room size, layout and every fixture in the same place: ' +
+  'glossy white 3 x 6 inch ceramic subway tile on the wet walls, small 12 x 12 inch light-grey ceramic floor tile with visible grout lines, ' +
+  'all faucets, shower fixtures, handles and hardware in polished CHROME (no brass anywhere), ' +
+  `the vanity becomes ${vanity} with a white cultured-marble top, ` +
+  'simple rectangular frameless mirrors and plain chrome wall lights. Clean and new, but simple and affordable-looking.';
+const GUEST_STANDARD = standardFor('a stock white shaker-style 30-inch cabinet standing on the floor with ONE sink');
+const FULL_STANDARD = standardFor('a stock white shaker-style 60-inch cabinet standing on the floor with two sinks');
+
+const CURBLESS =
+  'Make the walk-in shower CURBLESS: remove the curb and the glass door so the same floor tile runs flat and continuous from the bathroom ' +
+  'straight into the shower with a slim linear drain along the back wall; keep only one fixed clear glass panel and leave a wide open entry, no door.';
+const BENCH =
+  'Inside the same walk-in shower add a built-in floating BENCH along one side wall, topped with a thick white quartz slab, ' +
+  'and a recessed niche lit with a warm LED strip at shoulder height holding two neat bottles without labels; keep the glass enclosure.';
+const CLAWFOOT =
+  'Replace only the freestanding oval tub with a classic white cast-iron CLAWFOOT tub with a rolled rim on four claw feet in the same metal as the faucets, ' +
+  'in exactly the same place, with the same floor-mounted tub filler.';
+const STONE_TUB =
+  'Replace only the freestanding oval tub with a SCULPTED STONE tub carved from one block of honed pale travertine, soft organic rounded shape with natural stone texture, ' +
+  'in exactly the same place, with the same floor-mounted tub filler.';
+
+const SMALL_JOBS = [
+  // Guest / hall bath (5 x 8): tub-shower combo master, walk-in edit, standard finishes. No spa bath
+  // (a freestanding tub does not fit; the funnel shows the full bath's spa photo, flagged for a site visit).
+  {
+    key: 'layout-combo-luxe-guest',
+    from: null,
+    ref: 'layout-spa-luxe',
+    prompt:
+      STYLE_REF + GUEST_ROOM +
+      'Across the whole end wall, from side wall to side wall, a built-in 5-foot alcove TUB-AND-SHOWER COMBO: a white rectangular tub with a tiled apron front, ' +
+      'tiled walls around it up to the ceiling, a brushed-brass shower head and valve, and one fixed clear frameless glass panel on the tub edge. ' +
+      'The vanity is floating walnut with a white quartz top and a brushed-brass faucet. ' + LUXE_FINISH + NO,
+  },
+  {
+    key: 'layout-walkin-luxe-guest',
+    from: 'layout-combo-luxe-guest',
+    prompt:
+      'Replace the bathtub and its glass panel with a WALK-IN SHOWER filling the end of the room from side wall to side wall: the same large porcelain tile on its floor and walls, ' +
+      'a low 2-inch tiled curb, a clear frameless glass panel with a frameless glass door with a slim brass handle, a brushed-brass rain shower head and hand shower, a recessed niche. ' +
+      'Keep the vanity, mirror, toilet and the narrow room exactly as they are. EXACTLY ONE toilet in the photo (the one beside the vanity, outside the shower): ' +
+      'nothing inside the shower except the tile, the niche and the shower fixtures, and the glass shows only the tiled shower behind it.' + KEEP,
+  },
+  { key: 'layout-combo-standard-guest', from: 'layout-combo-luxe-guest', prompt: GUEST_STANDARD + ' The tub becomes a standard white enamel alcove tub; the glass panel gets a thin polished-chrome frame in exactly the same place; no sliding door, no rail.' + KEEP },
+  { key: 'layout-walkin-standard-guest', from: 'layout-walkin-luxe-guest', prompt: GUEST_STANDARD + ' The shower enclosure gets a thin chrome-framed glass door.' + KEEP },
+
+  // Full bath (8 x 10): spa master (as the primary set), walk-in and combo edits, standard finishes.
+  {
+    key: 'layout-spa-luxe-full',
+    from: null,
+    ref: 'layout-spa-luxe',
+    prompt:
+      STYLE_REF + FULL_ROOM +
+      'This is a compact SPA BATH: on the back wall, toward the left under the window, a compact 5-foot white freestanding oval soaking tub with a brushed-brass floor-mounted filler, ' +
+      'and in the back-RIGHT corner a 3 x 4 foot walk-in shower behind a single clear frameless glass panel with a brushed-brass rain shower head and a recessed niche. ' +
+      LUXE_FINISH + NO,
+  },
+  {
+    key: 'layout-walkin-luxe-full',
+    from: 'layout-spa-luxe-full',
+    prompt:
+      'Remove the freestanding bathtub, its filler AND the existing glass panel completely (no old glass may remain). The whole back of the room becomes ONE walk-in shower ' +
+      'from side wall to side wall: the same porcelain tile on its floor and walls, enclosed by ONE straight wall of clear frameless glass parallel to the back wall about three and a half feet in front of it, ' +
+      'with a frameless glass door with a slim brushed-brass handle, on a low 2-inch tiled curb. Inside: the brass rain shower head, a hand shower and the niche. ' +
+      'Keep the floating walnut double vanity, mirrors, sconces and toilet exactly as they are.' + KEEP,
+  },
+  {
+    key: 'layout-combo-luxe-full',
+    from: 'layout-spa-luxe-full',
+    prompt:
+      'Replace the freestanding bathtub AND the walk-in shower with one built-in alcove TUB AND SHOWER COMBO spanning the whole back wall under the window: ' +
+      'a white rectangular built-in bathtub with a tiled apron front, tiled walls around it in the same porcelain tile, a brushed-brass shower head and valve above the tub, ' +
+      'and one fixed clear frameless glass panel on the tub edge. Keep the floating walnut double vanity, mirrors, sconces and toilet exactly as they are.' + KEEP,
+  },
+  { key: 'layout-spa-standard-full', from: 'layout-spa-luxe-full', prompt: FULL_STANDARD + ' The freestanding tub becomes a plain white acrylic freestanding tub with a chrome filler; the shower glass gets a thin chrome frame.' + KEEP },
+  { key: 'layout-walkin-standard-full', from: 'layout-walkin-luxe-full', prompt: FULL_STANDARD + ' The shower enclosure gets a thin chrome-framed glass door.' + KEEP },
+  { key: 'layout-combo-standard-full', from: 'layout-combo-luxe-full', prompt: FULL_STANDARD + ' The tub becomes a standard white enamel alcove tub; the glass panel gets a thin polished-chrome frame in exactly the same place; no sliding door, no rail.' + KEEP },
+
+  // Follow-ups, each an edit of the matching layout photo (size x finish x layout). The frameless
+  // shower and the soaking tub are not generated: the funnel spec shows the layout photo itself.
+  { key: 'shower-curbless-walkin-standard-full', from: 'layout-walkin-standard-full', prompt: CURBLESS + KEEP },
+  { key: 'shower-bench-walkin-standard-full', from: 'layout-walkin-standard-full', prompt: BENCH + KEEP },
+  { key: 'shower-curbless-walkin-luxe-full', from: 'layout-walkin-luxe-full', prompt: CURBLESS + KEEP },
+  { key: 'shower-bench-walkin-luxe-full', from: 'layout-walkin-luxe-full', prompt: BENCH + KEEP },
+  { key: 'shower-curbless-walkin-standard-guest', from: 'layout-walkin-standard-guest', prompt: CURBLESS + KEEP },
+  { key: 'shower-bench-walkin-standard-guest', from: 'layout-walkin-standard-guest', prompt: BENCH + KEEP },
+  { key: 'tub-clawfoot-spa-luxe-full', from: 'layout-spa-luxe-full', prompt: CLAWFOOT + KEEP },
+  { key: 'tub-stone-spa-luxe-full', from: 'layout-spa-luxe-full', prompt: STONE_TUB + KEEP },
+  { key: 'shower-curbless-walkin-luxe-guest', from: 'layout-walkin-luxe-guest', prompt: CURBLESS + KEEP },
+  { key: 'shower-bench-walkin-luxe-guest', from: 'layout-walkin-luxe-guest', prompt: BENCH + KEEP },
+];
+JOBS.push(...SMALL_JOBS);
+
 /** Options the master (or another raw) already shows: exported under their own key, same raw. */
 const ALIASES = [
   { key: 'shower-frameless', raw: 'layout-walkin-luxe' },
@@ -372,10 +499,15 @@ async function cmdGenerate(args) {
     if (only.length && !named) continue;
     if (existsSync(raw(job.key)) && !force && !named) { console.log('skip', job.key); continue; }
     const t = Date.now();
-    let inputs = [];
+    const inputs = [];
     if (job.from) {
       if (!existsSync(raw(job.from))) throw new Error(`${job.key}: source ${job.from} has no raw image yet`);
-      inputs = [await upload(raw(job.from), job.from)];
+      inputs.push(await upload(raw(job.from), job.from));
+    }
+    // ref: another raw key used only as a style reference (a new room in the same house).
+    if (job.ref) {
+      if (!existsSync(raw(job.ref))) throw new Error(`${job.key}: reference ${job.ref} has no raw image yet`);
+      inputs.push(await upload(raw(job.ref), job.ref));
     }
     const out = await run(job.prompt, inputs);
     await download(out, raw(job.key));
@@ -389,15 +521,17 @@ const PHOTO_KEYS = () => [
   ...ALIASES,
 ];
 
-async function cmdExport() {
+async function cmdExport(only = []) {
   mkdirSync(OUT, { recursive: true });
   for (const { key, raw: r } of PHOTO_KEYS()) {
+    if (only.length && !only.includes(key)) continue;
     if (!existsSync(raw(r))) { console.log('MISSING', key); continue; }
     const a = await webpUnder(raw(r), W, MAX_KB, path.join(OUT, `${key}.webp`));
     const b = await webpUnder(raw(r), W_SM, MAX_KB_SM, path.join(OUT, `${key}-sm.webp`));
     console.log(key.padEnd(24), `${a.kb} KB q${a.q}`, `| sm ${b.kb} KB q${b.q}`);
   }
   for (const { key, raw: r, ft } of SIZES) {
+    if (only.length && !only.includes(key)) continue;
     if (!existsSync(raw(r))) { console.log('MISSING', key); continue; }
     const canvas = await sizeCanvas(raw(r), ft);
     const a = await webpUnder(canvas, W, MAX_KB, path.join(OUT, `${key}.webp`));
@@ -435,7 +569,7 @@ const [cmd, ...args] = process.argv.slice(2);
 const cmds = {
   credits: async () => console.log('credits', await credits()),
   generate: () => cmdGenerate(args),
-  export: cmdExport,
+  export: () => cmdExport(args),
   sheet: cmdSheet,
 }[cmd];
 if (!cmds) {

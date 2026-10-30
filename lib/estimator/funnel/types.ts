@@ -51,7 +51,26 @@ export type FunnelPhotoRule =
    * bathroom's "Choose your layout." photo per layout and finish:
    * photos[optionId][otherPick]. Key "<stepId>-<optionId>-<otherPick>".
    */
-  | { kind: 'matrix'; stepId: string; photos: Record<string, Record<string, FunnelPhoto>> };
+  | { kind: 'matrix'; stepId: string; photos: Record<string, Record<string, FunnelPhoto>> }
+  /**
+   * variants: photos keyed by THIS step's option plus the picks of several
+   * other steps, so a later step shows the same room with the earlier picks
+   * still in it (bathroom / kitchen: size x finish x layout). Each photo names
+   * the picks it shows in `when` (THIS step's option is required; another
+   * step left out of `when` matches any pick). The photo whose picks match
+   * best wins, compared step by step in `by` order (most important first):
+   * an exact pick beats a wildcard, which beats a different pick; for an
+   * `ordered` step (e.g. size) a different pick counts by its distance in that
+   * step's option order, so a missing size falls back to the NEAREST size.
+   * Ties go to the photo listed first. Key: the file name ("layout-walkin-luxe-guest").
+   */
+  | { kind: 'variants'; by: FunnelPhotoDimension[]; photos: FunnelPhotoVariant[] };
+
+/** A step whose pick chooses among a variants rule's photos. */
+export type FunnelPhotoDimension = { stepId: string; ordered?: boolean };
+
+/** One photo of a variants rule and the picks it shows (step id -> option id). */
+export type FunnelPhotoVariant = { when: Record<string, string>; photo: FunnelPhoto };
 
 export type FunnelOption = {
   /** Unique within the step; used in the URL and sessionStorage. */
@@ -264,6 +283,13 @@ export type FunnelSpec = {
    * on laptops), so 'cover' cut off their top and bottom.
    */
   photoFrame?: FunnelPhotoFrame;
+  /**
+   * A one-line recap under the step photo from step 2 on, e.g. "Your design: Full bath · Luxe · Walk-in shower":
+   * the picks so far (option `short`, else title; '' leaves one out), including this step's, so it grows as
+   * they pick. `label` is the words before the colon. Unset (the pool): no recap. Hidden on short phones
+   * (iPhone SE) so the button stays on screen.
+   */
+  designRecap?: { label: string };
   /** One quiet line in the page footer (and under the embed's column): photos are example designs. Never on a photo. */
   photoNote?: string;
   /**
