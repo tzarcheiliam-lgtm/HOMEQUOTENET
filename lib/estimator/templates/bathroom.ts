@@ -178,6 +178,50 @@ export const BATHROOM_TEMPLATE: EstimatorTemplate = {
       ],
     },
     {
+      // Optional refinements of the shower and the tub (HomeQuote's bathroom funnel always answers
+      // them; the builder shows them on the shower/tub screen). Prices are what each adds to the
+      // shower or tub above.
+      id: 'showerStyle',
+      label: 'Which kind of shower?',
+      kind: 'single',
+      summaryLabel: 'Shower',
+      screen: 'bathing',
+      showWhen: { questionId: 'bathing', anyOf: ['walk_in', 'tub_and_shower'] },
+      optional: true,
+      options: [
+        { id: 'frameless', label: 'Frameless glass', note: 'Clear glass panel, low curb' },
+        {
+          id: 'curbless',
+          label: 'Curbless walk-in',
+          note: 'Level floor, no step in',
+          // The floor is recessed for a level entry: confirmed in person.
+          siteVisit: 'Curbless shower (floor recess and drain check)',
+          price: { unit: 'flat', low: 2500, high: 5500 },
+        },
+      ],
+    },
+    {
+      id: 'tubStyle',
+      label: 'Which kind of tub?',
+      kind: 'single',
+      summaryLabel: 'Tub',
+      screen: 'bathing',
+      showWhen: { questionId: 'bathing', anyOf: ['tub_and_shower'] },
+      optional: true,
+      options: [
+        { id: 'soaking', label: 'Soaking tub', note: 'Deep, modern freestanding tub' },
+        { id: 'clawfoot', label: 'Clawfoot tub', note: 'Classic tub on feet', price: { unit: 'flat', low: 1500, high: 4000 } },
+        {
+          id: 'stone',
+          label: 'Sculpted stone tub',
+          note: 'Solid stone-resin, carved look',
+          // Heavy when full: the floor is checked in person.
+          siteVisit: 'Stone tub (floor support check)',
+          price: { unit: 'flat', low: 5000, high: 10000 },
+        },
+      ],
+    },
+    {
       id: 'vanity',
       label: 'Which vanity?',
       help: AI_PICTURES,

@@ -25,6 +25,7 @@ import {
   writeStored,
   type FunnelScreen,
 } from '@/components/estimator/funnel/state';
+import { HOMEQUOTE_BATHROOM_ESTIMATOR } from '@/content/estimators/homequote-bathroom';
 import { POOL_MASTERS_FUNNEL as SPEC } from '@/content/estimators/pool-masters-funnel';
 import { publicTemplate } from '@/lib/estimator/config';
 import { allFunnelSelections, defaultFunnelSelection, stepOptionPhotos } from '@/lib/estimator/funnel/engine';
@@ -317,9 +318,16 @@ describe('funnel pages', () => {
   });
 
   it('only funnel contractors get /design; others are sent to their main page', async () => {
-    expect(designParams()).toEqual([{ slug: 'pool-masters' }]);
-    await expect(FunnelDesignPage({ params: Promise.resolve({ slug: 'bathroom-remodel' }), searchParams: Promise.resolve({}) })).rejects.toThrow(
-      'REDIRECT /estimator/bathroom-remodel',
-    );
+    expect(designParams()).toEqual([{ slug: 'pool-masters' }, { slug: 'bathroom-remodel' }]);
+    // The bathroom page set back to the builder: no /design.
+    HOMEQUOTE_BATHROOM_ESTIMATOR.experience = 'builder';
+    try {
+      expect(designParams()).toEqual([{ slug: 'pool-masters' }]);
+      await expect(FunnelDesignPage({ params: Promise.resolve({ slug: 'bathroom-remodel' }), searchParams: Promise.resolve({}) })).rejects.toThrow(
+        'REDIRECT /estimator/bathroom-remodel',
+      );
+    } finally {
+      HOMEQUOTE_BATHROOM_ESTIMATOR.experience = 'funnel';
+    }
   });
 });

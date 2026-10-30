@@ -128,11 +128,8 @@ const EDITS = [
  * at these files directly. Same yard where one exists; otherwise a real Pool
  * Masters job photo of that feature (unedited).
  *
- * PLACEHOLDERS (no photo of the option exists yet; kie.ai credits ran out on
- * 2026-10-29 after spa-flush, spa-zero-edge and fire-fireplace): kitchen-chef
- * and cabana-curtains show the same yard's real pergola kitchen photo. Run
- * `generate kitchen-chef cabana-curtains`, then `export`, and point the two
- * options in content/estimators/pool-masters-funnel.ts at funnel/<key>.webp.
+ * kitchen-chef and cabana-curtains were generated on 2026-10-29 (after the
+ * earlier placeholders) and the funnel spec points at funnel/<key>.webp.
  * kitchen-grill and fire-pit have same-yard edits ready too (optional: the
  * real photos below are genuine).
  */
@@ -140,11 +137,9 @@ const REUSED = [
   { key: 'spa-raised', src: `${CFG}/poolside-pebble-premium-spa.webp`, why: 'configurator photo: raised dark-tile spa with a spillway' },
   { key: 'kitchen-grill', src: `${REAL}/outdoor-kitchen-slab-counter.webp`, why: 'real Pool Masters job: built-in grill station' },
   { key: 'kitchen-full', src: `${REAL}/funnel/kitchen-full.webp`, why: 'crop of the configurator aerial (kitchen bar + island with bar stools)' },
-  { key: 'kitchen-chef', src: `${REAL}/covered-outdoor-kitchen-bar.webp`, why: 'PLACEHOLDER: real photo of this yard, no pizza oven' },
   { key: 'fire-pit', src: `${REAL}/fire-pit-stone-wall-seating.webp`, why: 'real Pool Masters job: fire pit with seating' },
   { key: 'fire-bowls', src: `${CFG}/evening-pebble-fire-spa.webp`, why: 'configurator photo: the pair of fire bowls' },
   { key: 'cabana-pergola', src: `${REAL}/covered-lounge-pool-dusk.webp`, why: 'real Pool Masters job: louvered pergola over a lounge' },
-  { key: 'cabana-curtains', src: `${REAL}/covered-outdoor-kitchen-bar.webp`, why: 'PLACEHOLDER: real photo of this yard, no curtains' },
   { key: 'cabana-lounge', src: `${REAL}/funnel/cabana-lounge.webp`, why: 'crop of the configurator aerial (patio cover over a lounge)' },
 ];
 

@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { telHref } from '@/components/estimator/shell/facts';
+import type { FunnelLanding } from '@/lib/estimator/funnel/types';
 import type { ContractorEstimatorConfig } from '@/lib/estimator/types';
 
 /*
@@ -11,12 +12,45 @@ import type { ContractorEstimatorConfig } from '@/lib/estimator/types';
 
 type Brand = Pick<ContractorEstimatorConfig, 'contractorName' | 'logoUrl'>;
 
-/** The logo (falls back to the name). `height` in px; the Pool Masters mark is 2.38:1. */
-export function FunnelLogo({ contractor, height, priority = false }: { contractor: Brand; height: number; priority?: boolean }) {
+/**
+ * The logo (falls back to the name). `height` in px; the Pool Masters mark is 2.38:1 (the default
+ * `logo.aspect`). A round badge (logo.wordmark) is drawn a little larger, with the name set beside it.
+ */
+export function FunnelLogo({
+  contractor,
+  height,
+  priority = false,
+  logo,
+}: {
+  contractor: Brand;
+  height: number;
+  priority?: boolean;
+  /** FunnelSpec.landing.logo */
+  logo?: FunnelLanding['logo'];
+}) {
   if (!contractor.logoUrl) {
     return <span className="text-[18px] font-semibold tracking-[-0.02em] text-[var(--fn-ink)]">{contractor.contractorName}</span>;
   }
-  const width = Math.round(height * 2.38);
+  if (logo?.wordmark) {
+    const size = Math.round(height * 1.25);
+    const w = Math.round(size * (logo.aspect ?? 1));
+    return (
+      <span className="flex items-center gap-2">
+        <Image
+          src={contractor.logoUrl}
+          alt=""
+          width={w}
+          height={size}
+          priority={priority}
+          sizes={`${w}px`}
+          className="-my-1 block object-contain"
+          style={{ width: w, height: size }}
+        />
+        <span className="whitespace-nowrap text-[17px] font-semibold leading-none tracking-[-0.02em] text-[var(--fn-ink)] lg:text-[19px]">{logo.wordmark}</span>
+      </span>
+    );
+  }
+  const width = Math.round(height * (logo?.aspect ?? 2.38));
   return (
     <Image
       src={contractor.logoUrl}

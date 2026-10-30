@@ -230,10 +230,10 @@ export function Funnel({
         <header className="mx-auto flex h-[46px] w-full max-w-[1120px] items-center px-5 sm:px-8 lg:h-[68px]">
           <Link href={homeHref ?? `/estimator/${slug}`} aria-label={`${contractor.contractorName} home`} className="-mx-1 rounded-[4px] px-1 py-1 focus-visible:outline-2 focus-visible:outline-[var(--fn-blue)]">
             <span className="lg:hidden">
-              <FunnelLogo contractor={contractor} height={26} priority />
+              <FunnelLogo contractor={contractor} logo={spec.landing.logo} height={26} priority />
             </span>
             <span className="hidden lg:block">
-              <FunnelLogo contractor={contractor} height={32} />
+              <FunnelLogo contractor={contractor} logo={spec.landing.logo} height={32} />
             </span>
           </Link>
         </header>
@@ -355,7 +355,8 @@ function StepScreen({
     e.preventDefault();
     onContinue();
   };
-  const isView = step.photo.kind === 'view';
+  // Room photos cover the card; plan drawings (option rules by default) sit on white, zoomed in a little.
+  const fit = step.photoFit ?? (step.photo.kind === 'option' ? 'contain' : 'cover');
 
   return (
     <form onSubmit={onSubmit} noValidate>
@@ -363,7 +364,7 @@ function StepScreen({
         <StepPhoto
           photos={photos}
           selected={picked}
-          fit={isView ? 'cover' : 'contain'}
+          fit={fit}
           priority={first}
         />
       </div>
