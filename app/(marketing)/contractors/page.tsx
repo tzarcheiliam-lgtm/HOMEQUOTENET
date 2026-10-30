@@ -49,7 +49,6 @@ function OrganizationJsonLd() {
     name: site.name,
     url: site.url,
     logo: `${site.url}/brand/homequote-logo-primary-horizontal-transparent.png`,
-    founder: { '@type': 'Person', name: site.founder },
     parentOrganization: { '@type': 'Organization', name: site.operator },
     areaServed: homeContent.markets.areas.map((area) => ({
       '@type': 'AdministrativeArea',

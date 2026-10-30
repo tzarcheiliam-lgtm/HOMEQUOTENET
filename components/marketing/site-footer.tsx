@@ -29,12 +29,6 @@ export function SiteFooter() {
                   >
                     {site.contact.email}
                   </a>
-                  <a
-                    href={`mailto:${site.contact.founderEmail}`}
-                    className="block py-1.5 text-[var(--hq-text-muted)] transition-colors hover:text-[var(--hq-text)]"
-                  >
-                    {site.contact.founderEmail}
-                  </a>
                 </dd>
               </div>
               <div className="flex items-baseline gap-2">
@@ -102,10 +96,6 @@ export function SiteFooter() {
               Company
             </h3>
             <ul className="mt-3 space-y-1 text-sm text-[var(--hq-text-muted)]">
-              <li>
-                Founder:{' '}
-                <span className="text-[var(--hq-text)]">{site.founder}</span>
-              </li>
               <li>Operated by {site.operator}</li>
               <li>
                 <Link
