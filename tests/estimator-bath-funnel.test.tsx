@@ -357,7 +357,7 @@ describe('pages', () => {
 
   it('booking: the price card recap, the HomeQuote calendar, and network words without a calendar', () => {
     const sel = normalizeFunnelSelection(SPEC, { size: 'primary', finish: 'luxe', layout: 'spa', shower: 'curbless', tub: 'stone', vanity: 'floating' });
-    expect(priceEyebrow(SPEC, sel)).toBe('Primary suite · Luxe · Spa bath · Curbless shower · Stone tub · Floating double');
+    expect(priceEyebrow(SPEC, sel)).toBe('Primary suite · Luxe · Spa bath · Curbless shower · Stone tub · Floating double vanity');
     const estimate = estimateFunnel(SPEC, template, sel).estimate;
     const result: FunnelLeadResult = {
       estimate, qualified: true, bookingTicket: 'ticket', selection: sel, homeowner: 'yes',

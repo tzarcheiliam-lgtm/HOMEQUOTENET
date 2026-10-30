@@ -210,14 +210,14 @@ export const HOMEQUOTE_BATHROOM_FUNNEL: FunnelSpec = {
       options: [
         { id: 'single', title: 'Single vanity', subtitle: 'One sink, about 30–48 in', answers: { vanity: ['single'] } },
         { id: 'double', title: 'Double vanity', subtitle: 'Two sinks, about 60–72 in', answers: { vanity: ['double'] } },
-        { id: 'floating', title: 'Floating double vanity', short: 'Floating double', subtitle: 'Two sinks, wall-mounted, open below', answers: { vanity: ['floating_double'] } },
+        { id: 'floating', title: 'Floating double vanity', subtitle: 'Two sinks, wall-mounted, open below', answers: { vanity: ['floating_double'] } },
       ],
       photo: {
         kind: 'option',
         photos: {
-          single: photo('vanity-single', 'Single-sink vanity with a mirror above (AI-generated example design)', idea(`${THUMBS}option-vanity-single.webp`, 'Single-sink vanity (AI-generated example design)')),
-          double: photo('vanity-double', 'Double vanity with two sinks and two mirrors (AI-generated example design)', idea(`${THUMBS}option-vanity-double.webp`, 'Double vanity with two sinks (AI-generated example design)')),
-          floating: photo('vanity-floating', 'Floating wall-mounted double vanity, open below (AI-generated example design)', idea(`${THUMBS}option-vanity-floating.webp`, 'Floating wall-mounted vanity (AI-generated example design)')),
+          single: photo('vanity-single', 'Floating walnut single vanity with one sink and a round brass mirror (AI-generated example design)', idea(`${THUMBS}option-vanity-single.webp`, 'Single-sink vanity (AI-generated example design)')),
+          double: photo('vanity-double', 'Walnut double vanity on legs with two sinks and two round brass mirrors (AI-generated example design)', idea(`${THUMBS}option-vanity-double.webp`, 'Double vanity with two sinks (AI-generated example design)')),
+          floating: photo('vanity-floating', 'Floating walnut double vanity, open below, with two sinks and two round brass mirrors (AI-generated example design)', idea(`${THUMBS}option-vanity-floating.webp`, 'Floating wall-mounted vanity (AI-generated example design)')),
         },
       },
       photoFit: 'cover',

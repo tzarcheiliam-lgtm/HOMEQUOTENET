@@ -11,7 +11,8 @@ Always labeled "ballpark, not a quote". No AI pricing. No monthly payment amount
 copy of Buildoly's mobile flow: a landing page, three one-tap questions (size, finish, extras) over pre-rendered photos,
 a four-field contact step, then the range and the booking calendar (`revealRange: 'after_contact'`). The one-page
 configurator ("Pool Masters configurator") and the step-by-step flow described next still work: the configurator is the
-price/photo mapping the funnel reuses, and the builder is what `/estimator/bathroom-remodel` uses.
+price/photo mapping the funnel reuses. `/estimator/bathroom-remodel` now runs the same funnel ("Bathroom simple funnel"
+below); its step-by-step builder is kept working.
 
 ## Homeowner flow (step-by-step builder)
 
@@ -190,7 +191,38 @@ and backyard sits beside the questions (pinned above them on phones) and redraws
   the on-site visit" stays under the picture
 - The builder's result keeps "Ballpark, not a quote" directly above the booking button; other trades keep the button last
 
-## Bathroom builder (`/estimator/bathroom-remodel`)
+## Bathroom simple funnel (`/estimator/bathroom-remodel`)
+
+Since 2026-10-29 `/estimator/bathroom-remodel` (and `/embed/estimator/bathroom-remodel`) runs the same simple mobile
+funnel as Pool Masters (`experience: 'funnel'`), published for HomeQuote Network. Spec
+`content/estimators/homequote-bathroom-funnel.ts`; full summary in `HOMEQUOTE_CONTEXT.md` §33, "Bathroom simple funnel".
+
+- **Landing**: "Matched with licensed local bathroom pros" bar, HomeQuote Network badge + wordmark, "Bathrooms, remodeled
+  just for you", "Design your bathroom". No reviews, no projects (the network has none of its own).
+- **Three taps**: size (Guest / hall bath 5 x 8, Full bath 8 x 10, Primary suite 12 x 14 ft, to-scale plans), finish
+  (Standard / Luxe), layout (Walk-in shower, Tub & shower combo, Spa bath). **Follow-ups only when they apply**: shower
+  (walk-in or spa bath: Frameless glass, Curbless walk-in, Bench & niche), tub (spa bath: Soaking, Clawfoot, Sculpted
+  stone), vanity (full bath or primary suite: Single, Double, Floating double). 3 to 6 steps; the last says "Get my
+  estimate"; changing an earlier pick drops follow-ups that no longer apply (the pool engine).
+- **Pricing**: every option maps to bathroom template answers (`computeEstimate`; example SoCal prices,
+  `pricesConfirmed: false`). Added template refinements `showerStyle` and `tubStyle`, catalog `floating_double`.
+- **Contact + booking**: the pool components with network words: trust line "Free in-home consultation · Licensed local
+  pros · No obligation", booking on the HomeQuote team calendar ("A quick 10-minute call. Liam from HomeQuote will call
+  you at the time you pick."), contact card "Liam from HomeQuote". Leads file under the `bathroom-remodel` funnel
+  (homeowner = yes and a full remodel qualify; a "No" homeowner gets the review message instead of the calendar).
+- **Wording**: HomeQuote Network is not a contractor: no licence, years or "we build"; the footer says it connects
+  homeowners with licensed local contractors; photos are labelled "AI-generated example designs, not finished projects".
+- **Photos**: `public/estimator/bathroom/funnel/<key>.webp` + `-sm` (1800 / 1200 px), made with kie.ai
+  `nano-banana-pro` by `scripts/generate-bath-funnel-photos.mjs` (one room, every photo an edit of the master so a
+  swap reads as the same room; vanity options show the vanity wall with no tub or shower in view).
+- **Generic funnel options** used here (the pool keeps its defaults): `matrix` photo rule, `photoFit`,
+  `landing.heroFallback/logo`, `bookingStep.noRangeText/followUpText/reviewText`, `designDescription`, `photoNote`.
+- **Tests**: `tests/estimator-bath-funnel.test.tsx`.
+
+The step-by-step builder below is kept working; set `experience: 'builder'` in `content/estimators/homequote-bathroom.ts`
+to serve it again.
+
+## Bathroom builder (previous experience, `experience: 'builder'`)
 
 The same live-builder experience for bathroom remodels, published for HomeQuote Network (a matching network, not a
 contractor). Full technical summary: `HOMEQUOTE_CONTEXT.md` §33, "Live bathroom builder". In short:

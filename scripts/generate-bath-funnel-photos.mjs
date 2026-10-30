@@ -13,7 +13,8 @@
  * - Every other room photo is an image EDIT of the closest photo (FROM below),
  *   so the geometry stays identical: luxe layouts from the master, standard
  *   finishes from the matching luxe layout, shower options from
- *   layout-walkin-luxe, tub and vanity options from layout-spa-luxe.
+ *   layout-walkin-luxe, tub options from layout-spa-luxe, vanity options are the
+ *   same room's vanity wall seen straight on (no tub or shower in view).
  * - Size photos are clean top-down plan renders on white (size-full is
  *   text-to-image, guest/primary are edits of it), composited TO SCALE on one
  *   canvas (5 x 8, 8 x 10, 12 x 14 ft share one ft-per-pixel scale).
@@ -67,6 +68,15 @@ const KEEP =
   ' Keep the exact same camera position, framing, perspective, lens, window, daylight, wall paint, ceiling and room size.' +
   ' Change only what is described. Photorealistic magazine-quality interior photograph, crisp natural detail, straight vertical lines.' +
   NO;
+
+/** Vanity options: the same room turned to face the vanity wall (no tub or shower in view). */
+const VANITY_WALL =
+  'Use this bathroom as the style reference: the same warm-grey large-format porcelain tile, warm-white paint, brushed-brass fixtures, ' +
+  'round brass-framed mirrors, brass sconces and soft daylight. Photograph its VANITY WALL instead: camera at eye level facing the wall straight on, ' +
+  'one-point perspective, the vanity wall filling the frame from a few steps back, a sliver of tile floor at the bottom, daylight coming softly from the right. ' +
+  'No bathtub, no shower and no toilet in view. Styled and uncluttered: a folded white towel, one small plant. ';
+const VANITY_KEEP =
+  ' Photorealistic magazine-quality interior photograph, crisp natural detail, straight vertical lines.' + NO;
 
 const LUXE_FINISH =
   'Luxe finishes: large-format 24 x 48 inch warm light-grey porcelain tile on the floor and on the wet walls, ' +
@@ -166,24 +176,37 @@ const JOBS = [
       KEEP,
   },
 
-  // Vanity options (full bath and primary suite): edits of the luxe spa bath. vanity-floating = alias.
+  // Vanity options (full bath and primary suite): the vanity wall of the luxe room, seen straight on,
+  // with no tub or shower in view (the vanity step comes after any layout, so the photo must not show one).
   {
     key: 'vanity-single',
     from: 'layout-spa-luxe',
     prompt:
-      'Make the vanity on the left wall a SINGLE vanity: shorten the floating walnut vanity to about half its length, keeping only the part nearest the back wall, ' +
-      'with exactly ONE undermount sink and ONE brass faucet centered under the round brass mirror nearest the window, with its two sconces. ' +
-      'Remove the near sink, the near faucet and the near mirror at the left edge of the frame; the freed part of the left wall is plain warm-white painted wall above the bare tile floor. ' +
-      'Exactly one sink, one faucet and one mirror in the whole room.' +
-      KEEP,
+      VANITY_WALL +
+      'On it, centered: a 36-inch FLOATING walnut SINGLE vanity mounted on the wall with the floor visible underneath, a white quartz top with exactly ONE undermount sink ' +
+      'and ONE brushed-brass faucet, ONE round brass-framed mirror above it with a brass sconce on each side. Plain warm-white wall on either side of the vanity. ' +
+      'Exactly one sink, one faucet and one mirror in the photo.' +
+      VANITY_KEEP,
   },
   {
     key: 'vanity-double',
     from: 'layout-spa-luxe',
     prompt:
-      'On the left wall replace the floating vanity with a furniture-style DOUBLE vanity that stands on the floor: a long white oak cabinet on slim legs ' +
-      'with drawers, two undermount sinks in a white quartz top, keeping the two round brass-framed mirrors and the sconces.' +
-      KEEP,
+      VANITY_WALL +
+      'On it, centered: a 72-inch furniture-style DOUBLE vanity that STANDS ON THE FLOOR: a walnut cabinet on slim legs with drawers, ' +
+      'a white quartz top with TWO undermount sinks and TWO brushed-brass faucets, TWO round brass-framed mirrors (one above each sink) and three brass sconces. ' +
+      'Exactly two sinks, two faucets and two mirrors.' +
+      VANITY_KEEP,
+  },
+  {
+    key: 'vanity-floating',
+    from: 'layout-spa-luxe',
+    prompt:
+      VANITY_WALL +
+      'On it, centered: a 72-inch FLOATING walnut DOUBLE vanity mounted on the wall, open below with the tile floor clearly visible underneath and a soft warm LED glow under it, ' +
+      'a white quartz top with TWO undermount sinks and TWO brushed-brass faucets, TWO round brass-framed mirrors (one above each sink) and three brass sconces. ' +
+      'Exactly two sinks, two faucets and two mirrors.' +
+      VANITY_KEEP,
   },
 
   // Size plans (to scale on one canvas at export).
@@ -232,7 +255,6 @@ const JOBS = [
 const ALIASES = [
   { key: 'shower-frameless', raw: 'layout-walkin-luxe' },
   { key: 'tub-soaking', raw: 'layout-spa-luxe' },
-  { key: 'vanity-floating', raw: 'layout-spa-luxe' },
 ];
 
 /** Size photos: raw plan + real size, all drawn at one scale (the 12 x 14 plan fills ~92% of the height). */
