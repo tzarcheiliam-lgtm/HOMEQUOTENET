@@ -212,6 +212,8 @@ describe('funnel photos', () => {
     expect(photoSrcSet({ src: '/p.webp', srcSm: '/p-sm.webp', widths: { sm: 800, full: 1200 } })).toBe('/p-sm.webp 800w, /p.webp 1200w');
     expect(photoSrcSet({ src: '/a.webp' })).toBeUndefined();
     expect(missingFunnelPhotos(SPEC, join(process.cwd(), 'no-such-dir'))).toEqual([]);
+    // A function bundle with some of public/ (a logo) but not the photo folders: nothing is "missing".
+    expect(missingFunnelPhotos(SPEC, process.cwd())).toEqual([]);
   });
 });
 
