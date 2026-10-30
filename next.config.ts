@@ -5,10 +5,12 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR || '.next',
   // pdf.js / OCR / fonts load assets from node_modules + lib/signing/assets at runtime.
   serverExternalPackages: ['pdfjs-dist', 'tesseract.js', '@napi-rs/canvas', 'fontkit'],
-  // The funnel pages only check whether photo files exist (components/estimator/funnel/photo-files.ts)
-  // and fall back gracefully when public/ is absent, so the ~60 MB of public/ must not be traced into
-  // their functions (it pushed the deployment past Vercel's function limits).
+  // Code that reads public/ at runtime with a dynamic path (the vCard logo, the funnel photo
+  // checks) makes the tracer pull in ALL of public/, including ~55 MB of estimator photos that no
+  // function reads. Keep those photos (served statically) out of every function: the extra size
+  // pushed the deployment past Vercel's function limit.
   outputFileTracingExcludes: {
+    '/**': ['./public/estimator/**'],
     '/estimator/**': ['./public/**'],
     '/embed/**': ['./public/**'],
   },
