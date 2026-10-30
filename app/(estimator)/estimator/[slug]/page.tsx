@@ -94,8 +94,9 @@ export default async function EstimatorPage({ params }: Props) {
   // Before the first answer (renders on): the example design and its photo, or the example clip, if the files exist.
   const example = meta && renders ? resolveExampleMedia(meta, exampleFileExists) : null;
 
+  // HomeQuote's own (network) estimator uses the light homeowner theme; a contractor's own page keeps its look.
   return (
-    <>
+    <div className={contractor.network ? 'hq-light flex flex-1 flex-col' : 'contents'}>
       <EstimatorHeader contractor={contractor} facts={facts} startHref={builder ? `#${BUILDER_ANCHOR}` : undefined} />
       <main id="main" className="flex-1">
         <section className="relative isolate overflow-x-clip">
@@ -132,6 +133,6 @@ export default async function EstimatorPage({ params }: Props) {
         </section>
       </main>
       <EstimatorFooter contractor={contractor} />
-    </>
+    </div>
   );
 }

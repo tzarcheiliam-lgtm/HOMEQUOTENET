@@ -489,3 +489,54 @@ html:has(dialog.hq-lightbox[open]) {
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+
+/*
+  Light theme for the homeowner journey (homepage -> estimator / ADU quiz).
+  Redefines the same tokens on a nested wrapper, so everything that reads
+  var(--hq-*) flips without touching the contractor-facing pages.
+*/
+.hq-light,
+.hq-light .hq {
+  --hq-bg: #ffffff;
+  --hq-bg-raised: #f4f7fc;
+  --hq-surface: #ffffff;
+  --hq-surface-2: #eef3fb;
+
+  --hq-line: #e3e9f5;
+  --hq-line-strong: #c9d4ea;
+
+  --hq-text: #0a1b3d;
+  --hq-text-muted: #3b4c70; /* 9.9:1 on white */
+  --hq-text-dim: #5b6b8c; /* 5.3:1 on white */
+
+  --hq-navy-deep: #f4f7fc;
+  --hq-accent: #0038b8;
+  --hq-accent-bright: #0038b8;
+  --hq-accent-dim: #dbe5ff;
+  --hq-accent-glow: rgba(0, 56, 184, 0.1);
+
+  --hq-good: #0b7a4b;
+  --hq-bad: #b4233a;
+
+  background-color: #ffffff;
+  color: var(--hq-text);
+  color-scheme: light;
+}
+
+.hq-light .hq-glow,
+.hq-light .hq-grid::before {
+  display: none;
+}
+
+.hq-light .hq-glass {
+  background: rgba(255, 255, 255, 0.9);
+}
+
+body:has(.hq-light) {
+  background-color: #ffffff;
+}
+
+html:has(.hq-light) {
+  color-scheme: light;
+}

@@ -9,12 +9,15 @@ import { cn } from '@/lib/utils';
 export function Wordmark({
   className,
   size = 'md',
+  tone = 'reversed',
 }: {
   className?: string;
   size?: 'sm' | 'md' | 'lg';
+  /** 'primary' on light surfaces (the homeowner journey). */
+  tone?: 'primary' | 'reversed';
   /** Kept for call-site compatibility; the logo always includes the wordmark. */
   showName?: boolean;
 }) {
   const width = size === 'lg' ? 'w-[200px]' : size === 'sm' ? 'w-[132px]' : 'w-[156px]';
-  return <BrandLogo tone="reversed" priority className={cn('shrink-0', width, className)} />;
+  return <BrandLogo tone={tone} priority className={cn('shrink-0', width, className)} />;
 }
