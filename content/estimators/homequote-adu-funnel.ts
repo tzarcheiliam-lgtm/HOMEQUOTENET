@@ -1,80 +1,85 @@
 import type { FunnelPhoto, FunnelPhotoVariant, FunnelSpec } from '@/lib/estimator/funnel/types';
+import { ADU_MODELS, type AduModel, upgradeAnswers } from '@/lib/estimator/templates/adu';
 
 /*
- * HomeQuote Network's simple mobile ADU funnel (experience 'funnel'): the
- * kitchen / bathroom shape (./homequote-kitchen-funnel.ts) for ADUs. A landing
- * page, three taps (two for a garage conversion), the contact step and the
- * booking step.
+ * HomeQuote Network's simple mobile ADU funnel (experience 'funnel'), in
+ * Buildoly's quote-flow format (buildoly.com/design): "STEP n OF 4", a photo
+ * card, one question, white option cards (title + grey line), Continue.
  *
- * - Type: Detached backyard ADU · Garage conversion · Attached addition ->
- *   the template's project (= the "adu" funnel's service values).
- * - Size (not for a garage conversion, always a studio): Studio (~400 sq ft) ·
- *   1 bedroom (~600) · 2 bedrooms (~800) -> small / medium / large.
- * - Finish: Standard / Luxe (every room's top finish; a 2 bed's bigger Luxe
- *   upgrade is the hidden luxe2bed answer).
+ * 1. "Select a model.": Studio · One bedroom · Two bedroom · Three bedroom ·
+ *    Garage conversion (HomeQuote gets those leads too). Photo: a furnished 3D
+ *    cutaway floor plan of the model, all plans in one style and one scale.
+ * 2. "Choose your finish.": Standard / Luxe. Photo: THAT model built in the
+ *    same backyard (same house, drone and light), Standard or Luxe.
+ * 3. "Design your kitchen.": Standard / Upgraded. Photo: the inside of the
+ *    same ADU, its Standard or Luxe finish (white vs black window frames).
+ * 4. "Choose your storage.": Standard / More closet space, only for a model
+ *    with a bedroom; a studio or garage conversion is three steps.
  *
- * Prices: lib/adu/pricing-config.ts through lib/estimator/templates/adu.ts,
- * examples while pricesConfirmed is false.
+ * Every option maps to template answers (lib/estimator/templates/adu.ts), so
+ * computeEstimate prices it from lib/adu/pricing-config.ts and the lead route
+ * re-prices it from the picks alone. Prices are examples while
+ * pricesConfirmed is false.
  *
  * HomeQuote Network is a contractor-matching network, not a builder: no
  * licence, years or "we build" words; no reviews (it has none of its own).
  *
- * Photos (public/estimator/adu/funnel/<key>.webp + <key>-sm.webp,
- * scripts/generate-adu-funnel-photos.mjs): ONE house and backyard seen by the
- * same drone in the same light, and every photo on a path is an edit of the
- * photo the previous step showed, so the homeowner watches their own ADU take
- * shape (like the pool funnel). Every reachable combination has its own exact
- * photo; a pick that changes nothing (the 1 bed after the type step, which
- * shows the 1 bed; Standard after the size step, which shows Standard) keeps
- * the same photo. No fallbacks to another scene.
+ * Photos: public/estimator/adu/funnel/<key>.webp + <key>-sm.webp
+ * (scripts/generate-adu-funnel-photos.mjs). Every reachable combination has its
+ * own exact photo, each an edit of the photo it follows in its chain; no
+ * fallbacks to another scene.
  */
 
 const DIR = '/estimator/adu/funnel/';
 
-type Kind = 'detached' | 'attached';
-type Size = 'studio' | '1bed' | '2bed';
-
 const photo = (key: string, alt: string): FunnelPhoto => ({ src: `${DIR}${key}.webp`, srcSm: `${DIR}${key}-sm.webp`, alt });
 
-const KIND_WORDS: Record<Kind | 'garage', string> = {
-  detached: 'A new detached backyard ADU',
-  attached: 'A new single-story addition joined to the back of the house',
-  garage: 'The garage converted into a studio ADU',
+const MODEL_WORDS: Record<AduModel, string> = {
+  studio: 'studio ADU, about 350 sq ft',
+  '1bed': 'one-bedroom ADU, about 500 sq ft',
+  '2bed': 'two-bedroom ADU, about 750 sq ft',
+  '3bed': 'three-bedroom ADU, about 1,000 sq ft',
+  garage: 'garage converted to a studio, about 400 sq ft',
 };
-const SIZE_WORDS: Record<Size, string> = { studio: 'studio, about 400 sq ft', '1bed': 'one bedroom, about 600 sq ft', '2bed': 'two bedrooms, about 800 sq ft' };
-const STANDARD_WORDS = 'stucco to match the house, white windows and a shingle roof';
+const STANDARD_WORDS = 'stucco, white windows and a shingle roof';
 const LUXE_WORDS = 'cedar siding, black-framed windows, a standing-seam metal roof and a small wood deck';
 
-/** The standard ADU at a size: the type step's photo for the 1 bed, else its own size photo. */
-function sizedPhoto(kind: Kind, size: Size): FunnelPhoto {
-  return photo(size === '1bed' ? `type-${kind}` : `size-${kind}-${size}`, `${KIND_WORDS[kind]} (${SIZE_WORDS[size]}) with ${STANDARD_WORDS} (AI-generated example design)`);
-}
+/** Step 1: the model's furnished floor plan. */
+const PLANS = Object.fromEntries(
+  ADU_MODELS.map((m) => [m, photo(`plan-${m}`, `Furnished 3D floor plan of a ${MODEL_WORDS[m]} (AI-generated example design)`)]),
+) as Record<AduModel, FunnelPhoto>;
 
-function luxePhoto(kind: Kind, size: Size): FunnelPhoto {
-  return photo(`finish-${kind}-${size}-luxe`, `${KIND_WORDS[kind]} (${SIZE_WORDS[size]}) with ${LUXE_WORDS} (AI-generated example design)`);
-}
+/** Step 2: the model in the backyard. The one bedroom keeps its first key ("type-detached"). */
+const STANDARD_KEY: Record<AduModel, string> = {
+  studio: 'size-detached-studio',
+  '1bed': 'type-detached',
+  '2bed': 'size-detached-2bed',
+  '3bed': 'size-detached-3bed',
+  garage: 'type-garage',
+};
+const LUXE_KEY: Record<AduModel, string> = {
+  studio: 'finish-detached-studio-luxe',
+  '1bed': 'finish-detached-1bed-luxe',
+  '2bed': 'finish-detached-2bed-luxe',
+  '3bed': 'finish-detached-3bed-luxe',
+  garage: 'finish-garage-luxe',
+};
+const exterior = (m: AduModel, finish: 'standard' | 'luxe') =>
+  photo(finish === 'standard' ? STANDARD_KEY[m] : LUXE_KEY[m], `A new ${MODEL_WORDS[m]} behind a single-story house, with ${finish === 'standard' ? STANDARD_WORDS : LUXE_WORDS} (AI-generated example design)`);
+const FINISH_VARIANTS: FunnelPhotoVariant[] = ADU_MODELS.flatMap((model) =>
+  (['standard', 'luxe'] as const).map((finish) => ({ when: { model, finish }, photo: exterior(model, finish) })),
+);
 
-const GARAGE_STANDARD = photo('type-garage', `${KIND_WORDS.garage} with ${STANDARD_WORDS} (AI-generated example design)`);
-const GARAGE_LUXE = photo('finish-garage-luxe', `${KIND_WORDS.garage} with ${LUXE_WORDS} (AI-generated example design)`);
-
-const KINDS: Kind[] = ['detached', 'attached'];
-const SIZES: Size[] = ['studio', '1bed', '2bed'];
-
-/** Size step: the chosen type at each size. */
-const SIZE_VARIANTS: FunnelPhotoVariant[] = KINDS.flatMap((type) => SIZES.map((size) => ({ when: { size, type }, photo: sizedPhoto(type, size) })));
-
-/** Finish step: the exact ADU so far, Standard (the size step's photo) or Luxe (an edit of it). */
-const FINISH_VARIANTS: FunnelPhotoVariant[] = [
-  ...KINDS.flatMap((type) =>
-    SIZES.flatMap((size) => [
-      { when: { finish: 'standard', type, size }, photo: sizedPhoto(type, size) },
-      { when: { finish: 'luxe', type, size }, photo: luxePhoto(type, size) },
-    ]),
-  ),
-  // A garage conversion has no size step (always a studio).
-  { when: { finish: 'standard', type: 'garage' }, photo: GARAGE_STANDARD },
-  { when: { finish: 'luxe', type: 'garage' }, photo: GARAGE_LUXE },
-];
+/** Steps 3 and 4: the inside of the same ADU in its finish. */
+const FINISH_INSIDE = { standard: 'white window frames and a grey plank floor', luxe: 'black window frames and a warm oak floor' } as const;
+const KITCHEN_VARIANTS: FunnelPhotoVariant[] = (['standard', 'luxe'] as const).flatMap((finish) => [
+  { when: { finish, kitchen: 'standard' }, photo: photo(`kitchen-${finish}`, `ADU kitchen with white cabinets and stainless appliances, ${FINISH_INSIDE[finish]} (AI-generated example design)`) },
+  { when: { finish, kitchen: 'upgraded' }, photo: photo(`kitchen-${finish}-upgraded`, `ADU kitchen with oak cabinets, a full quartz backsplash and premium appliances, ${FINISH_INSIDE[finish]} (AI-generated example design)`) },
+]);
+const STORAGE_VARIANTS: FunnelPhotoVariant[] = (['standard', 'luxe'] as const).flatMap((finish) => [
+  { when: { finish, storage: 'standard' }, photo: photo(`bedroom-${finish}`, `ADU bedroom with two built-in wardrobe closets, ${FINISH_INSIDE[finish]} (AI-generated example design)`) },
+  { when: { finish, storage: 'more' }, photo: photo(`bedroom-${finish}-more`, `ADU bedroom with three built-in wardrobe closets, ${FINISH_INSIDE[finish]} (AI-generated example design)`) },
+]);
 
 export const HOMEQUOTE_ADU_FUNNEL: FunnelSpec = {
   landing: {
@@ -91,50 +96,55 @@ export const HOMEQUOTE_ADU_FUNNEL: FunnelSpec = {
   },
   steps: [
     {
-      id: 'type',
-      label: 'What would you like to build?',
-      defaultOption: 'detached',
-      options: [
-        { id: 'detached', title: 'Detached backyard ADU', short: 'Detached ADU', subtitle: 'A new home of its own in the yard', answers: { project: ['detached'] } },
-        // Always a studio: the garage keeps its footprint (the size step is skipped).
-        { id: 'garage', title: 'Garage conversion', subtitle: 'Turn the garage into a studio', answers: { project: ['garage'], size: ['small'] } },
-        { id: 'attached', title: 'Attached addition', subtitle: 'New rooms joined to the house', answers: { project: ['attached'] } },
-      ],
-      // Each type at 1 bed (a garage: the studio), standard finish, on the same lot.
-      photo: {
-        kind: 'option',
-        photos: {
-          detached: sizedPhoto('detached', '1bed'),
-          garage: GARAGE_STANDARD,
-          attached: sizedPhoto('attached', '1bed'),
-        },
-      },
-    },
-    {
-      id: 'size',
-      label: 'Choose your size.',
-      showWhen: { stepId: 'type', anyOf: ['detached', 'attached'] },
+      id: 'model',
+      label: 'Select a model.',
       defaultOption: '1bed',
       options: [
-        { id: 'studio', title: 'Studio', subtitle: 'About 400 sq ft', answers: { size: ['small'] } },
-        { id: '1bed', title: '1 bedroom', subtitle: 'About 600 sq ft', answers: { size: ['medium'] } },
-        { id: '2bed', title: '2 bedrooms', subtitle: 'About 800 sq ft', answers: { size: ['large'] } },
+        { id: 'studio', title: 'Studio', subtitle: '1 bath, about 350 sq ft', answers: { project: ['detached'], model: ['studio'] } },
+        { id: '1bed', title: 'One bedroom', subtitle: '1 bath, about 500 sq ft', answers: { project: ['detached'], model: ['1bed'] } },
+        { id: '2bed', title: 'Two bedroom', subtitle: '1 or 2 baths, about 750 sq ft', answers: { project: ['detached'], model: ['2bed'] } },
+        { id: '3bed', title: 'Three bedroom', subtitle: '2 baths, about 1,000 sq ft', answers: { project: ['detached'], model: ['3bed'] } },
+        { id: 'garage', title: 'Garage conversion', subtitle: 'Studio, about 400 sq ft', answers: { project: ['garage'], model: ['garage'] } },
       ],
-      photo: { kind: 'variants', by: [{ stepId: 'type' }], photos: SIZE_VARIANTS },
+      photo: { kind: 'option', photos: PLANS },
+      // The plans on their white card, whole (like Buildoly's).
+      photoFit: 'contain',
+      photoZoom: 1,
+      photoBackdrop: 'white',
     },
     {
       id: 'finish',
       label: 'Choose your finish.',
       options: [
-        { id: 'standard', title: 'Standard', subtitle: 'Stucco, white windows, shingle roof', answers: { finish: ['standard'], luxe2bed: ['no'] } },
-        { id: 'luxe', title: 'Luxe', subtitle: 'Cedar siding, black windows, metal roof, top finishes inside', answers: { finish: ['luxe'], luxe2bed: ['yes'] } },
+        { id: 'standard', title: 'Standard', subtitle: 'Shingle roof and stucco, concrete patio', answers: { finish: ['standard'] } },
+        { id: 'luxe', title: 'Luxe', subtitle: 'Metal roof, wood siding, composite deck', answers: { finish: ['luxe'], ...upgradeAnswers('finish') } },
       ],
-      photo: { kind: 'variants', by: [{ stepId: 'type' }, { stepId: 'size', ordered: true }], photos: FINISH_VARIANTS },
+      photo: { kind: 'variants', by: [{ stepId: 'model' }], photos: FINISH_VARIANTS },
+    },
+    {
+      id: 'kitchen',
+      label: 'Design your kitchen.',
+      options: [
+        { id: 'standard', title: 'Standard kitchen', subtitle: 'White cabinets, GE-style appliances', answers: { kitchen: ['standard'] } },
+        { id: 'upgraded', title: 'Upgraded kitchen', subtitle: 'Oak cabinets, premium appliances', answers: { kitchen: ['upgraded'], ...upgradeAnswers('kitchen') } },
+      ],
+      photo: { kind: 'variants', by: [{ stepId: 'finish' }], photos: KITCHEN_VARIANTS },
+    },
+    {
+      id: 'storage',
+      label: 'Choose your storage.',
+      // Only a model with a bedroom: a studio or garage conversion is three steps.
+      showWhen: { stepId: 'model', anyOf: ['1bed', '2bed', '3bed'] },
+      options: [
+        { id: 'standard', title: 'Standard storage', subtitle: 'Two built-in wardrobe closets', answers: { storage: ['standard'] } },
+        { id: 'more', title: 'More closet space', subtitle: 'Three built-in wardrobe closets', answers: { storage: ['more'], ...upgradeAnswers('storage') } },
+      ],
+      photo: { kind: 'variants', by: [{ stepId: 'finish' }], photos: STORAGE_VARIANTS },
     },
   ],
   finalCta: 'Get my estimate',
-  // Every photo is the same 3:2 drone view, shown whole on a blurred copy of itself.
-  photoFrame: { fit: 'contain', zoom: 1, backdrop: 'blur' },
+  // Steps 2 to 4: the photo fills the card, as on Buildoly (step 1 sets its own white card for the plans).
+  photoFrame: { fit: 'cover' },
   contactStep: {
     eyebrow: 'Last step',
     headline: 'Your estimate is ready.',
@@ -154,8 +164,7 @@ export const HOMEQUOTE_ADU_FUNNEL: FunnelSpec = {
     followUpText: 'A HomeQuote project specialist will call you shortly to talk through your ADU and set up a free consultation with a licensed local builder.',
     reviewText: 'We book free consultations online with homeowners. Your details are saved, and the {name} team will review them before we can confirm a fit.',
   },
-  // "Your design: Detached ADU · 1 bedroom · Luxe" under the photo from step 2 on (the ADU they are building).
-  designRecap: { label: 'Your design' },
+  // No "Your design" line under the photo: Buildoly's steps have none (the price card still recaps the picks).
   photoNote: 'Photos are AI-generated example designs, not finished projects.',
-  designDescription: 'Three quick picks, then a ballpark price for your {noun} and a free consultation with a licensed local builder, through {name}.',
+  designDescription: 'A few quick picks, then a ballpark price for your {noun} and a free consultation with a licensed local builder, through {name}.',
 };

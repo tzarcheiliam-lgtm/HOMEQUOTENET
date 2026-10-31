@@ -5,23 +5,33 @@
  * public/estimator/adu/funnel/ was made (same method as
  * scripts/generate-kitchen-funnel-photos.mjs).
  *
- * Art direction: ONE property the homeowner builds on, like the pool funnel.
- * One Southern-California single-story house with an attached one-car garage
- * and a big empty lawn, seen by the same drone (about 40 ft up, from the back
- * corner of the lot) in the same late-afternoon light. Every photo is an image
- * EDIT of another photo of the same chain, so the house, lot, camera and light
- * never change; only what the homeowner picked does:
+ * Buildoly-style quote flow (2026-10-31): model -> finish -> kitchen -> storage.
+ *
+ * Step 1, "Select a model.": a furnished 3D cutaway floor plan of each model on white
+ * (plan-<model>), every plan an edit of the one-bedroom plan so they share one camera and style.
+ *
+ * Step 2, "Choose your finish.": ONE property the homeowner builds on, like the pool funnel.
+ * One Southern-California single-story house with a detached one-car garage and a big empty lawn,
+ * seen by the same drone (about 40 ft up, from the back corner of the lot) in the same late-afternoon
+ * light. Every photo is an image EDIT of another photo of the same chain, so the house, lot, camera
+ * and light never change; only what the homeowner picked does:
  *   master (the backyard today)
- *     -> size-{detached|attached}-studio   (built on the master on a painted magenta footprint, which pins its position)
- *     -> type-{detached|attached}          (= the 1 bed: that studio made wider / longer)
- *     -> size-{detached|attached}-2bed     (the 1 bed made bigger again)
- *     -> type-garage                       (the master's garage converted)
- *     -> finish-<path>-luxe                (an edit of the exact photo the size step showed: only the ADU's materials change)
- * The type step shows the 1 bed; the size step's 1 bed and the finish step's Standard reuse the file the
- * previous step showed, so a tap that changes nothing shows the same photo.
+ *     -> size-detached-studio      (built on the master on a painted magenta footprint, which pins its position)
+ *     -> type-detached             (the one bedroom: that studio made wider)
+ *     -> size-detached-2bed        (the one bedroom made bigger again)
+ *     -> size-detached-3bed        (the two bedroom made bigger again)
+ *     -> type-garage               (the master's garage converted)
+ *     -> finish-<model>-luxe       (an edit of that model's Standard photo: only the ADU's materials change)
+ *
+ * Steps 3 and 4, "Design your kitchen." / "Choose your storage.": the inside of the same ADU. One
+ * Standard kitchen (white windows and doors, like the Standard exterior); its Luxe twin is an edit of
+ * it (black-framed windows and doors, oak floor, like the Luxe exterior); each kitchen option is an
+ * edit of its finish's kitchen. The bedroom is a new room in the same style (the kitchen photo is the
+ * style reference), with the same finish twins and storage edits.
+ *
  * Prompts alone do not hold position or size for this model: the footprint marker sets where the studio
  * stands, and each bigger size grows the previous one. These are AI-generated example designs: the page
- * labels them as such.
+ * labels them as such. A job's source with no raw image yet is taken from its published webp.
  *
  * Usage
  *   KIE_KEY_FILE=<path> node scripts/generate-adu-funnel-photos.mjs credits
@@ -33,7 +43,7 @@
  * Env
  *   ADU_FUNNEL_RAW_DIR    raw downloads (default <os tmpdir>/adu-funnel/raw).
  *   ADU_FUNNEL_SHEET_DIR  contact sheet (default RAW_DIR/..).
- *   KIE_MODEL             default nano-banana-pro.   KIE_RESOLUTION  default 2K.
+ *   KIE_MODEL             default nano-banana-pro.   KIE_RESOLUTION  default 2K (a job may set its own).
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -68,17 +78,12 @@ const STANDARD_ADU =
   'clean standard finishes: smooth light grey stucco matching the house, white vinyl windows, a simple dark grey shingle gable roof, a white fiberglass entry door, ' +
   'a small concrete landing and a simple concrete path from the patio.';
 
-/** Footprints (1200 x 800 frame of the master): detached on the open lawn, attached off the back wall between the patio and the garage. */
+/** Footprint (1200 x 800 frame of the master): the detached studio on the open lawn. */
 const FOOTPRINT = {
   detached: {
     studio: [[380, 600], [640, 600], [655, 720], [365, 720]],
     '1bed': [[320, 590], [720, 590], [740, 740], [300, 740]],
     '2bed': [[260, 575], [790, 575], [815, 775], [235, 775]],
-  },
-  attached: {
-    studio: [[500, 408], [710, 408], [714, 520], [496, 520]],
-    '1bed': [[470, 408], [740, 408], [748, 580], [462, 580]],
-    '2bed': [[440, 408], [760, 408], [772, 640], [428, 640]],
   },
 };
 
@@ -92,10 +97,6 @@ const BUILD_DETACHED = (size) =>
   'The first image is a backyard with a solid magenta area painted on the lawn. Build a new single-story detached backyard ADU, ' + SIZE_WORDS[size] +
   ', whose footprint covers EXACTLY the magenta area: its walls rise straight up from the edges of the magenta shape (about 10 feet tall to the eaves, seen from above with its roof clearly visible), ' +
   'it stands free on the lawn with grass around it, separate from the house and the garage. Remove all magenta. ';
-const BUILD_ATTACHED = (size) =>
-  'The first image is a backyard with a solid magenta area painted against the back of the house. Build a new single-story addition to the house, ' + SIZE_WORDS[size] +
-  ', whose footprint covers EXACTLY the magenta area: it is joined to the back wall of the house, its walls rise from the edges of the magenta shape, ' +
-  'its roof ties into the house roof. Remove all magenta. ';
 
 const TYPE = {
   detached: BUILD_DETACHED('1bed') + STANDARD_ADU,
@@ -103,7 +104,6 @@ const TYPE = {
     'Edit the photo: convert the garage at the right into a studio ADU (about 400 square feet) without changing its size, footprint or roof: ' +
     'the roll-up garage door is replaced by a stucco wall with a white entry door and a wide white vinyl window, matching stucco, a small concrete landing, ' +
     'a narrow planter strip in front, the driveway end becomes a small paved patio. ' + STANDARD_ADU,
-  attached: BUILD_ATTACHED('1bed') + STANDARD_ADU,
 };
 
 const LUXE =
@@ -128,14 +128,66 @@ const GROW_1BED =
 const GROW_2BED =
   'Edit the photo: make the new ADU about HALF AGAIN AS WIDE (a two-bedroom of about 800 square feet): extend it further to the left and right on the lawn, ' +
   'adding one more window, the entry door still facing the camera. Same front line, same height, same stucco, windows, door, trim and roof; the house, garage, fence and lawn stay the same.';
-const KEEP_GARAGE =
-  ' The garage at the right with its white roll-up garage door, and the driveway, stay EXACTLY as they are and fully visible: the addition grows out into the lawn, never over the garage.';
-const GROW_ATTACHED_1BED =
-  'Edit the photo: make the new addition about TWICE AS LONG (a one-bedroom of about 600 square feet): it reaches further out from the back of the house into the lawn toward the camera, ' +
-  'adding one more window on its side. Same width, height, stucco, windows, door, trim and roof; the house, fence and lawn stay the same.' + KEEP_GARAGE;
-const GROW_ATTACHED_2BED =
-  'Edit the photo: make the new addition about HALF AGAIN AS BIG (a two-bedroom of about 800 square feet): it reaches further out into the lawn toward the camera and a little wider, ' +
-  'adding one more window. Same height, stucco, windows, door, trim and roof; the house, fence and lawn stay the same.' + KEEP_GARAGE;
+
+const GROW_3BED =
+  'Edit the photo: make the new ADU CLEARLY BIGGER (a three-bedroom of about 1,000 square feet): keep its current front wall, and add a new wing at its RIGHT end that projects ' +
+  'about 12 feet further TOWARD THE CAMERA, so the building becomes an L shape, with its own gable roof meeting the main roof and one more window facing the camera. ' +
+  'Same height, same stucco, white windows, door, trim and dark grey shingle roof; the house, garage, fence and the lawn around it stay the same.';
+
+/** Step 1: furnished cutaway floor plans on white, like an architect's 3D plan render. */
+const PLAN_STYLE =
+  'Photorealistic 3D architectural floor plan render seen from straight above with a very slight tilt, the roof removed and the walls cut at waist height: ' +
+  'crisp thick off-white walls with soft drop shadows, light oak plank floors, white tile in the bathroom, furnished in a calm modern style ' +
+  '(sage and beige fabrics, light wood, a few green plants), black-framed windows and doors shown as openings, ' +
+  'the whole plan centered on a pure white background with generous empty white margins all around, soft even daylight. No text, no labels, no dimensions, no people, no watermark.';
+const PLAN = {
+  '1bed':
+    'A one-bedroom ADU of about 500 square feet, a long rectangle about 32 by 15 feet, its long side horizontal across the frame: ' +
+    'at the left an open living room with a sofa and a small dining table, a straight kitchen run with white cabinets along the top wall; ' +
+    'in the middle a bathroom with a walk-in shower, toilet and vanity; at the right a bedroom with a queen bed and two built-in wardrobe closets; ' +
+    'a small wood deck outside the sliding door at the bottom left. The plan fills about the middle 60 percent of the frame width. ' + PLAN_STYLE,
+};
+const PLAN_KEEP =
+  ' Keep EXACTLY the same render style, camera, tilt, wall height and colour, floor, furniture style, lighting and pure white background as the input image, ' +
+  'and the same scale (one foot is the same size on screen): a smaller home looks smaller in the frame, a bigger one bigger. No text, no labels, no dimensions.';
+const PLAN_EDIT = {
+  studio:
+    'Edit the plan into a studio ADU of about 350 square feet (about 22 by 16 feet), SMALLER in the frame: one open room with the sofa, ' +
+    'a queen bed against the right wall and the kitchen run along the top wall, plus a bathroom with a walk-in shower; no separate bedroom; the small wood deck at the bottom left.',
+  '2bed':
+    'Edit the plan into a two-bedroom ADU of about 750 square feet (about 36 by 21 feet), BIGGER in the frame: the open living, dining and kitchen in the middle, ' +
+    'a bedroom with a queen bed and built-in closets at each end, and a bathroom between the kitchen and one bedroom; the small wood deck at the bottom.',
+  '3bed':
+    'Edit the plan into a three-bedroom ADU of about 1,000 square feet (about 40 by 25 feet), BIGGER again in the frame: the open living, dining and kitchen in the middle, ' +
+    'three bedrooms with beds and built-in closets around it, and two bathrooms; the small wood deck at the bottom.',
+  garage:
+    'Change the SHAPE of this plan: it becomes a garage converted to a studio, a SQUARE about 20 by 20 feet (as deep as it is wide, clearly squarer than the input). ' +
+    'Inside: one open room with the sofa, the queen bed and the kitchen run along the top wall, and a bathroom with a walk-in shower in one corner. ' +
+    'The bottom wall, where the garage door was, now has a wide window and a glass entry door. Remove the wood deck.',
+};
+
+/** Steps 3 and 4: the inside of the same ADU. */
+const INTERIOR_STYLE =
+  'Photorealistic interior photograph of a brand-new small backyard ADU in Southern California, eye level, wide lens, bright natural daylight, ' +
+  'light walls, a 9-foot flat ceiling with small recessed lights, calm and uncluttered, lightly styled. No people, no text, no watermark.';
+const KITCHEN_STANDARD =
+  'A compact open kitchen along one wall of the living room: white flat-panel cabinets, white quartz counter with a short 6-inch quartz backsplash, ' +
+  'a stainless electric range, dishwasher and fridge (simple GE-style appliance package), an undermount sink under a window. ' +
+  'WHITE vinyl windows and a white-framed sliding patio door at the side, light grey vinyl plank floor. ' + INTERIOR_STYLE;
+const KEEP_ROOM =
+  ' Keep EVERYTHING else exactly the same as the input photo: the same room, camera position, angle, lens, walls, ceiling, light and layout. Photorealistic, no people, no text.';
+const TO_LUXE_ROOM =
+  'Edit the photo: give this room the LUXE finish of the ADU: every window frame and the patio door frame become matte BLACK, the floor becomes wide warm engineered oak planks, ' +
+  'the light fixtures become modern black. Keep the cabinets, counters and appliances as they are.';
+const KITCHEN_UPGRADE =
+  'Edit the photo: upgrade the kitchen: the cabinets become warm natural OAK slab cabinets, the backsplash becomes full-height (24-inch) quartz, ' +
+  'and the appliances become a premium Bosch-style package (panel-look stainless range with a sleek hood, counter-depth fridge). Same layout and positions.';
+const BEDROOM_STANDARD =
+  'Using the input photo ONLY as the style reference (it is the kitchen): show the BEDROOM of the same ADU, with the same window and door frames, floor, walls, ceiling and light: a queen bed with linen bedding, ' +
+  'TWO built-in white wardrobe closets with flat doors side by side along one wall, a window beside the bed. ';
+const BEDROOM_MORE =
+  'Edit the photo: there are now THREE built-in wardrobe closets side by side along the same wall instead of two (the wall of closets is wider), same doors, finish and handles. ' +
+  'The bed, window and the rest of the room stay the same.';
 
 /**
  * Every job edits the photo the funnel showed one step earlier, or the next-smaller size of the same building
@@ -144,22 +196,34 @@ const GROW_ATTACHED_2BED =
 const JOBS = [
   // draft: the backyard before; only an edit source, never shown.
   { key: 'master', prompt: SCENE, draft: true },
-  // Build type: the studio is built on the master (footprint), the 1 bed (the type photo) is that studio made wider.
+  // Exteriors (step 2). The studio is built on the master (footprint); each bigger size grows the previous one.
   { key: 'size-detached-studio', from: 'master', footprint: FOOTPRINT.detached.studio, prompt: BUILD_DETACHED('studio') + STANDARD_ADU + KEEP },
   { key: 'type-detached', from: 'size-detached-studio', prompt: GROW_1BED + KEEP },
   { key: 'size-detached-2bed', from: 'type-detached', prompt: GROW_2BED + KEEP },
-  { key: 'size-attached-studio', from: 'master', footprint: FOOTPRINT.attached.studio, prompt: BUILD_ATTACHED('studio') + STANDARD_ADU + KEEP },
-  { key: 'type-attached', from: 'size-attached-studio', prompt: GROW_ATTACHED_1BED + KEEP },
-  { key: 'size-attached-2bed', from: 'type-attached', prompt: GROW_ATTACHED_2BED + KEEP },
+  { key: 'size-detached-3bed', from: 'size-detached-2bed', prompt: GROW_3BED + KEEP },
   { key: 'type-garage', from: 'master', prompt: TYPE.garage + KEEP },
-  // Luxe: edits of the exact photo the size step showed (Standard = that photo itself).
+  // Luxe: edits of that model's Standard photo.
   { key: 'finish-detached-1bed-luxe', from: 'type-detached', prompt: LUXE + KEEP },
   { key: 'finish-detached-studio-luxe', from: 'size-detached-studio', prompt: LUXE + KEEP },
   { key: 'finish-detached-2bed-luxe', from: 'size-detached-2bed', prompt: LUXE + KEEP },
-  { key: 'finish-attached-1bed-luxe', from: 'type-attached', prompt: LUXE + KEEP },
-  { key: 'finish-attached-studio-luxe', from: 'size-attached-studio', prompt: LUXE + KEEP },
-  { key: 'finish-attached-2bed-luxe', from: 'size-attached-2bed', prompt: LUXE + KEEP },
+  { key: 'finish-detached-3bed-luxe', from: 'size-detached-3bed', prompt: LUXE + KEEP },
   { key: 'finish-garage-luxe', from: 'type-garage', prompt: LUXE_GARAGE + KEEP },
+  // Floor plans (step 1): the one bedroom first, the others edits of it.
+  { key: 'plan-1bed', prompt: PLAN['1bed'], resolution: '1K' },
+  { key: 'plan-studio', from: 'plan-1bed', prompt: PLAN_EDIT.studio + PLAN_KEEP, resolution: '1K' },
+  { key: 'plan-2bed', from: 'plan-1bed', prompt: PLAN_EDIT['2bed'] + PLAN_KEEP, resolution: '1K' },
+  { key: 'plan-3bed', from: 'plan-1bed', prompt: PLAN_EDIT['3bed'] + PLAN_KEEP, resolution: '1K' },
+  { key: 'plan-garage', from: 'plan-studio', prompt: PLAN_EDIT.garage + PLAN_KEEP, resolution: '1K' },
+  // Kitchen (step 3): Standard master, its Luxe twin, each with the upgraded kitchen.
+  { key: 'kitchen-standard', prompt: KITCHEN_STANDARD, resolution: '1K' },
+  { key: 'kitchen-luxe', from: 'kitchen-standard', prompt: TO_LUXE_ROOM + KEEP_ROOM, resolution: '1K' },
+  { key: 'kitchen-standard-upgraded', from: 'kitchen-standard', prompt: KITCHEN_UPGRADE + KEEP_ROOM, resolution: '1K' },
+  { key: 'kitchen-luxe-upgraded', from: 'kitchen-luxe', prompt: KITCHEN_UPGRADE + KEEP_ROOM, resolution: '1K' },
+  // Bedroom (step 4): a new room styled from the kitchen of the same finish, then the storage edit.
+  { key: 'bedroom-standard', refRaw: 'kitchen-standard', prompt: BEDROOM_STANDARD + INTERIOR_STYLE, resolution: '1K' },
+  { key: 'bedroom-luxe', from: 'bedroom-standard', prompt: TO_LUXE_ROOM.replace('Keep the cabinets, counters and appliances as they are.', 'Keep the bed, closets and furniture as they are.') + KEEP_ROOM, resolution: '1K' },
+  { key: 'bedroom-standard-more', from: 'bedroom-standard', prompt: BEDROOM_MORE + KEEP_ROOM, resolution: '1K' },
+  { key: 'bedroom-luxe-more', from: 'bedroom-luxe', prompt: BEDROOM_MORE + KEEP_ROOM, resolution: '1K' },
 ];
 
 /**
@@ -219,8 +283,8 @@ async function withFootprint(file, quad) {
   return out;
 }
 
-async function run(prompt, imageUrls) {
-  const input = { prompt, aspect_ratio: '3:2', resolution: RESOLUTION, output_format: 'png' };
+async function run(prompt, imageUrls, resolution = RESOLUTION) {
+  const input = { prompt, aspect_ratio: '3:2', resolution, output_format: 'png' };
   if (imageUrls?.length) input.image_input = imageUrls;
   const created = await kie(`${API}/api/v1/jobs/createTask`, {
     method: 'POST',
@@ -252,13 +316,21 @@ async function download(url, file) {
 
 async function webpUnder(input, width, maxKb, file) {
   for (let q = 90; q >= 42; q -= 4) {
-    const buf = await sharp(input).resize({ width, height: Math.round(width / 1.5), fit: 'cover' }).webp({ quality: q, effort: 6 }).toBuffer();
+    const w = Math.min(width, (await sharp(input).metadata()).width ?? width);
+    const buf = await sharp(input).resize({ width: w, height: Math.round(w / 1.5), fit: 'cover' }).webp({ quality: q, effort: 6 }).toBuffer();
     if (buf.length <= maxKb * 1024 || q <= 42) {
       writeFileSync(file, buf);
       return { q, kb: Math.round(buf.length / 1024) };
     }
   }
   throw new Error('unreachable');
+}
+
+/** A source with no raw image yet (a fresh machine): its published webp, if it has one. */
+async function seedRaw(key) {
+  if (!key || existsSync(raw(key))) return;
+  const published = path.join(OUT, `${key}.webp`);
+  if (existsSync(published)) await sharp(published).png().toFile(raw(key));
 }
 
 // ------------------------------------------------------------------ commands
@@ -274,6 +346,7 @@ async function cmdGenerate(args) {
     if (existsSync(raw(job.key)) && !force && !named) { console.log('skip', job.key); continue; }
     const t = Date.now();
     const inputs = [];
+    for (const src of [job.from, job.refRaw]) await seedRaw(src);
     if (job.from) {
       if (!existsSync(raw(job.from))) throw new Error(`${job.key}: source ${job.from} has no raw image yet`);
       inputs.push(await upload(job.footprint ? await withFootprint(raw(job.from), job.footprint) : raw(job.from), job.from));
@@ -288,7 +361,7 @@ async function cmdGenerate(args) {
       if (!existsSync(raw(job.refRaw))) throw new Error(`${job.key}: reference ${job.refRaw} has no raw image yet`);
       inputs.push(await upload(raw(job.refRaw), job.refRaw));
     }
-    const out = await run(job.prompt, inputs);
+    const out = await run(job.prompt, inputs, job.resolution);
     await download(out, raw(job.key));
     console.log('done', job.key, `${Math.round((Date.now() - t) / 1000)}s`);
   }
