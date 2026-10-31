@@ -33,7 +33,7 @@ export interface LeadDesign {
   shareUrl: string | null;
 }
 
-const NOUN: Record<string, string> = { pool: 'pool', bathroom: 'bathroom', kitchen: 'kitchen', adu: 'ADU' };
+const NOUN: Record<string, string> = { pool: 'pool', bathroom: 'bathroom', kitchen: 'kitchen', adu: 'ADU', roofing: 'roof' };
 
 export function designFromEstimator(meta: any, siteUrl: string): LeadDesign | null {
   const est = meta?.estimator;

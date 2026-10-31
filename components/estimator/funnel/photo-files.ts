@@ -17,6 +17,11 @@ export function missingFunnelPhotos(spec: FunnelSpec, publicDir = join(process.c
     const srcs = new Set<string>();
     // The landing's hero, when it has a fallback to show instead.
     if (spec.landing.heroFallback) srcs.add(spec.landing.heroPhoto.src);
+    // The roofing address screen's photo.
+    if (spec.addressFirst) {
+      srcs.add(spec.addressFirst.photo.src);
+      if (spec.addressFirst.photo.srcSm) srcs.add(spec.addressFirst.photo.srcSm);
+    }
     for (const sel of allFunnelSelections(spec)) {
       for (const step of spec.steps) {
         for (const p of Object.values(stepOptionPhotos(spec, step.id, sel))) {
