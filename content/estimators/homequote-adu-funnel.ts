@@ -8,7 +8,7 @@ import { ADU_MODELS, type AduModel, upgradeAnswers } from '@/lib/estimator/templ
  *
  * 1. "Select a model.": Studio · One bedroom · Two bedroom · Three bedroom ·
  *    Garage conversion (HomeQuote gets those leads too). Photo: a furnished 3D
- *    cutaway of the model with the roof off: the same building the finish step shows (its footprint, front door, windows and path), all in one style.
+ *    cutaway floor plan of the model, all plans in one style and one scale.
  * 2. "Choose your finish.": Standard / Luxe. Photo: THAT model built in the
  *    same backyard (same house, drone and light), Standard or Luxe.
  * 3. "Design your kitchen.": Standard / Upgraded. Photo: the inside of the
@@ -47,9 +47,9 @@ const STANDARD_WORDS = 'stucco, white windows and a shingle roof';
 // Minimal (owner: the first luxe, with cedar and a deck, was too much): the same house, three changes.
 const LUXE_WORDS = 'smooth white stucco, black windows and door and a slim standing-seam metal roof';
 
-/** Step 1: the model as a furnished 3D cutaway (roof off) of the same building the finish step shows. */
+/** Step 1: the model's furnished floor plan. */
 const PLANS = Object.fromEntries(
-  ADU_MODELS.map((m) => [m, photo(`plan-${m}`, `Furnished 3D cutaway of a ${MODEL_WORDS[m]}, roof off, the same building as the next photo (AI-generated example design)`)]),
+  ADU_MODELS.map((m) => [m, photo(`plan-${m}`, `Furnished 3D floor plan of a ${MODEL_WORDS[m]} (AI-generated example design)`)]),
 ) as Record<AduModel, FunnelPhoto>;
 
 /** Step 2: the model in the backyard. The one bedroom keeps its first key ("type-detached"). */

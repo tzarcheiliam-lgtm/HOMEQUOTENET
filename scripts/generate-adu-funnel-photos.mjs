@@ -207,51 +207,6 @@ const PLAN_FIX_3BED =
   'facing a TV console; a dining table with chairs; and the kitchen run. Keep the existing two bedrooms, bathrooms, kitchen and the wood deck; ' +
   'extend the building to the left by about 11 feet to fit the third bedroom (the plan gets a little wider in the frame). Nothing duplicated or back to back. ';
 
-/**
- * The plans must be the SAME building the finish step shows (owner: "the shape of the ADU doesn't match the layout
- * photo"): each plan is redrawn from that model's Standard exterior photo (the second input image): its footprint,
- * proportions, front door and windows, with the plan's bottom edge = the wall facing the drone. The first input
- * (the current plan) only sets the render style and scale.
- */
-const PLAN_MATCH =
-  'Redraw this floor plan so it is EXACTLY the building in the second image (a drone photo of the same ADU from outside). Use the second image for the footprint shape, ' +
-  'the proportions, and where the front door and the windows are. The BOTTOM edge of the plan is the wall that faces the camera in the photo: put the front door and the front windows ' +
-  'on the bottom wall in the same positions and the same number as in the photo. There is NO wood deck: outside the front door there is only a small concrete step with a straight concrete path ' +
-  'leading down, like in the photo. Inside, a believable real layout: ONE sofa facing a TV console, a dining table with chairs, a straight kitchen run, a bathroom with a toilet, vanity and shower, ' +
-  'beds with their headboards against a wall and a nightstand, built-in closets, interior doors that make sense; nothing duplicated or back to back. ';
-const PLAN_MATCH_MODEL = {
-  studio: 'This studio is about 16 feet wide and 22 feet deep: its narrow gable end faces the camera, so the plan is TALLER than it is wide. Bottom wall: the door in the exact centre, one window on each side of it. ' +
-    'One open room: the living area with the sofa near the front, the kitchen run along one side wall, a queen bed at the back, and a small bathroom in a back corner.',
-  '1bed': 'This one-bedroom is about 32 feet wide and 16 feet deep, a long rectangle across the frame. Bottom wall: the door in the centre, one window to its left and one window to its right. ' +
-    'The open living, dining and kitchen in the left half, the bathroom at the back in the middle, the bedroom with two built-in closets at the right end.',
-  '2bed': 'This two-bedroom is about 40 feet wide and 20 feet deep, a long rectangle across the frame. Bottom wall: the door in the centre, ONE window to its left, TWO windows to its right. ' +
-    'The open living, dining and kitchen in the middle, a bedroom with built-in closets at each end, and a bathroom between the kitchen and one bedroom.',
-  '3bed': 'This three-bedroom is a long rectangle about 40 by 20 feet PLUS a wing at its RIGHT end that projects about 8 feet further toward the bottom (an L shape, like the photo). ' +
-    'Bottom wall of the main part: the door in the centre, one window to its left, one to its right; the front of the projecting wing has one window. ' +
-    'Exactly THREE bedrooms (one in the projecting wing), TWO bathrooms, the open living, dining and kitchen in the middle.',
-  garage: 'This is the converted garage: a square about 20 by 20 feet. Bottom wall (facing the yard): one wide window on the right; the entry door is on the LEFT wall near the front, with a small concrete step. ' +
-    'A studio inside: ONE sofa facing a TV console, a queen bed against the right wall with a nightstand, a small round dining table with two chairs, the kitchen run along the back wall, a small bathroom in a back corner.',
-};
-
-/**
- * The studio's redrawn plan came back as a cutaway of the building itself (its own walls, door, windows and path, the roof
- * removed), which reads as the same ADU at a glance: every other plan is made the same way, cut from that model's Standard
- * exterior (first image: the footprint, door and windows) in the studio cutaway's style (second image).
- */
-const PLAN_CUT =
-  'Make a furnished 3D cutaway model of ONLY the new ADU in the first image (the small white stucco building on the lawn in front; NOT the main house, the garage, the fence or the yard), ' +
-  'drawn exactly in the style of the second image: the roof removed, the walls cut just above the windows so you look down into the furnished rooms, ' +
-  'the building standing on a rectangle of green lawn, isolated on a pure white background with empty white margins, the same camera angle, scale and lighting as the second image. ' +
-  'The ADU keeps EXACTLY its footprint, proportions and front wall from the first image: the front door in the same place, the same number of front windows in the same places, ' +
-  'the small concrete step and the straight concrete path. Inside, a believable real layout: ONE sofa facing a TV console, a dining table with chairs, a straight kitchen run, ' +
-  'a bathroom with a toilet, vanity and shower, beds with their headboards against a wall and a nightstand, built-in closets, interior doors that make sense; nothing duplicated or back to back. ' +
-  'No text, no labels, no dimensions. ';
-
-/** Framing for the cutaway plans: square to the front wall, like the studio's (the 1 bed and garage first came back turned). */
-const PLAN_CUT_FRAME =
-  ' CAMERA: looking straight at the FRONT wall from in front and above, exactly like the second image: the front wall runs perfectly HORIZONTAL across the lower part of the frame, ' +
-  'facing the viewer, the concrete path going straight down from the front door to the bottom edge. Do NOT rotate or turn the building. ';
-
 /** Step "Design your bathroom.": the ADU bathroom in each finish's interior style, then the upgraded one. */
 const BATH_STANDARD =
   'Using the input photo ONLY as the style reference (it is the kitchen of the same ADU): show the BATHROOM of the same ADU, with the same window frames, wall colour, ceiling and light: ' +
@@ -281,9 +236,9 @@ const JOBS = [
   { key: 'finish-detached-3bed-luxe', from: 'size-detached-3bed', prompt: LUXE + KEEP },
   { key: 'finish-garage-luxe', from: 'type-garage', prompt: LUXE_GARAGE + KEEP },
   // Floor plans (step 1): the one bedroom first, the others edits of it.
-  { key: 'plan-1bed', prompt: PLAN['1bed'], resolution: '1K' , draft: true },
-  { key: 'plan-studio', from: 'plan-1bed', prompt: PLAN_EDIT.studio + PLAN_KEEP, resolution: '1K' , draft: true },
-  { key: 'plan-2bed', from: 'plan-1bed', prompt: PLAN_EDIT['2bed'] + PLAN_KEEP, resolution: '1K' , draft: true },
+  { key: 'plan-1bed', prompt: PLAN['1bed'], resolution: '1K' },
+  { key: 'plan-studio', from: 'plan-1bed', prompt: PLAN_EDIT.studio + PLAN_KEEP, resolution: '1K' },
+  { key: 'plan-2bed', from: 'plan-1bed', prompt: PLAN_EDIT['2bed'] + PLAN_KEEP, resolution: '1K' },
   // Superseded by their -fixed edits below (shipped under these names, see ALIASES): kept as edit sources.
   { key: 'plan-3bed', from: 'plan-1bed', prompt: PLAN_EDIT['3bed'] + PLAN_KEEP, resolution: '1K', draft: true },
   { key: 'plan-garage', from: 'plan-studio', prompt: PLAN_EDIT.garage + PLAN_KEEP, resolution: '1K', draft: true },
@@ -291,24 +246,6 @@ const JOBS = [
   { key: 'plan-garage-fixed', from: 'plan-garage', prompt: PLAN_FIX_GARAGE + PLAN_KEEP, resolution: '1K', draft: true },
   // The three-bedroom plan came back with only two bedrooms: fixed by an edit of itself.
   { key: 'plan-3bed-fixed', from: 'plan-3bed', prompt: PLAN_FIX_3BED + PLAN_KEEP, resolution: '1K', draft: true },
-  // Plans redrawn from each model's Standard exterior (shipped under the plan names, see ALIASES).
-  { key: 'plan-studio-match', from: 'plan-studio', refRaw: 'size-detached-studio', prompt: PLAN_MATCH + PLAN_MATCH_MODEL.studio + PLAN_KEEP, resolution: '1K', draft: true },
-  { key: 'plan-1bed-cut', from: 'type-detached', refRaw: 'plan-studio-match', prompt: PLAN_CUT + PLAN_MATCH_MODEL['1bed'], resolution: '1K', draft: true },
-  { key: 'plan-2bed-cut', from: 'size-detached-2bed', refRaw: 'plan-studio-match', prompt: PLAN_CUT + PLAN_MATCH_MODEL['2bed'], resolution: '1K', draft: true },
-  { key: 'plan-3bed-cut', from: 'size-detached-3bed', refRaw: 'plan-studio-match', prompt: PLAN_CUT + PLAN_MATCH_MODEL['3bed'], resolution: '1K', draft: true },
-  { key: 'plan-garage-cut', from: 'type-garage', refRaw: 'plan-studio-match', prompt: PLAN_CUT.replace('the small white stucco building on the lawn in front', 'the converted garage at the right, a small white stucco building with a wide window').replace('the main house, the garage,', 'the main house,') + PLAN_MATCH_MODEL.garage, resolution: '1K', draft: true },
-  // Second tries: the 1 bed and garage came back turned and the wrong shape, the 2 bed with two windows left of the door.
-  { key: 'plan-1bed-cut2', from: 'type-detached', refRaw: 'plan-studio-match', prompt: PLAN_CUT + PLAN_MATCH_MODEL['1bed'] + ' It is a LONG, LOW rectangle about twice as wide as it is deep, the long side facing the viewer. EXACTLY one window left of the door and one window right of the door.' + PLAN_CUT_FRAME, resolution: '1K', draft: true },
-  { key: 'plan-2bed-cut2', from: 'size-detached-2bed', refRaw: 'plan-studio-match', prompt: PLAN_CUT + PLAN_MATCH_MODEL['2bed'] + ' EXACTLY one window LEFT of the door and EXACTLY two windows RIGHT of the door, nothing else on the front wall.' + PLAN_CUT_FRAME, resolution: '1K', draft: true },
-  { key: 'plan-garage-cut2', from: 'type-garage', refRaw: 'plan-studio-match', prompt: PLAN_CUT.replace('the small white stucco building on the lawn in front', 'the converted garage at the right, a small white stucco building with a wide window').replace('the main house, the garage,', 'the main house,') + PLAN_MATCH_MODEL.garage + ' It is SQUARE. The front wall has ONE wide window only (no door on the front wall); the entry door is on the LEFT side wall, near the front corner.' + PLAN_CUT_FRAME, resolution: '1K', draft: true },
-  // The 1 bed's second try had the bed in the open living room: wall the bedroom off.
-  { key: 'plan-1bed-cut3', from: 'plan-1bed-cut2', prompt: 'Edit the cutaway: the RIGHT third of the ADU becomes a separate BEDROOM: add an interior wall from the back wall to the front wall between the dining table and the bed, with a door, ' +
-    'so the bed (headboard against the right wall, a nightstand beside it) and a built-in wardrobe closet are inside that walled bedroom, and the window right of the front door lights the bedroom. ' +
-    'Keep everything else exactly the same: the outside walls, the front door, both front windows, the path, the lawn, the kitchen, bathroom, sofa, dining table, camera, style and white background. No text.', resolution: '1K', draft: true },
-  { key: 'plan-1bed-match', from: 'plan-1bed', refRaw: 'type-detached', prompt: PLAN_MATCH + PLAN_MATCH_MODEL['1bed'] + PLAN_KEEP, resolution: '1K', draft: true },
-  { key: 'plan-2bed-match', from: 'plan-2bed', refRaw: 'size-detached-2bed', prompt: PLAN_MATCH + PLAN_MATCH_MODEL['2bed'] + PLAN_KEEP, resolution: '1K', draft: true },
-  { key: 'plan-3bed-match', from: 'plan-3bed', refRaw: 'size-detached-3bed', prompt: PLAN_MATCH + PLAN_MATCH_MODEL['3bed'] + PLAN_KEEP, resolution: '1K', draft: true },
-  { key: 'plan-garage-match', from: 'plan-garage', refRaw: 'type-garage', prompt: PLAN_MATCH + PLAN_MATCH_MODEL.garage + PLAN_KEEP, resolution: '1K', draft: true },
   // Kitchen (step 3): Standard master, its Luxe twin, each with the upgraded kitchen.
   { key: 'kitchen-standard', prompt: KITCHEN_STANDARD, resolution: '1K' },
   { key: 'kitchen-luxe', from: 'kitchen-standard', prompt: TO_LUXE_ROOM + KEEP_ROOM, resolution: '1K' },
@@ -333,11 +270,8 @@ const JOBS = [
  * the original name (the garage and three-bedroom plans, whose first versions are kept only as edit sources).
  */
 const ALIASES = [
-  { key: 'plan-studio', raw: 'plan-studio-match' },
-  { key: 'plan-1bed', raw: 'plan-1bed-cut3' },
-  { key: 'plan-2bed', raw: 'plan-2bed-cut2' },
-  { key: 'plan-garage', raw: 'plan-garage-cut2' },
-  { key: 'plan-3bed', raw: 'plan-3bed-cut' },
+  { key: 'plan-garage', raw: 'plan-garage-fixed' },
+  { key: 'plan-3bed', raw: 'plan-3bed-fixed' },
 ];
 
 // ------------------------------------------------------------------ helpers
