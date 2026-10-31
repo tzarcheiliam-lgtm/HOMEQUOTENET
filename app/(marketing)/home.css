@@ -2,8 +2,8 @@
   Homeowner homepage. Scoped to .ho (page) and .ho-header / .ho-footer (chrome),
   so nothing here reaches the contractor pages or the CRM.
 
-  Quiet on purpose: white ground, navy ink, brand Blue only where something is
-  interactive. The photographs carry the page.
+  White ground, navy ink, brand Blue for what is interactive. One dark moment
+  (the promise band) and one kinetic moment (the project strip).
 */
 
 .ho,
@@ -19,6 +19,10 @@
   color-scheme: light;
 }
 
+.ho {
+  scrollbar-color: var(--ho-navy) var(--ho-mist);
+}
+
 .ho ::selection,
 .ho-header ::selection,
 .ho-footer ::selection {
@@ -26,7 +30,7 @@
   color: #fff;
 }
 
-.ho :where(a, button):focus-visible,
+.ho :where(a, button, summary):focus-visible,
 .ho-header :where(a, button):focus-visible,
 .ho-footer :where(a, button):focus-visible {
   outline: 2px solid var(--ho-blue);
@@ -34,11 +38,15 @@
   border-radius: 6px;
 }
 
+.ho-dark :where(a, button):focus-visible {
+  outline-color: #fff;
+}
+
 .ho-display {
   font-family: var(--font-sora), system-ui, sans-serif;
   font-weight: 600;
-  letter-spacing: -0.035em;
-  line-height: 1.04;
+  letter-spacing: -0.04em;
+  line-height: 1.02;
   text-wrap: balance;
 }
 
@@ -52,12 +60,12 @@
   color: var(--ho-blue);
 }
 
-/* ---- Headline ------------------------------------------------------------- */
+/* ---- Entrance --------------------------------------------------------------- */
 
 @keyframes ho-rise {
   from {
     opacity: 0.001;
-    transform: translateY(18px);
+    transform: translateY(22px);
   }
   to {
     opacity: 1;
@@ -68,16 +76,16 @@
 .ho-words > span {
   display: inline-block;
   margin-right: 0.26em;
-  animation: ho-rise 800ms cubic-bezier(0.16, 1, 0.3, 1) both;
-  animation-delay: calc(var(--w, 0) * 90ms);
+  animation: ho-rise 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--w, 0) * 80ms);
 }
 
 .ho-fade {
-  animation: ho-rise 800ms cubic-bezier(0.16, 1, 0.3, 1) both;
-  animation-delay: calc(var(--w, 0) * 90ms + 60ms);
+  animation: ho-rise 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--w, 0) * 80ms + 60ms);
 }
 
-/* ---- Buttons, photo, steps ------------------------------------------------- */
+/* ---- Buttons ---------------------------------------------------------------- */
 
 .ho-btn {
   display: inline-flex;
@@ -107,61 +115,160 @@
   background: var(--ho-blue);
 }
 
+.ho-btn-light {
+  background: #fff;
+  color: var(--ho-navy) !important;
+}
+
+.ho-btn-light:hover {
+  background: #dbe5ff;
+}
+
 .ho-btn-line {
-  border: 1.5px solid var(--ho-navy);
-  color: var(--ho-navy);
+  border: 1.5px solid currentColor;
 }
 
 .ho-btn-line:hover {
-  background: var(--ho-navy);
-  color: #fff;
+  background: rgb(10 27 61 / 0.06);
 }
 
-.ho-hero-photo {
-  overflow: hidden;
-  border-radius: 24px;
-  aspect-ratio: 4 / 3;
-  background: var(--ho-rule);
+.ho-dark .ho-btn-line:hover {
+  background: rgb(255 255 255 / 0.12);
 }
 
-@media (min-width: 768px) {
-  .ho-hero-photo {
-    aspect-ratio: 21 / 9;
+/* ---- Project picker --------------------------------------------------------- */
+
+.hp-list {
+  border-top: 2px solid var(--ho-navy);
+}
+
+.hp-item {
+  border-bottom: 1px solid var(--ho-rule);
+  animation: ho-rise 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--i, 0) * 90ms + 500ms);
+}
+
+.hp-item:last-child {
+  border-bottom: 2px solid var(--ho-navy);
+}
+
+.hp-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 0;
+  color: inherit;
+}
+
+@media (min-width: 1024px) {
+  .hp-row {
+    padding: 1.35rem 0;
   }
 }
 
-.ho-hero-photo img {
+.hp-thumb {
+  display: block;
+  flex: none;
+  width: 4.5rem;
+  height: 4.5rem;
+  overflow: hidden;
+  border-radius: 16px;
+  background: var(--ho-rule);
+}
+
+.hp-thumb img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.ho-step-n {
-  display: grid;
-  place-items: center;
-  width: 2.75rem;
-  height: 2.75rem;
-  border-radius: 999px;
-  background: var(--ho-navy);
-  color: #fff;
+.hp-name {
+  display: block;
+  font-family: var(--font-sora), system-ui, sans-serif;
   font-weight: 600;
+  font-size: clamp(1.75rem, 4.6vw, 3.4rem);
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+  transition: transform 450ms cubic-bezier(0.16, 1, 0.3, 1), color 250ms ease;
 }
 
-@media (min-width: 768px) {
-  .ho-steps > li {
-    position: relative;
-  }
-  /* The line runs from each number to the next. */
-  .ho-steps > li:not(:last-child)::before {
-    content: '';
-    position: absolute;
-    top: 1.375rem;
-    left: 3.5rem;
-    right: -0.5rem;
-    height: 1.5px;
+.hp-note {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.95rem;
+  color: var(--ho-ink-soft);
+}
+
+.hp-go {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 3.25rem;
+  height: 3.25rem;
+  border: 1.5px solid var(--ho-navy);
+  border-radius: 999px;
+  transition: background-color 250ms ease, color 250ms ease, transform 450ms cubic-bezier(0.16, 1, 0.3, 1), border-color 250ms ease;
+}
+
+@media (min-width: 1024px) {
+  .hp-row[data-active='true'] .hp-go {
     background: var(--ho-navy);
-    opacity: 0.25;
+    border-color: var(--ho-navy);
+    color: #fff;
+    transform: rotate(45deg);
   }
+
+  .hp-row[data-active='true'] .hp-name {
+    transform: translateX(14px);
+    color: var(--ho-blue);
+  }
+}
+
+.hp-row:hover .hp-go,
+.hp-row:focus-visible .hp-go {
+  background: var(--ho-navy);
+  border-color: var(--ho-navy);
+  color: #fff;
+  transform: rotate(45deg);
+}
+
+/* Photograph panel (desktop). Photos stack; the active one fades and settles in. */
+
+.hp-stage {
+  position: sticky;
+  top: 6.5rem;
+  overflow: hidden;
+  aspect-ratio: 4 / 5;
+  max-height: calc(100svh - 8rem);
+  width: 100%;
+  border-radius: 28px;
+  background: var(--ho-rule);
+  box-shadow: 0 2px 4px rgb(10 27 61 / 0.06), 0 40px 70px -40px rgb(10 27 61 / 0.55);
+}
+
+.hp-stage-img {
+  object-fit: cover;
+  opacity: 0;
+  transform: scale(1.09);
+  transition: opacity 800ms cubic-bezier(0.16, 1, 0.3, 1), transform 1600ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.hp-stage-img[data-active='true'] {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.hp-stage-chip {
+  position: absolute;
+  left: 1.25rem;
+  bottom: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.75rem 1.1rem;
+  border-radius: 16px;
+  background: rgb(255 255 255 / 0.94);
+  font-size: 0.95rem;
 }
 
 /* ---- Search ----------------------------------------------------------------- */
@@ -189,8 +296,6 @@
   flex: 1;
   min-width: 0;
   height: 100%;
-  border: 0;
-  outline: 0;
   background: transparent;
   color: var(--ho-navy);
   font-size: 1.0625rem;
@@ -237,94 +342,150 @@
 
 .ho-results a:hover,
 .ho-results a:focus-visible {
-  background: #f4f7fc;
+  background: var(--ho-mist);
   color: var(--ho-blue);
 }
 
-/* ---- Project choices ------------------------------------------------------ */
+/* ---- Project strip (kinetic) ------------------------------------------------ */
 
-.ho-pick {
-  position: relative;
-  display: block;
+.ho-strip {
   overflow: hidden;
-  border-radius: 20px;
-  aspect-ratio: 4 / 5;
+  border-block: 1px solid var(--ho-rule);
+  padding: 1.75rem 0;
+  background: var(--ho-mist);
+}
+
+.ho-strip-track {
+  display: flex;
+  width: max-content;
+  animation: ho-slide 60s linear infinite;
+}
+
+.ho-strip-track.rev {
+  animation-direction: reverse;
+  animation-duration: 75s;
+  margin-top: 0.75rem;
+}
+
+.ho-strip:hover .ho-strip-track {
+  animation-play-state: paused;
+}
+
+.ho-strip-item {
+  flex: none;
+  padding: 0 1.5rem;
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-weight: 600;
+  font-size: clamp(2rem, 5vw, 3.75rem);
+  letter-spacing: -0.04em;
+  white-space: nowrap;
+}
+
+.ho-strip-item.o {
+  color: transparent;
+  -webkit-text-stroke: 1.5px var(--ho-navy);
+}
+
+@keyframes ho-slide {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* ---- Steps (sticky story) --------------------------------------------------- */
+
+.ho-step {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr;
+  gap: 1.25rem;
+  padding: 2.5rem 0;
+  border-top: 1.5px solid var(--ho-navy);
+}
+
+@media (min-width: 768px) {
+  .ho-step {
+    grid-template-columns: 9rem 1fr;
+    padding: 4rem 0;
+  }
+}
+
+.ho-step-n {
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-weight: 700;
+  font-size: clamp(4.5rem, 10vw, 8rem);
+  line-height: 0.85;
+  letter-spacing: -0.06em;
+  color: transparent;
+  -webkit-text-stroke: 1.5px var(--ho-blue);
+}
+
+/* Progressive: steps brighten as they cross the middle of the screen. */
+@supports (animation-timeline: view()) {
+  .ho-step {
+    animation: ho-step-in linear both;
+    animation-timeline: view();
+    animation-range: entry 10% cover 45%;
+  }
+
+  @keyframes ho-step-in {
+    from {
+      opacity: 0.25;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+}
+
+/* ---- Promise band (dark) ---------------------------------------------------- */
+
+.ho-dark {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   color: #fff;
   background: var(--ho-navy);
-  box-shadow: 0 1px 2px rgb(10 27 61 / 0.08), 0 18px 36px -20px rgb(10 27 61 / 0.35);
-  animation: ho-rise 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
-  animation-delay: calc(var(--i, 0) * 110ms + 450ms);
-  transition: transform 400ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 400ms ease;
 }
 
-.ho-pick:hover,
-.ho-pick:focus-visible {
-  transform: translateY(-6px);
-  box-shadow: 0 2px 4px rgb(10 27 61 / 0.08), 0 28px 48px -22px rgb(10 27 61 / 0.5);
-}
-
-.ho-pick img {
+.ho-dark > img {
   position: absolute;
   inset: 0;
+  z-index: -2;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform 900ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.ho-pick:hover img,
-.ho-pick:focus-visible img {
-  transform: scale(1.06);
-}
-
-/* Scrim so the white label clears contrast on any photo. */
-.ho-pick::after {
+.ho-dark::before {
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(to top, rgb(10 27 61 / 0.82) 0%, rgb(10 27 61 / 0.35) 38%, transparent 62%);
-  pointer-events: none;
+  z-index: -1;
+  background: linear-gradient(180deg, rgb(10 27 61 / 0.55), rgb(10 27 61 / 0.82));
 }
 
-.ho-pick-label {
-  position: absolute;
-  left: 1.5rem;
-  right: 1.5rem;
-  bottom: 1.5rem;
-  z-index: 1;
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.ho-pick-go {
-  display: grid;
-  place-items: center;
-  width: 2.75rem;
-  height: 2.75rem;
-  flex: none;
-  border-radius: 999px;
-  background: #fff;
-  color: var(--ho-navy);
-  transition: background-color 250ms ease, color 250ms ease, transform 350ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.ho-pick:hover .ho-pick-go,
-.ho-pick:focus-visible .ho-pick-go {
-  background: var(--ho-blue);
-  color: #fff;
-  transform: rotate(45deg);
+.ho-dark a {
+  color: inherit;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .ho-words > span,
   .ho-fade,
-  .ho-pick,
-  .ho-pick img,
-  .ho-pick-go,
-  .ho-btn {
+  .hp-item,
+  .hp-name,
+  .hp-go,
+  .hp-stage-img,
+  .ho-btn,
+  .ho-step {
     animation: none;
     transition: none;
+  }
+  .ho-strip-track {
+    animation: none;
+    flex-wrap: wrap;
+    width: auto;
+  }
+  .ho-strip-item[aria-hidden='true'] {
+    display: none;
   }
 }

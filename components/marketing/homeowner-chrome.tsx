@@ -30,13 +30,13 @@ export function HomeownerHeader() {
           <BrandLogo tone="primary" priority className="w-[150px]" />
         </Link>
         <nav aria-label="Primary" className="flex items-center gap-6 sm:gap-8">
-          <a href="#projects" className="hidden text-sm font-semibold sm:inline">Projects</a>
+          <a href="#start" className="hidden text-sm font-semibold sm:inline">Projects</a>
           <a href="#how" className="hidden text-sm font-semibold sm:inline">How it works</a>
           <a href={`tel:${site.contact.phoneHref}`} className="hidden text-sm font-semibold md:inline">
             {site.contact.phone}
           </a>
           <a href="#start" className="ho-btn ho-btn-dark !min-h-10 !px-5 !text-sm">
-            Get your price
+            Book your visit
           </a>
         </nav>
       </div>

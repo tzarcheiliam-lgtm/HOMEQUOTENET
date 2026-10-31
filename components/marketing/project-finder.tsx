@@ -1,7 +1,6 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowUpRight, Search } from 'lucide-react';
@@ -114,36 +113,5 @@ export function ProjectFinder({ categories }: { categories: FinderCategory[] }) 
         ) : null}
       </div>
     </div>
-  );
-}
-
-/** The four project categories as photo cards. */
-export function ProjectCards({ categories }: { categories: FinderCategory[] }) {
-  return (
-    <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4 lg:gap-6">
-      {categories.map((c, i) => (
-        <li key={c.id}>
-          <Link href={c.href} className="ho-pick" style={{ ['--i' as string]: i }}>
-            <Image
-              src={c.photo.src}
-              alt=""
-              width={c.photo.width}
-              height={c.photo.height}
-              sizes="(min-width: 1024px) 270px, (min-width: 640px) 45vw, 100vw"
-              priority={i === 0}
-            />
-            <span className="ho-pick-label">
-              <span>
-                <span className="block text-2xl font-semibold tracking-tight">{c.name}</span>
-                <span className="mt-1 block text-sm text-white/90">{c.note}</span>
-              </span>
-              <span className="ho-pick-go">
-                <ArrowUpRight className="size-5" aria-hidden="true" />
-              </span>
-            </span>
-          </Link>
-        </li>
-      ))}
-    </ul>
   );
 }
