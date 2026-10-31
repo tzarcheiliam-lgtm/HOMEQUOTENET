@@ -95,6 +95,8 @@ export interface HostMessageContext {
   cancelledByGuest?: boolean;
   /** Absolute link into the app (lead or prospect page). */
   appUrl: string | null;
+  /** Absolute host join link when the call runs in a HomeQuote video room. */
+  videoHostUrl?: string | null;
 }
 
 function escapeHtml(value: string): string {
@@ -306,7 +308,11 @@ export function buildHostBookingEmail(notice: HostNotice, c: HostMessageContext)
       break;
   }
   const link = safeLink(c.appUrl);
-  const buttons = link ? [{ label: 'Open in HomeQuote', url: link }] : [];
+  const video = notice === 'cancelled' ? null : safeLink(c.videoHostUrl ?? null);
+  const buttons = [
+    ...(video ? [{ label: 'Join video call', url: video }] : []),
+    ...(link ? [{ label: 'Open in HomeQuote', url: link }] : []),
+  ];
   const lines = [hi, lead, facts];
   const footer = 'HomeQuote Network · you get this because you host this calendar.';
   return { subject, html: shell(lines, buttons, footer), text: textOf(lines, buttons, footer) };

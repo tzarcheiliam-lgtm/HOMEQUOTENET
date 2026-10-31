@@ -27,6 +27,8 @@ export interface SalesMeetingInput {
   appointmentType: string | null;
   contactInfo: string | null;
   notes: string | null;
+  /** The rep's join link when the meeting runs in a HomeQuote video room (lib/video). */
+  videoUrl?: string | null;
 }
 
 export interface SalesMeetingEvent {
@@ -48,6 +50,7 @@ export function salesMeetingEvent(a: SalesMeetingInput, siteUrl: string): SalesM
   const url = `${siteUrl.replace(/\/$/, '')}/app/calls/${a.prospectId}`;
   const details = [
     `${how} with ${a.companyName}${who}.`,
+    a.videoUrl ? `Join the video call: ${a.videoUrl}` : null,
     a.phone ? `Phone: ${a.phone}` : null,
     a.contactInfo ? `Contact: ${a.contactInfo}` : null,
     a.notes ? `Notes: ${a.notes}` : null,
@@ -62,7 +65,7 @@ export function salesMeetingEvent(a: SalesMeetingInput, siteUrl: string): SalesM
     title: `${how}: ${a.companyName}${who}`,
     details,
     // A video link or address goes in the location; a phone call shows the number.
-    location: a.contactInfo ?? a.phone ?? null,
+    location: a.videoUrl ?? a.contactInfo ?? a.phone ?? null,
     url,
   };
 }

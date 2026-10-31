@@ -3,6 +3,8 @@ import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { siteUrl } from './config';
 import type { CalendarEventInput } from './google';
+import { ownMeetingLink, usesVideoRoom, videoHostPath } from '@/lib/video/links';
+import { videoRoomsEnabled } from '@/lib/video/livekit.server';
 
 type Db = ReturnType<typeof createAdminClient>;
 
@@ -66,12 +68,17 @@ export function salesMeetingEvent(m: SalesMeetingDetail): CalendarEventInput {
   const link = salesMeetingLink(m);
   const where = [m.city, m.state].filter(Boolean).join(', ');
   const isUrl = !!m.contactInfo && /^https?:\/\//i.test(m.contactInfo.trim());
+  // A HomeQuote video room: the admin's calendar entry joins as the host.
+  const room = usesVideoRoom({ meetingType: m.type, ownLink: ownMeetingLink(m.contactInfo) }, videoRoomsEnabled())
+    ? `${siteUrl()}${videoHostPath('sales_appointment', m.id)}`
+    : null;
   return {
     summary: `Sales call · ${m.company} (contractor)`,
     description: [
       `Contractor: ${m.company}${where ? ` (${where})` : ''}`,
       m.decisionMaker ? `With: ${m.decisionMaker}` : null,
       m.type ? `Type: ${TYPE_WORDS[m.type] ?? m.type}` : null,
+      room ? `Join the video call: ${room}` : null,
       m.contactInfo ? `Contact: ${m.contactInfo}` : null,
       m.phone ? `Company phone: ${m.phone}` : null,
       `Status: ${m.status}`,
@@ -79,7 +86,7 @@ export function salesMeetingEvent(m: SalesMeetingDetail): CalendarEventInput {
       '',
       `Open in HomeQuote: ${link}`,
     ].filter((l) => l !== null).join('\n'),
-    location: isUrl ? m.contactInfo!.trim() : m.type === 'in_person' && where ? where : null,
+    location: room ?? (isUrl ? m.contactInfo!.trim() : m.type === 'in_person' && where ? where : null),
     startIso: new Date(startMs).toISOString(),
     endIso: new Date(end).toISOString(),
     url: link,

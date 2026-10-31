@@ -100,6 +100,17 @@ describe('calendar settings through RLS', () => {
     expect(await one(`select name, duration_minutes, slot_step_minutes, buffer_minutes, min_notice_minutes, horizon_days, max_per_day, active from public.booking_calendars where id=$1`, [calA]))
       .toEqual({ name: 'Pool Masters calls', duration_minutes: 45, slot_step_minutes: 15, buffer_minutes: 10, min_notice_minutes: 240, horizon_days: 21, max_per_day: null, active: true });
     expect(await save(calA, { meeting_type: 'video', video_link: '' })).toEqual({ error: 'Add the video link callers will join' });
+    // With HomeQuote video rooms (LiveKit) set up, an empty link means "give each booking its own room" (§48).
+    vi.stubEnv('LIVEKIT_URL', 'wss://example.livekit.cloud');
+    vi.stubEnv('LIVEKIT_API_KEY', 'key');
+    vi.stubEnv('LIVEKIT_API_SECRET', 'secret');
+    try {
+      expect(await save(calA, { meeting_type: 'video', video_link: '' })).toEqual({ success: 'Settings saved' });
+      expect(await one(`select meeting_type, video_link from public.booking_calendars where id=$1`, [calA])).toEqual({ meeting_type: 'video', video_link: null });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(await save(calA)).toEqual({ success: 'Settings saved' });
     expect(await save(calA, { meeting_type: 'video', video_link: 'http://meet.example' })).toEqual({ error: 'The video link must start with https://' });
     expect(await save(calB)).toEqual({ error: 'Calendar not found' }); // RLS: another company's calendar is invisible
     expect(await save(team)).toEqual({ error: 'Calendar not found' });

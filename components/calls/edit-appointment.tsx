@@ -87,6 +87,7 @@ export function EditAppointment({ meeting, size = 'sm' }: { meeting: EditableMee
             <Label htmlFor={`em-contact-${meeting.id}`}>Phone, email or meeting link</Label>
             <Input id={`em-contact-${meeting.id}`} name="contact_info" defaultValue={meeting.contactInfo ?? ''} maxLength={300} required aria-invalid={!!errors.contact_info} />
             {errors.contact_info && <p role="alert" className="text-xs text-destructive">{errors.contact_info}</p>}
+            <p className="text-xs text-muted-foreground">Video call? HomeQuote makes the video link for you. Only paste a Zoom or Meet link to use that instead.</p>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor={`em-notes-${meeting.id}`}>Notes</Label>

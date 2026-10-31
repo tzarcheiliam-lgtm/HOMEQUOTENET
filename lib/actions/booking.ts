@@ -18,6 +18,7 @@ import {
 import { notifyBookingSoon } from '@/lib/booking/notify.server';
 import { sendMissedCallRecovery } from '@/lib/booking/recovery.server';
 import { missedCallNotice } from '@/lib/booking/recovery-copy';
+import { videoRoomsEnabled } from '@/lib/video/livekit.server';
 import { BOOKING_ERROR_MESSAGES, mapCalendar, PICK_ANOTHER_TIME, type BookingCalendar, type BookingError } from '@/lib/booking/types';
 import { isValidTimeZone } from '@/lib/availability/time';
 import { vcardPhone } from '@/lib/funnels/vcard';
@@ -490,7 +491,11 @@ const settingsSchema = z
       .refine((v) => !v.includes('..'), 'The photo must be an image under /images/').nullable(),
     host_note: z.string().max(300, 'Keep the card note to 300 characters').nullable(),
   })
-  .refine((s) => s.meeting_type !== 'video' || !!s.video_link, { message: 'Add the video link callers will join', path: ['video_link'] });
+  // No link = each booking gets its own HomeQuote video room (lib/video), once LiveKit is set up.
+  .refine((s) => s.meeting_type !== 'video' || !!s.video_link || videoRoomsEnabled(), {
+    message: 'Add the video link callers will join',
+    path: ['video_link'],
+  });
 
 export async function saveBookingCalendarSettings(calendarId: string, _prev: SettingsState, formData: FormData): Promise<SettingsState> {
   const m = await manageableCalendar(calendarId);

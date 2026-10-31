@@ -26,6 +26,8 @@ import { loadLeadDesign } from '@/lib/leads/design.server';
 import { hashManageToken, isManageTokenShape, managePath } from './tokens';
 import { hostVCardPath, resolveHostContact } from './host-contact';
 import { mapHostFields, type BookingActorKind } from './types';
+import { ownMeetingLink, usesVideoRoom, videoGuestPath, videoGuestToken, videoHostPath } from '@/lib/video/links';
+import { videoRoomsEnabled } from '@/lib/video/livekit.server';
 
 type Db = ReturnType<typeof createAdminClient>;
 
@@ -185,7 +187,10 @@ interface Booking {
   calendarTz: string;
   guestTz: string;
   meetingType: 'phone' | 'video';
+  /** The booker's own meeting link (the calendar's, or an https link in a sales meeting's contact info). */
   videoLink: string | null;
+  /** A video meeting without its own link, with LiveKit configured: it runs in a HomeQuote room (lib/video). */
+  videoRoom: boolean;
   hostName: string;
   /** Who calls (the calendar's host contact); the vCard link is made absolute in guestContext. */
   host: { displayName: string; firstName: string | null; phone: string | null; calendarId: string } | null;
@@ -224,7 +229,15 @@ function hostOf(cal: any): Booking['host'] {
   return h ? { displayName: h.displayName, firstName: h.firstName, phone: h.phone, calendarId: cal.id } : null;
 }
 
-async function loadBooking(db: Db, kind: BookingKind, id: string): Promise<Booking | null> {
+/** The link a guest joins a video meeting with: the booker's own, else the HomeQuote room's. */
+export function guestVideoLink(b: Pick<Booking, 'kind' | 'id' | 'videoLink' | 'videoRoom'>, site: string): string | null {
+  if (b.videoLink) return b.videoLink;
+  if (!b.videoRoom) return null;
+  const token = videoGuestToken(b.kind, b.id, bookingLinkSecret());
+  return token ? `${site}${videoGuestPath(token)}` : null;
+}
+
+export async function loadBooking(db: Db, kind: BookingKind, id: string): Promise<Booking | null> {
   if (kind === 'appointment') {
     const { data: ap } = await db
       .from('appointments')
@@ -245,12 +258,14 @@ async function loadBooking(db: Db, kind: BookingKind, id: string): Promise<Booki
     const calendarTz = safeTimeZone(ap.time_zone ?? cal?.timezone);
     const startMs = ms(ap.scheduled_at);
     const guestName = (ap.contact_name ?? [l.first_name, l.last_name].filter(Boolean).join(' ')).trim();
+    const apType: 'phone' | 'video' = (ap.meeting_type ?? cal?.meeting_type) === 'video' ? 'video' : 'phone';
+    const apOwn = ownMeetingLink(cal?.video_link);
     return {
       kind, id: ap.id, status: ap.status, live: LIVE.appointment.includes(ap.status), startMs,
       endMs: ap.ends_at ? ms(ap.ends_at) : startMs + 30 * 60_000,
       calendarId: ap.calendar_id ?? null, calendarKind: cal?.kind ?? null, contractorId: cal?.kind === 'contractor' ? cal.contractor_id : null,
       calendarName: cal?.name ?? 'HomeQuote', calendarTz, guestTz: safeTimeZone(ap.invitee_time_zone, calendarTz),
-      meetingType: (ap.meeting_type ?? cal?.meeting_type) === 'video' ? 'video' : 'phone', videoLink: cal?.video_link ?? null,
+      meetingType: apType, videoLink: apOwn, videoRoom: usesVideoRoom({ meetingType: apType, ownLink: apOwn }, videoRoomsEnabled()),
       hostName, host: hostOf(cal), guestName, firstName: (l.first_name as string | undefined)?.trim() || guestName.split(' ')[0] || null,
       phone: ap.contact_phone ?? l.phone ?? null, email: ap.contact_email ?? l.email ?? null,
       leadId: ap.lead_id ?? null, prospectId: null, consent: l.consent_granted === true, emailOptOut: false,
@@ -271,12 +286,15 @@ async function loadBooking(db: Db, kind: BookingKind, id: string): Promise<Booki
   const calendarTz = safeTimeZone(cal?.timezone);
   const startMs = ms(sa.scheduled_at);
   const guestName = (sa.decision_maker_name ?? prospect.company_name ?? '').trim();
+  const saType: 'phone' | 'video' = (sa.appointment_type ?? cal?.meeting_type) === 'video' ? 'video' : 'phone';
+  // The calendar's own link, else one a setter pasted into the contact info ("Zoom: https://…").
+  const saOwn = ownMeetingLink(cal?.video_link) ?? ownMeetingLink(sa.contact_info);
   return {
     kind, id: sa.id, status: sa.status, live: LIVE.sales_appointment.includes(sa.status), startMs,
     endMs: sa.ends_at ? ms(sa.ends_at) : startMs + 30 * 60_000,
     calendarId: sa.calendar_id ?? null, calendarKind: cal?.kind ?? null, contractorId: null,
     calendarName: cal?.name ?? 'HomeQuote sales', calendarTz, guestTz: safeTimeZone(sa.time_zone, calendarTz),
-    meetingType: (sa.appointment_type ?? cal?.meeting_type) === 'video' ? 'video' : 'phone', videoLink: cal?.video_link ?? null,
+    meetingType: saType, videoLink: saOwn, videoRoom: usesVideoRoom({ meetingType: saType, ownLink: saOwn }, videoRoomsEnabled()),
     hostName: 'HomeQuote Network', host: hostOf(cal), guestName, firstName: (sa.decision_maker_name as string | null)?.trim().split(' ')[0] || null,
     phone: prospect.phone ?? null, email: prospect.email ?? (String(sa.contact_info ?? '').match(EMAIL_RE)?.[0] ?? null),
     leadId: null, prospectId: sa.prospect_id, consent: false, emailOptOut: !!prospect.email_opt_out_at,
@@ -291,7 +309,7 @@ async function loadBooking(db: Db, kind: BookingKind, id: string): Promise<Booki
 function guestContext(b: Booking, token: string | null, site: string, previousStartMs?: number | null): GuestMessageContext {
   return {
     firstName: b.firstName, hostName: b.hostName, startMs: b.startMs, endMs: b.endMs, timeZone: b.guestTz,
-    meetingType: b.meetingType, phone: b.phone, videoLink: b.videoLink,
+    meetingType: b.meetingType, phone: b.phone, videoLink: guestVideoLink(b, site),
     manageUrl: token ? `${site}${managePath(token)}` : null,
     icsUrl: token ? `${site}${bookingIcsPath(token)}` : null,
     previousStartMs: previousStartMs ?? null,
@@ -312,7 +330,7 @@ function icsInput(b: Booking, site: string, token: string | null, cancelled = fa
     kind: b.kind, id: b.id, startMs: b.startMs, endMs: b.endMs,
     title: `${b.meetingType === 'video' ? 'Video call' : 'Phone call'} with ${b.host?.displayName ?? b.hostName}`,
     description: token ? `Reschedule or cancel: ${site}${managePath(token)}` : null,
-    location: b.meetingType === 'video' ? b.videoLink : 'Phone call',
+    location: b.meetingType === 'video' ? guestVideoLink(b, site) : 'Phone call',
     url: token ? `${site}${managePath(token)}` : null,
     // A cancel must out-rank the last published version.
     sequence: b.rescheduleCount + (cancelled ? 1 : 0),
@@ -399,6 +417,7 @@ async function sendHostEmails(db: Db, b: Booking, notice: HostNotice, deps: Noti
       startMs: b.startMs, endMs: b.endMs, timeZone: b.calendarTz, previousStartMs: extra.previousStartMs ?? null,
       cancelReason: b.cancelReason, cancelledByGuest: extra.cancelledByGuest,
       appUrl: b.kind === 'appointment' ? (b.leadId ? `${site}/app/leads/${b.leadId}` : null) : `${site}/app/calls/${b.prospectId}`,
+      videoHostUrl: b.meetingType === 'video' && b.videoRoom ? `${site}${videoHostPath(b.kind, b.id)}` : null,
     });
     try {
       await send({ toEmail: p.email, subject: mail.subject, html: mail.html, text: mail.text, fromName: 'HomeQuote Network' });

@@ -2,7 +2,9 @@
 import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { calendarForContractorFunnel, calendarForFunnel, getCalendar } from '@/lib/booking/calendars.server';
-import { ensureManageToken } from '@/lib/booking/notify.server';
+import { bookingLinkSecret, ensureManageToken } from '@/lib/booking/notify.server';
+import { usesVideoRoom, videoGuestPath, videoGuestToken, type VideoMeetingKind } from '@/lib/video/links';
+import { videoRoomsEnabled } from '@/lib/video/livekit.server';
 import type { BookingCalendar, BookingError } from '@/lib/booking/types';
 import { displayPhone, hostVCardPath, resolveHostContact } from '@/lib/booking/host-contact';
 import { vcardPhone } from '@/lib/funnels/vcard';
@@ -197,6 +199,16 @@ interface BookingFacts {
   sales?: boolean;
   hostPhone?: string | null;
   nowMs?: number;
+  /** The booked row: a video call without its own link gets its HomeQuote room link (lib/video). */
+  ref?: { kind: VideoMeetingKind; id: string } | null;
+}
+
+/** The guest's join link for a video booking: the calendar's own link, else the booking's HomeQuote room. */
+function videoLinkOf(f: BookingFacts): string | null {
+  const own = f.calendar?.videoLink ?? null;
+  if (own || !f.ref || !usesVideoRoom({ meetingType: 'video', ownLink: own }, videoRoomsEnabled())) return own;
+  const token = videoGuestToken(f.ref.kind, f.ref.id, bookingLinkSecret());
+  return token ? videoGuestPath(token) : null;
 }
 
 const LIVE = new Set(['scheduled']);
@@ -222,7 +234,7 @@ export function publicBooking(f: BookingFacts): PublicBooking {
     durationMinutes: Math.round((new Date(endsAt).getTime() - startMs) / 60_000) || duration,
     firstName: firstNameOf(f.name),
     phoneHint: type === 'phone' ? phoneHint(f.phone) : null,
-    videoLink: type === 'video' ? f.calendar?.videoLink ?? null : null,
+    videoLink: type === 'video' ? videoLinkOf(f) : null,
     manageUrl: f.token ? manageUrl(f.token) : null,
     icsUrl: f.token ? icsUrl(f.token) : null,
     canChange: (f.sales ? LIVE_SALES : LIVE).has(f.status) && startMs > (f.nowMs ?? Date.now()),
@@ -248,7 +260,7 @@ export async function existingBooking(db: Db, r: Resolved): Promise<PublicBookin
     const cal = await getCalendar(live.calendar_id, db);
     const token = await ensureManageToken(db, 'appointment', live.id);
     return publicBooking({ status: live.status, startsAt: live.scheduled_at, endsAt: live.ends_at, timeZone: live.time_zone, inviteeTimeZone: live.invitee_time_zone,
-      meetingType: live.meeting_type, name: live.contact_name, phone: live.contact_phone, calendar: cal, token });
+      meetingType: live.meeting_type, name: live.contact_name, phone: live.contact_phone, calendar: cal, token, ref: { kind: 'appointment', id: live.id } });
   }
   if (r.kind === 'session') {
     if (!r.session.booked_at) return null;
@@ -265,7 +277,7 @@ export async function existingBooking(db: Db, r: Resolved): Promise<PublicBookin
         const cal = live.calendar_id ? await getCalendar(live.calendar_id, db) : r.calendar;
         const token = live.calendar_id ? await ensureManageToken(db, 'appointment', live.id) : null;
         return publicBooking({ status: live.status, startsAt: live.scheduled_at, endsAt: live.ends_at, timeZone: live.time_zone, inviteeTimeZone: live.invitee_time_zone,
-          meetingType: live.meeting_type, name: live.contact_name, phone: live.contact_phone, calendar: cal, token });
+          meetingType: live.meeting_type, name: live.contact_name, phone: live.contact_phone, calendar: cal, token, ref: { kind: 'appointment', id: live.id } });
       }
       // Every call this session booked was cancelled: it may book again.
       if (rows.every((f) => f.appointment_id)) return null;
@@ -286,7 +298,7 @@ export async function existingBooking(db: Db, r: Resolved): Promise<PublicBookin
   const cal = s.calendar_id ? await getCalendar(s.calendar_id, db) : r.calendar;
   const token = s.calendar_id ? await ensureManageToken(db, 'sales_appointment', id) : null;
   return publicBooking({ status: s.status, startsAt: s.scheduled_at, endsAt: s.ends_at, timeZone: cal?.timezone ?? null, inviteeTimeZone: s.time_zone,
-    meetingType: s.appointment_type, name: s.decision_maker_name, phone: r.submission.phone, calendar: cal, sales: true, token });
+    meetingType: s.appointment_type, name: s.decision_maker_name, phone: r.submission.phone, calendar: cal, sales: true, token, ref: { kind: 'sales_appointment', id } });
 }
 
 /** Name + masked phone for the picker's "We'll call you at •••• 0100". */
