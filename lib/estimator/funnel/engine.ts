@@ -1,7 +1,7 @@
 import { defaultSelection, photoFor as configuratorPhotoKey, photoSrc as configuratorPhotoSrc, selectionToAnswers } from '../configurator/engine.ts';
 import type { ConfiguratorSelection, Range } from '../configurator/types.ts';
 import { computeEstimate } from '../engine.ts';
-import type { Answers, ContractorEstimatorConfig, Estimate, EstimatorTemplate } from '../types.ts';
+import type { Answers, ContractorEstimatorConfig, Estimate, EstimatorTemplate, PoolDimensions } from '../types.ts';
 import type { FunnelOption, FunnelPhoto, FunnelPhotoFrame, FunnelPhotoRule, FunnelPhotoVariant, FunnelSelection, FunnelSpec, FunnelStep } from './types.ts';
 
 /*
@@ -133,9 +133,11 @@ export type FunnelEstimate = {
  * Price a selection on the (merged) trade template: computeEstimate on
  * funnelAnswers. With a configurator this is the same figure as
  * estimateSelection with the bundle off (the Go Luxe discount never applies).
+ * `dimensions`: a measured size the picks cannot carry (the roofing funnel's
+ * roof, lib/estimator/roofing/roof.ts roofDimensions), else the size preset.
  */
-export function estimateFunnel(spec: FunnelSpec, template: EstimatorTemplate, selection: FunnelSelection): FunnelEstimate {
-  const estimate = computeEstimate(template, { answers: funnelAnswers(spec, selection) });
+export function estimateFunnel(spec: FunnelSpec, template: EstimatorTemplate, selection: FunnelSelection, dimensions?: PoolDimensions): FunnelEstimate {
+  const estimate = computeEstimate(template, { answers: funnelAnswers(spec, selection), ...(dimensions ? { dimensions } : {}) });
   return { estimate, total: estimate.low !== null && estimate.high !== null ? { low: estimate.low, high: estimate.high } : null };
 }
 

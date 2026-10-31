@@ -69,6 +69,12 @@ export type EstimatorLeadRequest = {
    */
   funnel?: FunnelSelection;
   /**
+   * Roofing (FunnelSpec.addressFirst): the roof the server measured (with its
+   * signature, lib/estimator/roofing/roof.server.ts) or the "How big is your
+   * home?" band. The server prices only a measurement whose signature verifies.
+   */
+  roof?: { measure?: { areaSqft: number; pitchDeg: number; segments: number; exp: number; sig: string }; band?: string };
+  /**
    * One id per submission, reused by the automatic retry, so a retry after a
    * lost response gets the first reply back instead of saving the lead twice.
    */

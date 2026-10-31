@@ -8,6 +8,7 @@ import { exampleFinancingDisclosure, exampleFinancingLine, syncDemoFinancing } f
 import type { FunnelBookingScreenProps } from '../screens';
 import { bookingFrameUrl, plainBookingTitle, priceEyebrow, priceRange, readCalendlyMessage } from './state';
 import { ShareDesignButton } from './share-design';
+import { RoofPreview } from './roof-preview';
 import { designNoun, shareDesignPath, shareMessage } from '@/lib/estimator/share';
 
 /**
@@ -178,6 +179,11 @@ export function FunnelBookingScreen({
           </div>
         ) : null}
       </section>
+
+      {/* Roofing: their own house photo with the new roof (after the lead is saved; off without a render token). */}
+      {spec.addressFirst?.kind === 'roof' && result.renderToken && result.saved !== false ? (
+        <RoofPreview slug={slug} spec={spec} selection={selection} renderToken={result.renderToken} />
+      ) : null}
 
       {result.saved === false ? null : <ShareDesignButton url={shareUrl} title={share.title} text={share.text} />}
 

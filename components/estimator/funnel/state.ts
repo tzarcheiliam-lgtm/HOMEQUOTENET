@@ -14,25 +14,34 @@ import type { FunnelLeadResult } from './screens';
  * in the same query string (size=classic&finish=luxe&extras=spa&spa=flush), so
  * a copied link reopens the same design. Every helper that depends on the
  * path takes the selection (default: every step on its default).
+ *
+ * Roofing (FunnelSpec.addressFirst): one more screen before the steps, the
+ * address and the roof ("?step=address"). It is "Step 1", so the steps count
+ * from 2 in the label and the bar ("?step=1" is still the first real step).
  */
 
-export type FunnelScreen = { kind: 'step'; index: number } | { kind: 'contact' } | { kind: 'book' };
+export type FunnelScreen = { kind: 'address' } | { kind: 'step'; index: number } | { kind: 'contact' } | { kind: 'book' };
 
+export const ADDRESS_PARAM = 'address';
 export const CONTACT_PARAM = 'contact';
 export const BOOK_PARAM = 'book';
+
+/** 1 when the spec has the address screen before the steps (it counts as a step in the label and the bar), else 0. */
+const lead = (spec: FunnelSpec) => (spec.addressFirst ? 1 : 0);
 
 /** How many steps this path shows. */
 export function stepCount(spec: FunnelSpec, selection: FunnelSelection = defaultFunnelSelection(spec)): number {
   return activeSteps(spec, selection).length;
 }
 
-/** The screen a `?step=` value names (for these picks); anything unknown is step 1. */
+/** The screen a `?step=` value names (for these picks); anything unknown is the first screen (the address screen when there is one). */
 export function parseScreen(spec: FunnelSpec, raw: string | null | undefined, selection?: FunnelSelection): FunnelScreen {
   if (raw === CONTACT_PARAM) return { kind: 'contact' };
   if (raw === BOOK_PARAM) return { kind: 'book' };
+  if (spec.addressFirst && (raw === ADDRESS_PARAM || raw === null || raw === undefined || raw === '')) return { kind: 'address' };
   const n = Number(raw);
   if (Number.isInteger(n) && n >= 1 && n <= stepCount(spec, selection)) return { kind: 'step', index: n - 1 };
-  return { kind: 'step', index: 0 };
+  return spec.addressFirst ? { kind: 'address' } : { kind: 'step', index: 0 };
 }
 
 /** A step screen past the end of this path (the picks changed under it) becomes the path's last step. */
@@ -44,6 +53,7 @@ export function clampScreen(spec: FunnelSpec, screen: FunnelScreen, selection?: 
 
 /** The `?step=` value of a screen. */
 export function screenParam(screen: FunnelScreen): string {
+  if (screen.kind === 'address') return ADDRESS_PARAM;
   if (screen.kind === 'contact') return CONTACT_PARAM;
   if (screen.kind === 'book') return BOOK_PARAM;
   return String(screen.index + 1);
@@ -67,19 +77,23 @@ export function screenUrl(spec: FunnelSpec, pathname: string, screen: FunnelScre
 }
 
 export function nextScreen(spec: FunnelSpec, screen: FunnelScreen, selection?: FunnelSelection): FunnelScreen {
+  if (screen.kind === 'address') return { kind: 'step', index: 0 };
   if (screen.kind === 'step') return screen.index + 1 < stepCount(spec, selection) ? { kind: 'step', index: screen.index + 1 } : { kind: 'contact' };
   return { kind: 'book' };
 }
 
-/** The screen the back arrow goes to; null on step 1 (no arrow there). */
+/** The screen the back arrow goes to; null on the first screen (no arrow there). */
 export function prevScreen(spec: FunnelSpec, screen: FunnelScreen, selection?: FunnelSelection): FunnelScreen | null {
+  if (screen.kind === 'address') return null;
   if (screen.kind === 'contact') return { kind: 'step', index: stepCount(spec, selection) - 1 };
   if (screen.kind === 'book') return { kind: 'contact' };
-  return screen.index > 0 ? { kind: 'step', index: screen.index - 1 } : null;
+  if (screen.index > 0) return { kind: 'step', index: screen.index - 1 };
+  return spec.addressFirst ? { kind: 'address' } : null;
 }
 
-/** Position for transitions: steps 0..n-1, contact n, book n+1. */
+/** Position for transitions: the address screen -1, steps 0..n-1, contact n, book n+1. */
 export function screenOrder(spec: FunnelSpec, screen: FunnelScreen, selection?: FunnelSelection): number {
+  if (screen.kind === 'address') return -1;
   if (screen.kind === 'step') return screen.index;
   const n = stepCount(spec, selection);
   return screen.kind === 'contact' ? n : n + 1;
@@ -87,14 +101,18 @@ export function screenOrder(spec: FunnelSpec, screen: FunnelScreen, selection?: 
 
 /** The small label over the bar: "Step 1 of 3" (of 4 or 7 when follow-ups show), or the contact eyebrow ("Last step"). Null on booking (no bar). */
 export function stepLabel(spec: FunnelSpec, screen: FunnelScreen, selection?: FunnelSelection): string | null {
-  if (screen.kind === 'step') return `Step ${screen.index + 1} of ${stepCount(spec, selection)}`;
+  const total = stepCount(spec, selection) + lead(spec);
+  if (screen.kind === 'address') return `Step 1 of ${total}`;
+  if (screen.kind === 'step') return `Step ${screen.index + 1 + lead(spec)} of ${total}`;
   if (screen.kind === 'contact') return spec.contactStep.eyebrow;
   return null;
 }
 
 /** How full the bar is (0..1): each step is one share, the contact step fills it. */
 export function progress(spec: FunnelSpec, screen: FunnelScreen, selection?: FunnelSelection): number {
-  if (screen.kind === 'step') return (screen.index + 1) / (stepCount(spec, selection) + 1);
+  const total = stepCount(spec, selection) + lead(spec);
+  if (screen.kind === 'address') return 1 / (total + 1);
+  if (screen.kind === 'step') return (screen.index + 1 + lead(spec)) / (total + 1);
   return 1;
 }
 

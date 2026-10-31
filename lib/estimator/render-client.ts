@@ -92,14 +92,18 @@ function isRenderStatus(value: unknown): value is RenderStatus {
   return v.status === 'failed' && typeof v.message === 'string';
 }
 
-/** Send the design picture; answers the task id to poll, or why not. */
-export async function startRender(slug: string, renderToken: string, pngDataUrl: string): Promise<RenderStart> {
+/**
+ * Send the design picture; answers the task id to poll, or why not. `funnel`:
+ * the simple funnel's picks, for a render whose prompt depends on them (the
+ * roofing funnel's "See it on your house": the server builds the prompt from them).
+ */
+export async function startRender(slug: string, renderToken: string, pngDataUrl: string, funnel?: Record<string, string>): Promise<RenderStart> {
   try {
     const image = await fitForUpload(pngDataUrl);
     const res = await fetch(`/api/estimator/${encodeURIComponent(slug)}/render`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ renderToken, image }),
+      body: JSON.stringify(funnel ? { renderToken, image, funnel } : { renderToken, image }),
       signal: timeoutSignal(START_TIMEOUT_MS),
     });
     const data: unknown = await res.json().catch(() => null);
