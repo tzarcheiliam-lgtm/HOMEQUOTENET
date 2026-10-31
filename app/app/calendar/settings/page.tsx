@@ -73,10 +73,12 @@ export default async function CalendarSettingsPage({ searchParams }: { searchPar
   // HomeQuote hosts (team / sales) connect their OWN Google here, so callers are never offered a time they are busy.
   // Contractor users connect theirs on the Availability page (it covers their on-site visits too).
   const staffHost = isCalendarStaff(viewer) && calendar.kind !== 'contractor';
-  const { data: connectionRows } = staffHost
-    ? await userDb.from('calendar_connections')
-      .select('id, provider, account_email, calendar_name, status, push_appointments, import_busy, last_synced_at, last_error').eq('user_id', profile.id)
-    : { data: [] };
+  const connectionColumns = 'id, provider, account_email, calendar_name, status, push_appointments, import_busy, last_synced_at, last_error';
+  let { data: connectionRows } = staffHost
+    ? await userDb.from('calendar_connections').select(`${connectionColumns}, mirror_all_appointments`).eq('user_id', profile.id)
+    : { data: [] as any[] };
+  // Before migration 0073 the mirror column does not exist yet: still show the connection.
+  if (staffHost && !connectionRows) ({ data: connectionRows } = await userDb.from('calendar_connections').select(connectionColumns).eq('user_id', profile.id));
   const connections = (connectionRows ?? []) as ConnectionView[];
   const googleNotice = Array.isArray(sp.calendar) ? sp.calendar[0] : sp.calendar;
 
@@ -140,7 +142,7 @@ export default async function CalendarSettingsPage({ searchParams }: { searchPar
           <CardHeader><CardTitle>Your Google Calendar</CardTitle></CardHeader>
           <CardContent>
             {googleCalendarReady() || connections.length ? (
-              <CalendarConnections connections={connections} googleConfigured={googleCalendarReady()} hasFeedLink={false} host />
+              <CalendarConnections connections={connections} googleConfigured={googleCalendarReady()} hasFeedLink={false} host canMirror={profile.role === 'admin'} />
             ) : (
               <p className="text-sm text-muted-foreground" role="note">
                 Google Calendar sign-in isn’t set up on this site yet, so times you are busy elsewhere are not blocked here. Block them with

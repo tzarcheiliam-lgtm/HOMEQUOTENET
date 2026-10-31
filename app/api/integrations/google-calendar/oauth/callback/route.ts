@@ -9,7 +9,7 @@ import {
   googleCalendarReady,
 } from '@/lib/calendar/config';
 import { exchangeCode, fetchAccountEmail, googleCalendarReturnPath, mayConnectGoogleCalendar } from '@/lib/calendar/google';
-import { backfillHostedAppointments, backfillUpcomingAppointments, flushCalendarSyncSoon } from '@/lib/calendar/sync.server';
+import { backfillHostedAppointments, backfillUpcomingAppointments, flushCalendarSyncSoon, reconcileMirrorCalendars } from '@/lib/calendar/sync.server';
 
 const COOKIE_PATH = '/api/integrations/google-calendar/oauth/callback';
 
@@ -70,12 +70,14 @@ export async function GET(request: NextRequest) {
       connected_at: new Date().toISOString(),
     };
     const { data: existing } = await db.from('calendar_connections').select('id').eq('user_id', me.id).eq('provider', 'google').maybeSingle();
+    // An admin's first connection puts every appointment on their calendar (0073); a reconnect keeps their choice.
     const { error } = existing
       ? await db.from('calendar_connections').update(values).eq('id', existing.id)
-      : await db.from('calendar_connections').insert({ ...values, user_id: me.id, provider: 'google' });
+      : await db.from('calendar_connections').insert({ ...values, user_id: me.id, provider: 'google', mirror_all_appointments: me.role === 'admin' });
     if (error) return finish(request, 'token_error', back);
     if (contractorId) await backfillUpcomingAppointments(db, contractorId);
     else await backfillHostedAppointments(db, me.id);
+    if (me.role === 'admin') await reconcileMirrorCalendars(db).catch(() => 0);
     flushCalendarSyncSoon();
     return finish(request, 'connected', back);
   } catch {

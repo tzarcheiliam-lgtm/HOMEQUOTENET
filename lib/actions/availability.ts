@@ -10,6 +10,7 @@ import { checkContractorSlot } from '@/lib/availability/enforce.server';
 import { isValidTimeZone } from '@/lib/availability/time';
 import { decryptCalendarSecret, siteUrl } from '@/lib/calendar/config';
 import { revokeToken } from '@/lib/calendar/google';
+import { flushCalendarSyncSoon, reconcileMirrorCalendars, unmirrorConnection } from '@/lib/calendar/sync.server';
 import type { Profile } from '@/lib/types';
 
 export type AvailabilityState = { error?: string; success?: string } | undefined;
@@ -239,7 +240,7 @@ export async function checkAppointmentSlot(assignmentId: string, dateTime: strin
 async function ownConnection(connectionId: string) {
   const profile = await requireProfile();
   const db = createAdminClient();
-  const { data } = await db.from('calendar_connections').select('id, user_id, encrypted_credentials, provider').eq('id', connectionId).maybeSingle();
+  const { data } = await db.from('calendar_connections').select('id, user_id, contractor_id, encrypted_credentials, provider').eq('id', connectionId).maybeSingle();
   if (!data || data.user_id !== profile.id) throw new Error('Connection not found');
   return { db, connection: data };
 }
@@ -265,11 +266,20 @@ export async function updateCalendarPreferences(formData: FormData): Promise<voi
   try {
     const id = field(formData, 'connection_id');
     if (!id) return;
-    const { db } = await ownConnection(id);
-    await db
-      .from('calendar_connections')
-      .update({ push_appointments: formData.get('push_appointments') === 'on', import_busy: formData.get('import_busy') === 'on' })
-      .eq('id', id);
+    const { db, connection } = await ownConnection(id);
+    const patch: Record<string, boolean> = { push_appointments: formData.get('push_appointments') === 'on', import_busy: formData.get('import_busy') === 'on' };
+    // "Put every appointment on my calendar" (0073): admins only, on their own (non-contractor) connection.
+    const profile = await requireProfile();
+    const mirror = formData.has('mirror_field') && profile.role === 'admin' && !connection.contractor_id;
+    if (mirror) patch.mirror_all_appointments = formData.get('mirror_all_appointments') === 'on';
+    await db.from('calendar_connections').update(patch).eq('id', id);
+    if (mirror) {
+      // On: queue every upcoming appointment and sales meeting. Off: the next tick removes nothing by itself,
+      // so queue this calendar's mirrored events to come off now.
+      if (patch.mirror_all_appointments) await reconcileMirrorCalendars(db, { connectionIds: [id] });
+      else await unmirrorConnection(db, id);
+      flushCalendarSyncSoon();
+    }
     refresh();
   } catch {
     /* ignore */
