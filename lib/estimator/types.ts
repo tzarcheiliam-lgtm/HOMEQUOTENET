@@ -253,13 +253,13 @@ export type GalleryImage = { src: string; alt: string; caption?: string; thumb?:
 
 /**
  * Trades with a template (lib/estimator/registry.ts TEMPLATES). Kitchen and
- * ADU and roofing have a template but no live builder (components/estimator/builders):
+ * ADU have a template but no live builder (components/estimator/builders):
  * they run the simple funnel only (experience 'funnel').
  */
-export type EstimatorTrade = 'pool' | 'bathroom' | 'kitchen' | 'adu' | 'roofing';
+export type EstimatorTrade = 'pool' | 'bathroom' | 'kitchen' | 'adu';
 
 /** Trades with a live builder adapter and builder copy (components/estimator/builders). */
-export type BuilderTrade = Exclude<EstimatorTrade, 'kitchen' | 'adu' | 'roofing'>;
+export type BuilderTrade = Exclude<EstimatorTrade, 'kitchen' | 'adu'>;
 
 export type ContractorEstimatorConfig = {
   /** URL segment, e.g. "pool-masters". */

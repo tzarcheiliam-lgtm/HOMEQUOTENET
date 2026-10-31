@@ -2,7 +2,6 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import adu from '../../content/funnels/adu.json';
 import bathroom from '../../content/funnels/bathroom-remodel.json';
 import kitchen from '../../content/funnels/kitchen-remodel.json';
-import roofing from '../../content/funnels/roof-replacement.json';
 import { funnelSchema, type FunnelConfig } from './schema';
 
 /** Ready-made, strictly qualifying house funnels. All use the same Meta dataset, set in each config's trackingPixels. */
@@ -10,8 +9,6 @@ export const FUNNEL_PRESETS: { slug: string; label: string; config: unknown }[] 
   { slug: 'bathroom-remodel', label: 'Bathroom remodel', config: bathroom },
   { slug: 'kitchen-remodel', label: 'Kitchen remodel', config: kitchen },
   { slug: 'adu', label: 'ADU', config: adu },
-  // The roofing estimator's leads (/estimator/roofing, content/estimators/homequote-roofing.ts).
-  { slug: 'roof-replacement', label: 'Roof replacement', config: roofing },
 ];
 
 export const presetConfig = (slug: string): FunnelConfig => funnelSchema.parse(FUNNEL_PRESETS.find((p) => p.slug === slug)!.config);

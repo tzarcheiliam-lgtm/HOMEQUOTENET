@@ -293,39 +293,10 @@ export type FunnelSpec = {
   /** One quiet line in the page footer (and under the embed's column): photos are example designs. Never on a photo. */
   photoNote?: string;
   /**
-   * Roofing: a first screen, before the steps, that asks for the home address
-   * and measures the roof from above (Google Solar API, see
-   * lib/estimator/roofing). It counts as "STEP 1" and its address fills the
-   * contact step (not asked again). Unset (pool, bathroom, kitchen): none.
-   */
-  addressFirst?: FunnelAddressStep;
-  /**
    * Meta description of the /design page; `{noun}` = the template's projectNoun, `{name}` = the
    * contractor. Default: "Three quick picks, then a ballpark price for your {noun} from {name} and a free on-site estimate."
    */
   designDescription?: string;
-};
-
-/**
- * The roofing funnel's address screen (FunnelSpec.addressFirst). Every line is
- * the spec's own words; nothing here is a price.
- */
-export type FunnelAddressStep = {
-  kind: 'roof';
-  /** e.g. "Where's your home?" */
-  label: string;
-  /** e.g. "We'll find your roof from above to size it." */
-  subline: string;
-  /** Button while no roof is found yet, e.g. "Find my roof". */
-  cta: string;
-  /** Heading once Google measured the roof, e.g. "We found your roof." */
-  foundLabel: string;
-  /** Heading when the roof could not be measured: the home-size bands are asked instead, e.g. "How big is your home?" */
-  bandLabel: string;
-  /** One line over the bands, e.g. "We couldn't measure your roof from above, so we'll size it from your home." */
-  notFoundText: string;
-  /** The photo above the address field (a home), shown until a satellite photo replaces it. */
-  photo: FunnelPhoto;
 };
 
 /** How a step's photo sits in its card (FunnelStep.photoFit / photoZoom / photoBackdrop). */

@@ -33,9 +33,8 @@ export function shareMessage(contractorName: string, projectNoun: string): { tit
   };
 }
 
-/** The room or project a design is of, from the template's trade: "pool", "bathroom", "kitchen", "ADU", "roof" ("Here’s the kitchen I designed"). */
+/** The room or project a design is of, from the template's trade: "pool", "bathroom", "kitchen", "ADU" ("Here’s the kitchen I designed"). */
 export function designNoun(trade: string): string {
   if (trade === 'adu') return 'ADU';
-  if (trade === 'roofing') return 'roof';
   return trade === 'bathroom' || trade === 'kitchen' ? trade : 'pool';
 }

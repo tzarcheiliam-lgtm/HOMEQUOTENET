@@ -2,13 +2,13 @@ import { z } from 'zod';
 import { consentText, contactSchema, inServiceArea, matches, qualify, serviceAreaValid, usesNativeCalendar, type FunnelConfig } from '@/lib/funnels/schema';
 import { encodeSelection, estimateSelection, normalizeSelection, photoFor, photoSrc, selectionToAnswers } from './configurator/engine.ts';
 import type { ConfiguratorSelection, ConfiguratorSpec, Range } from './configurator/types.ts';
-import { computeEstimate, formatRange, picksFor, visibleQuestions } from './engine.ts';
+import { formatRange, picksFor, visibleQuestions } from './engine.ts';
 import { activeSteps, encodeFunnelSelection, estimateFunnel, funnelAnswers, funnelPhoto, normalizeFunnelSelection, photoKey, pickedTitles, toConfiguratorSelection } from './funnel/engine.ts';
 import type { FunnelSelection, FunnelSpec } from './funnel/types.ts';
 import {
   LEAD_TIMELINES, describeConfiguratorDesign, describeFunnelDesign, estimatorConsentText, normalizeZip, usPhoneDigits, type EstimatorLeadRequest,
 } from './lead-client.ts';
-import type { Answers, ContractorEstimatorConfig, Estimate, EstimatorTemplate, GalleryImage, PoolDimensions } from './types.ts';
+import type { Answers, ContractorEstimatorConfig, Estimate, EstimatorTemplate, GalleryImage } from './types.ts';
 
 /**
  * Server side of estimator lead capture (used by POST /api/estimator/[slug]/lead).
@@ -90,16 +90,6 @@ export const leadRequestSchema = z.object({
   measurement: z.boolean().default(false),
   tracking,
   configurator: selection.optional(),
-  // Roofing (FunnelSpec.addressFirst): the server-signed roof measurement, else the "How big is your home?"
-  // band. Only priced after the server verifies the signature (lib/estimator/roofing/roof.server.ts); a bad
-  // value is dropped (the band default is priced), never a failed lead.
-  roof: z.object({
-    measure: z.object({
-      areaSqft: z.number().finite(), pitchDeg: z.number().finite(), segments: z.number().int().min(1).max(200),
-      exp: z.number().int(), sig: z.string().max(64),
-    }).optional(),
-    band: z.string().max(20).optional(),
-  }).optional().catch(undefined),
   // The funnel's picks (step id -> option id); unknown steps and options fall back to the defaults.
   funnel: z.record(z.string().max(50), z.string().max(50)).refine((f) => Object.keys(f).length <= 20, 'Too many steps').optional(),
   submissionId: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/).optional().catch(undefined),
@@ -327,10 +317,6 @@ const PROJECT_ALIASES: Record<string, Record<string, string[]>> = {
     attached: ['attached'],
     garage: ['garage'],
   },
-  // The roof-replacement funnel's own service (content/funnels/roof-replacement.json).
-  roofing: {
-    replace: ['roof_replacement'],
-  },
 };
 
 function projectAliases(trade: string, project: string | undefined): string[] {
@@ -436,11 +422,6 @@ export const estimatorSourceLabel = (template: Pick<EstimatorTemplate, 'trade'>)
  */
 export function describeSize(template: Pick<EstimatorTemplate, 'trade'>, geometry: Estimate['geometry']): [key: string, text: string] {
   const how = geometry.source === 'dimensions' ? 'typed dimensions' : `${geometry.size} preset`;
-  if (template.trade === 'roofing') {
-    // The roof arrives as (priced sq ft / 50) x 50 ft (lib/estimator/roofing/roof.ts roofDimensions).
-    const priced = Math.round(geometry.lengthFt * geometry.widthFt);
-    return ['estimator_roof', `${priced.toLocaleString('en-US')} sq ft of priced roof (roof area x waste x pitch factor; ${geometry.source === 'dimensions' ? 'measured or band' : `${geometry.size} preset`})`];
-  }
   if (template.trade === 'pool') {
     return ['estimator_pool', `${geometry.shape.replace('_', '-')}, about ${geometry.lengthFt} x ${geometry.widthFt} ft (${how})`];
   }
@@ -524,20 +505,10 @@ export function funnelLeadDesign(
   template: EstimatorTemplate,
   raw: unknown,
   where: { origin: string; slug: string },
-  /**
-   * A size the picks cannot carry, already verified on the server (the roofing funnel's roof):
-   * the dimensions it prices, answers it sets (e.g. the home-size band) and lines that lead the summary.
-   */
-  measured?: { dimensions: PoolDimensions; answers?: Answers; summary?: string[] },
 ): { answers: Answers; estimate: Estimate; design: ConfiguratorLeadDesign } {
   const selection = normalizeFunnelSelection(spec, raw);
-  const answers = sanitizeEstimatorAnswers(template, { ...funnelAnswers(spec, selection), ...(measured?.answers ?? {}) });
-  const quote = measured
-    ? (() => {
-        const estimate = computeEstimate(template, { answers, dimensions: measured.dimensions });
-        return { estimate, total: estimate.low !== null && estimate.high !== null ? { low: estimate.low, high: estimate.high } : null };
-      })()
-    : estimateFunnel(spec, template, selection);
+  const answers = sanitizeEstimatorAnswers(template, funnelAnswers(spec, selection));
+  const quote = estimateFunnel(spec, template, selection);
   const absolute = (src: string) => {
     try {
       return new URL(src, where.origin).toString();
@@ -564,7 +535,7 @@ export function funnelLeadDesign(
     design: {
       ...(cfgSel ? { selection: cfgSel } : {}),
       funnel: { selection, titles: pickedTitles(spec, selection) },
-      summary: [...(measured?.summary ?? []), ...describeFunnelDesign(spec, selection), ...includes],
+      summary: [...describeFunnelDesign(spec, selection), ...includes],
       photos,
       designUrl: absolute(`/estimator/${encodeURIComponent(where.slug)}/design?${encodeFunnelSelection(spec, selection)}`),
       total,

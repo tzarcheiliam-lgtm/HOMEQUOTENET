@@ -22,7 +22,7 @@ import type { LeadDesign } from '@/lib/leads/design.server';
 /** What the call or visit is called: "free pool design call" / "design call", or "free estimate visit". */
 export function callNames(o: { visit: boolean; noun: string | null }): { long: string; short: string } {
   if (o.visit) return { long: 'free estimate visit', short: 'visit' };
-  if (o.noun === 'pool' || o.noun === 'bathroom' || o.noun === 'kitchen' || o.noun === 'ADU' || o.noun === 'roof') return { long: `free ${o.noun} design call`, short: 'design call' };
+  if (o.noun === 'pool' || o.noun === 'bathroom' || o.noun === 'kitchen' || o.noun === 'ADU') return { long: `free ${o.noun} design call`, short: 'design call' };
   return { long: 'free call', short: 'call' };
 }
 
