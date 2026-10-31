@@ -15,7 +15,7 @@ export function InstallQualifiedFunnels() {
   const run = () => start(async () => { setResult(await installQualifiedFunnelsAction()); router.refresh(); });
   return (
     <div className="flex flex-col items-end gap-1">
-      <Button type="button" variant="outline" disabled={pending} onClick={run}>{pending ? 'Creating…' : 'Add bathroom & kitchen funnels'}</Button>
+      <Button type="button" variant="outline" disabled={pending} onClick={run}>{pending ? 'Creating…' : 'Add house funnels (bathroom, kitchen, ADU)'}</Button>
       {result && (
         <p role="status" className="max-w-sm text-right text-xs text-muted-foreground">
           {result.error ? result.error

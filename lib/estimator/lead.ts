@@ -311,6 +311,12 @@ const PROJECT_ALIASES: Record<string, Record<string, string[]>> = {
     full: ['full_remodel'],
     refresh: ['cabinets_counters'],
   },
+  // The adu funnel's services (content/funnels/adu.json) use the same ids as the template's project options.
+  adu: {
+    detached: ['detached'],
+    attached: ['attached'],
+    garage: ['garage'],
+  },
 };
 
 function projectAliases(trade: string, project: string | undefined): string[] {

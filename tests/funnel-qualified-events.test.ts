@@ -27,7 +27,7 @@ import { PATCH } from '@/app/api/funnels/[slug]/session/route';
 
 const qualified: Record<string, Record<string, string>> = {
   'bathroom-remodel': { service: 'full_remodel', bathroom_count: 'one', zip: '90210', homeowner: 'yes', decision_maker: 'sole', timeline: '1_3_months', budget: 'budget_10_20k', payment: 'cash', home_type: 'single_family', address: '12 Main St, Beverly Hills, CA', notes: '' },
-  'kitchen-remodel': { service: 'full_remodel', kitchen_size: 'medium', zip: '90210', homeowner: 'yes', decision_maker: 'joint', timeline: 'asap', budget: 'budget_25_40k', payment: 'need_financing', home_type: 'single_family', address: '12 Main St, Beverly Hills, CA', notes: '' },
+  'kitchen-remodel': { service: 'full_remodel', kitchen_size: 'medium', zip: '90210', homeowner: 'yes', decision_maker: 'joint', timeline: 'asap', budget: 'budget_25_40k', payment: 'need_financing', home_type: 'single_family', address: '12 Main St, Beverly Hills, CA', notes: '' },  adu: { service: 'detached', zip: '90210', homeowner: 'yes', timeline: '3_6_months', address: '12 Main St, Beverly Hills, CA' },
 };
 const contact = { firstName: 'Jordan', lastName: 'Rivera', phone: '8185550142', email: 'jordan@example.test', consent: true };
 const flush = () => Promise.all(m.later.splice(0));
