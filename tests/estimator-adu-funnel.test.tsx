@@ -135,9 +135,9 @@ describe('the ADU funnel spec', () => {
     expect(funnelConfig.trackingPixels?.consentMode).toBe('opt_out');
   });
 
-  it("Buildoly's steps plus the bathroom: five (four for a studio or a garage conversion, which have no bedroom)", () => {
+  it("Buildoly's steps plus the bathroom: five (four for a studio, which has no bedroom)", () => {
     expect(SPEC.steps.map((s) => [s.id, s.label, s.options.map((o) => o.id)])).toEqual([
-      ['model', 'Select a model.', ['studio', '1bed', '2bed', '3bed', 'garage']],
+      ['model', 'Select a model.', ['studio', '1bed', '2bed', '3bed']],
       ['finish', 'Choose your finish.', ['standard', 'luxe']],
       ['kitchen', 'Design your kitchen.', ['standard', 'upgraded']],
       ['bath', 'Design your bathroom.', ['standard', 'upgraded']],
@@ -148,13 +148,12 @@ describe('the ADU funnel spec', () => {
       ['One bedroom', '1 bath, about 500 sq ft'],
       ['Two bedroom', '1 or 2 baths, about 750 sq ft'],
       ['Three bedroom', '2 baths, about 1,000 sq ft'],
-      ['Garage conversion', 'Studio, about 400 sq ft'],
     ]);
     for (const model of ['1bed', '2bed', '3bed']) expect(ids({ model })).toEqual(['model', 'finish', 'kitchen', 'bath', 'storage']);
-    for (const model of ['studio', 'garage']) expect(ids({ model })).toEqual(['model', 'finish', 'kitchen', 'bath']);
+    expect(ids({ model: 'studio' })).toEqual(['model', 'finish', 'kitchen', 'bath']);
     expect(defaultFunnelSelection(SPEC)).toEqual({ model: '1bed', finish: 'standard', kitchen: 'standard', bath: 'standard', storage: 'standard' });
-    // 3 bedroom models x 2 x 2 x 2 x 2 + 2 no-bedroom models x 2 x 2 x 2.
-    expect(all).toHaveLength(64);
+    // 3 bedroom models x 2 x 2 x 2 x 2 + the studio x 2 x 2 x 2.
+    expect(all).toHaveLength(56);
     for (const sel of all) expect(stepCta(SPEC, stepCount(SPEC, sel) - 1, sel)).toBe('Get my estimate');
     // Switching to a studio drops the storage pick.
     expect(normalizeFunnelSelection(SPEC, { model: 'studio', finish: 'luxe', kitchen: 'upgraded', bath: 'upgraded', storage: 'more' })).toEqual({ model: 'studio', finish: 'luxe', kitchen: 'upgraded', bath: 'upgraded' });
@@ -183,25 +182,24 @@ describe('photos: one property, built up step by step', () => {
 
   it('each step shows exactly the ADU picked so far (plan -> that model in the yard -> its inside in that finish)', () => {
     const at = (step: string, sel: FunnelSelection) => key(funnelPhoto(SPEC, step, normalizeFunnelSelection(SPEC, sel)).src);
-    for (const model of ['studio', '1bed', '2bed', '3bed', 'garage']) expect(at('model', { model })).toBe(`plan-${model}`);
+    for (const model of ['studio', '1bed', '2bed', '3bed']) expect(at('model', { model })).toBe(`plan-${model}`);
     expect(at('finish', { model: 'studio', finish: 'standard' })).toBe('size-detached-studio');
     expect(at('finish', { model: '1bed', finish: 'standard' })).toBe('type-detached');
     expect(at('finish', { model: '3bed', finish: 'standard' })).toBe('size-detached-3bed');
     expect(at('finish', { model: '3bed', finish: 'luxe' })).toBe('finish-detached-3bed-luxe');
-    expect(at('finish', { model: 'garage', finish: 'luxe' })).toBe('finish-garage-luxe');
     // Every model and finish has its own exterior.
     const exteriors = all.map((s) => at('finish', s));
-    expect(new Set(exteriors).size).toBe(10);
+    expect(new Set(exteriors).size).toBe(8);
     // The inside follows the finish (white vs black frames) and the step's own pick.
     expect(at('kitchen', { model: '2bed', finish: 'luxe', kitchen: 'upgraded' })).toBe('kitchen-luxe-upgraded');
-    expect(at('kitchen', { model: 'garage', finish: 'standard', kitchen: 'standard' })).toBe('kitchen-standard');
+    expect(at('kitchen', { model: 'studio', finish: 'standard', kitchen: 'standard' })).toBe('kitchen-standard');
     expect(at('storage', { model: '3bed', finish: 'standard', kitchen: 'upgraded', storage: 'more' })).toBe('bedroom-standard-more');
     expect(at('storage', { model: '1bed', finish: 'luxe', storage: 'standard' })).toBe('bedroom-luxe');
     expect(at('bath', { model: 'studio', finish: 'standard', bath: 'standard' })).toBe('bath-standard');
     expect(at('bath', { model: '3bed', finish: 'luxe', kitchen: 'standard', bath: 'upgraded' })).toBe('bath-luxe-upgraded');
     // No unused photo ships: every published file is reachable.
     const shown = new Set([...all.flatMap((sel) => activeSteps(SPEC, sel).map((st) => at(st.id, sel))), key(SPEC.landing.heroPhoto.src)]);
-    expect(shown.size).toBe(27);
+    expect(shown.size).toBe(24);
   });
 });
 
@@ -219,7 +217,6 @@ describe('prices (the ADU pricing config)', () => {
       expect(estimate.siteVisitItems).toEqual([]);
     }
     const plain = { finish: 'standard', kitchen: 'standard', bath: 'standard', storage: 'standard' };
-    expect(total({ model: 'garage', ...plain }).low).toBe(BASE_PRICE.garage);
     expect(total({ model: 'studio', ...plain }).low).toBe(BASE_PRICE.studio1);
     expect(total({ model: '1bed', ...plain }).low).toBe(BASE_PRICE.studio1);
     expect(total({ model: '2bed', ...plain }).low).toBe(BASE_PRICE.b2ba1);
@@ -238,11 +235,11 @@ describe('prices (the ADU pricing config)', () => {
     expect(total({ model: '2bed', ...all4 }).low).toBe(floor(BASE_PRICE.b2ba1 + luxeUpgrade('b2ba1')));
     expect(total({ model: '3bed', ...all4 }).low).toBe(floor(BASE_PRICE.b3ba2 + luxeUpgrade('b3ba2')));
     // No bedroom: no closet upgrade.
-    expect(total({ model: 'garage', finish: 'luxe', kitchen: 'upgraded', bath: 'upgraded' }).low).toBe(floor(BASE_PRICE.garage + luxeUpgrade('garage') - UPGRADE.storage('garage')));
+    expect(total({ model: 'studio', finish: 'luxe', kitchen: 'upgraded', bath: 'upgraded' }).low).toBe(floor(BASE_PRICE.studio1 + luxeUpgrade('studio1') - UPGRADE.storage('studio1')));
   });
 
   it('every option maps to real template answers', () => {
-    expect(funnelAnswers(SPEC, { model: 'garage', finish: 'standard', kitchen: 'standard', bath: 'standard' })).toEqual({ project: ['garage'], model: ['garage'], finish: ['standard'], kitchen: ['standard'], bath: ['standard'] });
+    expect(funnelAnswers(SPEC, { model: 'studio', finish: 'standard', kitchen: 'standard', bath: 'standard' })).toEqual({ project: ['detached'], model: ['studio'], finish: ['standard'], kitchen: ['standard'], bath: ['standard'] });
     for (const sel of all) {
       for (const [q, picks] of Object.entries(funnelAnswers(SPEC, sel))) {
         const question = template.questions.find((x) => x.id === q);
@@ -284,20 +281,20 @@ describe('pages', () => {
     expect(meta.robots).toMatchObject({ index: false });
   });
 
-  it('/design opens the steps from the URL (a studio or garage path has four), and the embed starts at step 1', async () => {
+  it('/design opens the steps from the URL (a studio path has four), and the embed starts at step 1', async () => {
     const design = renderToStaticMarkup(
       await FunnelDesignPage({ params: Promise.resolve({ slug: 'adu' }), searchParams: Promise.resolve({ step: '2', model: '2bed' }) }),
     );
     expect(text(design)).toContain('Step 2 of 5');
     expect(text(design)).toContain('Choose your finish.');
     expect(design).toContain('/estimator/adu/funnel/size-detached-2bed');
-    const garage = renderToStaticMarkup(
-      await FunnelDesignPage({ params: Promise.resolve({ slug: 'adu' }), searchParams: Promise.resolve({ step: '4', model: 'garage' }) }),
+    const studio = renderToStaticMarkup(
+      await FunnelDesignPage({ params: Promise.resolve({ slug: 'adu' }), searchParams: Promise.resolve({ step: '4', model: 'studio' }) }),
     );
-    expect(text(garage)).toContain('Step 4 of 4');
-    expect(text(garage)).toContain('Design your bathroom.');
-    expect(garage).toContain('/estimator/adu/funnel/bath-standard');
-    expect(text(garage)).toContain('Get my estimate');
+    expect(text(studio)).toContain('Step 4 of 4');
+    expect(text(studio)).toContain('Design your bathroom.');
+    expect(studio).toContain('/estimator/adu/funnel/bath-standard');
+    expect(text(studio)).toContain('Get my estimate');
     const embed = renderToStaticMarkup(await EstimatorEmbedPage({ params: Promise.resolve({ slug: 'adu' }), searchParams: Promise.resolve({}) }));
     expect(text(embed)).toContain('Step 1 of 5');
     expect(text(embed)).toContain('Select a model.');

@@ -13,7 +13,7 @@ import { DEFAULT_LIMITS, type EstimatorQuestion, type EstimatorTemplate, type Pr
  * Pricing model (all flat, nothing per sq ft), Buildoly's picks plus the bathroom:
  * - model: the base build price of its config tier (studio and one bedroom
  *   share `studio1`, as in the config; two bedroom `b2ba1`; three bedroom
- *   `b3ba2`; garage conversion `garage`).
+ *   `b3ba2`).
  * - finish Luxe: the living room's Premium upgrade for that tier.
  * - upgraded kitchen: the kitchen's Premium Plus upgrade for that tier.
  * - upgraded bathroom: the bathroom's Premium upgrade for that tier.
@@ -23,7 +23,7 @@ import { DEFAULT_LIMITS, type EstimatorQuestion, type EstimatorTemplate, type Pr
  * tier (`finishUp_<tier>`...) shown only for that tier's models; the funnel's
  * pick answers all of them and only the visible one prices.
  *
- * `project` (detached / garage) is the lead's project (= the "adu" funnel's
+ * `project` (always detached now; garage / attached stay for older leads) is the lead's project (= the "adu" funnel's
  * service values); the funnel answers it from the model. Geometry is unused
  * (every price is flat). Only the simple funnel uses this template (HomeQuote
  * Network's /estimator/adu, experience 'funnel'). Ids are a fixed contract with
@@ -40,11 +40,11 @@ export function luxeUpgrade(tier: SizeTier): number {
   return Object.values(UPGRADE_COST).reduce((sum, levels) => sum + (levels.premiumPlus?.[tier] ?? levels.premium?.[tier] ?? 0), 0);
 }
 
-export type AduModel = 'studio' | '1bed' | '2bed' | '3bed' | 'garage';
-export const ADU_MODELS: readonly AduModel[] = ['studio', '1bed', '2bed', '3bed', 'garage'];
+export type AduModel = 'studio' | '1bed' | '2bed' | '3bed';
+export const ADU_MODELS: readonly AduModel[] = ['studio', '1bed', '2bed', '3bed'];
 
 /** The config tier each model is priced at. */
-export const MODEL_TIER: Record<AduModel, SizeTier> = { studio: 'studio1', '1bed': 'studio1', '2bed': 'b2ba1', '3bed': 'b3ba2', garage: 'garage' };
+export const MODEL_TIER: Record<AduModel, SizeTier> = { studio: 'studio1', '1bed': 'studio1', '2bed': 'b2ba1', '3bed': 'b3ba2' };
 const TIERS = [...new Set(Object.values(MODEL_TIER))];
 const modelsOf = (tier: SizeTier) => ADU_MODELS.filter((m) => MODEL_TIER[m] === tier);
 
@@ -59,9 +59,9 @@ export type AduUpgrade = keyof typeof UPGRADE;
 
 /** The hidden question id of an upgrade at a tier, e.g. "kitchenUp_b2ba1". */
 export const upgradeQuestionId = (upgrade: AduUpgrade, tier: SizeTier) => `${upgrade}Up_${tier}`;
-/** The models an upgrade applies to at a tier (a model with no bedroom, studio or garage conversion, has no storage pick). */
+/** The models an upgrade applies to at a tier (the studio has no bedroom, so no storage pick). */
 function upgradeModels(upgrade: AduUpgrade, tier: SizeTier): AduModel[] {
-  return upgrade === 'storage' ? modelsOf(tier).filter((m) => m !== 'studio' && m !== 'garage') : modelsOf(tier);
+  return upgrade === 'storage' ? modelsOf(tier).filter((m) => m !== 'studio') : modelsOf(tier);
 }
 
 /** Answers that turn an upgrade on for every tier (only the model's tier is visible, so only it prices). */
@@ -96,8 +96,7 @@ export const ADU_TEMPLATE: EstimatorTemplate = {
   pricesConfirmed: false,
   minimumJob: 50000,
   roundTo: 1000,
-  // Five models on one step (Buildoly's four plus the garage conversion).
-  limits: { ...DEFAULT_LIMITS, maxSingleOptions: 5 },
+  limits: DEFAULT_LIMITS,
   geometry: {
     sizes: { small: { lengthFt: 22, widthFt: 16 }, medium: { lengthFt: 32, widthFt: 16 }, large: { lengthFt: 36, widthFt: 21 } },
     avgDepthFt: 0,
@@ -119,8 +118,8 @@ export const ADU_TEMPLATE: EstimatorTemplate = {
       role: 'project',
       options: [
         { id: 'detached', label: 'Detached backyard ADU', note: 'A new home of its own in the yard' },
+        // Kept for leads filed before the Buildoly flow (no funnel pick answers these now; the garage conversion option was removed 2026-10-31).
         { id: 'garage', label: 'Garage conversion', note: 'Turn the garage into a studio' },
-        // Kept for leads filed before the Buildoly flow (no funnel pick answers it now).
         { id: 'attached', label: 'Attached addition', note: 'New rooms joined to the house' },
       ],
     },
@@ -134,7 +133,6 @@ export const ADU_TEMPLATE: EstimatorTemplate = {
         { id: '1bed', label: 'One bedroom', note: '1 bath, about 500 sq ft', price: range(BASE_PRICE[MODEL_TIER['1bed']]) },
         { id: '2bed', label: 'Two bedroom', note: '1 or 2 baths, about 750 sq ft', price: range(BASE_PRICE[MODEL_TIER['2bed']]) },
         { id: '3bed', label: 'Three bedroom', note: '2 baths, about 1,000 sq ft', price: range(BASE_PRICE[MODEL_TIER['3bed']]) },
-        { id: 'garage', label: 'Garage conversion', note: 'Studio, about 400 sq ft', price: range(BASE_PRICE[MODEL_TIER.garage]) },
       ],
     },
     {

@@ -228,13 +228,14 @@ const JOBS = [
   { key: 'type-detached', from: 'size-detached-studio', prompt: GROW_1BED + KEEP },
   { key: 'size-detached-2bed', from: 'type-detached', prompt: GROW_2BED + KEEP },
   { key: 'size-detached-3bed', from: 'size-detached-2bed', prompt: GROW_3BED + KEEP },
-  { key: 'type-garage', from: 'master', prompt: TYPE.garage + KEEP },
+  // The garage conversion model was removed (owner, 2026-10-31): its photos are drafts, no longer shipped.
+  { key: 'type-garage', from: 'master', prompt: TYPE.garage + KEEP, draft: true },
   // Luxe: edits of that model's Standard photo.
   { key: 'finish-detached-1bed-luxe', from: 'type-detached', prompt: LUXE + KEEP },
   { key: 'finish-detached-studio-luxe', from: 'size-detached-studio', prompt: LUXE + KEEP },
   { key: 'finish-detached-2bed-luxe', from: 'size-detached-2bed', prompt: LUXE + KEEP },
   { key: 'finish-detached-3bed-luxe', from: 'size-detached-3bed', prompt: LUXE + KEEP },
-  { key: 'finish-garage-luxe', from: 'type-garage', prompt: LUXE_GARAGE + KEEP },
+  { key: 'finish-garage-luxe', from: 'type-garage', prompt: LUXE_GARAGE + KEEP, draft: true },
   // Floor plans (step 1): the one bedroom first, the others edits of it.
   { key: 'plan-1bed', prompt: PLAN['1bed'], resolution: '1K' },
   { key: 'plan-studio', from: 'plan-1bed', prompt: PLAN_EDIT.studio + PLAN_KEEP, resolution: '1K' },
@@ -270,7 +271,6 @@ const JOBS = [
  * the original name (the garage and three-bedroom plans, whose first versions are kept only as edit sources).
  */
 const ALIASES = [
-  { key: 'plan-garage', raw: 'plan-garage-fixed' },
   { key: 'plan-3bed', raw: 'plan-3bed-fixed' },
 ];
 
