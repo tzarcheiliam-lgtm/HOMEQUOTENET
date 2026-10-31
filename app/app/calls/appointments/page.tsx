@@ -8,7 +8,10 @@ import { AddToCalendar, type AddToCalendarProps } from '@/components/calls/add-t
 import { SALES_APPOINTMENT_STATUSES } from '@/lib/calls/constants';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { MobileCard } from '@/components/mobile/mobile-card';
-import { Phone } from 'lucide-react';
+import { Phone, Video } from 'lucide-react';
+import { CopyGuestLink } from '@/components/video/copy-guest-link';
+import { videoLinksFor } from '@/lib/video/rooms.server';
+import { LATE_MS, ownMeetingLink } from '@/lib/video/links';
 import { cn } from '@/lib/utils';
 import { Select } from '@/components/ui/select';
 import { Card } from '@/components/ui/card';
@@ -92,6 +95,31 @@ export default async function SalesAppointmentsPage({
   const chipEl = (id: string) => { const c = chips.get(id); return c ? <span className={cn('mt-1 inline-block rounded-full border px-2 py-0.5 text-xs', c.tone === 'good' ? 'border-emerald-500/50 text-emerald-700 dark:text-emerald-300' : c.tone === 'warn' ? 'border-amber-500/60 text-amber-700 dark:text-amber-300' : 'text-muted-foreground')}>{c.label}</span> : null; };
   const site = siteUrl();
   const nowMs = Date.now();
+  /** Join / guest links for a video meeting that runs in a HomeQuote room (still upcoming or under way). */
+  const videoOf = (a: (typeof rows)[number]) =>
+    videoLinksFor('sales_appointment', a.id, {
+      meetingType: a.appointment_type,
+      ownLink: ownMeetingLink(a.contact_info),
+      live: ['scheduled', 'confirmed', 'rescheduled'].includes(a.status) && Date.parse(a.scheduled_at) + 30 * 60_000 + LATE_MS > nowMs,
+    }, site);
+  /** The rep's absolute join link, for the event they add to their own calendar. */
+  const hostVideoUrl = (a: (typeof rows)[number]) => {
+    const v = videoLinksFor('sales_appointment', a.id, { meetingType: a.appointment_type, ownLink: ownMeetingLink(a.contact_info), live: true }, site);
+    return v ? `${site}${v.hostHref}` : null;
+  };
+  const videoButtons = (a: (typeof rows)[number], compact = false) => {
+    const v = videoOf(a);
+    if (!v) return null;
+    return (
+      <div className={cn('flex flex-wrap items-center gap-2', compact && '[&_a]:h-7 [&_a]:px-2 [&_a]:text-xs [&_button]:h-7 [&_button]:px-2 [&_button]:text-xs')}>
+        <Link href={v.hostHref} className={cn(buttonVariants({ size: 'sm' }), 'gap-1.5')}>
+          <Video className="size-4" aria-hidden="true" />
+          Join video call
+        </Link>
+        {v.guestUrl ? <CopyGuestLink url={v.guestUrl} tone="light" /> : null}
+      </div>
+    );
+  };
   const calendarOf = (a: (typeof rows)[number]): AddToCalendarProps => {
     const added = adds.get(a.id) ?? { google: null, apple: null };
     const event = salesMeetingEvent(
@@ -106,6 +134,7 @@ export default async function SalesAppointmentsPage({
         appointmentType: a.appointment_type,
         contactInfo: a.contact_info,
         notes: a.notes,
+        videoUrl: hostVideoUrl(a),
       },
       site
     );
@@ -303,6 +332,7 @@ export default async function SalesAppointmentsPage({
                     {(isAdmin || a.partner_id === me.id) && ['scheduled', 'confirmed', 'rescheduled'].includes(a.status) ? <EditAppointment meeting={{ id: a.id, company: a.company_name, scheduledAt: a.scheduled_at, timeZone: a.time_zone, appointmentType: a.appointment_type, contactInfo: a.contact_info, decisionMakerName: a.decision_maker_name, notes: a.notes }} /> : null}
                     <AppointmentStatusControl id={a.id} status={a.status} />
                   </div>
+                  {videoButtons(a)}
                   <AddToCalendar {...calendarOf(a)} />
                   {isAdmin ? (
                     <div className="space-y-2 border-t pt-3">
@@ -370,6 +400,7 @@ export default async function SalesAppointmentsPage({
                       {a.contact_info ? (
                         <span className="block text-xs text-muted-foreground">{a.contact_info}</span>
                       ) : null}
+                      <div className="mt-1.5">{videoButtons(a, true)}</div>
                     </TableCell>
                     <TableCell>
                       <SalesAppointmentBadge value={a.status} />

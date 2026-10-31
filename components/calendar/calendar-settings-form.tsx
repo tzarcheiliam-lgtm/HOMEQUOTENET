@@ -88,8 +88,11 @@ export function CalendarSettingsForm({
         </label>
         {meeting === 'video' ? (
           <label className="space-y-1 text-sm sm:col-span-2">
-            <span className="font-medium">Video link</span>
-            <Input name="video_link" type="url" inputMode="url" placeholder="https://meet.google.com/…" defaultValue={calendar.videoLink ?? ''} disabled={readOnly} />
+            <span className="font-medium">Video link <span className="font-normal text-muted-foreground">(optional)</span></span>
+            <Input name="video_link" type="url" inputMode="url" placeholder="Leave empty for a HomeQuote video room" defaultValue={calendar.videoLink ?? ''} disabled={readOnly} />
+            <span className="block text-xs text-muted-foreground">
+              Leave it empty and every booking gets its own private HomeQuote video room (no app needed). Paste a Zoom or Meet link to use that instead.
+            </span>
           </label>
         ) : (
           <input type="hidden" name="video_link" value={calendar.videoLink ?? ''} />

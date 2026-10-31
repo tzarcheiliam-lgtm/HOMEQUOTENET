@@ -89,7 +89,7 @@ export async function POST(request: Request) {
       const body: BookResponse = {
         ok: true,
         booking: publicBooking({ status: 'scheduled', startsAt: booked.startsAt, endsAt: booked.endsAt, timeZone: booked.timeZone, inviteeTimeZone: timeZone,
-          meetingType: cal.meetingType, name: a.contact_name, phone: a.contact_phone, calendar: cal, token }),
+          meetingType: cal.meetingType, name: a.contact_name, phone: a.contact_phone, calendar: cal, token, ref: { kind: 'appointment', id } }),
         metaEventId: null,
       };
       return reply(body);
@@ -115,7 +115,7 @@ export async function POST(request: Request) {
       const body: BookResponse = {
         ok: true,
         booking: publicBooking({ status: 'scheduled', startsAt: result.startsAt, endsAt: result.endsAt, timeZone: result.timeZone, inviteeTimeZone: timeZone,
-          meetingType: cal.meetingType, name: c.firstName, phone: c.phone, calendar: cal, token }),
+          meetingType: cal.meetingType, name: c.firstName, phone: c.phone, calendar: cal, token, ref: { kind: 'appointment', id: result.appointmentId } }),
         metaEventId,
       };
       return reply(body);
@@ -135,7 +135,7 @@ export async function POST(request: Request) {
     const body: BookResponse = {
       ok: true,
       booking: publicBooking({ status: 'scheduled', startsAt: result.startsAt, endsAt: result.endsAt, timeZone: result.timeZone, inviteeTimeZone: timeZone,
-        meetingType: calendar.meetingType, name: r.submission.name, phone: r.submission.phone, calendar, token, sales: true }),
+        meetingType: calendar.meetingType, name: r.submission.name, phone: r.submission.phone, calendar, token, sales: true, ref: { kind: 'sales_appointment', id: result.salesAppointmentId } }),
       metaEventId: null,
     };
     return reply(body);

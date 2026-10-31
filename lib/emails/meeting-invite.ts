@@ -10,6 +10,8 @@ export function meetingInvite(m: {
   appointmentType: string | null;
   contactInfo: string | null;
   organizer: string;
+  /** The guest's join link when the meeting runs in a HomeQuote video room. */
+  videoUrl?: string | null;
 }): MailAttachment {
   const start = Date.parse(m.scheduledAt);
   const how = m.appointmentType === 'video' ? 'Video call' : m.appointmentType === 'in_person' ? 'Meeting' : 'Phone call';
@@ -23,8 +25,8 @@ export function meetingInvite(m: {
           startMs: start,
           endMs: start + 30 * 60_000,
           summary: `${how} with Liam — HomeQuote Network`,
-          description: `Booked by ${m.organizer}. Reply to the confirmation email to reschedule.`,
-          location: m.contactInfo,
+          description: `${m.videoUrl ? `Join the video call: ${m.videoUrl}\n` : ''}Booked by ${m.organizer}. Reply to the confirmation email to reschedule.`,
+          location: m.videoUrl ?? m.contactInfo,
         },
       ],
       { name: 'HomeQuote Network', method: 'PUBLISH' }

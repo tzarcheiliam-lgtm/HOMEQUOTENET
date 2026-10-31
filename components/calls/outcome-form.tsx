@@ -493,6 +493,7 @@ export function OutcomeForm({
                 error={errors.contact_info}
               >
                 <Input id="contact_info" name="contact_info" autoComplete="off" required />
+                <p className="mt-1 text-xs text-muted-foreground">Video call? HomeQuote makes the video link for you. Only paste a Zoom or Meet link to use that instead.</p>
               </Field>
             </div>
           ) : null}

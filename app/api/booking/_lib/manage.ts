@@ -43,6 +43,7 @@ export async function loadManaged(db: Db, token: string, nowMs = Date.now()): Pr
   const booking = publicBooking({
     status: managed.status, startsAt: managed.startsAt, endsAt: managed.endsAt, timeZone: managed.timeZone, inviteeTimeZone: managed.inviteeTimeZone,
     meetingType: managed.meetingType, name: managed.contactName, phone, calendar, token, sales: managed.kind === 'sales_appointment', nowMs, hostPhone,
+    ref: { kind: managed.kind, id: managed.id },
   });
   return { managed, calendar, booking };
 }
