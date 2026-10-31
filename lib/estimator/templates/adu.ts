@@ -10,14 +10,15 @@ import { DEFAULT_LIMITS, type EstimatorQuestion, type EstimatorTemplate, type Pr
  * runs from it to about 12% above it (RANGE_SPREAD), because a ballpark is
  * never shown as one figure.
  *
- * Pricing model (all flat, nothing per sq ft), Buildoly's four picks:
+ * Pricing model (all flat, nothing per sq ft), Buildoly's picks plus the bathroom:
  * - model: the base build price of its config tier (studio and one bedroom
  *   share `studio1`, as in the config; two bedroom `b2ba1`; three bedroom
  *   `b3ba2`; garage conversion `garage`).
- * - finish Luxe: the living room's and bathroom's Premium upgrade for that tier.
+ * - finish Luxe: the living room's Premium upgrade for that tier.
  * - upgraded kitchen: the kitchen's Premium Plus upgrade for that tier.
+ * - upgraded bathroom: the bathroom's Premium upgrade for that tier.
  * - more closet space: the bedroom's Premium Plus upgrade for that tier.
- * The three upgrades together are every room's top finish (luxeUpgrade).
+ * The four upgrades together are every room's top finish (luxeUpgrade).
  * Each upgrade differs per tier, so each has one hidden yes/no question per
  * tier (`finishUp_<tier>`...) shown only for that tier's models; the funnel's
  * pick answers all of them and only the visible one prices.
@@ -47,10 +48,11 @@ export const MODEL_TIER: Record<AduModel, SizeTier> = { studio: 'studio1', '1bed
 const TIERS = [...new Set(Object.values(MODEL_TIER))];
 const modelsOf = (tier: SizeTier) => ADU_MODELS.filter((m) => MODEL_TIER[m] === tier);
 
-/** The three upgrades per tier: what Luxe, the upgraded kitchen and more closet space each add. */
+/** The four upgrades per tier: what Luxe, the upgraded kitchen, the upgraded bathroom and more closet space each add. */
 export const UPGRADE = {
-  finish: (tier: SizeTier) => (UPGRADE_COST.livingRoom.premium?.[tier] ?? 0) + (UPGRADE_COST.bathroom.premium?.[tier] ?? 0),
+  finish: (tier: SizeTier) => UPGRADE_COST.livingRoom.premium?.[tier] ?? 0,
   kitchen: (tier: SizeTier) => UPGRADE_COST.kitchen.premiumPlus?.[tier] ?? 0,
+  bath: (tier: SizeTier) => UPGRADE_COST.bathroom.premium?.[tier] ?? 0,
   storage: (tier: SizeTier) => UPGRADE_COST.bedroom.premiumPlus?.[tier] ?? 0,
 } as const;
 export type AduUpgrade = keyof typeof UPGRADE;
@@ -66,7 +68,7 @@ function upgradeModels(upgrade: AduUpgrade, tier: SizeTier): AduModel[] {
 export const upgradeAnswers = (upgrade: AduUpgrade): Record<string, string[]> =>
   Object.fromEntries(TIERS.filter((tier) => upgradeModels(upgrade, tier).length).map((tier) => [upgradeQuestionId(upgrade, tier), ['yes']]));
 
-const UPGRADE_LABEL: Record<AduUpgrade, string> = { finish: 'Luxe finish', kitchen: 'Upgraded kitchen', storage: 'More closet space' };
+const UPGRADE_LABEL: Record<AduUpgrade, string> = { finish: 'Luxe finish', kitchen: 'Upgraded kitchen', bath: 'Upgraded bathroom', storage: 'More closet space' };
 
 function upgradeQuestions(upgrade: AduUpgrade): EstimatorQuestion[] {
   return TIERS.flatMap((tier) => {
@@ -141,8 +143,8 @@ export const ADU_TEMPLATE: EstimatorTemplate = {
       kind: 'single',
       summaryLabel: 'Finish',
       options: [
-        { id: 'standard', label: 'Standard', note: 'Shingle roof and stucco, concrete patio' },
-        { id: 'luxe', label: 'Luxe', note: 'Metal roof, wood siding, composite deck' },
+        { id: 'standard', label: 'Standard', note: 'Shingle roof, white windows' },
+        { id: 'luxe', label: 'Luxe', note: 'Metal roof, black windows, smooth stucco' },
       ],
     },
     ...upgradeQuestions('finish'),
@@ -157,6 +159,17 @@ export const ADU_TEMPLATE: EstimatorTemplate = {
       ],
     },
     ...upgradeQuestions('kitchen'),
+    {
+      id: 'bath',
+      label: 'Design your bathroom.',
+      kind: 'single',
+      summaryLabel: 'Bathroom',
+      options: [
+        { id: 'standard', label: 'Standard bathroom', note: 'Tub and shower, white subway tile' },
+        { id: 'upgraded', label: 'Upgraded bathroom', note: 'Walk-in glass shower, large porcelain tile' },
+      ],
+    },
+    ...upgradeQuestions('bath'),
     {
       id: 'storage',
       label: 'Choose your storage.',

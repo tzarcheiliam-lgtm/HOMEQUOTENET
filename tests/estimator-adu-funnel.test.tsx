@@ -10,7 +10,7 @@ import { consentText, funnelSchema } from '@/lib/funnels/schema';
 
 /**
  * HomeQuote Network's simple ADU funnel (/estimator/adu, experience 'funnel'), in
- * Buildoly's quote-flow format (model, finish, kitchen, storage): the ADU template
+ * Buildoly's quote-flow format (model, finish, kitchen, bathroom, storage): the ADU template
  * (prices from lib/adu/pricing-config.ts), the spec, the paths, one exact photo
  * for every pick on every path (no fallbacks), the
  * network wording, the pages and the lead through the "adu" funnel (database faked).
@@ -135,11 +135,12 @@ describe('the ADU funnel spec', () => {
     expect(funnelConfig.trackingPixels?.consentMode).toBe('opt_out');
   });
 
-  it("Buildoly's four steps (three for a studio or a garage conversion, which have no bedroom)", () => {
+  it("Buildoly's steps plus the bathroom: five (four for a studio or a garage conversion, which have no bedroom)", () => {
     expect(SPEC.steps.map((s) => [s.id, s.label, s.options.map((o) => o.id)])).toEqual([
       ['model', 'Select a model.', ['studio', '1bed', '2bed', '3bed', 'garage']],
       ['finish', 'Choose your finish.', ['standard', 'luxe']],
       ['kitchen', 'Design your kitchen.', ['standard', 'upgraded']],
+      ['bath', 'Design your bathroom.', ['standard', 'upgraded']],
       ['storage', 'Choose your storage.', ['standard', 'more']],
     ]);
     expect(SPEC.steps[0].options.map((o) => [o.title, o.subtitle])).toEqual([
@@ -149,14 +150,14 @@ describe('the ADU funnel spec', () => {
       ['Three bedroom', '2 baths, about 1,000 sq ft'],
       ['Garage conversion', 'Studio, about 400 sq ft'],
     ]);
-    for (const model of ['1bed', '2bed', '3bed']) expect(ids({ model })).toEqual(['model', 'finish', 'kitchen', 'storage']);
-    for (const model of ['studio', 'garage']) expect(ids({ model })).toEqual(['model', 'finish', 'kitchen']);
-    expect(defaultFunnelSelection(SPEC)).toEqual({ model: '1bed', finish: 'standard', kitchen: 'standard', storage: 'standard' });
-    // 3 bedroom models x 2 x 2 x 2 + 2 no-bedroom models x 2 x 2.
-    expect(all).toHaveLength(32);
+    for (const model of ['1bed', '2bed', '3bed']) expect(ids({ model })).toEqual(['model', 'finish', 'kitchen', 'bath', 'storage']);
+    for (const model of ['studio', 'garage']) expect(ids({ model })).toEqual(['model', 'finish', 'kitchen', 'bath']);
+    expect(defaultFunnelSelection(SPEC)).toEqual({ model: '1bed', finish: 'standard', kitchen: 'standard', bath: 'standard', storage: 'standard' });
+    // 3 bedroom models x 2 x 2 x 2 x 2 + 2 no-bedroom models x 2 x 2 x 2.
+    expect(all).toHaveLength(64);
     for (const sel of all) expect(stepCta(SPEC, stepCount(SPEC, sel) - 1, sel)).toBe('Get my estimate');
     // Switching to a studio drops the storage pick.
-    expect(normalizeFunnelSelection(SPEC, { model: 'studio', finish: 'luxe', kitchen: 'upgraded', storage: 'more' })).toEqual({ model: 'studio', finish: 'luxe', kitchen: 'upgraded' });
+    expect(normalizeFunnelSelection(SPEC, { model: 'studio', finish: 'luxe', kitchen: 'upgraded', bath: 'upgraded', storage: 'more' })).toEqual({ model: 'studio', finish: 'luxe', kitchen: 'upgraded', bath: 'upgraded' });
   });
 });
 
@@ -196,9 +197,11 @@ describe('photos: one property, built up step by step', () => {
     expect(at('kitchen', { model: 'garage', finish: 'standard', kitchen: 'standard' })).toBe('kitchen-standard');
     expect(at('storage', { model: '3bed', finish: 'standard', kitchen: 'upgraded', storage: 'more' })).toBe('bedroom-standard-more');
     expect(at('storage', { model: '1bed', finish: 'luxe', storage: 'standard' })).toBe('bedroom-luxe');
+    expect(at('bath', { model: 'studio', finish: 'standard', bath: 'standard' })).toBe('bath-standard');
+    expect(at('bath', { model: '3bed', finish: 'luxe', kitchen: 'standard', bath: 'upgraded' })).toBe('bath-luxe-upgraded');
     // No unused photo ships: every published file is reachable.
     const shown = new Set([...all.flatMap((sel) => activeSteps(SPEC, sel).map((st) => at(st.id, sel))), key(SPEC.landing.heroPhoto.src)]);
-    expect(shown.size).toBe(23);
+    expect(shown.size).toBe(27);
   });
 });
 
@@ -215,7 +218,7 @@ describe('prices (the ADU pricing config)', () => {
       expect(estimate.unanswered).toEqual([]);
       expect(estimate.siteVisitItems).toEqual([]);
     }
-    const plain = { finish: 'standard', kitchen: 'standard', storage: 'standard' };
+    const plain = { finish: 'standard', kitchen: 'standard', bath: 'standard', storage: 'standard' };
     expect(total({ model: 'garage', ...plain }).low).toBe(BASE_PRICE.garage);
     expect(total({ model: 'studio', ...plain }).low).toBe(BASE_PRICE.studio1);
     expect(total({ model: '1bed', ...plain }).low).toBe(BASE_PRICE.studio1);
@@ -225,17 +228,21 @@ describe('prices (the ADU pricing config)', () => {
     expect(UPGRADE.kitchen('b2ba1')).toBe(UPGRADE_COST.kitchen.premiumPlus!.b2ba1);
     expect(total({ model: '2bed', ...plain, kitchen: 'upgraded' }).low).toBe(floor(BASE_PRICE.b2ba1 + UPGRADE.kitchen('b2ba1')));
     expect(total({ model: '3bed', ...plain, storage: 'more' }).low).toBe(floor(BASE_PRICE.b3ba2 + UPGRADE.storage('b3ba2')));
-    // All three upgrades together are every room's top finish (the old single Luxe price).
-    const all3 = { finish: 'luxe', kitchen: 'upgraded', storage: 'more' };
-    expect(total({ model: '1bed', ...all3 }).low).toBe(floor(BASE_PRICE.studio1 + luxeUpgrade('studio1')));
-    expect(total({ model: '2bed', ...all3 }).low).toBe(floor(BASE_PRICE.b2ba1 + luxeUpgrade('b2ba1')));
-    expect(total({ model: '3bed', ...all3 }).low).toBe(floor(BASE_PRICE.b3ba2 + luxeUpgrade('b3ba2')));
+    // The bathroom upgrade is its own pick now (it used to ride on Luxe).
+    expect(UPGRADE.bath('b2ba1')).toBe(UPGRADE_COST.bathroom.premium!.b2ba1);
+    expect(UPGRADE.finish('b2ba1')).toBe(UPGRADE_COST.livingRoom.premium!.b2ba1);
+    expect(total({ model: '2bed', ...plain, bath: 'upgraded' }).low).toBe(floor(BASE_PRICE.b2ba1 + UPGRADE.bath('b2ba1')));
+    // All four upgrades together are every room's top finish (the old single Luxe price).
+    const all4 = { finish: 'luxe', kitchen: 'upgraded', bath: 'upgraded', storage: 'more' };
+    expect(total({ model: '1bed', ...all4 }).low).toBe(floor(BASE_PRICE.studio1 + luxeUpgrade('studio1')));
+    expect(total({ model: '2bed', ...all4 }).low).toBe(floor(BASE_PRICE.b2ba1 + luxeUpgrade('b2ba1')));
+    expect(total({ model: '3bed', ...all4 }).low).toBe(floor(BASE_PRICE.b3ba2 + luxeUpgrade('b3ba2')));
     // No bedroom: no closet upgrade.
-    expect(total({ model: 'garage', finish: 'luxe', kitchen: 'upgraded' }).low).toBe(floor(BASE_PRICE.garage + luxeUpgrade('garage') - UPGRADE.storage('garage')));
+    expect(total({ model: 'garage', finish: 'luxe', kitchen: 'upgraded', bath: 'upgraded' }).low).toBe(floor(BASE_PRICE.garage + luxeUpgrade('garage') - UPGRADE.storage('garage')));
   });
 
   it('every option maps to real template answers', () => {
-    expect(funnelAnswers(SPEC, { model: 'garage', finish: 'standard', kitchen: 'standard' })).toEqual({ project: ['garage'], model: ['garage'], finish: ['standard'], kitchen: ['standard'] });
+    expect(funnelAnswers(SPEC, { model: 'garage', finish: 'standard', kitchen: 'standard', bath: 'standard' })).toEqual({ project: ['garage'], model: ['garage'], finish: ['standard'], kitchen: ['standard'], bath: ['standard'] });
     for (const sel of all) {
       for (const [q, picks] of Object.entries(funnelAnswers(SPEC, sel))) {
         const question = template.questions.find((x) => x.id === q);
@@ -252,7 +259,7 @@ describe('prices (the ADU pricing config)', () => {
 
 describe('network wording (HomeQuote is not a builder)', () => {
   it('never claims a licence, years, reviews, projects or that it builds; same contact and booking shape as the kitchen funnel', () => {
-    expect(specWords).not.toMatch(/CSLB|licensed & insured|since \d{4}|years|we build|our (work|projects|crew)|review(s)? from|★|pool|kitchen remodel|bathroom/i);
+    expect(specWords).not.toMatch(/CSLB|licensed & insured|since \d{4}|years|we build|our (work|projects|crew)|review(s)? from|★|pool|kitchen remodel|bathroom remodel/i);
     expect(SPEC.landing.reviews).toBeUndefined();
     expect(SPEC.landing.projects).toBeUndefined();
     expect(SPEC.landing.cta).toBe('Design your ADU');
@@ -277,28 +284,29 @@ describe('pages', () => {
     expect(meta.robots).toMatchObject({ index: false });
   });
 
-  it('/design opens the steps from the URL (a studio or garage path has three), and the embed starts at step 1', async () => {
+  it('/design opens the steps from the URL (a studio or garage path has four), and the embed starts at step 1', async () => {
     const design = renderToStaticMarkup(
       await FunnelDesignPage({ params: Promise.resolve({ slug: 'adu' }), searchParams: Promise.resolve({ step: '2', model: '2bed' }) }),
     );
-    expect(text(design)).toContain('Step 2 of 4');
+    expect(text(design)).toContain('Step 2 of 5');
     expect(text(design)).toContain('Choose your finish.');
     expect(design).toContain('/estimator/adu/funnel/size-detached-2bed');
     const garage = renderToStaticMarkup(
-      await FunnelDesignPage({ params: Promise.resolve({ slug: 'adu' }), searchParams: Promise.resolve({ step: '3', model: 'garage' }) }),
+      await FunnelDesignPage({ params: Promise.resolve({ slug: 'adu' }), searchParams: Promise.resolve({ step: '4', model: 'garage' }) }),
     );
-    expect(text(garage)).toContain('Step 3 of 3');
-    expect(text(garage)).toContain('Design your kitchen.');
+    expect(text(garage)).toContain('Step 4 of 4');
+    expect(text(garage)).toContain('Design your bathroom.');
+    expect(garage).toContain('/estimator/adu/funnel/bath-standard');
     expect(text(garage)).toContain('Get my estimate');
     const embed = renderToStaticMarkup(await EstimatorEmbedPage({ params: Promise.resolve({ slug: 'adu' }), searchParams: Promise.resolve({}) }));
-    expect(text(embed)).toContain('Step 1 of 4');
+    expect(text(embed)).toContain('Step 1 of 5');
     expect(text(embed)).toContain('Select a model.');
     expect(embed).toContain('/estimator/adu/funnel/plan-1bed');
   });
 
   it('booking: the price card recap, the HomeQuote calendar, the ADU share words', () => {
-    const sel = normalizeFunnelSelection(SPEC, { model: '2bed', finish: 'luxe', kitchen: 'upgraded', storage: 'more' });
-    expect(priceEyebrow(SPEC, sel)).toBe('Two bedroom · Luxe · Upgraded kitchen · More closet space');
+    const sel = normalizeFunnelSelection(SPEC, { model: '2bed', finish: 'luxe', kitchen: 'upgraded', bath: 'upgraded', storage: 'more' });
+    expect(priceEyebrow(SPEC, sel)).toBe('Two bedroom · Luxe · Upgraded kitchen · Upgraded bathroom · More closet space');
     const estimate = estimateFunnel(SPEC, template, sel).estimate;
     const result: FunnelLeadResult = {
       estimate, qualified: true, bookingTicket: 'ticket', selection: sel, homeowner: 'yes',
@@ -309,7 +317,7 @@ describe('pages', () => {
     expect(text(html)).toContain('Book your free call');
     expect(html).toContain('data-funnel-calendar="homequote"');
     expect(text(html)).toContain('Example prices, not yet confirmed.');
-    expect(text(html)).not.toMatch(/Financing|\/mo|pool|bathroom/i);
+    expect(text(html)).not.toMatch(/Financing|\/mo|pool|bathroom remodel/i);
     expect(sharedDesignView(SPEC, template, sel, true).noun).toBe('ADU');
   });
 
@@ -331,7 +339,7 @@ describe('lead through the adu funnel', () => {
       }),
       { params: Promise.resolve({ slug: 'adu' }) },
     );
-  const picks = { model: '2bed', finish: 'luxe', kitchen: 'upgraded', storage: 'more' };
+  const picks = { model: '2bed', finish: 'luxe', kitchen: 'upgraded', bath: 'upgraded', storage: 'more' };
   const lead = (over: Record<string, unknown> = {}) => ({
     answers: funnelAnswers(SPEC, picks),
     funnel: picks,
@@ -357,7 +365,7 @@ describe('lead through the adu funnel', () => {
     expect(body).toMatchObject({ ok: true, qualified: true });
     expect(body.estimate.low).toBe(estimateFunnel(SPEC, template, picks).total!.low);
     expect(typeof body.bookingTicket).toBe('string');
-    expect(body.shareUrl).toMatch(/^\/estimator\/adu\/my-design\?model=2bed&finish=luxe&kitchen=upgraded&storage=more/);
+    expect(body.shareUrl).toMatch(/^\/estimator\/adu\/my-design\?model=2bed&finish=luxe&kitchen=upgraded&bath=upgraded&storage=more/);
     const args = m.rpc.mock.calls[0]![1] as Record<string, unknown>;
     expect(args).toMatchObject({ p_qualified: true, p_consent: consentText(funnelConfig) });
     expect(args.p_answers).toMatchObject({ service: 'detached', homeowner: 'yes', zip: '92101' });

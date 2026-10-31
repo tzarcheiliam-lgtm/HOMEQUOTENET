@@ -5,7 +5,7 @@
  * public/estimator/adu/funnel/ was made (same method as
  * scripts/generate-kitchen-funnel-photos.mjs).
  *
- * Buildoly-style quote flow (2026-10-31): model -> finish -> kitchen -> storage.
+ * Buildoly-style quote flow (2026-10-31): model -> finish -> kitchen -> bathroom -> storage.
  *
  * Step 1, "Select a model.": a furnished 3D cutaway floor plan of each model on white
  * (plan-<model>), every plan an edit of the one-bedroom plan so they share one camera and style.
@@ -23,11 +23,11 @@
  *     -> type-garage               (the master's garage converted)
  *     -> finish-<model>-luxe       (an edit of that model's Standard photo: only the ADU's materials change)
  *
- * Steps 3 and 4, "Design your kitchen." / "Choose your storage.": the inside of the same ADU. One
+ * Steps 3 to 5, "Design your kitchen." / "Design your bathroom." / "Choose your storage.": the inside of the same ADU. One
  * Standard kitchen (white windows and doors, like the Standard exterior); its Luxe twin is an edit of
  * it (black-framed windows and doors, oak floor, like the Luxe exterior); each kitchen option is an
- * edit of its finish's kitchen. The bedroom is a new room in the same style (the kitchen photo is the
- * style reference), with the same finish twins and storage edits.
+ * edit of its finish's kitchen. The bedroom and the bathroom are new rooms in the same style (the kitchen photo is
+ * the style reference), with the same finish twins and their option edits.
  *
  * Prompts alone do not hold position or size for this model: the footprint marker sets where the studio
  * stands, and each bigger size grows the previous one. These are AI-generated example designs: the page
@@ -57,6 +57,8 @@ const OUT = path.join(ROOT, 'public', 'estimator', 'adu', 'funnel');
 const API = 'https://api.kie.ai';
 const UPLOAD_API = 'https://kieai.redpandaai.co';
 const MODEL = process.env.KIE_MODEL || 'nano-banana-pro';
+/** The cheaper edit model (google/nano-banana-edit, flat price per image, no resolution setting): a job may pick it. */
+const EDIT_MODEL = 'google/nano-banana-edit';
 const RESOLUTION = process.env.KIE_RESOLUTION || '2K';
 
 // ------------------------------------------------------------------ prompts
@@ -106,16 +108,19 @@ const TYPE = {
     'a narrow planter strip in front, the driveway end becomes a small paved patio. ' + STANDARD_ADU,
 };
 
+// Luxe (owner, 2026-10-31: "the luxe exterior is OD, keep it simple and minimal"): the same building with three
+// changes only: smooth white stucco, black windows and door, a slim dark standing-seam roof. No wood, deck or lights.
+const LUXE_MATERIALS =
+  'New minimal modern luxe materials, and NOTHING else: all its walls become smooth bright white stucco; every window frame and the entry door become matte black ' +
+  '(the same window and door sizes and positions); the roof becomes a slim dark charcoal standing-seam metal roof with the same shape, pitch and height; ' +
+  'one small plain concrete step at the door. NO wood siding, NO deck, NO wall lights, NO new plants, planters or path. ';
 const LUXE =
   'Change ONLY the materials of the new ADU. Its footprint, size, position on the lawn, outline, roof shape and height, and its size in the frame stay EXACTLY the same ' +
-  '(do not move it, enlarge it or bring it closer). New luxe materials: vertical warm cedar wood siding with smooth white stucco accents, ' +
-  'large black-framed windows, a black-framed glass entry door, a black standing-seam metal roof, a small composite wood deck at the entry with modern black wall sconces lit warmly, ' +
-  'and low drought-tolerant planting with a pale stone path. The main house keeps its light grey stucco and grey shingle roof, and the garage keeps its stucco, roof and ' +
-  'roll-up door: neither is re-sided or re-roofed. The fence and lawn stay as they are.';
+  '(do not move it, enlarge it or bring it closer). ' + LUXE_MATERIALS +
+  'The main house keeps its light grey stucco and grey shingle roof, and the garage keeps its stucco, roof and roll-up door: neither is re-sided or re-roofed. The fence and lawn stay as they are.';
 const LUXE_GARAGE =
-  'Change ONLY the materials of the converted garage ADU. Its footprint, size, position, outline, roof shape and height stay EXACTLY the same. New luxe materials: vertical warm cedar wood siding with smooth white stucco accents, ' +
-  'large black-framed windows, a black-framed glass entry door, a black standing-seam metal roof, a small composite wood deck at the entry with modern black wall sconces lit warmly, ' +
-  'and low drought-tolerant planting. The main house keeps its light grey stucco and grey shingle roof. The camera, framing, fence, lawn and driveway stay exactly as they are.';
+  'Change ONLY the materials of the converted garage ADU. Its footprint, size, position, outline, roof shape and height stay EXACTLY the same. ' + LUXE_MATERIALS +
+  'The main house keeps its light grey stucco and grey shingle roof. The camera, framing, fence, lawn and driveway stay exactly as they are.';
 
 /**
  * Every job edits the photo the previous funnel step showed (`from`).
@@ -189,6 +194,28 @@ const BEDROOM_MORE =
   'Edit the photo: there are now THREE built-in wardrobe closets side by side along the same wall instead of two (the wall of closets is wider), same doors, finish and handles. ' +
   'The bed, window and the rest of the room stay the same.';
 
+/** A plan whose furniture made no sense (owner: "why are there two couches back to back"): fix only the furniture. */
+const PLAN_FIX_GARAGE =
+  'Fix ONLY the furniture of this floor plan so it is a believable studio: keep the walls, bathroom, kitchen run, windows, door, floor and render style exactly as they are. ' +
+  'There must be exactly ONE sofa: keep the sofa against the left wall and delete the second sofa behind it. Move the queen bed so its headboard is against the right wall, ' +
+  'below the bathroom, with one nightstand beside it. Put one TV console against the wall facing the sofa, and a small round dining table with two chairs near the kitchen. ' +
+  'Remove any other duplicate or floating furniture. No text, no labels.';
+
+const PLAN_FIX_3BED =
+  'Fix this floor plan so it is a believable THREE-bedroom ADU of about 1,000 square feet: it must show exactly THREE separate bedrooms, each with one queen bed ' +
+  'with its headboard against a wall, a nightstand, a built-in closet and a door; TWO bathrooms, each with a toilet, a vanity and a shower; one open living room with ONE sofa ' +
+  'facing a TV console; a dining table with chairs; and the kitchen run. Keep the existing two bedrooms, bathrooms, kitchen and the wood deck; ' +
+  'extend the building to the left by about 11 feet to fit the third bedroom (the plan gets a little wider in the frame). Nothing duplicated or back to back. ';
+
+/** Step "Design your bathroom.": the ADU bathroom in each finish's interior style, then the upgraded one. */
+const BATH_STANDARD =
+  'Using the input photo ONLY as the style reference (it is the kitchen of the same ADU): show the BATHROOM of the same ADU, with the same window frames, wall colour, ceiling and light: ' +
+  'a white alcove bathtub with a shower over it and a clear glass panel, white 3x6 subway tile around the tub, a white single vanity with a quartz top and a rectangular mirror, a white toilet, ' +
+  'a small window, light grey vinyl plank floor. ';
+const BATH_UPGRADE =
+  'Edit the photo: upgrade the bathroom: the tub-shower becomes a curbless walk-in shower behind a frameless clear glass panel, with large light porcelain tiles on the shower walls and floor, ' +
+  'a rain shower head and a built-in niche. Same room, same window, vanity, mirror, toilet and positions.';
+
 /**
  * Every job edits the photo the funnel showed one step earlier, or the next-smaller size of the same building
  * (studio -> 1 bed -> 2 bed), so the building, lot, camera and light never change. Order matters.
@@ -212,8 +239,13 @@ const JOBS = [
   { key: 'plan-1bed', prompt: PLAN['1bed'], resolution: '1K' },
   { key: 'plan-studio', from: 'plan-1bed', prompt: PLAN_EDIT.studio + PLAN_KEEP, resolution: '1K' },
   { key: 'plan-2bed', from: 'plan-1bed', prompt: PLAN_EDIT['2bed'] + PLAN_KEEP, resolution: '1K' },
-  { key: 'plan-3bed', from: 'plan-1bed', prompt: PLAN_EDIT['3bed'] + PLAN_KEEP, resolution: '1K' },
-  { key: 'plan-garage', from: 'plan-studio', prompt: PLAN_EDIT.garage + PLAN_KEEP, resolution: '1K' },
+  // Superseded by their -fixed edits below (shipped under these names, see ALIASES): kept as edit sources.
+  { key: 'plan-3bed', from: 'plan-1bed', prompt: PLAN_EDIT['3bed'] + PLAN_KEEP, resolution: '1K', draft: true },
+  { key: 'plan-garage', from: 'plan-studio', prompt: PLAN_EDIT.garage + PLAN_KEEP, resolution: '1K', draft: true },
+  // The garage plan came back with two sofas back to back and the bed mid-room: fixed by an edit of itself.
+  { key: 'plan-garage-fixed', from: 'plan-garage', prompt: PLAN_FIX_GARAGE + PLAN_KEEP, resolution: '1K', draft: true },
+  // The three-bedroom plan came back with only two bedrooms: fixed by an edit of itself.
+  { key: 'plan-3bed-fixed', from: 'plan-3bed', prompt: PLAN_FIX_3BED + PLAN_KEEP, resolution: '1K', draft: true },
   // Kitchen (step 3): Standard master, its Luxe twin, each with the upgraded kitchen.
   { key: 'kitchen-standard', prompt: KITCHEN_STANDARD, resolution: '1K' },
   { key: 'kitchen-luxe', from: 'kitchen-standard', prompt: TO_LUXE_ROOM + KEEP_ROOM, resolution: '1K' },
@@ -224,13 +256,23 @@ const JOBS = [
   { key: 'bedroom-luxe', from: 'bedroom-standard', prompt: TO_LUXE_ROOM.replace('Keep the cabinets, counters and appliances as they are.', 'Keep the bed, closets and furniture as they are.') + KEEP_ROOM, resolution: '1K' },
   { key: 'bedroom-standard-more', from: 'bedroom-standard', prompt: BEDROOM_MORE + KEEP_ROOM, resolution: '1K' },
   { key: 'bedroom-luxe-more', from: 'bedroom-luxe', prompt: BEDROOM_MORE + KEEP_ROOM, resolution: '1K' },
+  // Bathroom ("Design your bathroom."): a new room styled from the kitchen of the same finish, then the upgrade edit.
+  { key: 'bath-standard', refRaw: 'kitchen-standard', prompt: BATH_STANDARD + INTERIOR_STYLE },
+  // The window stays the same small window (a first try turned it into a tall glass door).
+  { key: 'bath-luxe', from: 'bath-standard', prompt: TO_LUXE_ROOM.replace('every window frame and the patio door frame become', 'the frame of the small window above the toilet becomes').replace('Keep the cabinets, counters and appliances as they are.', 'The window keeps EXACTLY its size, shape and position (a small window, not a door). The faucets and shower trim become matte black. Keep the tub, tile, vanity and toilet as they are.') + KEEP_ROOM },
+  { key: 'bath-standard-upgraded', from: 'bath-standard', prompt: BATH_UPGRADE + KEEP_ROOM },
+  { key: 'bath-luxe-upgraded', from: 'bath-luxe', prompt: BATH_UPGRADE + KEEP_ROOM },
 ];
 
 /**
- * No aliases: a step whose pick changes nothing (the size step's 1 bed, the finish step's Standard) points at
- * the file the previous step showed (content/estimators/homequote-adu-funnel.ts), so no duplicate files ship.
+ * A step whose pick changes nothing (the finish step's Standard) points at the file the previous step showed
+ * (content/estimators/homequote-adu-funnel.ts), so no duplicate files ship. Aliases: a fixed edit shipped under
+ * the original name (the garage and three-bedroom plans, whose first versions are kept only as edit sources).
  */
-const ALIASES = [];
+const ALIASES = [
+  { key: 'plan-garage', raw: 'plan-garage-fixed' },
+  { key: 'plan-3bed', raw: 'plan-3bed-fixed' },
+];
 
 // ------------------------------------------------------------------ helpers
 
@@ -283,13 +325,16 @@ async function withFootprint(file, quad) {
   return out;
 }
 
-async function run(prompt, imageUrls, resolution = RESOLUTION) {
-  const input = { prompt, aspect_ratio: '3:2', resolution, output_format: 'png' };
-  if (imageUrls?.length) input.image_input = imageUrls;
+async function run(prompt, imageUrls, resolution = RESOLUTION, model = MODEL) {
+  const input =
+    model === EDIT_MODEL
+      ? { prompt, image_urls: imageUrls, aspect_ratio: '3:2', output_format: 'png' }
+      : { prompt, aspect_ratio: '3:2', resolution, output_format: 'png' };
+  if (model !== EDIT_MODEL && imageUrls?.length) input.image_input = imageUrls;
   const created = await kie(`${API}/api/v1/jobs/createTask`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: MODEL, input }),
+    body: JSON.stringify({ model, input }),
   });
   const taskId = created.data?.taskId;
   if (!taskId) throw new Error('no taskId');
@@ -361,7 +406,7 @@ async function cmdGenerate(args) {
       if (!existsSync(raw(job.refRaw))) throw new Error(`${job.key}: reference ${job.refRaw} has no raw image yet`);
       inputs.push(await upload(raw(job.refRaw), job.refRaw));
     }
-    const out = await run(job.prompt, inputs, job.resolution);
+    const out = await run(job.prompt, inputs, job.resolution, job.model);
     await download(out, raw(job.key));
     console.log('done', job.key, `${Math.round((Date.now() - t) / 1000)}s`);
   }

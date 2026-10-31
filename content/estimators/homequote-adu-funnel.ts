@@ -3,7 +3,7 @@ import { ADU_MODELS, type AduModel, upgradeAnswers } from '@/lib/estimator/templ
 
 /*
  * HomeQuote Network's simple mobile ADU funnel (experience 'funnel'), in
- * Buildoly's quote-flow format (buildoly.com/design): "STEP n OF 4", a photo
+ * Buildoly's quote-flow format (buildoly.com/design): "STEP n OF 5", a photo
  * card, one question, white option cards (title + grey line), Continue.
  *
  * 1. "Select a model.": Studio · One bedroom · Two bedroom · Three bedroom ·
@@ -13,8 +13,10 @@ import { ADU_MODELS, type AduModel, upgradeAnswers } from '@/lib/estimator/templ
  *    same backyard (same house, drone and light), Standard or Luxe.
  * 3. "Design your kitchen.": Standard / Upgraded. Photo: the inside of the
  *    same ADU, its Standard or Luxe finish (white vs black window frames).
- * 4. "Choose your storage.": Standard / More closet space, only for a model
- *    with a bedroom; a studio or garage conversion is three steps.
+ * 4. "Design your bathroom.": Standard / Upgraded. Photo: the bathroom of the
+ *    same ADU in its finish.
+ * 5. "Choose your storage.": Standard / More closet space, only for a model
+ *    with a bedroom; a studio or garage conversion is four steps.
  *
  * Every option maps to template answers (lib/estimator/templates/adu.ts), so
  * computeEstimate prices it from lib/adu/pricing-config.ts and the lead route
@@ -42,7 +44,8 @@ const MODEL_WORDS: Record<AduModel, string> = {
   garage: 'garage converted to a studio, about 400 sq ft',
 };
 const STANDARD_WORDS = 'stucco, white windows and a shingle roof';
-const LUXE_WORDS = 'cedar siding, black-framed windows, a standing-seam metal roof and a small wood deck';
+// Minimal (owner: the first luxe, with cedar and a deck, was too much): the same house, three changes.
+const LUXE_WORDS = 'smooth white stucco, black windows and door and a slim standing-seam metal roof';
 
 /** Step 1: the model's furnished floor plan. */
 const PLANS = Object.fromEntries(
@@ -70,11 +73,15 @@ const FINISH_VARIANTS: FunnelPhotoVariant[] = ADU_MODELS.flatMap((model) =>
   (['standard', 'luxe'] as const).map((finish) => ({ when: { model, finish }, photo: exterior(model, finish) })),
 );
 
-/** Steps 3 and 4: the inside of the same ADU in its finish. */
+/** Steps 3 to 5: the inside of the same ADU in its finish. */
 const FINISH_INSIDE = { standard: 'white window frames and a grey plank floor', luxe: 'black window frames and a warm oak floor' } as const;
 const KITCHEN_VARIANTS: FunnelPhotoVariant[] = (['standard', 'luxe'] as const).flatMap((finish) => [
   { when: { finish, kitchen: 'standard' }, photo: photo(`kitchen-${finish}`, `ADU kitchen with white cabinets and stainless appliances, ${FINISH_INSIDE[finish]} (AI-generated example design)`) },
   { when: { finish, kitchen: 'upgraded' }, photo: photo(`kitchen-${finish}-upgraded`, `ADU kitchen with oak cabinets, a full quartz backsplash and premium appliances, ${FINISH_INSIDE[finish]} (AI-generated example design)`) },
+]);
+const BATH_VARIANTS: FunnelPhotoVariant[] = (['standard', 'luxe'] as const).flatMap((finish) => [
+  { when: { finish, bath: 'standard' }, photo: photo(`bath-${finish}`, `ADU bathroom with a tub and shower in white subway tile, ${FINISH_INSIDE[finish]} (AI-generated example design)`) },
+  { when: { finish, bath: 'upgraded' }, photo: photo(`bath-${finish}-upgraded`, `ADU bathroom with a walk-in glass shower in large porcelain tile, ${FINISH_INSIDE[finish]} (AI-generated example design)`) },
 ]);
 const STORAGE_VARIANTS: FunnelPhotoVariant[] = (['standard', 'luxe'] as const).flatMap((finish) => [
   { when: { finish, storage: 'standard' }, photo: photo(`bedroom-${finish}`, `ADU bedroom with two built-in wardrobe closets, ${FINISH_INSIDE[finish]} (AI-generated example design)`) },
@@ -89,7 +96,7 @@ export const HOMEQUOTE_ADU_FUNNEL: FunnelSpec = {
     subline: 'Design your ADU in 60 seconds and get a ballpark price, with a free consultation.',
     cta: 'Design your ADU',
     heroPhoto: { src: `${DIR}finish-detached-1bed-luxe.webp`, srcSm: `${DIR}finish-detached-1bed-luxe-sm.webp` },
-    heroAlt: 'A new detached backyard ADU with cedar siding, black-framed windows and a metal roof, behind a single-story house (AI-generated example design)',
+    heroAlt: 'A new detached backyard ADU with smooth white stucco, black windows and a slim metal roof, behind a single-story house (AI-generated example design)',
     // The current HomeQuote horizontal logo, cropped to the artwork so it reads at header size.
     logo: { aspect: 1200 / 283 },
     // No projects (the network has no jobs of its own) and no reviews (none of its own to show).
@@ -116,8 +123,8 @@ export const HOMEQUOTE_ADU_FUNNEL: FunnelSpec = {
       id: 'finish',
       label: 'Choose your finish.',
       options: [
-        { id: 'standard', title: 'Standard', subtitle: 'Shingle roof and stucco, concrete patio', answers: { finish: ['standard'] } },
-        { id: 'luxe', title: 'Luxe', subtitle: 'Metal roof, wood siding, composite deck', answers: { finish: ['luxe'], ...upgradeAnswers('finish') } },
+        { id: 'standard', title: 'Standard', subtitle: 'Shingle roof, white windows', answers: { finish: ['standard'] } },
+        { id: 'luxe', title: 'Luxe', subtitle: 'Metal roof, black windows, smooth stucco', answers: { finish: ['luxe'], ...upgradeAnswers('finish') } },
       ],
       photo: { kind: 'variants', by: [{ stepId: 'model' }], photos: FINISH_VARIANTS },
     },
@@ -131,9 +138,18 @@ export const HOMEQUOTE_ADU_FUNNEL: FunnelSpec = {
       photo: { kind: 'variants', by: [{ stepId: 'finish' }], photos: KITCHEN_VARIANTS },
     },
     {
+      id: 'bath',
+      label: 'Design your bathroom.',
+      options: [
+        { id: 'standard', title: 'Standard bathroom', subtitle: 'Tub and shower, white subway tile', answers: { bath: ['standard'] } },
+        { id: 'upgraded', title: 'Upgraded bathroom', subtitle: 'Walk-in glass shower, large porcelain tile', answers: { bath: ['upgraded'], ...upgradeAnswers('bath') } },
+      ],
+      photo: { kind: 'variants', by: [{ stepId: 'finish' }], photos: BATH_VARIANTS },
+    },
+    {
       id: 'storage',
       label: 'Choose your storage.',
-      // Only a model with a bedroom: a studio or garage conversion is three steps.
+      // Only a model with a bedroom: a studio or garage conversion is four steps.
       showWhen: { stepId: 'model', anyOf: ['1bed', '2bed', '3bed'] },
       options: [
         { id: 'standard', title: 'Standard storage', subtitle: 'Two built-in wardrobe closets', answers: { storage: ['standard'] } },
@@ -143,7 +159,7 @@ export const HOMEQUOTE_ADU_FUNNEL: FunnelSpec = {
     },
   ],
   finalCta: 'Get my estimate',
-  // Steps 2 to 4: the photo fills the card, as on Buildoly (step 1 sets its own white card for the plans).
+  // Steps 2 to 5: the photo fills the card, as on Buildoly (step 1 sets its own white card for the plans).
   photoFrame: { fit: 'cover' },
   contactStep: {
     eyebrow: 'Last step',
