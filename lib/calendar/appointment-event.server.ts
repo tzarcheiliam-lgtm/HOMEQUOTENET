@@ -81,6 +81,15 @@ export function eventDescription(a: AppointmentDetail): string {
     .join('\n');
 }
 
+/** On an admin's "every appointment" calendar (0073): whose appointment it is, at a glance. */
+export function mirrorEventTitle(a: AppointmentDetail, contractorName: string | null): string {
+  return `${contractorName ?? 'HomeQuote team'} · ${a.customerName} (homeowner appt)`;
+}
+
+export function mirrorEventDescription(a: AppointmentDetail, contractorName: string | null): string {
+  return [`Contractor: ${contractorName ?? 'HomeQuote team (not matched yet)'}`, `Status: ${a.status}`, eventDescription(a)].join('\n');
+}
+
 export function eventLocation(a: AppointmentDetail): string | null {
   return a.location || a.address;
 }

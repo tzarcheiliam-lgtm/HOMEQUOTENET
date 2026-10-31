@@ -14,6 +14,8 @@ export interface ConnectionView {
   import_busy: boolean;
   last_synced_at: string | null;
   last_error: string | null;
+  /** Admins: every homeowner appointment and sales meeting goes on this calendar (0073). */
+  mirror_all_appointments?: boolean;
 }
 
 const NOTICES: Record<string, { tone: 'ok' | 'bad'; text: string }> = {
@@ -41,12 +43,15 @@ export function CalendarConnections({
   googleConfigured,
   hasFeedLink,
   host = false,
+  canMirror = false,
 }: {
   connections: ConnectionView[];
   googleConfigured: boolean;
   hasFeedLink: boolean;
   /** A HomeQuote team / sales host (booking calendar settings): Google only, call wording, no feed link. */
   host?: boolean;
+  /** An admin's own connection: show "Put every appointment on my calendar". */
+  canMirror?: boolean;
 }) {
   const google = connections.find((c) => c.provider === 'google');
   // Direct Google sign-in is optional and hidden until an admin sets it up; the calendar link below works for everyone.
@@ -92,6 +97,20 @@ export function CalendarConnections({
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" name="import_busy" defaultChecked={google.import_busy} /> Treat my busy times as unavailable in HomeQuote
               </label>
+              {canMirror && (
+                <>
+                  <input type="hidden" name="mirror_field" value="1" />
+                  <label className="flex items-start gap-2 text-sm">
+                    <input type="checkbox" name="mirror_all_appointments" defaultChecked={!!google.mirror_all_appointments} className="mt-1" />
+                    <span>
+                      Put every appointment on my calendar
+                      <span className="block text-xs text-muted-foreground">
+                        Homeowner appointments for every contractor and every sales meeting with a contractor, added, moved and removed automatically.
+                      </span>
+                    </span>
+                  </label>
+                </>
+              )}
               <Button type="submit" size="sm" variant="outline">Save</Button>
             </form>
             <div className="flex flex-wrap gap-2">

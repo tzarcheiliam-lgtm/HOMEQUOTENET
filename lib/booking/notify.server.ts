@@ -2,6 +2,7 @@
 import 'server-only';
 import { createHash, createHmac } from 'node:crypto';
 import { after } from 'next/server';
+import { flushCalendarSyncSoon } from '@/lib/calendar/sync.server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { gmailEnvironmentReady, sendGmailMessage } from '@/lib/emails/gmail';
 import type { MailAttachment } from '@/lib/emails/gmail-message';
@@ -539,6 +540,8 @@ export async function notifyBookingChange(event: BookingChange, deps: NotifyDeps
  * tick (runBookingNotifications) is the backstop.
  */
 export function notifyBookingSoon(event: BookingChange, deps: NotifyDeps = {}): void {
+  // The booking also changed a calendar event (the database queued it): deliver it now, not at the next tick.
+  flushCalendarSyncSoon();
   try {
     after(async () => {
       await notifyBookingChange(event, deps);

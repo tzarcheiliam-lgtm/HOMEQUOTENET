@@ -10,6 +10,7 @@ import { listCallers, nextProspectIdFor, nextProspectInContext, type ProspectFil
 import { contextFrom, contextQuery, hasListContext, withContext } from '@/lib/calls/context';
 import { flushNotificationsSoon } from '@/lib/notifications/outbox';
 import { runTextRemindersSoon } from '@/lib/sms/reminders';
+import { flushCalendarSyncSoon } from '@/lib/calendar/sync.server';
 import {
   prospectPatchFor,
   validateOutcome,
@@ -224,6 +225,7 @@ export async function logCallOutcome(
       });
     if (sErr) return { ok: false, error: sErr.message };
     flushNotificationsSoon();
+    flushCalendarSyncSoon();
     runTextRemindersSoon();
   }
 
@@ -375,6 +377,7 @@ export async function setSalesAppointmentStatus(fd: FormData): Promise<void> {
   if (error) throw new Error(error.message);
 
   flushNotificationsSoon();
+  flushCalendarSyncSoon();
   runTextRemindersSoon();
   revalidatePath('/app/calls/appointments');
   revalidatePath(`/app/calls/${appt.prospect_id}`);
@@ -546,6 +549,7 @@ export async function updateSalesAppointment(_prev: EditMeetingState, fd: FormDa
     await supabase.from('contractor_prospects').update({ appointment_at: at, updated_by: me.id }).eq('id', m.prospect_id);
   }
   flushNotificationsSoon();
+  flushCalendarSyncSoon();
   runTextRemindersSoon();
   revalidatePath('/app/calls/appointments');
   revalidatePath(`/app/calls/${m.prospect_id}`);

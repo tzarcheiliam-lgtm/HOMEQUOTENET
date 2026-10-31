@@ -114,6 +114,29 @@ describe('calendar sync outbox trigger', () => {
     //  the worker treats a missing appointment as "remove from calendars".)
   });
 
+  it('0073: sales meetings with contractors queue their own jobs (kind), coalesced, next to appointments', async () => {
+    const pr = (await q<{ id: string }>(`insert into public.contractor_prospects(company_name, phone) values ('ACME Roofing','(818) 555-0199') returning id`))[0].id;
+    const s = (await q<{ id: string }>(`insert into public.prospect_sales_appointments(prospect_id, scheduled_at) values ($1, now() + interval '2 days') returning id`, [pr]))[0].id;
+    await q(`update public.prospect_sales_appointments set scheduled_at = now() + interval '3 days' where id=$1`, [s]);
+    await q(`update public.prospect_sales_appointments set status='cancelled' where id=$1`, [s]);
+    const jobs = await q(`select * from public.calendar_sync_jobs where appointment_id=$1`, [s]);
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]).toMatchObject({ kind: 'sales_meeting', contractor_id: null });
+    const claimed = await q(`select * from public.claim_calendar_sync_jobs(50)`);
+    expect(claimed.find((j) => j.appointment_id === s)?.kind).toBe('sales_meeting');
+    // Homeowner appointment jobs are still 'appointment'.
+    const a = (await q<{ id: string }>(`insert into public.appointments(assignment_id,scheduled_at) values ($1, now() + interval '4 days') returning id`, [id.assignA]))[0].id;
+    expect((await q(`select kind from public.calendar_sync_jobs where appointment_id=$1`, [a]))[0].kind).toBe('appointment');
+    // One mapping row per kind + item + calendar.
+    const conn = (await q<{ id: string }>(`insert into public.calendar_connections(user_id, contractor_id, provider, encrypted_credentials, mirror_all_appointments) values ($1, null, 'google', 'x', true) returning id`, [id.admin]))[0].id;
+    await q(`insert into public.appointment_calendar_events(kind, appointment_id, connection_id, external_event_id) values ('sales_meeting', $1, $2, 'e1')`, [s, conn]);
+    await expect(q(`insert into public.appointment_calendar_events(kind, appointment_id, connection_id, external_event_id) values ('sales_meeting', $1, $2, 'e2')`, [s, conn])).rejects.toThrow();
+    await q(`insert into public.appointment_calendar_events(kind, appointment_id, connection_id, external_event_id) values ('sales_meeting', $1, $2, 'e3') on conflict (kind, appointment_id, connection_id) do update set external_event_id = excluded.external_event_id`, [s, conn]);
+    // The admin reads their own setting; nobody writes it from the client.
+    expect((await as(id.admin, () => q(`select mirror_all_appointments from public.calendar_connections where id=$1`, [conn])))[0].mirror_all_appointments).toBe(true);
+    await expect(as(id.admin, () => q(`update public.calendar_connections set mirror_all_appointments=false where id=$1`, [conn]))).rejects.toThrow();
+  });
+
   it('only service_role may claim jobs', async () => {
     await expect(as(id.ownerA, () => q(`select * from public.claim_calendar_sync_jobs(5)`))).rejects.toThrow();
   });
