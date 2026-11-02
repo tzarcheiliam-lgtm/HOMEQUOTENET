@@ -10,6 +10,7 @@ const ITEMS = [
   { href: '/app/calls/appointments', label: 'Appointments', exact: false },
   { href: '/app/calls/emails', label: 'Emails', exact: false },
   { href: '/app/calls/stats', label: 'Stats', exact: false },
+  { href: '/app/pitch', label: 'Sales deck', exact: false },
 ];
 
 /** Section switcher for the calling workspace, under the page header. */
