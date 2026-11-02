@@ -45,6 +45,8 @@ export function DraftWorkspace({ init }: { init: DraftInit }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [armed, setArmed] = useState<FieldType | null>(null);
   const [activeSigner, setActiveSigner] = useState(1);
+  const [quickName, setQuickName] = useState('');
+  const [quickEmail, setQuickEmail] = useState('');
   const [save, setSave] = useState<SaveState>('saved');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -193,6 +195,16 @@ export function DraftWorkspace({ init }: { init: DraftInit }) {
     setFields((fs) => fs.map((f) => (f.recipient_index === i + 1 ? { ...f, recipient_index: j + 1 } : f.recipient_index === j + 1 ? { ...f, recipient_index: i + 1 } : f)));
     touch();
   };
+  // One-tap assignment for the selected field, without leaving the fields step. Also lets you add the
+  // first signers right here, so a field can be assigned before the Signers step has been visited.
+  const assignSelected = (idx: number | null) => { if (selected) updateField(selected, { recipient_index: idx }); };
+  const quickAdd = () => {
+    const name = quickName.trim(), email = quickEmail.trim();
+    if (!selected || !name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || recipients.length >= 10) return;
+    setRecipients((rs) => [...rs, { key: newKey(), name, email }]);
+    updateField(selected, { recipient_index: recipients.length + 1 });
+    setQuickName(''); setQuickEmail(''); touch();
+  };
   const removeSigner = (i: number) => {
     setRecipients((rs) => rs.filter((_, k) => k !== i));
     setFields((fs) => fs.map((f) => (f.recipient_index === i + 1 ? { ...f, recipient_index: null } : f.recipient_index && f.recipient_index > i + 1 ? { ...f, recipient_index: f.recipient_index - 1 } : f)));
@@ -247,7 +259,7 @@ export function DraftWorkspace({ init }: { init: DraftInit }) {
   const pageList = step === 'review' ? [page] : init.pages.map((_, i) => i + 1);
 
   return (
-    <div className="space-y-4">
+    <div className={`space-y-4 ${step === 'fields' && sel ? 'pb-44 sm:pb-28' : ''}`}>
       {/* stepper */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <ol className="flex items-center gap-1 text-sm">
@@ -463,6 +475,39 @@ export function DraftWorkspace({ init }: { init: DraftInit }) {
           </div>
         </aside>
       </div>
+
+      {step === 'fields' && sel && (
+        <div role="region" aria-label="Assign selected field" className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 p-3 shadow-[0_-8px_24px_-12px_rgba(0,0,0,0.25)] backdrop-blur">
+          <div className="mx-auto flex max-w-5xl flex-col gap-2">
+            <p className="text-xs font-medium text-muted-foreground">Assign this {FIELD_TYPE_LABELS[sel.type].toLowerCase()} field to:</p>
+            <div className="flex flex-wrap items-center gap-2">
+              {recipients.map((r, i) => {
+                const c = colorFor(i + 1);
+                const on = sel.recipient_index === i + 1;
+                return (
+                  <button key={r.key} type="button" onClick={() => assignSelected(i + 1)} aria-pressed={on}
+                    className="inline-flex h-10 items-center gap-2 rounded-md border px-3 text-sm font-medium"
+                    style={{ borderColor: c.stroke, background: on ? c.stroke : c.fill, color: on ? '#fff' : undefined }}>
+                    <span className="size-2.5 rounded-sm" style={{ background: on ? '#fff' : c.stroke }} />
+                    {r.name || `Signer ${i + 1}`}
+                  </button>
+                );
+              })}
+              <button type="button" onClick={() => assignSelected(null)} aria-pressed={sel.recipient_index === null}
+                className={`inline-flex h-10 items-center rounded-md border px-3 text-sm ${sel.recipient_index === null ? 'bg-muted font-medium' : 'text-muted-foreground'}`}>
+                {sel.type === 'text' ? 'Nobody (sender fills it)' : 'Unassigned'}
+              </button>
+              {recipients.length < 10 && (
+                <form className="flex flex-wrap items-center gap-2 sm:ml-auto" onSubmit={(e) => { e.preventDefault(); quickAdd(); }}>
+                  <Input className="h-10 w-36" placeholder="New signer name" aria-label="New signer name" maxLength={200} value={quickName} onChange={(e) => setQuickName(e.target.value)} />
+                  <Input className="h-10 w-48" type="email" inputMode="email" placeholder="Email" aria-label="New signer email" maxLength={254} value={quickEmail} onChange={(e) => setQuickEmail(e.target.value)} />
+                  <Button type="submit" size="sm" variant="outline" disabled={!quickName.trim() || !quickEmail.trim()}><UserPlus className="size-4" /> Add &amp; assign</Button>
+                </form>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
