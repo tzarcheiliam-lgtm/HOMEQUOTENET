@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { eventIdempotencyKey, planWorkflow, type Workflow, type WorkflowEvaluationContext, type WorkflowEvent } from '@/lib/workflows';
+import { parseWorkflowEvent } from '@/lib/workflows/events';
 import { SUPERSEDED_WORKFLOW_TEMPLATES, supersededByNativeBooking } from '@/lib/workflows/native-booking';
 
 /**
@@ -55,5 +56,42 @@ describe('built-in booking notices vs the old appointment confirmation templates
     expect(supersededByNativeBooking('appointment_confirmation', 'lead.created', { calendarId: id() })).toBe(false);
     expect(supersededByNativeBooking('appointment_confirmation', 'appointment.booked', { calendarId: '' })).toBe(false);
     expect(supersededByNativeBooking(null, 'appointment.booked', { calendarId: id() })).toBe(false);
+  });
+});
+
+/**
+ * Regression (2026-11-04): the 0070 emitter appends calendarId / source / endsAt to every appointment.* payload,
+ * but the strict payload schemas rejected them ("Unrecognized key(s) in object: 'endsAt', 'source', 'calendarId'"),
+ * so every calendar booking / change event failed dispatch until dead-lettered and each tick reported a failure.
+ * These payloads mirror what emit_appointment_workflow_events() writes for a contractor-calendar booking.
+ */
+describe('appointment events from booking calendars parse', () => {
+  const leadId = id();
+  const contractorId = id();
+  const envelope = (type: string, payload: Record<string, unknown>) => ({
+    id: id(), type, schemaVersion: 1, idempotencyKey: `${type}|appointment:${id()}`,
+    occurredAt: '2026-11-02T23:19:15.939299+00:00', contractorId, actorType: 'contact', actorId: null,
+    entityType: 'appointment', entityId: id(), leadId, source: 'db:appointments', correlationId: null, causationId: null,
+    payload, metadata: {},
+  });
+  const base = { leadId, assignmentId: id(), contractorId, appointmentId: id(), scheduledAt: '2026-11-04T20:00:00+00:00' };
+  const calendar = { calendarId: id(), source: 'ai', endsAt: '2026-11-04T20:30:00+00:00' };
+
+  it('accepts calendarId / source / endsAt on booked, cancelled, completed, no-show and rescheduled', () => {
+    expect(() => parseWorkflowEvent(envelope('appointment.booked', { ...base, ...calendar }))).not.toThrow();
+    for (const type of ['appointment.cancelled', 'appointment.completed', 'appointment.no_show']) {
+      expect(() => parseWorkflowEvent(envelope(type, { ...base, ...calendar, fromStatus: 'scheduled', toStatus: 'cancelled' }))).not.toThrow();
+    }
+    expect(() => parseWorkflowEvent(envelope('appointment.rescheduled', { ...base, ...calendar, previousScheduledAt: '2026-11-03T20:00:00+00:00' }))).not.toThrow();
+  });
+
+  it('still accepts the older payloads without calendar fields', () => {
+    expect(() => parseWorkflowEvent(envelope('appointment.booked', base))).not.toThrow();
+  });
+
+  it('still rejects unknown keys and malformed calendar fields', () => {
+    expect(() => parseWorkflowEvent(envelope('appointment.booked', { ...base, surprise: 1 }))).toThrow(/Unrecognized key/);
+    expect(() => parseWorkflowEvent(envelope('appointment.booked', { ...base, calendarId: 'not-a-uuid' }))).toThrow();
+    expect(() => parseWorkflowEvent(envelope('appointment.booked', { ...base, endsAt: 'tomorrow' }))).toThrow();
   });
 });

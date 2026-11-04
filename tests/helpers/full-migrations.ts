@@ -3,8 +3,9 @@ import { PGlite } from '@electric-sql/pglite';
 
 /**
  * An isolated, disposable Postgres (PGlite, in-process) with EVERY real migration in supabase/migrations applied in
- * filename order. Only Supabase's platform pieces are stubbed (auth.users/auth.uid, storage tables, the API roles) and
- * the pgcrypto CREATE EXTENSION line is skipped (gen_random_uuid is built in). It never touches a shared database.
+ * filename order. Only Supabase's platform pieces are stubbed (auth.users/auth.uid, storage tables, the API roles,
+ * cron / net / vault for the scheduler) and the pgcrypto / pg_net / pg_cron CREATE EXTENSION lines are skipped
+ * (gen_random_uuid is built in; the others are stubbed). It never touches a shared database.
  * Set `app.uid` (set_config) to act as a signed-in user.
  */
 export async function fullSchema(opts: { supabaseGrants?: boolean } = {}): Promise<PGlite> {
@@ -22,6 +23,21 @@ export async function fullSchema(opts: { supabaseGrants?: boolean } = {}): Promi
     create function storage.foldername(name text) returns text[] language sql as $$ select string_to_array(name,'/') $$;
     grant usage on schema auth, storage to anon, authenticated, service_role;
     grant execute on all functions in schema auth to anon, authenticated, service_role;
+    -- Supabase Cron (pg_cron), pg_net and Vault are platform extensions PGlite doesn't ship (migration 0074).
+    -- Stubs with the same call shapes: cron.schedule upserts by name, net.http_post records the request.
+    create schema cron; create schema net; create schema vault;
+    create table cron.job (jobid bigserial primary key, jobname text unique, schedule text not null, command text not null, active boolean not null default true);
+    create table cron.job_run_details (jobid bigint, start_time timestamptz, end_time timestamptz);
+    create function cron.schedule(job_name text, schedule text, command text) returns bigint language sql as $$
+      insert into cron.job (jobname, schedule, command) values (job_name, schedule, command)
+      on conflict (jobname) do update set schedule = excluded.schedule, command = excluded.command returning jobid $$;
+    create table net.http_request_queue (id bigserial primary key, method text, url text, headers jsonb, body jsonb, timeout_milliseconds int);
+    create table net._http_response (id bigint, status_code int, content_type text, headers jsonb, content text, timed_out boolean, error_msg text, created timestamptz not null default now());
+    create function net.http_post(url text, body jsonb default '{}'::jsonb, params jsonb default '{}'::jsonb,
+      headers jsonb default '{"Content-Type": "application/json"}'::jsonb, timeout_milliseconds int default 2000) returns bigint language sql as $$
+      insert into net.http_request_queue (method, url, headers, body, timeout_milliseconds) values ('POST', url, headers, body, timeout_milliseconds) returning id $$;
+    create table vault.secrets (name text primary key, secret text not null);
+    create view vault.decrypted_secrets as select name, secret as decrypted_secret from vault.secrets;
   `);
   // Real Supabase grants new public tables to the API roles by default; RLS then decides. Opt in to mimic that.
   if (opts.supabaseGrants) {
@@ -30,7 +46,7 @@ export async function fullSchema(opts: { supabaseGrants?: boolean } = {}): Promi
       alter default privileges in schema public grant execute on functions to anon, authenticated, service_role;`);
   }
   for (const f of readdirSync(dir).filter((x) => x.endsWith('.sql')).sort()) {
-    const sql = readFileSync(new URL(f, dir), 'utf8').replace(/create extension if not exists ["']?pgcrypto["']?[^;]*;/gi, '');
+    const sql = readFileSync(new URL(f, dir), 'utf8').replace(/create extension if not exists ["']?(pgcrypto|pg_net|pg_cron)["']?[^;]*;/gi, '');
     try { await db.exec(sql); } catch (e) { throw new Error(`migration ${f} failed: ${(e as Error).message}`); }
   }
   return db;

@@ -169,7 +169,7 @@ export async function automationStatuses(db: Db = createAdminClient(), now = new
     if (sw.attention) return { ...base, state: 'attention', note: sw.attention };
     const stale = STALE_AFTER[a.id];
     if (stale && (!p?.lastRunAt || now.getTime() - new Date(p.lastRunAt).getTime() > stale)) {
-      return { ...base, state: 'attention', note: p?.lastRunAt ? `Hasn’t run since ${ago(new Date(p.lastRunAt), now)}. Check the GitHub Actions schedule.` : 'No runs recorded yet. Check the GitHub Actions secrets.' };
+      return { ...base, state: 'attention', note: p?.lastRunAt ? `Hasn’t run since ${ago(new Date(p.lastRunAt), now)}. Check Supabase Cron (select * from scheduler_status) and the GitHub Actions backup.` : 'No runs recorded yet. Check that its secret is in Supabase Vault (migration 0074) or GitHub Actions.' };
     }
     if (base.failed7d > 0) return { ...base, state: 'attention', note: `${base.failed7d} failed in the last 7 days.` };
     return { ...base, state: 'on', note: sw.note ?? null };

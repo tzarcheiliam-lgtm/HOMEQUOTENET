@@ -60,22 +60,22 @@ const out = (unit: string): AutomationRecord => ({ table: 'sms_messages', at: 'c
 
 export const AUTOMATIONS: Automation[] = [
   // ---------------------------------------------------------------- schedulers
-  { id: 'workflow_tick', area: 'scheduler', name: 'Main scheduler (every 5 minutes)', trigger: 'schedule', when: 'Every 5 minutes (GitHub Actions: Workflow tick)',
+  { id: 'workflow_tick', area: 'scheduler', name: 'Main scheduler (every 5 minutes)', trigger: 'schedule', when: 'Every 5 minutes (Supabase Cron: hq-workflow-tick; GitHub Actions as backup)',
     what: 'Runs workflows that are due, sends waiting notifications, reminder and follow-up texts, the texting health check, calendar and signing upkeep, and quiz-lead retries.',
     requiresEnv: ['WORKFLOW_CRON_SECRET'], record: { table: 'automation_runs', at: 'started_at', where: [{ col: 'job', op: 'eq', value: 'workflow_tick' }], failed: { col: 'ok', values: ['false'] }, unit: 'run' },
-    file: '.github/workflows/workflow-tick.yml → app/api/workflows/tick/route.ts' },
-  { id: 'meta_tick', area: 'scheduler', name: 'Meta scheduler (every 5 minutes)', trigger: 'schedule', when: 'Every 5 minutes (GitHub Actions: Meta tick)',
+    file: 'supabase/migrations/0074_scheduler_pg_cron.sql + .github/workflows/workflow-tick.yml → app/api/workflows/tick/route.ts' },
+  { id: 'meta_tick', area: 'scheduler', name: 'Meta scheduler (every 5 minutes)', trigger: 'schedule', when: 'Every 5 minutes (Supabase Cron: hq-meta-tick; GitHub Actions as backup)',
     what: 'Sends queued conversion events to Meta and refreshes ad reporting every 6 hours.',
     requiresEnv: ['META_TICK_SECRET'], record: { table: 'automation_runs', at: 'started_at', where: [{ col: 'job', op: 'eq', value: 'meta_tick' }], failed: { col: 'ok', values: ['false'] }, unit: 'run' },
-    file: '.github/workflows/meta-tick.yml → app/api/meta/tick/route.ts' },
-  { id: 'meta_studio_tick', area: 'scheduler', name: 'Meta Ads Studio scheduler (hourly)', trigger: 'schedule', when: 'Every hour at :17 (GitHub Actions: Meta Studio tick)',
+    file: 'supabase/migrations/0074_scheduler_pg_cron.sql + .github/workflows/meta-tick.yml → app/api/meta/tick/route.ts' },
+  { id: 'meta_studio_tick', area: 'scheduler', name: 'Meta Ads Studio scheduler (hourly)', trigger: 'schedule', when: 'Every hour at :17 (Supabase Cron: hq-meta-studio-tick; GitHub Actions as backup)',
     what: 'Reads live campaign state from Meta and checks your ad rules. With live changes off it only records suggestions.',
     requiresEnv: ['META_TICK_SECRET'], record: { table: 'automation_runs', at: 'started_at', where: [{ col: 'job', op: 'eq', value: 'meta_studio_tick' }], failed: { col: 'ok', values: ['false'] }, unit: 'run' },
-    settingsHref: '/app/meta-ads/rules', file: '.github/workflows/meta-studio-tick.yml → app/api/meta/studio-tick/route.ts' },
-  { id: 'ai_calling_tick', area: 'scheduler', name: 'AI calling scheduler (every 5 minutes)', trigger: 'schedule', when: 'Every 5 minutes (GitHub Actions: AI calling tick)',
+    settingsHref: '/app/meta-ads/rules', file: 'supabase/migrations/0074_scheduler_pg_cron.sql + .github/workflows/meta-studio-tick.yml → app/api/meta/studio-tick/route.ts' },
+  { id: 'ai_calling_tick', area: 'scheduler', name: 'AI calling scheduler (every 5 minutes)', trigger: 'schedule', when: 'Every 5 minutes (Supabase Cron: hq-ai-calling-tick; GitHub Actions as backup)',
     what: 'Dials AI calls that are due, only when AI calling is switched on.',
     requiresEnv: ['AI_CALLING_CRON_SECRET'], record: { table: 'automation_runs', at: 'started_at', where: [{ col: 'job', op: 'eq', value: 'ai_calling_tick' }], failed: { col: 'ok', values: ['false'] }, unit: 'run' },
-    settingsHref: '/app/ai-calls', file: '.github/workflows/ai-calling-tick.yml → app/api/ai-calling/tick/route.ts' },
+    settingsHref: '/app/ai-calls', file: 'supabase/migrations/0074_scheduler_pg_cron.sql + .github/workflows/ai-calling-tick.yml → app/api/ai-calling/tick/route.ts' },
 
   // ---------------------------------------------------------------- texting
   { id: 'sms_bridge', area: 'texting', name: 'Mac texting bridge', trigger: 'always_on', when: 'Always, on your Mac (checks in every few seconds)',

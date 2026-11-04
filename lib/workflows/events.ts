@@ -64,6 +64,13 @@ export type WorkflowActorType = (typeof WORKFLOW_ACTOR_TYPES)[number];
 // ---------------------------------------------------------------------------
 const nullableUuid = uuidSchema.nullable();
 const assignmentScope = { leadId: uuidSchema, assignmentId: uuidSchema, contractorId: uuidSchema };
+// Since migration 0070 the appointment emitter appends calendarId / source / endsAt (nulls stripped) to every
+// appointment.* payload. The strict schemas must accept them, or every native booking event fails dispatch.
+const bookingCalendarFields = {
+  calendarId: uuidSchema.optional(),
+  source: z.string().max(40).optional(),
+  endsAt: isoDateTimeSchema.optional(),
+};
 const appointmentChange = z
   .object({
     ...assignmentScope,
@@ -71,6 +78,7 @@ const appointmentChange = z
     scheduledAt: isoDateTimeSchema.nullable(),
     fromStatus: appointmentStatusSchema.nullable(),
     toStatus: appointmentStatusSchema,
+    ...bookingCalendarFields,
   })
   .strict();
 
@@ -125,6 +133,7 @@ export const WORKFLOW_EVENT_PAYLOAD_SCHEMAS = {
       scheduledAt: isoDateTimeSchema.nullable(),
       bookingProvider: z.string().max(40).optional(),
       externalBookingId: z.string().max(500).optional(),
+      ...bookingCalendarFields,
     })
     .strict(),
   'appointment.cancelled': appointmentChange,
@@ -136,6 +145,7 @@ export const WORKFLOW_EVENT_PAYLOAD_SCHEMAS = {
       appointmentId: uuidSchema,
       scheduledAt: isoDateTimeSchema.nullable(),
       previousScheduledAt: isoDateTimeSchema.nullable(),
+      ...bookingCalendarFields,
     })
     .strict(),
   'estimate.sent': z

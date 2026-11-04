@@ -47,9 +47,11 @@ services (pools, HVAC, roofing, fencing, general contractors, etc.):
   applications)
 - **Vitest** for unit/integration tests (some hit a *real* Supabase DB inside
   rolled-back transactions — see §13), **Playwright** installed as a dev dep
-- Deploys to **Vercel**; a durable workflow scheduler runs via **GitHub
-  Actions** cron (`/api/workflows/tick` every 5 minutes), not Vercel Cron
-  (chosen so it works on the Hobby plan and can't fail a deploy)
+- Deploys to **Vercel**; the schedulers (`/api/workflows/tick`, Meta, Meta
+  Studio, AI calling) are called by **Supabase Cron** (pg_cron + pg_net,
+  migration 0074, §50), with the original **GitHub Actions** crons kept as a
+  backup. Not Vercel Cron (Hobby plan only allows daily crons). GitHub's
+  `*/5` schedule proved best-effort to the point of firing every 3-8 hours.
 - Package name: `homequote-network`, version `0.1.0`, private
 
 ## 3. Repository Structure
@@ -179,7 +181,8 @@ auth callback route handler).
 - `POST /api/ai-calling/tick` — AI-calling scheduler gate (Bearer `AI_CALLING_CRON_SECRET`); does not dial yet (§18)
 - `GET /api/integrations/google-calendar/oauth/{start,callback}` — contractor Google Calendar connect (§24); `GET /api/calendar/feed/[token]` (public, token = credential) and `GET /api/calendar/appointment/[id]` (.ics) (§24); `GET /api/calls/appointments/[id]/ics` — one sales appointment as .ics for "Add to Apple Calendar" (call-workspace roles, RLS) (§41)
 - `POST /api/workflows/tick` — the workflow scheduler tick (Bearer
-  `WORKFLOW_CRON_SECRET`), called every 5 min by the GitHub Actions workflow
+  `WORKFLOW_CRON_SECRET`), called every 5 min by Supabase Cron job
+  `hq-workflow-tick` (§50) and, as a backup, the GitHub Actions workflow
   `.github/workflows/workflow-tick.yml`
 
 ### middleware.ts
@@ -559,9 +562,10 @@ or secrets by design).
   every side-effecting handler so a retried step never double-sends.
 - **Scheduler**: `processWorkflowTick()` in `lib/workflows/runtime.server.ts`,
   invoked by `POST /api/workflows/tick` (Bearer `WORKFLOW_CRON_SECRET`),
-  called every 5 minutes by GitHub Actions (`.github/workflows/
-  workflow-tick.yml`) — chosen over Vercel Cron because Vercel Hobby only
-  allows daily crons and a scheduler failure must never fail a deploy. Due
+  called every 5 minutes by Supabase Cron (`hq-workflow-tick`, §50) with
+  GitHub Actions (`.github/workflows/workflow-tick.yml`) as a backup — not
+  Vercel Cron because Vercel Hobby only allows daily crons and a scheduler
+  failure must never fail a deploy. Due
   runs are found via `resume_at`/lease (`locked_by`/`locked_until`) so no
   in-process `setTimeout` is used — restart-safe.
 - **Retention/pruning**: `pruneWorkflowHistory()` runs on every tick
@@ -1603,3 +1607,11 @@ Reuses what exists: `sms_reminders` (0068) is the one claim table (unique kind +
 - **ROI math**: `lib/pitch/roi.ts` `calculateRoi` — booked x held% = held; x close% = closed jobs; x contract = revenue; x margin = gross profit; investment = package + ad budget; contribution = gross profit - investment; return = contribution / investment; break-even jobs = investment / (contract x margin). Inputs are clamped. Tests: `tests/pitch-roi.test.ts` (math + config invariants: one recommended tier, notes on every slide, comparison rows reference real tiers).
 - **Presenting**: slides render on a fixed 1600x900 canvas scaled to the screen (`components/pitch/deck.tsx`). Keys: ← → / Space / PageUp/Down, Home/End, **P** pricing, **G** slide menu, **F** full screen, **N** presenter window. Deep links: `/app/pitch#pricing`, `#roi`, etc. (ids in `SLIDES`). Controls fade after 2.5 s idle. The chosen package is shared across pricing, comparison, calculator and the final choice slide. Presenter window (`components/pitch/presenter.tsx`, `?view=presenter`) syncs over `BroadcastChannel('hq-pitch-deck')` (same browser): notes, timer, next slide, Back/Next and jump buttons drive the deck; FAQ decisions and proposed-pricing warnings show there only. Share the deck tab, keep the presenter window private.
 - **Stack**: React + Tailwind + `motion` (Framer Motion, `motion/react`) + lucide; styles in `components/pitch/pitch.css` inside `@layer components` (so Tailwind utilities on a slide win). Photos from `public/images/general-contractors/`, logo via `BrandLogo`.
+
+## 50. Reliable scheduler: Supabase Cron + pg_net (migration 0074, 2026-11-04; applied to production 2026-11-04)
+- **Why**: GitHub Actions runs `*/5 * * * *` best-effort, and for this repo it fired every ~3-8 h (210 "Workflow tick" runs 2026-09-25 → 2026-11-04 instead of ~11,500). Everything on the main tick (reminder texts, follow-ups, no-show recovery, booking notices, push backstop, texting-down alert, signing upkeep) ran hours late.
+- **What**: `supabase/migrations/0074_scheduler_pg_cron.sql` enables `pg_net` + `pg_cron` and schedules `hq-workflow-tick` (`*/5`), `hq-meta-tick` (`1-59/5`), `hq-ai-calling-tick` (`2-59/5`), `hq-meta-studio-tick` (`17 * * * *`) and `hq-cron-history-cleanup` (daily, keeps 7 days of `cron.job_run_details` / `scheduler_requests`). Each calls `public.scheduler_tick(job)` (security definer, `search_path=''`, EXECUTE revoked from public/anon/authenticated), which reads the Bearer secret from **Supabase Vault** and POSTs via `net.http_post` to `https://homequotenet.com` + the route (override: vault secret `scheduler_base_url`). Timeouts 90 s (workflow, AI calling) / 150 s (Meta).
+- **Secrets** (never in git; Vault names): `scheduler_workflow_tick_secret` = `WORKFLOW_CRON_SECRET`, `scheduler_meta_tick_secret` = `META_TICK_SECRET` (Meta + Meta Studio), `scheduler_ai_calling_tick_secret` = `AI_CALLING_CRON_SECRET`. A job with no Vault secret is a silent no-op. The Vercel values are "Sensitive" (not readable back), so setting Vault needs the original values or a rotation (Vercel + Vault + GitHub secret, then redeploy).
+- **Backup / overlap**: the GitHub workflows still run. Overlapping ticks are safe (claims use `FOR UPDATE SKIP LOCKED` leases or unique claim rows in `sms_reminders` / booking reminder claims).
+- **Observability**: `public.scheduler_requests` (job, pg_net request id, time; RLS on, no policies) and view `public.scheduler_status` (joins `net._http_response`, kept ~6 h by pg_net) — SQL editor only. `/app/automations` scheduler entries now name Supabase Cron, and the stale note points at Vault/`scheduler_status`.
+- **Same day, workflow events fix (no migration)**: since 0070 the appointment emitter appends `calendarId`/`source`/`endsAt` to every `appointment.*` payload, but the strict Zod schemas in `lib/workflows/events.ts` rejected them (`unrecognized_keys`), so every calendar booking/change event failed dispatch until dead-lettered (3 events in production: 2 booked, 1 cancelled; no live workflow listened, nothing customer-facing lost) and every tick reported `ok=false`. The schemas now accept those three optional fields (`bookingCalendarFields`); regression test in `tests/workflow-native-booking.test.ts`. **Still open**: `appointment.cancelled/completed/no_show/rescheduled` require a contractor (`contractorScope: 'required'`, non-null `assignmentId`/`contractorId`), so a change to a team-calendar appointment with no contractor would still fail dispatch.
