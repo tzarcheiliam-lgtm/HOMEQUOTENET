@@ -11,9 +11,10 @@ import type { SourcedBusiness } from './catalog';
  * rather than handed made-up rows.
  *
  * Setup: create an API key with the "Places API (New)" enabled and set
- * GOOGLE_PLACES_API_KEY (server-side only — never NEXT_PUBLIC_). Requests
- * use the Pro field mask (contact fields), billed per request; a 100-per-
- * caller run is typically 15–30 requests.
+ * GOOGLE_PLACES_API_KEY (server-side only — never NEXT_PUBLIC_). The field
+ * mask asks for contact fields (phone, website), which Google bills at its
+ * higher Text Search tier, per request. Runs search the map grid in
+ * lib/prospecting/grid.ts and are capped per run (MAX_REQUESTS_PER_RUN).
  */
 
 const ENDPOINT = 'https://places.googleapis.com/v1/places:searchText';
@@ -92,21 +93,30 @@ export function toSourced(p: PlacesResult): SourcedBusiness {
   };
 }
 
+export interface SearchOutcome {
+  requests: number;
+  /** Listings Google returned across the pages fetched. */
+  results: number;
+  /** True when every page Google offered was read (onPage never asked to stop). */
+  complete: boolean;
+}
+
 /**
  * Runs one text query through every page Google will give (max 60 results
- * over 3 pages). `onPage` receives each page as it lands so the runner can
- * stop early once it has enough.
+ * over 3 pages). `onPage` receives each page as it lands and returns true to
+ * stop early. `locationRestriction` keeps results inside one map square.
  */
 export async function searchText(
   textQuery: string,
-  onPage: (results: SourcedBusiness[]) => Promise<boolean | void>,
-  opts: { maxPages?: number; signal?: AbortSignal } = {}
-): Promise<number> {
+  onPage: (results: SourcedBusiness[]) => Promise<boolean | void> | boolean | void,
+  opts: { maxPages?: number; signal?: AbortSignal; locationRestriction?: unknown } = {}
+): Promise<SearchOutcome> {
   const key = process.env[PROVIDER_ENV];
   if (!key) throw new Error(`${PROVIDER_ENV} is not configured`);
 
   let pageToken: string | undefined;
   let requests = 0;
+  let results = 0;
   const maxPages = opts.maxPages ?? 3;
 
   for (let page = 0; page < maxPages; page++) {
@@ -122,6 +132,7 @@ export async function searchText(
         pageSize: 20,
         languageCode: 'en',
         regionCode: 'US',
+        ...(opts.locationRestriction ? { locationRestriction: opts.locationRestriction } : {}),
         ...(pageToken ? { pageToken } : {}),
       }),
       signal: opts.signal,
@@ -131,10 +142,12 @@ export async function searchText(
     if (!res.ok) {
       throw new Error(body.error?.message ?? `Places API error ${res.status}`);
     }
-    const stop = await onPage((body.places ?? []).map(toSourced));
-    if (stop === true) break;
+    const places = body.places ?? [];
+    results += places.length;
+    const stop = await onPage(places.map(toSourced));
+    if (stop === true) return { requests, results, complete: !body.nextPageToken };
     if (!body.nextPageToken) break;
     pageToken = body.nextPageToken;
   }
-  return requests;
+  return { requests, results, complete: true };
 }

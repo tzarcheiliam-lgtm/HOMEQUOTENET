@@ -162,7 +162,8 @@ auth callback route handler).
 - `/app/lead-intake`, `/app/audit` (admin)
 
 ### API (`app/api/**`, route handlers, not Server Actions)
-- `POST /api/calls/refresh` — triggers a Refresh Prospects run (Google Places)
+- `POST /api/calls/refresh` — triggers a Refresh Prospects run (Google Places, map grid; §50)
+- `POST /api/calls/import-cslb` — Refresh Prospects from a CSLB license list the dialog read in the browser (§50)
 - `GET/POST /api/funnels/[slug]/session`, `POST /api/funnels/[slug]/booking` —
   funnel session state + booking confirmation callback
 - `POST /api/funnels/deliver` — cron-style delivery worker for funnel-captured
@@ -250,6 +251,7 @@ Key schema areas, by migration:
   distinct from homeowner `leads`/`appointments`
 - **0008–0010** — prospect refresh (Google Places sourcing), prospect email
   logs, Gmail connection storage, HTML email bodies
+- **0074** — `prospect_search_cells`: Refresh Prospects' map-grid search memory (§50)
 - **0011** — setter call-workspace access + `is_call_agent()`
 - **0012–0019** — lead funnels (schema, private/house sharing, GHL API
   delivery, Calendly bookings), lead review/distribution
@@ -302,9 +304,11 @@ Lives at `/app/calls` (admin/caller/setter).
   (Calls > Emails), finalized `sent` only after a Gmail provider message id
   comes back, or `failed` with the provider error; never marked sent on a
   failed request.
-- `lib/prospecting/` — `catalog.ts` (niche/category catalog), `google-places.ts`
-  (Places API v1 client), `run.ts` (Refresh Prospects run: dedupe, batching,
-  assignment to active admin/caller profiles).
+- `lib/prospecting/` — `catalog.ts` (niche/category catalog, qualify, dedupe,
+  split), `google-places.ts` (Places API v1 client), `grid.ts` (map-grid
+  squares), `cslb.ts` (CSLB license lists), `spreadsheet.ts` (.xlsx/.csv
+  reader), `run.ts` (Refresh Prospects runs for both sources: dedupe,
+  batching, assignment to active admin/caller profiles). See §50.
 - `lib/calls/` — `rules.ts` (disposition/outcome rules, required fields per
   outcome, do-not-call enforcement), `metrics.ts` (caller metrics defined
   once), `import.ts` (CSV import via `scripts/import-prospects.ts`),
@@ -1602,3 +1606,14 @@ Reuses what exists: `sms_reminders` (0068) is the one claim table (unique kind +
 - **ROI math**: `lib/pitch/roi.ts` `calculateRoi` — booked x held% = held; x close% = closed jobs; x contract = revenue; x margin = gross profit; investment = package + ad budget; contribution = gross profit - investment; return = contribution / investment; break-even jobs = investment / (contract x margin). Inputs are clamped. Tests: `tests/pitch-roi.test.ts` (math + config invariants: one recommended tier, notes on every slide, comparison rows reference real tiers).
 - **Presenting**: slides render on a fixed 1600x900 canvas scaled to the screen (`components/pitch/deck.tsx`). Keys: ← → / Space / PageUp/Down, Home/End, **P** pricing, **G** slide menu, **F** full screen, **N** presenter window. Deep links: `/app/pitch#pricing`, `#roi`, etc. (ids in `SLIDES`). Controls fade after 2.5 s idle. The chosen package is shared across pricing, comparison, calculator and the final choice slide. Presenter window (`components/pitch/presenter.tsx`, `?view=presenter`) syncs over `BroadcastChannel('hq-pitch-deck')` (same browser): notes, timer, next slide, Back/Next and jump buttons drive the deck; FAQ decisions and proposed-pricing warnings show there only. Share the deck tab, keep the presenter window private.
 - **Stack**: React + Tailwind + `motion` (Framer Motion, `motion/react`) + lucide; styles in `components/pitch/pitch.css` inside `@layer components` (so Tailwind utilities on a slide win). Photos from `public/images/general-contractors/`, logo via `BrandLogo`.
+
+## 50. Refresh Prospects: map-grid Google search + CSLB license lists (migration 0074, 2026-11-04; NOT yet applied)
+- **Why**: runs had become nearly all duplicates (Kitchen & Bath on 2026-11-03: 642 fetched, 6 added; Pool: 450 fetched, 18 added). The old plan ran the same fixed text queries every time ("<phrase> in <area>, <county>", 2 counties + 18 sub-areas), and Google returns at most 60 results per query, ranked the same way, so every run re-read the same few hundred businesses.
+- **Google, now a map grid** (`lib/prospecting/grid.ts`, `run.ts` `runRefresh`): each county box (`COUNTY_GRID`) is cut into 0.25° squares; every niche phrase is searched per square with Places `locationRestriction` (rectangle) and no place text. A square that comes back full (60 = 3 pages) is split into 4 (`outcomeFor` / `childCells`, down to `MAX_DEPTH` 4 ≈ 1.7 km), and its children are searched next. Phrase-major order (most specific phrase over the whole map first). 4 squares at a time, stops at the target count, at `MAX_REQUESTS_PER_RUN` (400 Google page requests) or after 90 s; results outside the county are still rejected by `qualify()`.
+- **Search memory** (0074 `prospect_search_cells`, PK niche_key + query + cell, status `done`|`split`, admin-only RLS): each square a run finished is saved (also on a failed run); a square cut short is not, so it is searched again. The next run starts from `frontier()`: unknown squares, children of split ones, and done squares older than `STALE_DAYS` (120). When nothing is left the done event says `exhausted` and the dialog suggests CSLB. Custom niches key as `custom:<label>`. **Before 0074 is applied the run still works**, just without memory (it says so in the progress list).
+- **Cost**: the field mask asks for phone + website, which Google bills at its higher Text Search tier per page request (about 1,000 free a month, then roughly $35 per 1,000 as of 2026-11; check Google's price list). A run is capped at 400 requests; requests and squares are in the `prospect.refresh` audit metadata and the run log.
+- **CSLB license lists** (free, `lib/prospecting/cslb.ts`): the admin downloads CSLB Data Portal → "List by Classification and County" (`CSLB_PORTAL_URL`; up to 10 classes × 10 counties, Excel .xlsx: LicenseNumber, BusinessName, Address, City, ZIP, County, PhoneNumber, Classification(s) like " C-8 | C53", Status " CLEAR", WorkersCompCoverageType, …; no emails; the download is manual and has a bot wall, so it is not fetched by the server). In the dialog: source "CSLB license list", the classes to pick are shown per niche (`NICHE_CSLB_CLASSES`: pool C-53, general and kitchen_bath B/B-2, roofing C-39, fencing C-13, hvac C-20, plumbing C-36, electrical C-10, landscaping C-27, painting C-33; custom = any class), then the file is read **in the browser** (`spreadsheet.ts`, dependency-free zip/XML reader using `DecompressionStream`; legacy .xls is refused; .csv works) and only fitting license rows are POSTed (gzipped JSON, `X-Body-Gzip: 1`) to `/api/calls/import-cslb`, which re-validates every row with zod and `qualifyCslb` (active status, plausible phone, LA/Ventura via `countyForName`, a niche class). Licensees with workers' comp go first (`rankLicenses`). Rows: `external_source='cslb'`, `external_id`=license number (so `uq_prospects_external` stops a license from ever coming back), `source='cslb'`, `category` "CSLB license #…", `primary_services` class names, title-cased name/address, `flags` `workers_comp`/`workers_comp_exempt`. Same dedupe against the whole history and same caller split as Google. The done event carries `remaining` (new licenses left in the file); "Run again" keeps the file so the next batch is one click. The prospect page shows a **CSLB license** row linking to CSLB's license detail.
+- **Sample check (2026-11-04)**: CSLB C-53 Ventura had 133 active licensees with phones, 22 of them already in prospects.
+- **Run records**: `prospect_refresh_runs.provider` is `google_places` or `cslb`; audit actions `prospect.refresh` / `prospect.import_cslb`.
+- **Deploy order**: code works with or without 0074; apply 0074 to get the memory.
+- **Tests**: `tests/prospecting-sources.test.ts` (xlsx reader on real zip bytes, CSV, CSLB mapping/qualify/rank, grid cover/split/frontier), `tests/prospecting-run.test.ts` (fake Supabase + a simulated Places API with the real 60 cap: grid reaches all 280 synthetic businesses across runs and doesn't re-search done squares; no-0074 fallback; failed run; CSLB import with history dedupe, inactive, repeat rows, `remaining`), `tests/prospecting.test.ts`.

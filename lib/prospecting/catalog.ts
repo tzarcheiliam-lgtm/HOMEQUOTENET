@@ -16,7 +16,7 @@ import {
 export interface Niche {
   slug: string;
   label: string;
-  /** Search phrases, most specific first. Each becomes one text query per county. */
+  /** Search phrases, most specific first. Each is searched in every square of the map grid. */
   queries: string[];
   /** Google Places primary types that count as a match; empty = judge by name/queries only. */
   types: string[];
@@ -62,30 +62,14 @@ export function resolveNiche(slug: string, customText?: string | null): Niche | 
 
 export interface County {
   name: string; // as stored in contractor_prospects.county
-  /** Text appended to queries; anchors the search geographically. */
-  where: string;
-  /** Sub-areas searched in turn so one county can yield well over 60 listings. */
-  areas: string[];
   /** Accepted administrative_area_level_2 values from the provider. */
   matches: string[];
 }
 
+/** The markets HomeQuote calls into. Search squares for each are in grid.ts. */
 export const TARGET_COUNTIES: County[] = [
-  {
-    name: 'Los Angeles',
-    where: 'Los Angeles County, CA',
-    areas: [
-      'San Fernando Valley', 'West Los Angeles', 'South Bay', 'Pasadena', 'Santa Clarita',
-      'Long Beach', 'Glendale', 'Torrance', 'Burbank', 'Santa Monica', 'Downey', 'Pomona',
-    ],
-    matches: ['Los Angeles County'],
-  },
-  {
-    name: 'Ventura',
-    where: 'Ventura County, CA',
-    areas: ['Thousand Oaks', 'Simi Valley', 'Oxnard', 'Ventura', 'Camarillo', 'Moorpark'],
-    matches: ['Ventura County'],
-  },
+  { name: 'Los Angeles', matches: ['Los Angeles County'] },
+  { name: 'Ventura', matches: ['Ventura County'] },
 ];
 
 /** County name for a provider's administrative_area_level_2, or null if outside target. */
@@ -97,31 +81,11 @@ export function countyFor(adminArea2: string | null | undefined): string | null 
   return null;
 }
 
-/* ---- Query plan ------------------------------------------------------------ */
-
-export interface PlannedQuery {
-  county: string;
-  text: string;
-}
-
-/**
- * The searches to run, in priority order: every query phrase for the county
- * as a whole, then each phrase per sub-area. The runner stops early once it
- * has enough, so a small ask costs a few requests and a big one fans out.
- */
-export function planQueries(niche: Niche): PlannedQuery[] {
-  const out: PlannedQuery[] = [];
-  for (const county of TARGET_COUNTIES) {
-    for (const q of niche.queries) out.push({ county: county.name, text: `${q} in ${county.where}` });
-  }
-  for (const county of TARGET_COUNTIES) {
-    for (const area of county.areas) {
-      for (const q of niche.queries) {
-        out.push({ county: county.name, text: `${q} in ${area}, ${county.where}` });
-      }
-    }
-  }
-  return out;
+/** Same, for a bare county name as license lists give it ("LOS ANGELES", "Ventura County"). */
+export function countyForName(name: string | null | undefined): string | null {
+  if (!name) return null;
+  const n = name.trim().toLowerCase().replace(/\s+county$/, '');
+  return TARGET_COUNTIES.find((c) => c.name.toLowerCase() === n)?.name ?? null;
 }
 
 /* ---- Provider result → prospect --------------------------------------------- */
@@ -165,10 +129,12 @@ export interface QualifiedProspect {
   external_source: string;
   external_id: string;
   is_pool_cleaning_only: boolean;
+  flags: string[];
 }
 
 export type Disqualification =
   | 'closed'
+  | 'license_inactive'
   | 'no_phone'
   | 'invalid_phone'
   | 'outside_target_counties'
@@ -226,6 +192,7 @@ export function qualify(
       external_id: b.externalId,
       is_pool_cleaning_only:
         niche.slug === 'pool' && looksPoolCleaningOnly(services, b.primaryType, b.name),
+      flags: [],
     },
   };
 }

@@ -37,6 +37,7 @@ import {
   telHref,
 } from '@/components/calls/format';
 import { cn } from '@/lib/utils';
+import { CSLB_SOURCE, cslbLicenseUrl } from '@/lib/prospecting/cslb';
 
 export const metadata = { title: 'Prospect · HomeQuote Network' };
 
@@ -237,6 +238,19 @@ export default async function ProspectPage({
                     '—'
                   )}
                 </Row>
+                {p.external_source === CSLB_SOURCE && p.external_id ? (
+                  <Row label="CSLB license">
+                    <a
+                      href={cslbLicenseUrl(p.external_id)}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="inline-flex items-center gap-1 tabular-nums hover:underline"
+                    >
+                      #{p.external_id}
+                      <ExternalLink className="size-3.5" aria-hidden="true" />
+                    </a>
+                  </Row>
+                ) : null}
                 <Row label="Services" className="col-span-2">
                   {p.primary_services.length > 0 ? p.primary_services.join(', ') : '—'}
                   {p.is_pool_cleaning_only ? (

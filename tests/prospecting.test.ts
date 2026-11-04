@@ -4,11 +4,10 @@ import {
   distribute,
   humanizeTypes,
   isDuplicate,
+  countyForName,
   NICHES,
-  planQueries,
   qualify,
   resolveNiche,
-  TARGET_COUNTIES,
   type ExistingKeys,
   type SourcedBusiness,
 } from '@/lib/prospecting/catalog';
@@ -58,26 +57,18 @@ describe('resolveNiche', () => {
   });
 });
 
-describe('planQueries', () => {
-  it('searches every county as a whole first, then sub-areas, LA before Ventura', () => {
-    const plan = planQueries(pool);
-    const countyWide = pool.queries.length * TARGET_COUNTIES.length;
-    // County-wide first: "... in Los Angeles County, CA" with no sub-area before it.
-    expect(plan.slice(0, countyWide).every((q) => / in (Los Angeles|Ventura) County, CA$/.test(q.text))).toBe(true);
-    expect(plan.slice(countyWide).every((q) => /, (Los Angeles|Ventura) County, CA$/.test(q.text))).toBe(true);
-    expect(plan[0].county).toBe('Los Angeles');
-    expect(plan[0].text).toContain('Los Angeles County, CA');
-    expect(plan.some((q) => q.county === 'Ventura')).toBe(true);
-    expect(plan.length).toBeGreaterThan(countyWide);
-  });
-});
-
 describe('countyFor', () => {
   it('maps provider county names to stored names and rejects others', () => {
     expect(countyFor('Los Angeles County')).toBe('Los Angeles');
     expect(countyFor('ventura county')).toBe('Ventura');
     expect(countyFor('Orange County')).toBeNull();
     expect(countyFor(null)).toBeNull();
+  });
+  it('maps bare county names from license lists the same way', () => {
+    expect(countyForName('LOS ANGELES')).toBe('Los Angeles');
+    expect(countyForName('Ventura County')).toBe('Ventura');
+    expect(countyForName('Orange')).toBeNull();
+    expect(countyForName(null)).toBeNull();
   });
 });
 
