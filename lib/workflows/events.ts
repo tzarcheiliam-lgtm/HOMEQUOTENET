@@ -71,9 +71,16 @@ const bookingCalendarFields = {
   source: z.string().max(40).optional(),
   endsAt: isoDateTimeSchema.optional(),
 };
+/**
+ * Appointment events: since 0070 an appointment can sit on a HomeQuote team /
+ * sales calendar with no assignment and no contractor (network level), or on a
+ * contractor's calendar before the lead is assigned (contractor, no
+ * assignment). The emitter then writes null for the missing ids.
+ */
+const appointmentScope = { leadId: uuidSchema, assignmentId: nullableUuid, contractorId: nullableUuid };
 const appointmentChange = z
   .object({
-    ...assignmentScope,
+    ...appointmentScope,
     appointmentId: uuidSchema,
     scheduledAt: isoDateTimeSchema.nullable(),
     fromStatus: appointmentStatusSchema.nullable(),
@@ -141,7 +148,7 @@ export const WORKFLOW_EVENT_PAYLOAD_SCHEMAS = {
   'appointment.no_show': appointmentChange,
   'appointment.rescheduled': z
     .object({
-      ...assignmentScope,
+      ...appointmentScope,
       appointmentId: uuidSchema,
       scheduledAt: isoDateTimeSchema.nullable(),
       previousScheduledAt: isoDateTimeSchema.nullable(),
@@ -228,10 +235,14 @@ export type WorkflowEventPayloadMap = {
 /**
  * contractorScope:
  *  - required: the event is about one contractor's side of a lead
- *    (assignment/appointment/estimate/sale); envelope.contractorId must be set
- *    and equal payload.contractorId.
- *  - optional: lead-level; contractorId set only when the fact is private to
- *    one contractor (e.g. a client-funnel submission), else NULL (HomeQuote).
+ *    (assignment/estimate/sale); envelope.contractorId must be set and equal
+ *    payload.contractorId.
+ *  - optional: contractorId set only when the fact is private to one
+ *    contractor (e.g. a client-funnel submission, a contractor's appointment),
+ *    else NULL (HomeQuote). All appointment.* events are optional: a call on a
+ *    HomeQuote team / sales calendar (0070) has no assignment and no
+ *    contractor. A NULL-tenant event reaches only HomeQuote workflows
+ *    (workflowCanSeeEvent).
  */
 export interface WorkflowTriggerDefinition<T extends WorkflowEventType = WorkflowEventType> {
   type: T;
@@ -291,23 +302,23 @@ export const WORKFLOW_TRIGGERS = {
   }),
   'appointment.cancelled': t({
     idempotencyRef: 'appointment:<appointmentId>:status:cancelled:<updatedAtMicros>',
-    type: 'appointment.cancelled', label: 'Appointment cancelled', entityTypes: ['appointment'], contractorScope: 'required', availability: 'ready',
-    description: "appointments.status became 'cancelled'.", emittedFrom: 'update of public.appointments.status',
+    type: 'appointment.cancelled', label: 'Appointment cancelled', entityTypes: ['appointment'], contractorScope: 'optional', availability: 'ready',
+    description: "appointments.status became 'cancelled'. A HomeQuote team-calendar call has no contractor (network level).", emittedFrom: 'update of public.appointments.status',
   }),
   'appointment.completed': t({
     idempotencyRef: 'appointment:<appointmentId>:status:held:<updatedAtMicros>',
-    type: 'appointment.completed', label: 'Appointment completed', entityTypes: ['appointment'], contractorScope: 'required', availability: 'ready',
-    description: "appointments.status became 'held' (the app's word for completed).", emittedFrom: 'update of public.appointments.status',
+    type: 'appointment.completed', label: 'Appointment completed', entityTypes: ['appointment'], contractorScope: 'optional', availability: 'ready',
+    description: "appointments.status became 'held' (the app's word for completed). A HomeQuote team-calendar call has no contractor (network level).", emittedFrom: 'update of public.appointments.status',
   }),
   'appointment.no_show': t({
     idempotencyRef: 'appointment:<appointmentId>:status:no_show:<updatedAtMicros>',
-    type: 'appointment.no_show', label: 'Appointment no-show', entityTypes: ['appointment'], contractorScope: 'required', availability: 'ready',
-    description: "appointments.status became 'no_show'.", emittedFrom: 'update of public.appointments.status',
+    type: 'appointment.no_show', label: 'Appointment no-show', entityTypes: ['appointment'], contractorScope: 'optional', availability: 'ready',
+    description: "appointments.status became 'no_show'. A HomeQuote team-calendar call has no contractor (network level).", emittedFrom: 'update of public.appointments.status',
   }),
   'appointment.rescheduled': t({
     idempotencyRef: 'appointment:<appointmentId>:rescheduled:<newScheduledAtMicros>',
-    type: 'appointment.rescheduled', label: 'Appointment rescheduled', entityTypes: ['appointment'], contractorScope: 'required', availability: 'ready',
-    description: 'appointments.scheduled_at moved to a different time (migration 0041).', emittedFrom: 'update of public.appointments.scheduled_at',
+    type: 'appointment.rescheduled', label: 'Appointment rescheduled', entityTypes: ['appointment'], contractorScope: 'optional', availability: 'ready',
+    description: 'appointments.scheduled_at moved to a different time (migration 0041). A HomeQuote team-calendar call has no contractor (network level).', emittedFrom: 'update of public.appointments.scheduled_at',
   }),
   'estimate.sent': t({
     idempotencyRef: 'estimate:<estimateId>:sent',

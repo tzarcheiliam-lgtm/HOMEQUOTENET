@@ -71,7 +71,7 @@ function nodeNotes(type: GraphNodeType): string[] {
   const notes: string[] = [];
   if (d.contactsHomeowner) notes.push('contacts the homeowner (the engine skips it automatically after an opt-out or without consent)');
   if (d.requiresContractor) notes.push('needs a contractor: the workflow must be scoped to a contractor, OR the trigger must be contractor-scoped');
-  if (d.requiresAssignment) notes.push('needs a contractor-side lead record (an assignment/appointment/estimate trigger, or a contractor-scoped workflow)');
+  if (d.requiresAssignment) notes.push('needs a contractor-side lead record (a trigger with Contractor scope: required, or a contractor-scoped workflow; appointment triggers are optional because HomeQuote team-calendar calls have no contractor)');
   if (type === 'wait_event') notes.push('waits for one event on this lead, or the timeout; outputs "received" and "timed_out"');
   if (type === 'ai_call') notes.push(`purposes: ${CALL_PURPOSES.map((p) => `${p} (${CALL_PURPOSE_TEXT[p].label})`).join('; ')}; contextFields: ${CALL_CONTEXT_FIELDS.map((f) => f.key).join(', ')}`);
   if (type === 'send_notification') notes.push('internal team alert only; never includes homeowner details. Use audience "admins" to alert HomeQuote admins');

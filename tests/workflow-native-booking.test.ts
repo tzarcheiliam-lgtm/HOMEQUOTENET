@@ -1,7 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { eventIdempotencyKey, planWorkflow, type Workflow, type WorkflowEvaluationContext, type WorkflowEvent } from '@/lib/workflows';
-import { parseWorkflowEvent } from '@/lib/workflows/events';
+import { WORKFLOW_TRIGGERS, parseWorkflowEvent } from '@/lib/workflows/events';
+import { mergeRootsForTrigger, parseWorkflowDefinition, validateWorkflowForEnable } from '@/lib/workflows/definition';
+import { WORKFLOW_TEMPLATES } from '@/lib/workflows/templates';
+import { addNodeAfter, emptyGraph, validateGraph } from '@/lib/workflows/graph';
 import { SUPERSEDED_WORKFLOW_TEMPLATES, supersededByNativeBooking } from '@/lib/workflows/native-booking';
 
 /**
@@ -93,5 +96,98 @@ describe('appointment events from booking calendars parse', () => {
     expect(() => parseWorkflowEvent(envelope('appointment.booked', { ...base, surprise: 1 }))).toThrow(/Unrecognized key/);
     expect(() => parseWorkflowEvent(envelope('appointment.booked', { ...base, calendarId: 'not-a-uuid' }))).toThrow();
     expect(() => parseWorkflowEvent(envelope('appointment.booked', { ...base, endsAt: 'tomorrow' }))).toThrow();
+  });
+});
+
+/**
+ * Regression (2026-11-04, follow-up): since 0070 an appointment can live on a HomeQuote team / sales calendar
+ * with no assignment and no contractor. emit_appointment_workflow_events() then writes null assignmentId /
+ * contractorId (and a NULL-tenant envelope), which the contractor-required change schemas rejected, so the event
+ * failed dispatch until dead-lettered. The change events are now contractor-optional, like appointment.booked.
+ */
+describe('team-calendar appointment changes (no assignment, no contractor)', () => {
+  const leadId = id();
+  const calendar = { calendarId: id(), source: 'funnel', endsAt: '2026-11-05T17:10:00+00:00' };
+  const envelope = (type: string, payload: Record<string, unknown>, contractorId: string | null = null) => ({
+    id: id(), type, schemaVersion: 1, idempotencyKey: `${type}|appointment:${id()}`,
+    occurredAt: '2026-11-04T23:00:00.000000+00:00', contractorId, actorType: 'contact', actorId: null,
+    entityType: 'appointment', entityId: id(), leadId, source: 'db:appointments', correlationId: null, causationId: null,
+    payload, metadata: {},
+  });
+  // Exactly what the emitter writes for a team-calendar call (jsonb_build_object keeps the null keys).
+  const teamBase = { leadId, assignmentId: null, contractorId: null, appointmentId: id(), scheduledAt: '2026-11-05T17:00:00+00:00', ...calendar };
+  const cancellation = () => envelope('appointment.cancelled', { ...teamBase, fromStatus: 'scheduled', toStatus: 'cancelled' });
+
+  it('parses a team-calendar cancellation', () => {
+    const e = parseWorkflowEvent(cancellation());
+    expect(e.contractorId).toBeNull();
+    expect(e.payload).toMatchObject({ assignmentId: null, contractorId: null, calendarId: calendar.calendarId, toStatus: 'cancelled' });
+  });
+
+  it('parses team-calendar held, no-show and reschedule events', () => {
+    expect(() => parseWorkflowEvent(envelope('appointment.completed', { ...teamBase, fromStatus: 'scheduled', toStatus: 'held' }))).not.toThrow();
+    expect(() => parseWorkflowEvent(envelope('appointment.no_show', { ...teamBase, fromStatus: 'scheduled', toStatus: 'no_show' }))).not.toThrow();
+    expect(() => parseWorkflowEvent(envelope('appointment.rescheduled', { ...teamBase, previousScheduledAt: '2026-11-04T17:00:00+00:00' }))).not.toThrow();
+  });
+
+  it('parses a contractor-calendar call booked before the lead was assigned (contractor, no assignment)', () => {
+    const contractorId = id();
+    const e = parseWorkflowEvent(envelope('appointment.no_show', { ...teamBase, contractorId, fromStatus: 'scheduled', toStatus: 'no_show' }, contractorId));
+    expect(e.contractorId).toBe(contractorId);
+  });
+
+  it('keeps the tenant and shape checks', () => {
+    // The payload contractor must still match the envelope.
+    expect(() => parseWorkflowEvent(envelope('appointment.cancelled', { ...teamBase, contractorId: id(), fromStatus: 'scheduled', toStatus: 'cancelled' }))).toThrow(/does not match/);
+    // The keys are nullable, not optional, and the lead and appointment stay required.
+    const withoutAssignment: Record<string, unknown> = { ...teamBase };
+    delete withoutAssignment.assignmentId;
+    expect(() => parseWorkflowEvent(envelope('appointment.cancelled', { ...withoutAssignment, fromStatus: 'scheduled', toStatus: 'cancelled' }))).toThrow();
+    expect(() => parseWorkflowEvent(envelope('appointment.cancelled', { ...teamBase, appointmentId: null, fromStatus: 'scheduled', toStatus: 'cancelled' }))).toThrow();
+    expect(() => parseWorkflowEvent(envelope('appointment.cancelled', { ...teamBase, leadId: null, fromStatus: 'scheduled', toStatus: 'cancelled' }))).toThrow();
+  });
+
+  it('reaches HomeQuote workflows only', () => {
+    const e = parseWorkflowEvent(cancellation()) as WorkflowEvent;
+    const onCancel = (contractorId: string | null): Workflow => ({ ...workflow(null), contractorId, trigger: { type: 'appointment.cancelled', config: {} } });
+    expect(planWorkflow(onCancel(null), e, ctx(e)).matched).toBe(true);
+    expect(planWorkflow(onCancel(id()), e, ctx(e)).matched).toBe(false);
+  });
+});
+
+describe('contractor-optional appointment triggers in workflow validation', () => {
+  const contractorId = '00000000-0000-4000-8000-000000000001';
+  const def = (type: string, steps: unknown[]) => parseWorkflowDefinition({ name: 'Appt', trigger: { type, config: {} }, steps });
+  const email = (body: string) => ({ key: 'email', position: 0, stepType: 'action', action: { type: 'send_email', config: { to: { kind: 'lead' }, subject: 'Hi', body } } });
+  const ownStage = { key: 'stage', position: 1, stepType: 'action', action: { type: 'change_pipeline_stage', config: { pipeline: 'assignment', status: 'contacted' } } };
+  const codes = (d: ReturnType<typeof def>, owner: string | null) => validateWorkflowForEnable(d, { contractorId: owner }).map((i) => `${i.code}:${i.stepKey ?? ''}`);
+
+  it.each(['appointment.cancelled', 'appointment.completed', 'appointment.no_show', 'appointment.rescheduled'] as const)('%s is contractor-optional', (type) => {
+    expect(WORKFLOW_TRIGGERS[type].contractorScope).toBe('optional');
+    expect(mergeRootsForTrigger(type, { contractorId: null }).has('contractor')).toBe(false);
+    expect(mergeRootsForTrigger(type, { contractorId }).has('contractor')).toBe(true);
+  });
+
+  it('a HomeQuote workflow cannot use contractor fields or the contractor pipeline; a contractor workflow still can', () => {
+    const d = def('appointment.no_show', [email('Sorry we missed you. {{contractor.name}}'), ownStage]);
+    expect(codes(d, null)).toEqual(expect.arrayContaining(['variable_unavailable:email', 'assignment_required:stage']));
+    expect(codes(d, contractorId)).toEqual([]);
+    // Lead and appointment fields stay available to everyone.
+    expect(codes(def('appointment.cancelled', [email('Hi {{lead.first_name}}, your {{appointment.scheduled_at}} call was cancelled.')]), null)).toEqual([]);
+  });
+
+  it('keeps the shipped no-show template enable-ready for HomeQuote', () => {
+    const tpl = WORKFLOW_TEMPLATES.find((t) => t.key === 'no_show_recovery')!;
+    expect(tpl.version).toBe(2);
+    expect(validateWorkflowForEnable(tpl.definition, { contractorId: null }).filter((i) => i.code === 'variable_unavailable')).toEqual([]);
+  });
+
+  it('the visual builder blocks contractor-only steps on a HomeQuote workflow', () => {
+    const graph = addNodeAfter(emptyGraph('appointment.no_show'), 'trigger', 'next', 'assign_lead').graph;
+    const network = validateGraph(graph, { contractorId: null, mode: 'edit' }).issues.map((i) => i.code);
+    expect(network).toEqual(expect.arrayContaining(['needs_contractor', 'needs_assignment']));
+    const own = validateGraph(graph, { contractorId, mode: 'edit' }).issues.map((i) => i.code);
+    expect(own).not.toContain('needs_contractor');
+    expect(own).not.toContain('needs_assignment');
   });
 });

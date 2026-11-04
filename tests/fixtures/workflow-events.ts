@@ -54,10 +54,12 @@ interface Shape {
 
 function shape(type: WorkflowEventType, id: FixtureIds, network: boolean): Shape {
   const scoped = { leadId: id.leadId, assignmentId: id.assignmentId, contractorId: id.contractorId };
+  // network: a HomeQuote team-calendar call (0070) with no assignment and no contractor.
+  const apptScoped = network ? { leadId: id.leadId, assignmentId: null, contractorId: null } : scoped;
   const appt = (to: string) => ({
-    entityType: 'appointment' as const, entityId: id.appointmentId, contractorId: id.contractorId,
+    entityType: 'appointment' as const, entityId: id.appointmentId, contractorId: apptScoped.contractorId,
     ref: `appointment:${id.appointmentId}:status:${to}:${MICROS}`,
-    payload: { ...scoped, appointmentId: id.appointmentId, scheduledAt: '2026-10-01T17:00:00.000Z', fromStatus: 'scheduled', toStatus: to },
+    payload: { ...apptScoped, appointmentId: id.appointmentId, scheduledAt: '2026-10-01T17:00:00.000Z', fromStatus: 'scheduled', toStatus: to },
   });
   switch (type) {
     case 'lead.created':
@@ -87,8 +89,8 @@ function shape(type: WorkflowEventType, id: FixtureIds, network: boolean): Shape
       return appt('no_show');
     case 'appointment.rescheduled':
       return {
-        entityType: 'appointment', entityId: id.appointmentId, contractorId: id.contractorId, ref: `appointment:${id.appointmentId}:rescheduled:${MICROS}`,
-        payload: { ...scoped, appointmentId: id.appointmentId, scheduledAt: '2026-10-02T17:00:00.000Z', previousScheduledAt: '2026-10-01T17:00:00.000Z' },
+        entityType: 'appointment', entityId: id.appointmentId, contractorId: apptScoped.contractorId, ref: `appointment:${id.appointmentId}:rescheduled:${MICROS}`,
+        payload: { ...apptScoped, appointmentId: id.appointmentId, scheduledAt: '2026-10-02T17:00:00.000Z', previousScheduledAt: '2026-10-01T17:00:00.000Z' },
       };
     case 'estimate.accepted':
       return { entityType: 'estimate', entityId: id.estimateId, contractorId: id.contractorId, ref: `estimate:${id.estimateId}:accepted`, payload: { ...scoped, estimateId: id.estimateId, amount: 42000 } };

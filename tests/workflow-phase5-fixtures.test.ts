@@ -25,7 +25,11 @@ describe('workflow event fixtures (Phase 1 contract)', () => {
   it('builds HomeQuote (NULL-tenant) variants only where scope is optional', () => {
     expect(buildWorkflowEvent('lead.created', { network: true }).contractorId).toBeNull();
     expect(buildWorkflowEvent('message.received', { network: true }).contractorId).toBeNull();
-    expect(buildWorkflowEvent('appointment.no_show', { network: true }).contractorId).not.toBeNull();
+    // A HomeQuote team-calendar call: no assignment, no contractor.
+    const teamCall = buildWorkflowEvent('appointment.no_show', { network: true });
+    expect(teamCall.contractorId).toBeNull();
+    expect(teamCall.payload).toMatchObject({ assignmentId: null, contractorId: null });
+    expect(buildWorkflowEvent('estimate.sent', { network: true }).contractorId).not.toBeNull();
   });
 
   it('shares ids across a scenario so one lead flows through several events', () => {

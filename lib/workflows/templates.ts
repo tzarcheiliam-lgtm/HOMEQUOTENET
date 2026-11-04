@@ -104,7 +104,10 @@ export const WORKFLOW_TEMPLATES: readonly WorkflowTemplate[] = [
     ],
   }),
 
-  tpl('no_show_recovery', 1, {
+  // v2 (2026-11-04): no {{contractor.name}} sign-off. appointment.no_show is
+  // contractor-optional (a HomeQuote team-calendar call has no contractor), so
+  // a HomeQuote clone could not be enabled with it.
+  tpl('no_show_recovery', 2, {
     name: 'No-Show Recovery',
     description: 'When a homeowner misses an appointment, offer to reschedule and flag it to the team if they go quiet.',
     trigger: { type: 'appointment.no_show', config: {} },
@@ -119,7 +122,7 @@ export const WORKFLOW_TEMPLATES: readonly WorkflowTemplate[] = [
       { key: 'reschedule_email', position: 3, stepType: 'action', action: { type: 'send_email', config: {
         to: { kind: 'lead' },
         subject: 'Let’s find a new time',
-        body: 'Hi {{lead.first_name}},\n\nWe missed you at your appointment. Reply to this email and we will find a time that works.\n\n{{contractor.name}}' } } },
+        body: 'Hi {{lead.first_name}},\n\nWe missed you at your appointment. Reply to this email and we will find a time that works.' } } },
     ],
   }),
 

@@ -162,7 +162,8 @@ export interface EnableIssue {
  * loadWorkflowEvaluationContext in runtime.server.ts: the lead is loaded for
  * every event, the appointment only for appointment events, the estimate only
  * for estimate.sent, the contractor only when the workflow or the event
- * belongs to a contractor. homequote.* always comes from server config.
+ * belongs to a contractor (appointment events do not always: a HomeQuote
+ * team-calendar call has none). homequote.* always comes from server config.
  */
 export function mergeRootsForTrigger(type: WorkflowEventType, owner: { contractorId: string | null }): Set<string> {
   const roots = new Set(['homequote', 'lead']);
@@ -191,7 +192,14 @@ export function validateWorkflowForEnable(def: WorkflowDefinition, owner: { cont
     if (d && d.availability !== 'ready') issues.push({ code: 'field_unavailable', message: `${field} is ${d.availability}` });
     if (d?.graphOnly) issues.push({ code: 'field_unavailable', message: `${field} is only available in visual workflows` });
   }
-  const assignmentScoped = trigger.contractorScope === 'required';
+  // The run has an assignment when the trigger is about one (contractor scope
+  // required), or when a contractor's own workflow starts from an appointment:
+  // that appointment is the contractor's, and the runtime finds the assignment
+  // by lead + contractor (skipping with missing_assignment before the lead is
+  // assigned). A HomeQuote workflow on an appointment trigger has none for a
+  // team-calendar call (0070), so it cannot change the contractor pipeline.
+  const assignmentScoped =
+    trigger.contractorScope === 'required' || (owner.contractorId !== null && def.trigger.type.startsWith('appointment.'));
   for (const s of def.steps) {
     if (s.stepType === 'branch') {
       issues.push({ code: 'branching_not_supported', message: 'Branch steps are not executable yet', stepKey: s.key });
