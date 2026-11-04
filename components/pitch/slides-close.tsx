@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Plus } from 'lucide-react';
 import { BrandLogo } from '@/components/brand-logo';
-import { CONTACT, FAQS, ONBOARDING, PAY_PER_APPOINTMENT, PAY_PER_APPOINTMENT_TERMS, TIERS } from '@/lib/pitch/config';
+import { CONTACT, FAQS, ONBOARDING, PAY_PER_APPOINTMENT, PAY_PER_APPOINTMENT_TERMS, TIERS, allIn } from '@/lib/pitch/config';
 import { cn } from '@/lib/utils';
 import { useDeck, usd } from './deck-context';
 import { FinePrint, Heading, Lead, Slide, Tick } from './kit';
@@ -149,16 +149,24 @@ export function ChooseSlide() {
               aria-pressed={selected}
               className={cn(
                 'relative rounded-3xl text-left transition-shadow',
-                featured ? 'bg-[var(--pd-navy)] px-10 py-12 text-white shadow-[0_40px_80px_-30px_rgba(10,27,61,0.6)]' : 'border border-[var(--pd-line)] bg-white px-8 py-9',
+                featured ? 'bg-[var(--pd-blue)] px-10 py-12 text-white shadow-[0_40px_80px_-30px_rgba(0,56,184,0.55)]' : 'border border-[var(--pd-line)] bg-white px-8 py-9',
                 selected && 'ring-4 ring-[var(--pd-gold)] ring-offset-4'
               )}
             >
               {featured ? (
                 <span className="absolute -top-4 left-10 rounded-full bg-[var(--pd-gold)] px-4 py-1.5 text-[14px] font-bold text-[var(--pd-navy)]">Recommended</span>
               ) : null}
-              <p className={cn('pd-num font-display font-bold leading-none tracking-tight', featured ? 'text-[72px]' : 'text-[52px]')}>{usd(t.price)}</p>
-              <p className={cn('mt-3 font-semibold', featured ? 'text-[26px]' : 'text-[22px]')}>{t.name}</p>
-              <p className={cn('mt-2 text-[16px] leading-snug', featured ? 'text-white/75' : 'text-[var(--pd-slate)]')}>{t.positioning}</p>
+              <p className={cn('mb-2 font-semibold', featured ? 'text-[24px]' : 'text-[21px]')}>{t.name}</p>
+              <p className="pd-num flex items-baseline">
+                <span className={cn('font-display font-bold leading-none tracking-tight', featured ? 'text-[72px] text-[var(--pd-gold)]' : 'text-[52px]')}>{usd(t.price)}</span>
+                <span className={cn('font-display font-bold', featured ? 'text-[40px] text-white/75' : 'text-[30px] text-[var(--pd-slate)]')}>/mo</span>
+              </p>
+              <p className={cn('pd-num mt-3 text-[16px] font-bold', featured ? 'text-white' : 'text-[var(--pd-navy)]')}>
+                All-in {usd(allIn(t).min)}–{usd(allIn(t).max)}/mo with ads
+              </p>
+              <p className={cn('pd-num mt-1 text-[15px] leading-snug', featured ? 'text-white/70' : 'text-[var(--pd-slate)]')}>
+                + {usd(t.setup)} setup · {t.term}
+              </p>
             </button>
           );
         })}
@@ -166,7 +174,7 @@ export function ChooseSlide() {
       <p className="pd-h3 my-auto max-w-[1100px] text-[40px] leading-tight text-[var(--pd-blue)]">
         Which level of support makes the most sense for your business right now?
       </p>
-      <FinePrint>Monthly HomeQuote fees. Ad spend is paid separately, directly to Meta.</FinePrint>
+      <FinePrint>All-in = monthly fee + ads; one-time setup not included. Full terms in your agreement.</FinePrint>
     </Slide>
   );
 }

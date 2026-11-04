@@ -3,13 +3,75 @@
 import { useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Check, ChevronDown, Minus, RotateCcw } from 'lucide-react';
-import { ADD_ONS, AD_SPEND_NOTE, COMPARISON, ROI_EXAMPLE, TIERS, type Tier, type TierId } from '@/lib/pitch/config';
+import { ADD_ONS, AD_SPEND_NOTE, COMPARISON, ROI_EXAMPLE, TIERS, allIn, type Tier, type TierId } from '@/lib/pitch/config';
 import { calculateRoi } from '@/lib/pitch/roi';
 import { cn } from '@/lib/utils';
 import { useDeck, usd } from './deck-context';
 import { FinePrint, Heading, Lead, Slide, Tick } from './kit';
 
-const budget = (t: Tier) => `${usd(t.adBudget.min)} to ${usd(t.adBudget.max)}${t.adBudget.plus ? '+' : ''}`;
+const range = (r: { min: number; max: number }) => `${usd(r.min)}–${usd(r.max)}`;
+
+/** One package card, styled like the owner's pricing sheet: white, blue (recommended) or blue-outlined. */
+export function TierCard({ t, selected, onSelect, compact = false }: { t: Tier; selected: boolean; onSelect: () => void; compact?: boolean }) {
+  const featured = !!t.recommended;
+  const outlined = t.id === 'pipeline';
+  const total = allIn(t);
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={selected}
+      className={cn(
+        'relative flex h-full flex-col rounded-3xl px-8 pb-7 pt-7 text-left transition-shadow duration-300',
+        featured
+          ? 'pd-on-dark bg-[var(--pd-blue)] text-white shadow-[0_40px_80px_-30px_rgba(0,56,184,0.55)]'
+          : outlined
+            ? 'border-2 border-[var(--pd-blue)] bg-white'
+            : 'border border-[var(--pd-line)] bg-white',
+        selected && 'ring-4 ring-[var(--pd-gold)] ring-offset-4 ring-offset-[var(--pd-mist)]'
+      )}
+    >
+      <span
+        className={cn(
+          'self-start rounded-full px-3.5 py-1 text-[14px] font-bold',
+          featured ? 'bg-[var(--pd-gold)] text-[var(--pd-navy)]' : outlined ? 'bg-[var(--pd-blue-soft)] text-[var(--pd-blue)]' : 'bg-[var(--pd-mist)] text-[var(--pd-slate)]'
+        )}
+      >
+        {t.tag}
+      </span>
+      <p className="font-display mt-4 text-[28px] font-semibold tracking-tight">{t.name}</p>
+      <p className="pd-num mt-1 flex items-baseline">
+        <span className={cn('font-display text-[58px] font-bold leading-none tracking-tight', featured ? 'text-[var(--pd-gold)]' : outlined ? 'text-[var(--pd-blue)]' : 'text-[var(--pd-navy)]')}>
+          {usd(t.price)}
+        </span>
+        <span className={cn('font-display text-[40px] font-bold leading-none', featured ? 'text-white/75' : 'text-[var(--pd-slate)]')}>/mo</span>
+      </p>
+      <p className={cn('pd-num mt-3 text-[16px] leading-snug', featured ? 'text-white/75' : 'text-[var(--pd-slate)]')}>
+        + {usd(t.setup)} setup · {t.term} · ads {range(t.adBudget)}/mo, paid by you
+      </p>
+      <p className="pd-num mt-1.5 text-[17px] font-bold">All-in: {range(total)}/mo with ads</p>
+      {!compact ? (
+        <ul className="mt-5 space-y-2">
+          {[...(t.buildsOn ? [t.buildsOn] : []), ...t.includes].map((x) => (
+            <li key={x} className={cn('flex gap-3 text-[17px] leading-snug', x === t.highlight && 'font-bold')}>
+              <Check className={cn('mt-1 size-4 shrink-0', featured ? 'text-[var(--pd-gold)]' : 'text-[var(--pd-blue)]')} strokeWidth={3} aria-hidden="true" />
+              {x}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <div
+        className={cn(
+          'mt-auto rounded-2xl px-5 py-4 text-[17px] leading-snug',
+          compact ? 'mt-5' : 'pt-4',
+          featured ? 'bg-[var(--pd-navy)] text-white' : 'bg-[var(--pd-mist)] text-[var(--pd-navy)]'
+        )}
+      >
+        <span className={cn('font-bold', featured && 'text-[var(--pd-gold)]')}>{t.callout.lead}</span> {t.callout.text}
+      </div>
+    </button>
+  );
+}
 
 // ---------------------------------------------------------------------------------------------
 // 6. Packages
@@ -19,51 +81,11 @@ export function PricingSlide() {
   const { tier, setTier } = useDeck();
   return (
     <Slide tone="mist">
-      <Heading>Three growth packages</Heading>
-      <div className="mt-[52px] grid grid-cols-3 items-start gap-8">
-        {TIERS.map((t) => {
-          const featured = !!t.recommended;
-          const selected = tier === t.id;
-          return (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTier(t.id)}
-              aria-pressed={selected}
-              className={cn(
-                'relative flex flex-col rounded-3xl px-8 pb-7 pt-8 text-left transition-[box-shadow,transform] duration-300',
-                featured ? 'pd-on-dark bg-[var(--pd-navy)] text-white shadow-[0_40px_80px_-30px_rgba(10,27,61,0.6)]' : 'border border-[var(--pd-line)] bg-white',
-                featured ? 'min-h-[600px]' : 'mt-6 min-h-[576px]',
-                selected && 'ring-4 ring-[var(--pd-gold)] ring-offset-4 ring-offset-[var(--pd-mist)]'
-              )}
-            >
-              {featured ? (
-                <span className="absolute -top-4 left-8 rounded-full bg-[var(--pd-gold)] px-4 py-1.5 text-[14px] font-bold text-[var(--pd-navy)]">
-                  Recommended
-                </span>
-              ) : null}
-              <p className={cn('text-[20px] font-semibold', featured ? 'text-white/80' : 'text-[var(--pd-slate)]')}>{t.name}</p>
-              <p className="pd-num mt-3 flex items-baseline gap-2">
-                <span className="font-display text-[54px] font-bold leading-none tracking-tight">{usd(t.price)}</span>
-                <span className={cn('text-[18px]', featured ? 'text-white/60' : 'text-[var(--pd-slate)]')}>/ month</span>
-              </p>
-              <p className={cn('mt-3 min-h-[48px] text-[17px] leading-snug', featured ? 'text-white/85' : 'text-[var(--pd-navy)]')}>{t.positioning}</p>
-              <div className={cn('my-4 h-px', featured ? 'bg-white/15' : 'bg-[var(--pd-line)]')} />
-              {t.buildsOn ? <p className={cn('mb-3 text-[15px] font-semibold', featured ? 'text-[var(--pd-gold)]' : 'text-[var(--pd-blue)]')}>{t.buildsOn}</p> : null}
-              <ul className="space-y-2">
-                {t.includes.map((x) => (
-                  <li key={x} className="flex gap-3 text-[16px] leading-snug">
-                    <Check className={cn('mt-0.5 size-4 shrink-0', featured ? 'text-[var(--pd-gold)]' : 'text-[var(--pd-blue)]')} strokeWidth={3} aria-hidden="true" />
-                    {x}
-                  </li>
-                ))}
-              </ul>
-              <p className={cn('mt-auto pt-6 text-[14px]', featured ? 'text-white/60' : 'text-[var(--pd-slate)]')}>
-                Recommended ad budget {budget(t)} / month, paid to Meta
-              </p>
-            </button>
-          );
-        })}
+      <Heading className="max-w-none">Three ways to grow your remodeling work.</Heading>
+      <div className="mt-10 grid flex-1 grid-cols-3 gap-6 pb-[52px]">
+        {TIERS.map((t) => (
+          <TierCard key={t.id} t={t} selected={tier === t.id} onSelect={() => setTier(t.id)} />
+        ))}
       </div>
       <FinePrint>{AD_SPEND_NOTE}</FinePrint>
     </Slide>
@@ -79,7 +101,7 @@ export function CompareSlide() {
   const [open, setOpen] = useState<string | null>(null);
   const [focusUpgrade, setFocusUpgrade] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
-  /** Turning the highlight on scrolls the rows Appointment Generation adds into view. */
+  /** Turning the highlight on scrolls the rows Managed Growth adds into view. */
   const toggleUpgrade = () => {
     const on = !focusUpgrade;
     setFocusUpgrade(on);
@@ -104,7 +126,7 @@ export function CompareSlide() {
             focusUpgrade ? 'border-[var(--pd-blue)] bg-[var(--pd-blue)] text-white' : 'border-[var(--pd-line)] text-[var(--pd-navy)] hover:bg-[var(--pd-mist)]'
           )}
         >
-          {focusUpgrade ? 'Showing what Appointment Generation adds' : 'Show what Appointment Generation adds'}
+          {focusUpgrade ? 'Showing what Managed Growth adds' : 'Show what Managed Growth adds'}
         </button>
       </div>
 
@@ -125,13 +147,13 @@ export function CompareSlide() {
           </thead>
           {COMPARISON.map((g) => (
             <tbody key={g.title}>
-              <tr data-upgrade-group={g.rows.some((r) => r.tiers.includes('appointments') && !r.tiers.includes('leads')) ? '' : undefined}>
+              <tr data-upgrade-group={g.rows.some((r) => r.tiers.includes('managed') && !r.tiers.includes('starter')) ? '' : undefined}>
                 <th colSpan={4} className="bg-[var(--pd-mist)] px-6 py-2.5 text-[14px] font-semibold text-[var(--pd-slate)]">{g.title}</th>
               </tr>
               {g.rows.map((r) => {
                 const key = `${g.title}:${r.feature}`;
                 const isOpen = open === key;
-                const addedByT2 = r.tiers.includes('appointments') && !r.tiers.includes('leads');
+                const addedByT2 = r.tiers.includes('managed') && !r.tiers.includes('starter');
                 const dim = focusUpgrade && !addedByT2;
                 return (
                   <tr key={key} className={cn('border-t border-[var(--pd-line)] align-top transition-opacity', dim && 'opacity-30')}>
@@ -235,7 +257,7 @@ export function WhySlide() {
       <Heading className="max-w-[1300px]">A lead is an opportunity. A booked appointment is a sales conversation.</Heading>
       <div className="my-auto grid grid-cols-2 gap-8">
         <Path title="When you buy leads" steps={LEAD_PATH} />
-        <Path title="With Appointment Generation" steps={APPOINTMENT_PATH} featured />
+        <Path title="With Managed Growth" steps={APPOINTMENT_PATH} featured />
       </div>
     </Slide>
   );
@@ -365,7 +387,7 @@ export function RoiSlide() {
             <div>
               <p className="text-[15px] text-[var(--pd-slate)]">Total marketing investment</p>
               <p className="pd-num mt-1 text-[30px] font-bold">{usd(r.investment)}</p>
-              <p className="text-[13px] text-[var(--pd-slate)]">{usd(pkg.price)} HomeQuote + {usd(v.adBudget)} ads</p>
+              <p className="text-[13px] text-[var(--pd-slate)]">{usd(pkg.price)} HomeQuote + {usd(v.adBudget)} ads a month (one-time {usd(pkg.setup)} setup not included)</p>
             </div>
             <div>
               <p className="text-[15px] text-[var(--pd-slate)]">Break-even</p>
