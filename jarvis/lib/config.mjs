@@ -2,6 +2,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { formatClock, normalizeTimeZone, parseClock } from './schedule.mjs';
 
 export const JARVIS_HOME = process.env.JARVIS_HOME || join(homedir(), '.jarvis');
 export const ENV_PATH = join(JARVIS_HOME, 'jarvis.env');
@@ -45,8 +46,9 @@ export function loadConfig(path = ENV_PATH) {
     chatId: env.TELEGRAM_CHAT_ID ? Number(env.TELEGRAM_CHAT_ID) : null,
     anthropicKey: env.ANTHROPIC_API_KEY ?? '',
     model: env.JARVIS_MODEL,
-    tz: env.TIMEZONE,
+    tz: normalizeTimeZone(env.TIMEZONE),
     briefingTime: env.BRIEFING_TIME,
+    briefingLabel: '',
     activeHours: { start: Number.isFinite(startHour) ? startHour : 7, end: Number.isFinite(endHour) ? endHour : 21 },
     cronSecret: env.WORKFLOW_CRON_SECRET ?? '',
     healthcheckUrl: env.HEALTHCHECK_URL ?? '',
@@ -56,7 +58,8 @@ export function loadConfig(path = ENV_PATH) {
   if (!cfg.hqKey.startsWith('hq_')) problems.push('HQ_KEY is missing (make one at /app/claude-connector)');
   if (!/^\d+:[\w-]{20,}$/.test(cfg.telegramToken)) problems.push('TELEGRAM_BOT_TOKEN is missing or malformed');
   if (!cfg.chatId) problems.push('TELEGRAM_CHAT_ID is missing (run the installer again to pair your phone)');
-  try { new Intl.DateTimeFormat('en-US', { timeZone: cfg.tz }); } catch { problems.push(`TIMEZONE "${cfg.tz}" is not a valid time zone`); }
+  try { new Intl.DateTimeFormat('en-US', { timeZone: cfg.tz }); } catch { problems.push(`TIMEZONE "${cfg.tz}" is not a valid time zone (try America/Los_Angeles)`); }
+  try { cfg.briefingLabel = formatClock(parseClock(cfg.briefingTime)); } catch (e) { problems.push(`BRIEFING_TIME: ${e.message}`); }
   return { cfg, problems };
 }
 

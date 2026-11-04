@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 // Plain ESM helpers of the separate Jarvis app (jarvis/), typed through their JSDoc.
-import { briefingDue, localMidnight, localParts, parseClock, todayRange, withinActiveHours } from '../jarvis/lib/schedule.mjs';
+import { briefingDue, formatClock, localMidnight, localParts, normalizeTimeZone, parseClock, todayRange, withinActiveHours } from '../jarvis/lib/schedule.mjs';
 import { HANDOFF_PINGS_MIN, planHandoffAlerts, planHealthAlerts, seedHandoffs } from '../jarvis/lib/alerts.mjs';
 import { clip, formatStatus, formatToday, formatWaiting, shortName, splitMessage, templateBriefing } from '../jarvis/lib/format.mjs';
 import { parseEnv } from '../jarvis/lib/config.mjs';
@@ -28,7 +28,18 @@ describe('jarvis schedule (Los Angeles time, DST-safe)', () => {
     expect(briefingDue(sevenOhFive, LA, '07:00', '2026-11-04')).toBe(false);
     expect(briefingDue(at('2026-11-04T14:59:00Z'), LA, '07:00', null)).toBe(false); // 6:59
     expect(briefingDue(at('2026-11-04T18:01:00Z'), LA, '07:00', null)).toBe(false); // 10:01, too late
-    expect(() => parseClock('7am')).toThrow();
+    expect(briefingDue(at('2026-11-04T17:00:00Z'), LA, '9AM', null)).toBe(true); // 9:00 AM
+  });
+
+  it('understands the times and zones people type', () => {
+    for (const [t, min] of [['07:00', 420], ['7:00', 420], ['9AM', 540], ['9 am', 540], ['9:30pm', 1290], ['12am', 0], ['12 PM', 720], ['21:00', 1260], ['9 a.m.', 540]] as const) expect(parseClock(t)).toBe(min);
+    for (const bad of ['9', 'noon', '13pm', '25:00', '']) expect(() => parseClock(bad)).toThrow();
+    expect(formatClock(540)).toBe('9:00 AM');
+    expect(formatClock(1290)).toBe('9:30 PM');
+    expect(normalizeTimeZone('PST')).toBe('America/Los_Angeles');
+    expect(normalizeTimeZone('pacific time')).toBe('America/Los_Angeles');
+    expect(normalizeTimeZone('EST')).toBe('America/New_York'); // not Panama
+    expect(normalizeTimeZone('America/Chicago')).toBe('America/Chicago');
   });
 
   it('knows active hours', () => {

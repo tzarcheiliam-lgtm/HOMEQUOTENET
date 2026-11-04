@@ -106,13 +106,18 @@ async function check() {
       const { default: Anthropic } = await import('@anthropic-ai/sdk');
       await new Anthropic({ apiKey: cfg.anthropicKey }).models.retrieve(cfg.model);
       line(true, `Claude (${cfg.model})`);
-    } catch (e) { line(false, `Claude: ${e.message}`); }
+    } catch (e) {
+      // Optional: a bad key must not block the install. Questions stay off and the briefing uses the template.
+      console.log(`! Claude key not accepted (${clip(e.message, 120)}). Jarvis still runs; questions are off until you`);
+      console.log('  run the installer again with a valid key from https://platform.claude.com/settings/keys (or type none).');
+    }
   } else console.log('- Claude: not set (questions off; briefing uses the plain template)');
   if (cfg.cronSecret) {
     const r = await fetch(`${cfg.hqUrl}/api/workflows/tick`, { method: 'POST', headers: { Authorization: `Bearer ${cfg.cronSecret}` }, signal: AbortSignal.timeout(90_000) }).catch((e) => ({ status: e.message }));
     line(r.status === 200 || r.status === 207, `Backup scheduler call: ${r.status}`);
   } else console.log('- Backup scheduler: not set');
   console.log(cfg.healthcheckUrl ? '- Healthchecks heartbeat: set' : '- Healthchecks heartbeat: not set');
+  if (cfg.briefingLabel) console.log(`- Morning briefing: ${cfg.briefingLabel} ${cfg.tz}`);
   process.exit(ok ? 0 : 1);
 }
 
@@ -127,7 +132,7 @@ async function run() {
   let stopping = false;
 
   for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { stopping = true; save(); log('stopping'); process.exit(0); });
-  log(`Jarvis started on ${hostname()} (HomeQuote ${cfg.hqUrl}, briefing ${cfg.briefingTime} ${cfg.tz})`);
+  log(`Jarvis started on ${hostname()} (HomeQuote ${cfg.hqUrl}, briefing ${cfg.briefingLabel} ${cfg.tz})`);
   if (!state.lastOnlineAt || Date.now() - new Date(state.lastOnlineAt).getTime() > 6 * 3600_000) {
     await send(`🟢 Jarvis is online on ${hostname()}. Send /help for commands.`);
   }

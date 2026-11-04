@@ -42,11 +42,39 @@ export function todayRange(now, tz) {
   return { date: today, from: start, to: localMidnight(next, tz) };
 }
 
-/** "07:00" -> 420. Throws on anything else. */
-export function parseClock(hhmm) {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm).trim());
-  if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) throw new Error(`Time must look like 07:00 (got "${hhmm}")`);
-  return Number(m[1]) * 60 + Number(m[2]);
+/** "07:00", "7:00", "9AM", "9 am", "9:30pm", "21:00" -> minutes after midnight. Throws on anything else. */
+export function parseClock(text) {
+  const s = String(text ?? '').trim().toLowerCase().replace(/\./g, '');
+  const m = /^(\d{1,2})(?::(\d{2}))?\s*(am|pm|a|p)?$/.exec(s);
+  if (!m || (!m[2] && !m[3])) throw new Error(`Time must look like 07:00 or 9AM (got "${text}")`);
+  let hour = Number(m[1]);
+  const minute = Number(m[2] ?? 0);
+  if (m[3]) {
+    if (hour < 1 || hour > 12) throw new Error(`Time must look like 07:00 or 9AM (got "${text}")`);
+    hour = (hour % 12) + (m[3].startsWith('p') ? 12 : 0);
+  }
+  if (hour > 23 || minute > 59) throw new Error(`Time must look like 07:00 or 9AM (got "${text}")`);
+  return hour * 60 + minute;
+}
+
+/** 540 -> "9:00 AM". */
+export function formatClock(minutes) {
+  const h = Math.floor(minutes / 60);
+  return `${h % 12 || 12}:${String(minutes % 60).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+}
+
+// Common US names people type. Without this, "EST" resolves to America/Panama (no daylight saving) and "PT" fails.
+const TZ_ALIASES = {
+  pst: 'America/Los_Angeles', pdt: 'America/Los_Angeles', pt: 'America/Los_Angeles', pacific: 'America/Los_Angeles', 'los angeles': 'America/Los_Angeles', la: 'America/Los_Angeles',
+  mst: 'America/Denver', mdt: 'America/Denver', mt: 'America/Denver', mountain: 'America/Denver', arizona: 'America/Phoenix',
+  cst: 'America/Chicago', cdt: 'America/Chicago', ct: 'America/Chicago', central: 'America/Chicago',
+  est: 'America/New_York', edt: 'America/New_York', et: 'America/New_York', eastern: 'America/New_York',
+};
+
+/** "PST" / "Pacific" -> "America/Los_Angeles"; anything else is returned as typed (validated by the caller). */
+export function normalizeTimeZone(input) {
+  const s = String(input ?? '').trim();
+  return TZ_ALIASES[s.toLowerCase().replace(/\s+time$/, '').replace(/\s+/g, ' ')] ?? s;
 }
 
 /**

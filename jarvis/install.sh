@@ -94,22 +94,26 @@ if [ "$configure" = y ]; then
   echo
   echo "  Claude API key (optional; lets you ask questions and makes the briefing smarter)."
   echo "  From https://platform.claude.com/settings/keys — set a monthly spend limit there too."
+  echo "  It starts with sk-ant-. Enter keeps the saved one; type none to remove it."
   ask_secret ANTHROPIC_API_KEY "Claude API key (Enter to skip)"
   ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-$(current ANTHROPIC_API_KEY)}"
+  [ "$ANTHROPIC_API_KEY" = none ] && ANTHROPIC_API_KEY=""
+  case "$ANTHROPIC_API_KEY" in ""|sk-ant-*) ;; *) warn "That doesn't look like a Claude API key (they start with sk-ant-). Saving it anyway." ;; esac
 
   echo
   echo "  Backup scheduler (optional): the WORKFLOW_CRON_SECRET from Vercel. Jarvis then also calls the HomeQuote"
   echo "  scheduler every 5 minutes, as a backup to Supabase Cron. Skip if you don't have it."
-  ask_secret WORKFLOW_CRON_SECRET "Scheduler secret (Enter to skip)"
+  ask_secret WORKFLOW_CRON_SECRET "Scheduler secret (Enter to skip, none to remove)"
   WORKFLOW_CRON_SECRET="${WORKFLOW_CRON_SECRET:-$(current WORKFLOW_CRON_SECRET)}"
+  [ "$WORKFLOW_CRON_SECRET" = none ] && WORKFLOW_CRON_SECRET=""
 
   echo
   echo "  Heartbeat (optional): a free https://healthchecks.io check URL, so you hear about it if this computer dies."
   ask HEALTHCHECK_URL "Healthchecks URL (Enter to skip)" "$(current HEALTHCHECK_URL || true)"
 
-  ask BRIEFING_TIME "Morning briefing time" "$(current BRIEFING_TIME || true)"
+  ask BRIEFING_TIME "Morning briefing time, e.g. 7AM or 09:00" "$(current BRIEFING_TIME || true)"
   BRIEFING_TIME="${BRIEFING_TIME:-07:00}"
-  ask TIMEZONE "Time zone" "$(current TIMEZONE || true)"
+  ask TIMEZONE "Time zone (PST, or a name like America/Los_Angeles)" "$(current TIMEZONE || true)"
   TIMEZONE="${TIMEZONE:-America/Los_Angeles}"
 
   # Pair your phone: Jarvis only ever talks to this one chat.
@@ -182,9 +186,19 @@ elif [ "$OS" = Darwin ]; then
 </plist>
 PLIST
   launchctl bootout "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || true
-  launchctl bootstrap "gui/$(id -u)" "$PLIST"
+  sleep 1
+  # bootstrap can fail with "Input/output error" right after a bootout; retry, then fall back to the older load.
+  launchctl bootstrap "gui/$(id -u)" "$PLIST" 2>/dev/null || { sleep 2; launchctl bootstrap "gui/$(id -u)" "$PLIST" 2>/dev/null; } \
+    || launchctl load -w "$PLIST" || die "macOS refused to start the Jarvis service (launchctl). Paste this message to Claude."
   launchctl kickstart -k "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || true
-  ok "Running (launchd: $LABEL). It starts again when you log in."
+  sleep 5
+  if launchctl print "gui/$(id -u)/$LABEL" 2>/dev/null | grep -q "state = running"; then
+    ok "Running (launchd: $LABEL). It starts again when you log in."
+  else
+    warn "Jarvis did not stay running. Last lines of its log:"
+    tail -15 "$LOG" 2>/dev/null | sed 's/^/    /'
+    die "Jarvis is installed but not running. Paste the lines above to Claude."
+  fi
   if [ "$(pmset -g 2>/dev/null | awk '/ sleep /{print $2; exit}')" != "0" ]; then
     warn "This Mac may go to sleep, which pauses Jarvis (and the texting bridge)."
     warn "System Settings → Energy (or Battery → Options): turn on 'Prevent automatic sleeping when the display is off'."
@@ -213,7 +227,14 @@ UNIT
   systemctl --user daemon-reload
   systemctl --user enable --now jarvis.service
   systemctl --user restart jarvis.service
-  ok "Running (systemd user service: jarvis)."
+  sleep 5
+  if systemctl --user is-active --quiet jarvis.service; then
+    ok "Running (systemd user service: jarvis)."
+  else
+    warn "Jarvis did not stay running. Last lines of its log:"
+    tail -15 "$LOG" 2>/dev/null | sed 's/^/    /'
+    die "Jarvis is installed but not running. Paste the lines above to Claude."
+  fi
   if [ "$(loginctl show-user "$USER" -p Linger --value 2>/dev/null || echo no)" != "yes" ]; then
     if loginctl enable-linger "$USER" 2>/dev/null || sudo loginctl enable-linger "$USER"; then
       ok "Starts at boot, even before you log in."
