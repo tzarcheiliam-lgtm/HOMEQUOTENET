@@ -51,7 +51,7 @@ export function TierCard({ t, selected, onSelect, compact = false }: { t: Tier; 
       </p>
       <p className="pd-num mt-1.5 text-[17px] font-bold">All-in: {range(total)}/mo with ads</p>
       {!compact ? (
-        <ul className="mt-5 space-y-2">
+        <ul className="mt-5 mb-5 space-y-2">
           {[...(t.buildsOn ? [t.buildsOn] : []), ...t.includes].map((x) => (
             <li key={x} className={cn('flex gap-3 text-[17px] leading-snug', x === t.highlight && 'font-bold')}>
               <Check className={cn('mt-1 size-4 shrink-0', featured ? 'text-[var(--pd-gold)]' : 'text-[var(--pd-blue)]')} strokeWidth={3} aria-hidden="true" />
