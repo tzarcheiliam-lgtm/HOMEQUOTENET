@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { calculateRoi } from '@/lib/pitch/roi';
-import { COMPARISON, FAQS, ROI_EXAMPLE, SLIDES, SLIDE_INDEX, TIERS } from '@/lib/pitch/config';
+import { COMPARISON, FAQS, ROI_EXAMPLE, SLIDES, SLIDE_INDEX, TIERS, allIn } from '@/lib/pitch/config';
 
 describe('pitch ROI calculator', () => {
   const base = { avgContract: 35000, marginPct: 30, appointments: 10, showRatePct: 80, closeRatePct: 25, packageCost: 2750, adBudget: 2000 };
@@ -36,13 +36,18 @@ describe('pitch ROI calculator', () => {
 });
 
 describe('pitch config', () => {
-  it('has one recommended package, prices in the agreed band and ad spend kept separate', () => {
-    expect(TIERS.filter((t) => t.recommended).map((t) => t.id)).toEqual(['appointments']);
-    for (const t of TIERS) {
-      expect(t.price).toBeGreaterThanOrEqual(1750);
-      expect(t.price).toBeLessThanOrEqual(3500);
-      expect(t.adBudget.min).toBeLessThan(t.adBudget.max);
-    }
+  it('matches the owner pricing sheet: one recommended package, setup fees, terms and all-in ranges', () => {
+    expect(TIERS.filter((t) => t.recommended).map((t) => t.id)).toEqual(['managed']);
+    expect(TIERS.map((t) => [t.name, t.price, t.setup, t.term])).toEqual([
+      ['Growth Starter', 1500, 500, 'month-to-month'],
+      ['Managed Growth', 2997, 750, 'month-to-month'],
+      ['Full Pipeline', 4997, 1500, '3-month minimum'],
+    ]);
+    expect(TIERS.map(allIn)).toEqual([
+      { min: 3000, max: 4500 },
+      { min: 4497, max: 5997 },
+      { min: 6497, max: 7997 },
+    ]);
   });
 
   it('every slide has notes and a unique deep-link id', () => {
@@ -57,7 +62,7 @@ describe('pitch config', () => {
     for (const g of COMPARISON) for (const r of g.rows) {
       expect(r.tiers.length).toBeGreaterThan(0);
       for (const t of r.tiers) expect(ids.has(t)).toBe(true);
-      expect(r.tiers).toContain('growth');
+      expect(r.tiers).toContain('pipeline');
     }
   });
 

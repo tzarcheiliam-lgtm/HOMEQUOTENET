@@ -10,7 +10,7 @@ export interface DeckState {
   goTo: (id: string) => void;
 }
 
-export const DeckContext = createContext<DeckState>({ tier: 'appointments', setTier: () => {}, goTo: () => {} });
+export const DeckContext = createContext<DeckState>({ tier: 'managed', setTier: () => {}, goTo: () => {} });
 
 export const useDeck = () => useContext(DeckContext);
 

@@ -53,7 +53,7 @@ function indexFromHash(): number {
 export function PitchDeck() {
   const [index, setIndex] = useState(0);
   const [direction, setDirection] = useState(1);
-  const [tier, setTier] = useState<TierId>('appointments');
+  const [tier, setTier] = useState<TierId>('managed');
   const [menuOpen, setMenuOpen] = useState(false);
   const [scale, setScale] = useState(1);
   const [fullscreen, setFullscreen] = useState(false);

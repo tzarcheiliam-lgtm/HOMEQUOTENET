@@ -196,7 +196,7 @@ export function SolutionSlide() {
           </div>
         </div>
       </div>
-      <FinePrint>Calling, qualification and booking are part of Appointment Generation and Growth Partner.</FinePrint>
+      <FinePrint>Texting, qualifying and booking are part of Managed Growth and Full Pipeline.</FinePrint>
     </Slide>
   );
 }

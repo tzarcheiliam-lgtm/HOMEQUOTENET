@@ -11,84 +11,96 @@
  *   the rep in the presenter window, never on the shared screen.
  */
 
-export type TierId = 'leads' | 'appointments' | 'growth';
+export type TierId = 'starter' | 'managed' | 'pipeline';
 
 export interface Tier {
   id: TierId;
+  /** Small chip above the name ("Get started", "Recommended", "The full system"). */
+  tag: string;
   name: string;
   /** Monthly HomeQuote service fee, USD. */
   price: number;
+  /** One-time setup fee, USD (not part of the monthly all-in). */
+  setup: number;
+  /** Commitment, as the contractor reads it. */
+  term: string;
   /** Recommended monthly ad budget, paid by the contractor to Meta. */
-  adBudget: { min: number; max: number; plus?: boolean };
+  adBudget: { min: number; max: number };
   positioning: string;
-  /** "Everything in X, plus" line for tiers that build on the previous one. */
+  /** "Everything in X" line for tiers that build on the previous one. */
   buildsOn?: string;
   includes: string[];
+  /** The one item to bold on the card. */
+  highlight?: string;
+  /** Callout at the bottom of the card. `lead` is bolded. */
+  callout: { lead: string; text: string };
   recommended?: boolean;
 }
 
 export const PRICING_STATUS = {
-  /** Flip to true once the owner signs off on prices and inclusions. */
-  confirmed: false,
+  /** Owner-supplied prices and terms (2026-11-04). Set false to show "proposed" warnings to reps again. */
+  confirmed: true,
   note: 'Proposed pricing. Confirm packages and terms before quoting in writing.',
+};
+
+/** The Managed Growth performance credit, shown on its card and in the FAQ. Full terms live in the agreement. */
+export const MANAGED_GUARANTEE = {
+  qualified: 10,
+  days: 90,
+  creditPerShort: 750,
+  atAdBudget: 3000,
 };
 
 export const TIERS: Tier[] = [
   {
-    id: 'leads',
-    name: 'Lead Generation',
-    price: 1750,
+    id: 'starter',
+    tag: 'Get started',
+    name: 'Growth Starter',
+    price: 1500,
+    setup: 500,
+    term: 'month-to-month',
     adBudget: { min: 1500, max: 3000 },
-    positioning: 'For contractors with an existing sales or dispatch team.',
-    includes: [
-      'Meta advertising management',
-      'HomeQuote CRM access',
-      'Homeowner lead generation funnel',
-      'Automated notifications and follow-ups',
-      'Calendar integration',
-      'Monthly campaign reporting',
-      'Lead delivery to your team',
-    ],
+    positioning: 'Your marketing system, built and running. Your team works the leads.',
+    includes: ['Ads in your own ad account', 'Landing pages and tracking', 'CRM to track and work your leads', 'Monthly report'],
+    callout: { lead: 'Your system, running.', text: 'No appointment guarantee.' },
   },
   {
-    id: 'appointments',
-    name: 'Appointment Generation',
-    price: 2750,
+    id: 'managed',
+    tag: 'Recommended',
+    name: 'Managed Growth',
+    price: 2997,
+    setup: 750,
+    term: 'month-to-month',
     adBudget: { min: 1500, max: 3000 },
-    positioning: 'We handle the follow-up and scheduling. You show up and sell.',
-    buildsOn: 'Everything in Lead Generation, plus',
+    positioning: 'We text, qualify and book your leads. You show up and sell.',
+    buildsOn: 'Everything in Growth Starter',
     recommended: true,
-    includes: [
-      'Lead calling and homeowner qualification',
-      'Appointment scheduling',
-      'Confirmations and reminders',
-      'Digital document signing',
-      'Automated iMessage follow-ups, where supported',
-      'Enhanced CRM workflows and AI tools',
-      'Appointment and conversion reporting',
-    ],
+    includes: ['Pixel and Conversions API tracking', 'We text, qualify and book your leads', 'Fresh creative and a strategy call monthly'],
+    highlight: 'We text, qualify and book your leads',
+    callout: {
+      lead: `${MANAGED_GUARANTEE.qualified} qualified in ${MANAGED_GUARANTEE.days} days`,
+      text: `or a $${MANAGED_GUARANTEE.creditPerShort} credit for each one short, at the recommended $${MANAGED_GUARANTEE.atAdBudget.toLocaleString('en-US')}/mo in ads.`,
+    },
   },
   {
-    id: 'growth',
-    name: 'Growth Partner',
-    price: 3500,
-    adBudget: { min: 2000, max: 4000, plus: true },
-    positioning: 'For established contractors ready to build a scalable acquisition engine.',
-    buildsOn: 'Everything in Appointment Generation, plus',
-    includes: [
-      'Priority campaign optimization',
-      'Dedicated branded landing page',
-      'Monthly on-site content shoot',
-      'About 15 edited ad creatives a month',
-      'Creative testing and retargeting',
-      'Advanced lead nurturing and reactivation',
-      'Weekly performance reviews',
-    ],
+    id: 'pipeline',
+    tag: 'The full system',
+    name: 'Full Pipeline',
+    price: 4997,
+    setup: 1500,
+    term: '3-month minimum',
+    adBudget: { min: 1500, max: 3000 },
+    positioning: 'Every lead answered in seconds and every quiet estimate chased.',
+    buildsOn: 'Everything in Managed Growth',
+    includes: ['AI speed-to-lead, 24/7', 'Follow-up on quiet estimates', 'Old-lead reactivation and reports'],
+    callout: { lead: 'Why the jump:', text: 'AI answers every lead in seconds, 24/7, and chases quiet estimates, so jobs don’t go cold.' },
   },
 ];
 
-export const AD_SPEND_NOTE =
-  'Ad spend is paid by you, directly to Meta, separate from HomeQuote fees. Budgets are recommendations, not guarantees.';
+/** Monthly fee plus the recommended ad range (setup not included). */
+export const allIn = (t: Tier) => ({ min: t.price + t.adBudget.min, max: t.price + t.adBudget.max });
+
+export const AD_SPEND_NOTE = 'All-in = monthly fee + ads; one-time setup not included. Ads are paid by you, directly to Meta. Full terms in your agreement.';
 
 /** Detailed comparison (slide 7). `tiers` = the packages that include it. */
 export interface ComparisonRow {
@@ -101,43 +113,35 @@ export interface ComparisonGroup {
   rows: ComparisonRow[];
 }
 
-const ALL: TierId[] = ['leads', 'appointments', 'growth'];
-const T2UP: TierId[] = ['appointments', 'growth'];
-const T3: TierId[] = ['growth'];
+const ALL: TierId[] = ['starter', 'managed', 'pipeline'];
+const T2UP: TierId[] = ['managed', 'pipeline'];
+const T3: TierId[] = ['pipeline'];
 
 export const COMPARISON: ComparisonGroup[] = [
   {
-    title: 'Bring in homeowners',
+    title: 'Your marketing system',
     rows: [
-      { feature: 'Meta ad management', detail: 'We build, launch and manage your Facebook and Instagram campaigns aimed at homeowners in your service area. Ad spend is paid by you, directly to Meta.', tiers: ALL },
-      { feature: 'Homeowner lead funnel', detail: 'A mobile-first funnel that asks about the project, screens the service area and captures contact details before anything reaches you.', tiers: ALL },
-      { feature: 'HomeQuote CRM', detail: 'Every lead, status, note and appointment in one place, on desktop and phone.', tiers: ALL },
-      { feature: 'Instant notifications', detail: 'New-lead alerts by email and push so nobody waits on a homeowner.', tiers: ALL },
-      { feature: 'Monthly campaign reporting', detail: 'Spend, leads and cost per lead from your campaigns, reviewed with you each month.', tiers: ALL },
+      { feature: 'Ads in your own ad account', detail: 'We build, launch and manage Facebook and Instagram campaigns in an ad account you own. Ad spend is paid by you, directly to Meta.', tiers: ALL },
+      { feature: 'Landing pages and tracking', detail: 'Mobile-first pages that ask about the project, screen your service area and capture contact details, with tracking on every step.', tiers: ALL },
+      { feature: 'CRM to track and work your leads', detail: 'Every lead, status, note and appointment in one place, on desktop and phone.', tiers: ALL },
+      { feature: 'Monthly report', detail: 'Spend, leads and cost per lead from your campaigns, every month.', tiers: ALL },
     ],
   },
   {
-    title: 'Turn leads into appointments',
+    title: 'We work your leads',
     rows: [
-      { feature: 'Lead calling and qualification', detail: 'Our team calls new homeowners, confirms the project, the address and that the decision makers can be there, and screens out poor fits.', tiers: T2UP },
-      { feature: 'Appointment scheduling', detail: 'Qualified homeowners are booked straight onto your calendar at times you have made available.', tiers: T2UP },
-      { feature: 'Confirmations and reminders', detail: 'Automatic confirmation and reminder texts and emails before every appointment, with easy reschedule links.', tiers: T2UP },
-      { feature: 'Digital document signing', detail: 'Send estimates and agreements for e-signature from the CRM.', tiers: T2UP },
-      { feature: 'iMessage follow-ups', detail: 'Automated text follow-ups from a real number, where your setup supports it.', tiers: T2UP },
-      { feature: 'AI-assisted workflows', detail: 'Automations that follow up, remind and move leads along without someone remembering to do it.', tiers: T2UP },
-      { feature: 'Appointment and conversion reporting', detail: 'See booked, held and sold appointments, not only leads.', tiers: T2UP },
+      { feature: 'Pixel and Conversions API tracking', detail: 'Meta learns which homeowners actually turn into appointments, so your ads find more people like them.', tiers: T2UP },
+      { feature: 'We text, qualify and book your leads', detail: 'Our team follows up with every new homeowner, confirms the project, the address and that the decision makers can be there, and books qualified ones onto your calendar.', tiers: T2UP },
+      { feature: 'Fresh creative every month', detail: 'New ads every month so your campaigns don’t go stale.', tiers: T2UP },
+      { feature: 'Monthly strategy call', detail: 'We review what’s working with you and plan the next month.', tiers: T2UP },
     ],
   },
   {
-    title: 'Grow faster',
+    title: 'No lead goes cold',
     rows: [
-      { feature: 'Dedicated branded landing page', detail: 'A landing page in your brand, built for your services and service area.', tiers: T3 },
-      { feature: 'Monthly on-site content shoot', detail: 'We film your crew and finished projects locally once a month.', tiers: T3 },
-      { feature: 'About 15 ad creatives a month', detail: 'Edited videos and images from your shoots, ready to run.', tiers: T3 },
-      { feature: 'Creative testing and retargeting', detail: 'New angles tested every month, and homeowners who showed interest are shown your ads again.', tiers: T3 },
-      { feature: 'Lead nurturing and reactivation', detail: 'Older leads and past estimates are worked again with follow-up sequences.', tiers: T3 },
-      { feature: 'Weekly performance reviews', detail: 'A weekly check-in on spend, appointments and what to change next.', tiers: T3 },
-      { feature: 'Priority optimization', detail: 'Your campaigns are first in line for changes and new tests.', tiers: T3 },
+      { feature: 'AI speed-to-lead, 24/7', detail: 'Every new lead gets an answer in seconds, day or night, before they call the next contractor.', tiers: T3 },
+      { feature: 'Follow-up on quiet estimates', detail: 'Homeowners who went quiet after an estimate are followed up automatically, so jobs don’t slip away.', tiers: T3 },
+      { feature: 'Old-lead reactivation and reports', detail: 'Older leads are worked again, and you see what came back.', tiers: T3 },
     ],
   },
 ];
@@ -157,10 +161,9 @@ export const PLATFORM_FEATURES: { label: string; live: boolean }[] = [
 ];
 
 export const ADD_ONS: { name: string; price: string; detail: string; includedIn?: string }[] = [
-  { name: 'Standard onboarding', price: '$500 one-time', detail: 'Account setup, campaign build and launch.' },
-  { name: 'Custom branded funnel', price: '$2,000 one-time', detail: 'A funnel designed around your brand and services.', includedIn: 'A branded landing page is included in Growth Partner.' },
-  { name: 'Calling and qualification', price: '$900 / month', detail: 'Add our calling team to Lead Generation.', includedIn: 'Included in Appointment Generation and Growth Partner.' },
-  { name: 'Extra content shoot', price: '$750 to $1,250', detail: 'Another on-site shoot for a new project or season.', includedIn: 'Growth Partner includes one shoot a month.' },
+  { name: 'Custom branded funnel', price: '$2,000 one-time', detail: 'A funnel designed around your brand and services.' },
+  { name: 'Calling and qualification', price: '$900 / month', detail: 'Add our team texting, qualifying and booking to Growth Starter.', includedIn: 'Included in Managed Growth and Full Pipeline.' },
+  { name: 'On-site content shoot', price: '$750 to $1,250', detail: 'We film your crew and finished projects for new ads.' },
   { name: 'Extra ad creatives', price: 'Custom pricing', detail: 'More edited creatives when you want to test faster.' },
 ];
 
@@ -201,7 +204,8 @@ export const FAQS: Faq[] = [
   },
   {
     q: 'Are appointments guaranteed?',
-    a: 'No one can honestly guarantee homeowner demand. We commit to doing the work in your package, and you see every lead and appointment in your CRM.',
+    a: `Managed Growth is: ${MANAGED_GUARANTEE.qualified} qualified appointments in ${MANAGED_GUARANTEE.days} days, or a $${MANAGED_GUARANTEE.creditPerShort} credit for each one short, at the recommended $${MANAGED_GUARANTEE.atAdBudget.toLocaleString('en-US')}/mo in ads. Growth Starter has no appointment guarantee. Full terms are in your agreement.`,
+    decision: 'Confirm whether the 10-in-90 credit also applies to Full Pipeline, and how “qualified” is defined for the credit.',
   },
   {
     q: 'What counts as a qualified appointment?',
@@ -210,7 +214,7 @@ export const FAQS: Faq[] = [
   },
   {
     q: 'Do I need my own salesperson?',
-    a: 'Someone on your side runs the estimate and closes the job. With Appointment Generation we handle the follow-up and scheduling before that.',
+    a: 'Someone on your side runs the estimate and closes the job. With Managed Growth we text, qualify and book the homeowners before that.',
   },
   {
     q: 'Can you work within my service area?',
@@ -233,8 +237,8 @@ export const FAQS: Faq[] = [
   },
   {
     q: 'Is there a contract commitment?',
-    a: 'Terms are set out in your service agreement before anything launches.',
-    decision: 'Decide minimum term (month-to-month? 3 months?) and the cancellation notice period.',
+    a: 'Growth Starter and Managed Growth are month-to-month. Full Pipeline has a 3-month minimum. Each has a one-time setup fee.',
+    decision: 'Set the cancellation notice period.',
   },
 ];
 
@@ -245,7 +249,7 @@ export const ROI_EXAMPLE = {
   appointments: 10,
   showRatePct: 80,
   closeRatePct: 25,
-  adBudget: 2000,
+  adBudget: 3000,
 };
 
 export interface SlideNotes {
@@ -309,7 +313,7 @@ export const SLIDES: SlideMeta[] = [
     notes: {
       say: 'This is the HomeQuote CRM. Every lead, call, appointment and document lives here, and you have access from day one.',
       ask: 'What do you use to track leads today?',
-      emphasize: 'Only promise what is marked Live. Rolling-out items are on the way, not ready.',
+      emphasize: 'Only promise what is marked Live. Full Pipeline’s AI speed-to-lead is still rolling out: confirm it is switched on before promising a start date.',
       next: 'Now, three ways to work with us.',
     },
   },
@@ -317,9 +321,9 @@ export const SLIDES: SlideMeta[] = [
     id: 'pricing',
     title: 'Packages',
     notes: {
-      say: 'Three levels. Lead Generation if you have someone to work the leads. Appointment Generation if you want us to call, qualify and book. Growth Partner if you want us running creative too.',
+      say: 'Three levels. Growth Starter if your team works the leads. Managed Growth if you want us to text, qualify and book them, with 10 qualified in 90 days or a credit. Full Pipeline if you want AI answering every lead 24/7 and chasing quiet estimates.',
       ask: 'Who would call your leads if we sent them to you tomorrow?',
-      emphasize: 'Steer to Appointment Generation. Ad spend is separate and goes straight to Meta.',
+      emphasize: 'Steer to Managed Growth. Point to the all-in line so there are no surprises: fee plus ads, setup is one-time.',
       next: 'Let me show exactly what changes between them.',
     },
   },
@@ -327,7 +331,7 @@ export const SLIDES: SlideMeta[] = [
     id: 'compare',
     title: 'Package comparison',
     notes: {
-      say: 'The big jump is from Lead Generation to Appointment Generation: we take over calling, qualifying, scheduling and reminders.',
+      say: 'The big jump is from Growth Starter to Managed Growth: we take over texting, qualifying and booking, and we back it with the 10-in-90 credit.',
       ask: 'How many hours a week does someone spend chasing leads right now?',
       emphasize: 'Open a row to explain it. Keep the focus on the middle column.',
       next: 'Here is why that middle column matters.',
@@ -397,7 +401,7 @@ export const SLIDES: SlideMeta[] = [
     id: 'choose',
     title: 'Choose a package',
     notes: {
-      say: 'Based on what you told me, I’d start with Appointment Generation. You keep selling; we keep the calendar full of real conversations.',
+      say: 'Based on what you told me, I’d start with Managed Growth. You keep selling; we keep the calendar full of real conversations.',
       ask: 'Which level of support makes the most sense for your business right now?',
       emphasize: 'Ask, then stop talking. Click their pick to highlight it.',
       next: 'Great. Here’s what we do next.',
