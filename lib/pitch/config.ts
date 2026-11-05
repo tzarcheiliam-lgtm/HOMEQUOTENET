@@ -43,7 +43,7 @@ export const PRICING_STATUS = {
   note: 'Proposed pricing. Confirm packages and terms before quoting in writing.',
 };
 
-/** The Managed Growth performance credit, shown on its card and in the FAQ. Full terms live in the agreement. */
+/** The performance credit on Managed Growth and Full Pipeline (owner, 2026-11-04). "Qualified" is agreed with each contractor before launch; full terms live in the agreement. */
 export const MANAGED_GUARANTEE = {
   qualified: 10,
   days: 90,
@@ -92,7 +92,13 @@ export const TIERS: Tier[] = [
     adBudget: { min: 1500, max: 3000 },
     positioning: 'Every lead answered in seconds and every quiet estimate chased.',
     buildsOn: 'Everything in Managed Growth',
-    includes: ['AI speed-to-lead, 24/7', 'Follow-up on quiet estimates', 'Old-lead reactivation and reports'],
+    includes: [
+      'AI speed-to-lead, 24/7',
+      'Follow-up on quiet estimates',
+      'Old-lead reactivation and reports',
+      `The same ${MANAGED_GUARANTEE.qualified}-in-${MANAGED_GUARANTEE.days} qualified guarantee`,
+    ],
+    highlight: `The same ${MANAGED_GUARANTEE.qualified}-in-${MANAGED_GUARANTEE.days} qualified guarantee`,
     callout: { lead: 'Why the jump:', text: 'AI answers every lead in seconds, 24/7, and chases quiet estimates, so jobs don’t go cold.' },
   },
 ];
@@ -134,6 +140,11 @@ export const COMPARISON: ComparisonGroup[] = [
       { feature: 'We text, qualify and book your leads', detail: 'Our team follows up with every new homeowner, confirms the project, the address and that the decision makers can be there, and books qualified ones onto your calendar.', tiers: T2UP },
       { feature: 'Fresh creative every month', detail: 'New ads every month so your campaigns don’t go stale.', tiers: T2UP },
       { feature: 'Monthly strategy call', detail: 'We review what’s working with you and plan the next month.', tiers: T2UP },
+      {
+        feature: `${MANAGED_GUARANTEE.qualified} qualified in ${MANAGED_GUARANTEE.days} days, or a credit`,
+        detail: `At the recommended $${MANAGED_GUARANTEE.atAdBudget.toLocaleString('en-US')}/mo in ads, we deliver ${MANAGED_GUARANTEE.qualified} qualified appointments in ${MANAGED_GUARANTEE.days} days, or credit you $${MANAGED_GUARANTEE.creditPerShort} for each one short. What counts as qualified is agreed with you before launch.`,
+        tiers: T2UP,
+      },
     ],
   },
   {
@@ -204,13 +215,11 @@ export const FAQS: Faq[] = [
   },
   {
     q: 'Are appointments guaranteed?',
-    a: `Managed Growth is: ${MANAGED_GUARANTEE.qualified} qualified appointments in ${MANAGED_GUARANTEE.days} days, or a $${MANAGED_GUARANTEE.creditPerShort} credit for each one short, at the recommended $${MANAGED_GUARANTEE.atAdBudget.toLocaleString('en-US')}/mo in ads. Growth Starter has no appointment guarantee. Full terms are in your agreement.`,
-    decision: 'Confirm whether the 10-in-90 credit also applies to Full Pipeline, and how “qualified” is defined for the credit.',
+    a: `Managed Growth and Full Pipeline are: ${MANAGED_GUARANTEE.qualified} qualified appointments in ${MANAGED_GUARANTEE.days} days, or a $${MANAGED_GUARANTEE.creditPerShort} credit for each one short, at the recommended $${MANAGED_GUARANTEE.atAdBudget.toLocaleString('en-US')}/mo in ads. Growth Starter has no appointment guarantee. Full terms are in your agreement.`,
   },
   {
     q: 'What counts as a qualified appointment?',
-    a: 'We agree on it with you before launch: service area, project type, homeowner and decision makers present, and any budget or timing rules you need.',
-    decision: 'Set the default qualification standard (budget floor? timeline?) to start every agreement from.',
+    a: 'We agree on it with you before launch: service area, project type, homeowner and decision makers present, and any budget or timing rules you need. That same definition is what the guarantee counts.',
   },
   {
     q: 'Do I need my own salesperson?',
@@ -321,7 +330,7 @@ export const SLIDES: SlideMeta[] = [
     id: 'pricing',
     title: 'Packages',
     notes: {
-      say: 'Three levels. Growth Starter if your team works the leads. Managed Growth if you want us to text, qualify and book them, with 10 qualified in 90 days or a credit. Full Pipeline if you want AI answering every lead 24/7 and chasing quiet estimates.',
+      say: 'Three levels. Growth Starter if your team works the leads. Managed Growth if you want us to text, qualify and book them, with 10 qualified in 90 days or a credit. Full Pipeline adds AI answering every lead 24/7 and chasing quiet estimates, with the same guarantee.',
       ask: 'Who would call your leads if we sent them to you tomorrow?',
       emphasize: 'Steer to Managed Growth. Point to the all-in line so there are no surprises: fee plus ads, setup is one-time.',
       next: 'Let me show exactly what changes between them.',

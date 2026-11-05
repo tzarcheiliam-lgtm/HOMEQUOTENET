@@ -50,6 +50,15 @@ describe('pitch config', () => {
     ]);
   });
 
+  it('the 10-in-90 credit is on Managed Growth and Full Pipeline, never Growth Starter', () => {
+    const row = COMPARISON.flatMap((g) => g.rows).find((r) => r.feature.startsWith('10 qualified in 90 days'));
+    expect(row?.tiers).toEqual(['managed', 'pipeline']);
+    expect(TIERS.find((t) => t.id === 'starter')?.callout.text).toMatch(/No appointment guarantee/);
+    const faq = FAQS.find((f) => f.q === 'Are appointments guaranteed?');
+    expect(faq?.a).toMatch(/Managed Growth and Full Pipeline/);
+    expect(faq?.decision).toBeUndefined();
+  });
+
   it('every slide has notes and a unique deep-link id', () => {
     expect(SLIDES).toHaveLength(15);
     expect(new Set(SLIDES.map((s) => s.id)).size).toBe(SLIDES.length);
