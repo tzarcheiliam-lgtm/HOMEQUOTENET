@@ -1,7 +1,7 @@
 # Jarvis — build plan and handoff
 
-Written 2026-11-05 at the end of a cloud session, to continue in a **local Claude Code session on the machine Jarvis
-runs on** (the MacBook now, the TV PC later). Read this first, then `jarvis/README.md` and
+Written 2026-11-05 at the end of a cloud session, to continue in a **local Claude Code session on the MacBook**.
+**Everything is built and tested on the Mac first; it moves to the TV PC only once it works there.** Read this first, then `jarvis/README.md` and
 `HOMEQUOTE_CONTEXT.md` §50 (scheduler) and §51 (Jarvis).
 
 ## The goal
@@ -94,11 +94,13 @@ a Marvel movie playing for an hour triggers nothing.
 3. **Gmail + Calendar (~1 day):** Google OAuth client created as **Internal** in the homequotenet.com Workspace
    (External + Testing tokens die every 7 days); Gmail read + drafts only (no send tool); Calendar read + create.
    Briefing includes unanswered customer emails and today's calendar.
-4. **Voice on the Mac (prototype, ~1–2 days):** push-to-talk first (hotkey), Fish STT/TTS, same agent; then the
-   bundled wake word for testing; record training data for the custom model.
-5. **TV PC (~2 days):** Ubuntu 24.04, UPS, BIOS power-on, install Jarvis with the same installer, **uninstall it on
-   the Mac first** (one bot token = one machine), speakerphone, custom wake word, kiosk dashboard, TV control, webcam
-   presence.
+4. **Voice on the Mac (~2–3 days):** push-to-talk first (hotkey), Fish STT/TTS, same agent; then the bundled wake
+   word for testing; record training data and train the custom "Hey Jarvis" model; test with the speakerphone and
+   webcam plugged into the Mac. Build the dashboard page here too (open it in a browser window as a stand-in TV).
+   Keep everything cross-platform (no macOS-only audio APIs) so it moves as-is.
+5. **Move to the TV PC (~1 day, once the PC is ready):** Ubuntu 24.04, UPS, BIOS power-on; **uninstall on the Mac
+   first** (one bot token = one machine), run the same installer on the PC, move the speakerphone + webcam over, then
+   add only the TV-specific parts: kiosk Chromium, TV on/off control, presence → TV on.
 6. **More of the business:** GoHighLevel MCP for the garage-door / GC sub-accounts, spend-without-leads alarm,
    proposal and invoice follow-up drafts, sub schedule texts, review requests.
 
