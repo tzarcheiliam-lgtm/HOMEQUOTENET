@@ -208,8 +208,12 @@ describe('trigger registry', () => {
   });
 
   it('scopes contractor-side events to a contractor and marks missing domains honestly', () => {
-    for (const t of ['lead.assigned', 'assignment.status_changed', 'appointment.no_show', 'estimate.sent', 'deal.won', 'deal.lost'] as const) {
+    for (const t of ['lead.assigned', 'assignment.status_changed', 'estimate.sent', 'deal.won', 'deal.lost'] as const) {
       expect(WORKFLOW_TRIGGERS[t].contractorScope).toBe('required');
+    }
+    // Appointments can be HomeQuote team-calendar calls with no contractor (0070).
+    for (const t of WORKFLOW_EVENT_TYPES.filter((type) => type.startsWith('appointment.'))) {
+      expect(WORKFLOW_TRIGGERS[t].contractorScope).toBe('optional');
     }
     // task.completed became ready with workflow_tasks (migration 0041); inbound texts arrive through the Mac bridge (lib/sms).
     expect(WORKFLOW_TRIGGERS['task.completed'].availability).toBe('ready');

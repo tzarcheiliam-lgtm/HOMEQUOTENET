@@ -110,7 +110,10 @@ describe('trigger-variable compatibility', () => {
   });
 
   it('exposes the roots per trigger and keeps every shipped template compatible', () => {
-    expect([...mergeRootsForTrigger('appointment.no_show', { contractorId: null })].sort()).toEqual(['appointment', 'contractor', 'homequote', 'lead']);
+    // A HomeQuote team-calendar no-show has no contractor; a contractor's own workflow always has one.
+    expect([...mergeRootsForTrigger('appointment.no_show', { contractorId: null })].sort()).toEqual(['appointment', 'homequote', 'lead']);
+    expect([...mergeRootsForTrigger('appointment.no_show', { contractorId: '00000000-0000-4000-8000-000000000001' })].sort()).toEqual(['appointment', 'contractor', 'homequote', 'lead']);
+    expect([...mergeRootsForTrigger('estimate.sent', { contractorId: null })].sort()).toEqual(['contractor', 'estimate', 'homequote', 'lead']);
     for (const t of WORKFLOW_TEMPLATES) {
       expect(validateWorkflowForEnable(t.definition, { contractorId: null }).filter((i) => i.code === 'variable_unavailable')).toEqual([]);
     }

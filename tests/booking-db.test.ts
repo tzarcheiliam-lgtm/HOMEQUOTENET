@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import type { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { addDays, localParts, weekdayOfDate, zonedToUtc } from '@/lib/availability/time';
+import { eventFromRow, type WorkflowEventRow } from '@/lib/workflows/events';
 import { fullSchema } from './helpers/full-migrations';
 import { fakeSupabase } from './helpers/pglite-supabase';
 
@@ -248,6 +249,22 @@ describe('book_appointment: team calendar from a network funnel', () => {
     expect((await one(`select public.reschedule_appointment($1,$2) as r`, [randomUUID(), la(DAY, 15)])).r.error).toBe('not_found');
     // The freed slot can be booked again.
     expect((await book({ p_calendar: team, p_starts_at: la(DAY, 10, 30), p_lead: await lead('Next'), p_source: 'manual' })).ok).toBe(true);
+  });
+
+  // Regression (2026-11-04): a team-calendar call has no assignment and no contractor, so the
+  // change events used to fail parseWorkflowEvent (contractor-required) and dead-letter.
+  it('emits team-calendar change events (no assignment, no contractor) that the dispatcher can parse', async () => {
+    const noShow = (await book({ p_calendar: team, p_starts_at: la(DAY2, 16), p_lead: await lead('Missed'), p_source: 'manual' })).appointment_id;
+    const held = (await book({ p_calendar: team, p_starts_at: la(DAY2, 16, 30), p_lead: await lead('Reached'), p_source: 'manual' })).appointment_id;
+    await q(`update public.appointments set status='no_show' where id=$1`, [noShow]);
+    await q(`update public.appointments set status='held' where id=$1`, [held]);
+    const rows = await q<WorkflowEventRow>(`select * from public.workflow_events where entity_id = any($1::uuid[]) and type <> 'appointment.booked' order by type`, [[apptId, noShow, held]]);
+    expect(rows.map((r) => r.type)).toEqual(['appointment.cancelled', 'appointment.completed', 'appointment.no_show', 'appointment.rescheduled']);
+    for (const row of rows) {
+      expect(row).toMatchObject({ contractor_id: null });
+      const e = eventFromRow(row);
+      expect(e.payload).toMatchObject({ assignmentId: null, contractorId: null, calendarId: team });
+    }
   });
 
   it('lets the same funnel session book again once its call was cancelled', async () => {
