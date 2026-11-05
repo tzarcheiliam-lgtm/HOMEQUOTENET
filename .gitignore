@@ -55,7 +55,3 @@ supabase/.temp/
 # local end-to-end harness output
 .e2e-out/
 .claude/worktrees/
-
-# Jarvis (separate Node app in jarvis/)
-/jarvis/node_modules
-/jarvis/Jarvis-Installer.zip

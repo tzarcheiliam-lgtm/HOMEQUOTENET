@@ -18,7 +18,6 @@ const config = [
       'next-env.d.ts',
       // Seret studio is a separate Vite app with its own build (see studio/README.md).
       'studio/**',
-      'jarvis/node_modules/**',
       'public/studio/**',
     ],
   },
