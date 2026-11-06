@@ -62,6 +62,19 @@ async function call(leadId: string, o: { status?: string; startsAt?: Date } = {}
     values ($1,$2,$3,$4,'America/Los_Angeles','America/Los_Angeles','estimator','phone',$5,$6) returning id`,
     [leadId, team, s.toISOString(), plus(10, s).toISOString(), o.status ?? 'scheduled', plus(-2 * 24 * 60).toISOString()])).id as string;
 }
+/**
+ * Mark a call a no-show at `at` on the test's clock. The no-show text and email are timed from updated_at (planNoShow),
+ * and trg_appointments_updated_at would stamp the real now(): any run after T0 + 20 min then sees it as marked in the
+ * future and nothing is due. So this skips that one trigger (the workflow-event triggers still fire) and pins the time.
+ */
+async function markNoShow(id: string, at: Date) {
+  await q(`alter table public.appointments disable trigger trg_appointments_updated_at`);
+  try {
+    await q(`update public.appointments set status='no_show', updated_at=$2 where id=$1`, [id, at.toISOString()]);
+  } finally {
+    await q(`alter table public.appointments enable trigger trg_appointments_updated_at`);
+  }
+}
 
 beforeAll(async () => {
   db = await fullSchema({ supabaseGrants: true });
@@ -139,8 +152,8 @@ describe('no-show recovery', () => {
   it('one friendly text (no link, reply R) and one email with the "pick a new time" link, 30 minutes after it is marked', async () => {
     const l = await newLead();
     const a = await call(l.id);
-    // Marked a no-show (before the call time in this test's clock, so the text is due 30 minutes after the call).
-    await q(`update public.appointments set status='no_show' where id=$1`, [a]);
+    // Marked a no-show when the 10-minute call ended, so the text and email are due 30 minutes later (T0 + 40).
+    await markNoShow(a, plus(10));
     await runTextReminders(sb, { now: plus(20) }); // not yet due
     await runRecovery(deps(plus(20)));
     expect(await texts(l.id)).toHaveLength(0);
@@ -173,7 +186,7 @@ describe('no-show recovery', () => {
     const l = await newLead();
     await q(`insert into public.sms_opt_outs(phone_e164, source) values ($1,'stop_reply')`, [l.phone]);
     const a = await call(l.id);
-    await q(`update public.appointments set status='no_show' where id=$1`, [a]);
+    await markNoShow(a, plus(10));
     await runTextReminders(sb, { now: plus(50) });
     await runRecovery(deps(plus(50)));
     expect(await texts(l.id)).toHaveLength(0);
@@ -182,7 +195,7 @@ describe('no-show recovery', () => {
     await q(`update public.sms_settings set reminder_config='{"recovery":{"noShow":false}}' where id`);
     const m = await newLead();
     const b = await call(m.id);
-    await q(`update public.appointments set status='no_show' where id=$1`, [b]);
+    await markNoShow(b, plus(10));
     mails = [];
     await runTextReminders(sb, { now: plus(50) });
     await runRecovery(deps(plus(50)));
