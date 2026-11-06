@@ -33,6 +33,7 @@ const GROUP_BY_LABEL: Record<string, NavGroup> = {
   'Call Logs': 'Operations',
   'Call Appointments': 'Operations',
   'Call Emails': 'Operations',
+  'Video Meetings': 'Operations',
   'Growth Tools': 'Growth',
   'Service Requests': 'Growth',
   Funnels: 'Growth',
@@ -329,6 +330,12 @@ const CALL_WORKSPACE_EXTRAS: NavItem[] = ([
     label: 'Call Emails',
     href: '/app/calls/emails',
     icon: 'Mail',
+    roles: ['admin', 'caller', 'setter'],
+  },
+  {
+    label: 'Video Meetings',
+    href: '/app/meetings',
+    icon: 'Video',
     roles: ['admin', 'caller', 'setter'],
   },
 ] as NavItem[]).map((i) => ({ ...i, group: GROUP_BY_LABEL[i.label] }));

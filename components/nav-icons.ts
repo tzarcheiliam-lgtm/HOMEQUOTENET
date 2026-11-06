@@ -29,6 +29,7 @@ import {
   Clapperboard,
   KeyRound,
   Radar,
+  Video,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -39,6 +40,7 @@ export const NAV_ICONS: Record<string, LucideIcon> = {
   Clapperboard,
   KeyRound,
   Radar,
+  Video,
   MessageSquare,
   FileSignature,
   FileStack,

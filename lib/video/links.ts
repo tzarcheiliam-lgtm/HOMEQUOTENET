@@ -13,17 +13,18 @@
  */
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
-export type VideoMeetingKind = 'appointment' | 'sales_appointment';
+/** appointment = homeowner appointment, sales_appointment = sales meeting, link = ad-hoc meeting link (meeting_links, 0075). */
+export type VideoMeetingKind = 'appointment' | 'sales_appointment' | 'link';
 export type VideoRole = 'host' | 'guest';
 
-const KIND_CHAR: Record<VideoMeetingKind, string> = { appointment: 'a', sales_appointment: 's' };
-const CHAR_KIND: Record<string, VideoMeetingKind> = { a: 'appointment', s: 'sales_appointment' };
+const KIND_CHAR: Record<VideoMeetingKind, string> = { appointment: 'a', sales_appointment: 's', link: 'l' };
+const CHAR_KIND: Record<string, VideoMeetingKind> = { a: 'appointment', s: 'sales_appointment', l: 'link' };
 /** The host page's URL segment per kind (/app/meet/<segment>/<id>). */
-const KIND_SEGMENT: Record<VideoMeetingKind, string> = { appointment: 'appt', sales_appointment: 'sales' };
-const SEGMENT_KIND: Record<string, VideoMeetingKind> = { appt: 'appointment', sales: 'sales_appointment' };
+const KIND_SEGMENT: Record<VideoMeetingKind, string> = { appointment: 'appt', sales_appointment: 'sales', link: 'link' };
+const SEGMENT_KIND: Record<string, VideoMeetingKind> = { appt: 'appointment', sales: 'sales_appointment', link: 'link' };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const TOKEN_RE = /^([as])([0-9a-f]{32})([A-Za-z0-9_-]{22})$/;
+const TOKEN_RE = /^([asl])([0-9a-f]{32})([A-Za-z0-9_-]{22})$/;
 const SIG_CHARS = 22;
 
 function signature(kind: VideoMeetingKind, id: string, secret: string): string {

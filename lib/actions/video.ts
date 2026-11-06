@@ -35,7 +35,7 @@ export async function joinVideoAsGuest(token: string, name: string): Promise<Joi
 export async function joinVideoAsHost(kind: VideoMeetingKind, id: string): Promise<JoinResult> {
   const me = await getProfile();
   if (!me || !me.is_active) return { ok: false, error: 'Sign in to join this call.' };
-  if ((kind !== 'sales_appointment' && kind !== 'appointment') || !isUuid(id)) return { ok: false, error: 'This video call link is not valid.' };
+  if (!['sales_appointment', 'appointment', 'link'].includes(kind) || !isUuid(id)) return { ok: false, error: 'This video call link is not valid.' };
   const m = await meetingForHost(kind, id);
   const why = refusal(m, 'host');
   if (why || !m) return { ok: false, error: why ?? 'This video call link is not valid.' };
