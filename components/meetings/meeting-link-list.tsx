@@ -8,6 +8,7 @@ import type { MeetingLinkRow, MeetingLinkStatus } from '@/lib/data/meeting-links
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
+import { VideoCallHistory } from '@/components/video/call-history';
 import { cn } from '@/lib/utils';
 
 const STATUS: Record<MeetingLinkStatus, { label: string; tone: string }> = {
@@ -43,6 +44,7 @@ function Row({ r, showHost }: { r: MeetingLinkRow; showHost: boolean }) {
           {showHost && r.hostName ? ` · ${r.hostName}` : ''}
           {r.guestContact ? ` · ${r.guestContact}` : ''}
         </p>
+        {r.history ? <VideoCallHistory summary={r.history} timeZone={r.timeZone} noShow={r.status === 'ended'} className="mt-0.5" /> : null}
         {error ? <p role="alert" className="text-xs text-destructive">{error}</p> : null}
       </div>
       <span className={cn('self-start rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 sm:self-center', STATUS[r.status].tone)}>{STATUS[r.status].label}</span>

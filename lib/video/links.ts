@@ -122,3 +122,26 @@ export function cleanDisplayName(v: unknown, fallback: string): string {
   const s = typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 60) : '';
   return s || fallback;
 }
+
+const ROOM_RE = /^hq-(appt|sales|link)-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
+
+/** The meeting behind a LiveKit room name ("hq-sales-<id>"), or null for a room HomeQuote did not name. */
+export function parseRoomName(name: unknown): { kind: VideoMeetingKind; id: string } | null {
+  const m = typeof name === 'string' ? ROOM_RE.exec(name) : null;
+  return m ? { kind: SEGMENT_KIND[m[1]], id: m[2] } : null;
+}
+
+const HOST_IDENTITY_RE = /^host-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
+
+/**
+ * Who a room participant is, from the identity our join passes give them:
+ * "host-<profile id>" or "guest-<random>". Anything else (a recording or
+ * transcription bot, an unknown client) is ignored.
+ */
+export function participantRole(identity: unknown): { role: VideoRole; userId: string | null } | null {
+  if (typeof identity !== 'string') return null;
+  const h = HOST_IDENTITY_RE.exec(identity);
+  if (h) return { role: 'host', userId: h[1] };
+  if (/^guest-[0-9a-f]{6,32}$/.test(identity)) return { role: 'guest', userId: null };
+  return null;
+}

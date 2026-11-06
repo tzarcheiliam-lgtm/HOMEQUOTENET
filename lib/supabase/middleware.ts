@@ -60,6 +60,8 @@ export async function updateSession(request: NextRequest) {
   if (publicPath === '/sign' || publicPath.startsWith('/api/signing/')) return supabaseResponse;
   // HomeQuote video rooms, guest side: the signed link is the credential (the host page lives under /app/meet).
   if (publicPath.startsWith('/meet/')) return supabaseResponse;
+  // LiveKit webhook: authenticated by its signature (LIVEKIT_API_KEY / _SECRET), never a session.
+  if (publicPath === '/api/video/webhook') return supabaseResponse;
   // Seret API (MCP): authenticated by its own API key, never a session.
   if (publicPath === '/api/seret/mcp') return supabaseResponse;
   // HomeQuote MCP for Claude: authenticated by its own hq_ key, never a session.

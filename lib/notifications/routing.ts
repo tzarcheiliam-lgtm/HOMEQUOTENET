@@ -106,6 +106,8 @@ export async function buildNotifications(event: NotificationEvent, db: Db): Prom
       const people = await authorize(ctx, cands);
       return group(ctx, people, str(p.title) ?? 'Automation alert', str(p.body) ?? '', () => str(p.url) ?? FALLBACK_URL);
     }
+    case 'video_guest_joined':
+      return videoGuestJoined(ctx);
   }
 }
 
@@ -459,6 +461,49 @@ async function prospectAppointment(ctx: Ctx): Promise<OutgoingNotification[]> {
         ? '🔄 Sales Call Changed'
         : '❌ Sales Call Cancelled';
   return group(ctx, people, title, when ? `${prospect.company_name} — ${when}` : prospect.company_name, () => '/app/calls/appointments');
+}
+
+const VIDEO_HOST_SEGMENT: Record<string, string> = { link: 'link', sales_appointment: 'sales', appointment: 'appt' };
+
+/**
+ * Someone joined a HomeQuote video room before any host (§52). entity_type is
+ * the room kind, entity_id the appointment / sales meeting / meeting link.
+ * "Assigned" = that record's own rep, re-read here (never taken from the
+ * payload): a link's host; a sales meeting's partner (setter) and the
+ * prospect's owner (caller). Homeowner appointments reach admins only, and the
+ * text never names a homeowner.
+ */
+async function videoGuestJoined(ctx: Ctx): Promise<OutgoingNotification[]> {
+  const kind = ctx.event.entity_type;
+  const seg = VIDEO_HOST_SEGMENT[kind];
+  if (!seg) return [];
+  const out = await staffAudience(ctx, ctx.rule);
+  let subject: string | null = null;
+  if (kind === 'link') {
+    const { data } = await ctx.db.from('meeting_links').select('host_id, guest_name, cancelled_at, prospect:contractor_prospects(company_name)').eq('id', ctx.entityId).maybeSingle();
+    const link = data as unknown as { host_id: string; guest_name: string | null; cancelled_at: string | null; prospect: { company_name: string } | { company_name: string }[] | null } | null;
+    if (!link || link.cancelled_at) return [];
+    const company = Array.isArray(link.prospect) ? link.prospect[0]?.company_name : link.prospect?.company_name;
+    subject = [link.guest_name, company].filter(Boolean).join(' · ') || null;
+    if (ctx.rule.assigned_setter || ctx.rule.assigned_caller) {
+      out.push(...cand(await peopleByIds(ctx.db, [link.host_id]), ctx.rule.assigned_setter ? 'assigned_setter' : 'assigned_caller'));
+    }
+  } else if (kind === 'sales_appointment') {
+    const { data } = await ctx.db
+      .from('prospect_sales_appointments')
+      .select('partner_id, decision_maker_name, prospect:contractor_prospects(company_name, assigned_to)')
+      .eq('id', ctx.entityId)
+      .maybeSingle();
+    const sa = data as unknown as { partner_id: string | null; decision_maker_name: string | null; prospect: { company_name: string; assigned_to: string | null } | { company_name: string; assigned_to: string | null }[] | null } | null;
+    if (!sa) return [];
+    const prospect = Array.isArray(sa.prospect) ? sa.prospect[0] ?? null : sa.prospect;
+    subject = [sa.decision_maker_name, prospect?.company_name].filter(Boolean).join(' · ') || null;
+    if (ctx.rule.assigned_setter && sa.partner_id) out.push(...cand(await peopleByIds(ctx.db, [sa.partner_id]), 'assigned_setter'));
+    if (ctx.rule.assigned_caller && prospect?.assigned_to) out.push(...cand(await peopleByIds(ctx.db, [prospect.assigned_to]), 'assigned_caller'));
+  }
+  const people = await authorize(ctx, out);
+  const body = kind === 'appointment' ? 'A homeowner is waiting in your video call.' : `${subject ?? 'Your guest'} is waiting in your video call.`;
+  return group(ctx, people, '🎥 Your guest has joined', body, () => `/app/meet/${seg}/${ctx.entityId}`);
 }
 
 async function callbackDue(ctx: Ctx): Promise<OutgoingNotification[]> {

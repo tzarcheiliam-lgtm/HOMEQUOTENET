@@ -48,7 +48,7 @@ cancelled meeting's link stops working because the page re-checks the booking.
 `LIVEKIT_URL` (`wss://<project>.livekit.cloud`), `LIVEKIT_API_KEY`,
 `LIVEKIT_API_SECRET`. Until they are set nothing changes anywhere.
 
-## Phase 2 — know what happened (migration)
+## Phase 2 — know what happened (migration 0076) — BUILT 2026-11-06, see HOMEQUOTE_CONTEXT.md §52 (workflow events still to do)
 
 - `video_calls` table: meeting, room, host/guest joined + left times, duration.
 - `POST /api/video/webhook` (LiveKit webhooks, signature-verified): participant joined/left, room finished.

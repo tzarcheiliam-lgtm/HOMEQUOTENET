@@ -1,14 +1,18 @@
 'use client';
 
 import '@livekit/components-styles';
-import { useCallback, useRef, useState, type CSSProperties } from 'react';
+import './video-theme.css';
+import { useCallback, useRef, useState } from 'react';
 import { LiveKitRoom, PreJoin, VideoConference, useRemoteParticipants, type LocalUserChoices } from '@livekit/components-react';
+import { CalendarClock, MonitorSmartphone, PhoneOff, RotateCcw } from 'lucide-react';
 import type { JoinResult } from '@/lib/actions/video';
 import type { JoinPass } from '@/lib/video/livekit.server';
+import { BrandLogo } from '@/components/brand-logo';
+import { CallShell } from './call-shell';
 
 export interface VideoCallRoomProps {
   role: 'host' | 'guest';
-  /** "Video call with HomeQuote Network" */
+  /** "Video call with Liam from HomeQuote" */
   title: string;
   /** "Tue, Nov 4 · 10:00 AM PST" */
   when: string;
@@ -27,16 +31,15 @@ type Stage =
   | { kind: 'call'; choices: LocalUserChoices; pass: JoinPass }
   | { kind: 'left'; choices: LocalUserChoices };
 
-// HomeQuote blue on LiveKit's dark theme.
-const THEME = { '--lk-accent-bg': '#0038B8', '--lk-accent2': '#1a4fc4', '--lk-accent3': '#3364cc', '--lk-accent4': '#4d79d4' } as CSSProperties;
-
+/** While nobody else is in the room: a quiet pill with a slow gold pulse. */
 function WaitingBanner({ waitingFor }: { waitingFor: string }) {
   const others = useRemoteParticipants();
   if (others.length > 0) return null;
   return (
-    <div role="status" className="pointer-events-none absolute inset-x-0 top-4 z-10 flex justify-center px-4">
-      <p className="rounded-full bg-black/70 px-4 py-2 text-center text-sm text-white shadow-lg">
-        Waiting for {waitingFor} to join. You&apos;ll be connected automatically.
+    <div role="status" className="pointer-events-none absolute inset-x-0 top-16 z-10 flex justify-center px-4 sm:top-5">
+      <p className="flex items-center gap-2.5 rounded-full border border-white/10 bg-[#12264f]/95 px-4 py-2 text-center text-sm text-white shadow-[0_8px_30px_rgba(0,0,0,0.25)] backdrop-blur">
+        <span className="hq-pulse size-2 shrink-0 rounded-full bg-[#f5b700]" aria-hidden="true" />
+        Waiting for {waitingFor}. You’ll be connected automatically.
       </p>
     </div>
   );
@@ -76,7 +79,7 @@ export function VideoCallRoom({ role, title, when, waitingFor, defaultName, join
   if (stage.kind === 'call') {
     const { choices, pass } = stage;
     return (
-      <div data-lk-theme="default" style={THEME} className="relative h-dvh w-full">
+      <div data-lk-theme="default" className="hq-call relative h-dvh w-full bg-[#0a1b3d]">
         <LiveKitRoom
           serverUrl={pass.serverUrl}
           token={pass.participantToken}
@@ -89,10 +92,15 @@ export function VideoCallRoom({ role, title, when, waitingFor, defaultName, join
           onMediaDeviceFailure={() => setDeviceNote('Your camera or microphone could not start. Check the browser permission and try again.')}
           className="h-full"
         >
+          {/* Brand + meeting name, out of the way of the video. */}
+          <div className="pointer-events-none absolute left-3 top-3 z-10 flex items-center gap-2.5 rounded-xl bg-[#071330]/70 px-3 py-2 backdrop-blur">
+            <BrandLogo tone="reversed" variant="mark" className="size-6" />
+            <span className="hidden max-w-[40ch] truncate text-sm font-medium text-white/90 sm:block">{title}</span>
+          </div>
           <WaitingBanner waitingFor={waitingFor} />
           {deviceNote ? (
-            <div role="alert" className="absolute inset-x-0 top-16 z-10 flex justify-center px-4">
-              <p className="rounded-md bg-red-600/90 px-3 py-2 text-sm text-white">{deviceNote}</p>
+            <div role="alert" className="absolute inset-x-0 top-28 z-10 flex justify-center px-4 sm:top-20">
+              <p className="rounded-xl bg-red-600/95 px-4 py-2 text-sm text-white">{deviceNote}</p>
             </div>
           ) : null}
           <VideoConference />
@@ -101,34 +109,54 @@ export function VideoCallRoom({ role, title, when, waitingFor, defaultName, join
     );
   }
 
-  return (
-    <main data-lk-theme="default" style={THEME} className="flex min-h-dvh flex-col items-center bg-[#111] px-4 py-8 text-white">
-      <div className="w-full max-w-[480px] space-y-1 text-center">
-        <p className="text-xs font-semibold uppercase tracking-widest text-white/60">HomeQuote Network</p>
-        <h1 className="text-xl font-semibold">{title}</h1>
-        <p className="text-sm text-white/70">{when}</p>
-      </div>
-      {error ? (
-        <p role="alert" className="mt-4 w-full max-w-[480px] rounded-md border border-red-500/50 bg-red-500/10 px-3 py-2 text-sm text-red-200">
-          {error}
-        </p>
-      ) : null}
-      {stage.kind === 'left' ? (
-        <div className="mt-8 w-full max-w-[480px] space-y-4 text-center">
-          <p className="text-base">You left the call.</p>
-          <div className="flex justify-center gap-3">
-            <button type="button" className="lk-button lk-join-button" style={{ background: '#0038B8' }} onClick={() => enter(stage.choices)}>
+  if (stage.kind === 'left') {
+    return (
+      <div data-lk-theme="default" className="hq-call">
+        <CallShell className="justify-center text-center">
+          <span className="mx-auto grid size-12 place-items-center rounded-full bg-white/10">
+            <PhoneOff className="size-5" aria-hidden="true" />
+          </span>
+          <h1 className="font-display mt-5 text-2xl font-semibold tracking-tight">You left the call</h1>
+          <p className="mt-2 text-sm text-white/60">{title}</p>
+          {error ? <p role="alert" className="mt-4 text-sm text-red-300">{error}</p> : null}
+          <div className="mt-8 flex flex-col items-center gap-3">
+            <button
+              type="button"
+              onClick={() => enter(stage.choices)}
+              className="inline-flex min-h-12 w-full max-w-xs items-center justify-center gap-2 rounded-xl bg-[#0038b8] px-6 font-semibold transition-colors hover:bg-[#1d52c9]"
+            >
+              <RotateCcw className="size-4" aria-hidden="true" />
               Rejoin
             </button>
             {backHref ? (
-              <a href={backHref} className="lk-button">
+              <a href={backHref} className="text-sm text-white/70 underline-offset-4 hover:text-white hover:underline">
                 Back to HomeQuote
               </a>
             ) : null}
           </div>
+        </CallShell>
+      </div>
+    );
+  }
+
+  return (
+    <div data-lk-theme="default" className="hq-call">
+      <CallShell>
+        <div className="text-center">
+          <h1 className="font-display text-balance text-[26px] font-semibold leading-tight tracking-tight sm:text-3xl">{title}</h1>
+          <p className="mt-2 inline-flex items-center gap-1.5 text-sm text-white/65">
+            <CalendarClock className="size-4" aria-hidden="true" />
+            {when}
+          </p>
         </div>
-      ) : (
-        <div className="mt-4 w-full">
+
+        {error ? (
+          <p role="alert" className="mt-5 rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+            {error}
+          </p>
+        ) : null}
+
+        <div className="mt-6 rounded-2xl border border-white/10 bg-[#12264f]/80 p-4 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.5)] sm:p-5">
           <PreJoin
             defaults={{ username: defaultName, videoEnabled: true, audioEnabled: true }}
             onSubmit={enter}
@@ -140,12 +168,13 @@ export function VideoCallRoom({ role, title, when, waitingFor, defaultName, join
             camLabel="Camera"
             persistUserChoices={false}
           />
-          {deviceNote ? <p className="mx-auto mt-2 max-w-[480px] text-center text-sm text-amber-200">{deviceNote}</p> : null}
-          <p className="mx-auto mt-4 max-w-[480px] text-center text-xs text-white/50">
-            Works in your browser, no app needed. On a phone, allow camera and microphone when asked.
-          </p>
         </div>
-      )}
-    </main>
+        {deviceNote ? <p className="mt-3 text-center text-sm text-amber-200">{deviceNote}</p> : null}
+        <p className="mt-5 flex items-center justify-center gap-1.5 text-center text-xs text-white/50">
+          <MonitorSmartphone className="size-3.5" aria-hidden="true" />
+          No app needed. On a phone, allow camera and microphone when asked.
+        </p>
+      </CallShell>
+    </div>
   );
 }
