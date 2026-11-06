@@ -9,6 +9,7 @@ import type { JoinResult } from '@/lib/actions/video';
 import type { JoinPass } from '@/lib/video/livekit.server';
 import { BrandLogo } from '@/components/brand-logo';
 import { CallShell } from './call-shell';
+import { RecordingConsent } from './recording-consent';
 
 export interface VideoCallRoomProps {
   role: 'host' | 'guest';
@@ -98,6 +99,7 @@ export function VideoCallRoom({ role, title, when, waitingFor, defaultName, join
             <span className="hidden max-w-[40ch] truncate text-sm font-medium text-white/90 sm:block">{title}</span>
           </div>
           <WaitingBanner waitingFor={waitingFor} />
+          <RecordingConsent /> {/* Phase 3 §51: recording consent; renders nothing while transcripts are off */}
           {deviceNote ? (
             <div role="alert" className="absolute inset-x-0 top-28 z-10 flex justify-center px-4 sm:top-20">
               <p className="rounded-xl bg-red-600/95 px-4 py-2 text-sm text-white">{deviceNote}</p>

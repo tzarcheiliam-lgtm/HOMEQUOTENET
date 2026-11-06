@@ -4,6 +4,7 @@ import { getProfile } from '@/lib/auth';
 import { cleanDisplayName, isUuid, type VideoMeetingKind } from '@/lib/video/links';
 import { mintJoinPass, type JoinPass } from '@/lib/video/livekit.server';
 import { meetingForGuestToken, meetingForHost, windowFor, type VideoMeeting } from '@/lib/video/rooms.server';
+import { pauseCaptureBeforeJoin } from '@/lib/video/transcripts.server';
 
 export type JoinResult = { ok: true; pass: JoinPass } | { ok: false; error: string };
 
@@ -27,6 +28,7 @@ export async function joinVideoAsGuest(token: string, name: string): Promise<Joi
   const m = await meetingForGuestToken(token);
   const why = refusal(m, 'guest');
   if (why || !m) return { ok: false, error: why ?? 'This video call link is not valid.' };
+  await pauseCaptureBeforeJoin(m.roomName); // §51: a newcomer has not agreed to recording yet (no-op while transcripts are off)
   const pass = await mintJoinPass({ roomName: m.roomName, role: 'guest', name: cleanDisplayName(name, m.guestName || 'Guest') });
   return pass ? { ok: true, pass } : { ok: false, error: 'Video calls are not set up yet.' };
 }
@@ -39,6 +41,7 @@ export async function joinVideoAsHost(kind: VideoMeetingKind, id: string): Promi
   const m = await meetingForHost(kind, id);
   const why = refusal(m, 'host');
   if (why || !m) return { ok: false, error: why ?? 'This video call link is not valid.' };
+  await pauseCaptureBeforeJoin(m.roomName); // §51: a newcomer has not agreed to recording yet (no-op while transcripts are off)
   const pass = await mintJoinPass({
     roomName: m.roomName,
     role: 'host',

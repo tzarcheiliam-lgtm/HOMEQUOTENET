@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { WebhookReceiver } from 'livekit-server-sdk';
 import { livekitConfig } from '@/lib/video/livekit.server';
 import { handleVideoEvent } from '@/lib/video/events.server';
+import { onVideoRoomEvent } from '@/lib/video/transcripts.server';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -24,6 +25,8 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
   }
+  // Phase 3 (§51): consent checks and recording / transcript processing. No-op while transcripts are off; never throws.
+  const transcripts = onVideoRoomEvent(ev);
   try {
     const result = await handleVideoEvent({
       id: ev.id,
@@ -32,8 +35,10 @@ export async function POST(request: Request) {
       room: ev.room ? { sid: ev.room.sid, name: ev.room.name, creationTime: ev.room.creationTime } : null,
       participant: ev.participant ? { sid: ev.participant.sid, identity: ev.participant.identity, name: ev.participant.name, kind: ev.participant.kind } : null,
     });
+    await transcripts;
     return NextResponse.json(result);
   } catch (e) {
+    await transcripts;
     console.error('[video] webhook failed:', e instanceof Error ? e.message : e);
     // 5xx so LiveKit retries; handling is idempotent.
     return NextResponse.json({ error: 'Could not record the event' }, { status: 500 });
