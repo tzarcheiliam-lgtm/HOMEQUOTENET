@@ -46,7 +46,49 @@ export interface VideoMeeting {
   leadId: string | null;
 }
 
+/** "Liam from HomeQuote" from a profile name; plain "HomeQuote Network" without one. */
+export function hostLabelFor(fullName: string | null | undefined): string {
+  const first = (fullName ?? '').trim().split(/\s+/)[0];
+  return first ? `${first} from HomeQuote` : 'HomeQuote Network';
+}
+
+/** An ad-hoc meeting link (meeting_links, 0075): no appointment behind it. */
+async function loadLink(id: string): Promise<VideoMeeting | null> {
+  const db = createAdminClient();
+  const { data, error } = await db
+    .from('meeting_links')
+    .select('id, host_id, guest_name, prospect_id, starts_at, ends_at, time_zone, cancelled_at, host:profiles!meeting_links_host_id_fkey(full_name), prospect:contractor_prospects(company_name)')
+    .eq('id', id)
+    .maybeSingle();
+  if (error || !data) return null;
+  const r = data as unknown as {
+    id: string; guest_name: string | null; prospect_id: string | null; starts_at: string; ends_at: string; time_zone: string | null; cancelled_at: string | null;
+    host: { full_name: string | null } | { full_name: string | null }[] | null;
+    prospect: { company_name: string | null } | { company_name: string | null }[] | null;
+  };
+  const one = <T,>(v: T | T[] | null): T | null => (Array.isArray(v) ? v[0] ?? null : v);
+  const tz = r.time_zone || 'America/Los_Angeles';
+  return {
+    kind: 'link',
+    id: r.id,
+    roomName: videoRoomName('link', r.id),
+    live: !r.cancelled_at,
+    videoRoom: videoRoomsEnabled(),
+    ownLink: null,
+    startMs: new Date(r.starts_at).getTime(),
+    endMs: new Date(r.ends_at).getTime(),
+    guestTimeZone: tz,
+    hostTimeZone: tz,
+    hostLabel: hostLabelFor(one(r.host)?.full_name),
+    guestName: r.guest_name ?? '',
+    subject: one(r.prospect)?.company_name ?? null,
+    prospectId: r.prospect_id,
+    leadId: null,
+  };
+}
+
 async function load(kind: VideoMeetingKind, id: string): Promise<VideoMeeting | null> {
+  if (kind === 'link') return loadLink(id);
   const b = await loadBooking(createAdminClient(), kind, id);
   if (!b) return null;
   return {
@@ -82,7 +124,7 @@ export async function meetingForGuestToken(token: string): Promise<VideoMeeting 
  */
 export async function meetingForHost(kind: VideoMeetingKind, id: string): Promise<VideoMeeting | null> {
   const supabase = await createClient();
-  const table = kind === 'sales_appointment' ? 'prospect_sales_appointments' : 'appointments';
+  const table = kind === 'sales_appointment' ? 'prospect_sales_appointments' : kind === 'link' ? 'meeting_links' : 'appointments';
   const { data } = await supabase.from(table).select('id').eq('id', id).maybeSingle();
   if (!data) return null;
   return load(kind, id);

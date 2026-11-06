@@ -27,7 +27,7 @@ export default async function HostVideoPage({ params }: { params: Promise<{ kind
   const m = await meetingForHost(kind, id);
   if (!m) notFound();
 
-  const back = kind === 'sales_appointment' ? '/app/calls/appointments' : m.leadId ? `/app/leads/${m.leadId}` : '/app/appointments';
+  const back = kind === 'link' ? '/app/meetings' : kind === 'sales_appointment' ? '/app/calls/appointments' : m.leadId ? `/app/leads/${m.leadId}` : '/app/appointments';
   const who = [m.guestName, m.subject && m.subject !== m.guestName ? m.subject : null].filter(Boolean).join(' · ') || 'your guest';
   const title = `Video call with ${who}`;
   const when = videoWhen(m.startMs, m.hostTimeZone);
@@ -40,7 +40,7 @@ export default async function HostVideoPage({ params }: { params: Promise<{ kind
       ? m.ownLink
         ? { title: 'This meeting uses its own link', body: m.ownLink }
         : { title: 'This is not a video meeting', body: 'Change the meeting type to Video to give it a HomeQuote video room.' }
-      : closedMessage(windowFor(m, 'host'), m.hostTimeZone, 'host');
+      : closedMessage(windowFor(m, 'host'), m.hostTimeZone, 'host', kind);
 
   return (
     <div className="fixed inset-0 z-[60] overflow-auto bg-[#111]">

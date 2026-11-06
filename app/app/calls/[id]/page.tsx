@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { Phone, ExternalLink, PhoneOff, AlarmClock, CalendarCheck } from 'lucide-react';
+import { Phone, ExternalLink, PhoneOff, AlarmClock, CalendarCheck, Video } from 'lucide-react';
 import { requireCallWorkspace } from '@/lib/auth';
 import { getProspect, listCallers, nextProspectIdFor, nextProspectInContext, type ProspectFilters } from '@/lib/data/prospects';
 import { contextFrom, contextQuery, hasListContext, withContext } from '@/lib/calls/context';
@@ -129,6 +129,10 @@ export default async function ProspectPage({
           </span>
         )}
         {!dnc && !optedOut ? <EmailButton className="max-lg:hidden" /> : null}
+        <Link href={`/app/meetings?prospect=${p.id}`} className={cn(buttonVariants({ size: 'lg', variant: 'outline' }), 'gap-2 max-lg:hidden')}>
+          <Video className="size-4" aria-hidden="true" />
+          Video link
+        </Link>
       </PageHeader>
 
       <div className="hidden lg:block">

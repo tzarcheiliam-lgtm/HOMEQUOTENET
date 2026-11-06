@@ -24,7 +24,7 @@ export default async function GuestVideoPage({ params }: { params: Promise<{ tok
 
   const title = `Video call with ${m.hostLabel}`;
   const when = videoWhen(m.startMs, m.guestTimeZone);
-  const closed = closedMessage(windowFor(m, 'guest'), m.guestTimeZone);
+  const closed = closedMessage(windowFor(m, 'guest'), m.guestTimeZone, 'guest', m.kind);
   if (closed) {
     return (
       <main className="flex min-h-dvh flex-col items-center justify-center bg-[#111] px-6 text-center text-white">
