@@ -11,7 +11,10 @@ import type { VideoCallRoomProps } from './video-call-room';
 const VideoCallRoom = dynamic(() => import('./video-call-room').then((m) => m.VideoCallRoom), {
   ssr: false,
   loading: () => (
-    <div className="flex min-h-dvh items-center justify-center bg-[#111] text-sm text-white/70">Loading video call…</div>
+    <div className="flex min-h-dvh items-center justify-center bg-[#0a1b3d] text-sm text-white/70">
+      <span className="hq-pulse mr-2.5 size-2 rounded-full bg-[#f5b700]" aria-hidden="true" />
+      Getting your call ready…
+    </div>
   ),
 });
 

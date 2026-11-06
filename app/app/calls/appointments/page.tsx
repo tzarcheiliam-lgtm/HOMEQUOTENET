@@ -11,6 +11,8 @@ import { MobileCard } from '@/components/mobile/mobile-card';
 import { Phone, Video } from 'lucide-react';
 import { CopyGuestLink } from '@/components/video/copy-guest-link';
 import { videoLinksFor } from '@/lib/video/rooms.server';
+import { callSummaries } from '@/lib/video/events.server';
+import { VideoCallHistory } from '@/components/video/call-history';
 import { LATE_MS, ownMeetingLink } from '@/lib/video/links';
 import { cn } from '@/lib/utils';
 import { Select } from '@/components/ui/select';
@@ -83,6 +85,8 @@ export default async function SalesAppointmentsPage({
   );
   const adds = await listCalendarAdds(rows.map((r) => r.id));
   // Reminder texts (admins can read them; RLS returns nothing for callers, or before migration 0068).
+  // Who joined each video meeting and for how long (§52; empty before migration 0076).
+  const videoHistory = await callSummaries(await createClient(), 'sales_appointment', rows.filter((r) => r.appointment_type === 'video').map((r) => r.id));
   const chips = new Map<string, ReminderChip>();
   if (rows.length) {
     const { data: rem } = await (await createClient()).from('sms_reminders').select('ref_id,step,status,anchor_at,created_at').eq('kind', 'sales_meeting').in('ref_id', rows.map((r) => r.id));
@@ -109,7 +113,8 @@ export default async function SalesAppointmentsPage({
   };
   const videoButtons = (a: (typeof rows)[number], compact = false) => {
     const v = videoOf(a);
-    if (!v) return null;
+    const h = videoHistory.get(a.id);
+    if (!v) return h ? <VideoCallHistory summary={h} timeZone={a.time_zone} noShow={a.status === 'no_show'} /> : null;
     return (
       <div className={cn('flex flex-wrap items-center gap-2', compact && '[&_a]:h-7 [&_a]:px-2 [&_a]:text-xs [&_button]:h-7 [&_button]:px-2 [&_button]:text-xs')}>
         <Link href={v.hostHref} className={cn(buttonVariants({ size: 'sm' }), 'gap-1.5')}>
@@ -117,6 +122,7 @@ export default async function SalesAppointmentsPage({
           Join video call
         </Link>
         {v.guestUrl ? <CopyGuestLink url={v.guestUrl} tone="light" /> : null}
+        {h ? <VideoCallHistory summary={h} timeZone={a.time_zone} noShow={a.status === 'no_show'} /> : null}
       </div>
     );
   };

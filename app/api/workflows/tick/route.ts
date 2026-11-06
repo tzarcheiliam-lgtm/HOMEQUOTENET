@@ -12,6 +12,7 @@ import { notifyAdmins } from '@/lib/sms/health-notify';
 import { runTextReminders } from '@/lib/sms/reminders';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { processWorkflowTick, pruneWorkflowHistory } from '@/lib/workflows/runtime.server';
+import { runVideoNoShows } from '@/lib/video/no-shows.server';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -56,6 +57,10 @@ export async function POST(request: Request) {
     }
     // Reminder texts for booked meetings (sales meetings, on-site visits AND calendar calls: the only reminder texts)
     // and follow-ups when homeowners don't reply. Best effort.
+    // Video sales meetings the rep opened and the contractor never joined become no-shows (before the reminder
+    // texts, so the no-show follow-up goes out in this same tick). Best effort.
+    let videoNoShows: unknown = null;
+    try { videoNoShows = await runVideoNoShows(); } catch { videoNoShows = { error: 'video no-show check failed' }; }
     let reminders: unknown = null;
     try { reminders = await runTextReminders(createAdminClient()); } catch { reminders = { error: 'text reminders failed' }; }
     // Lead recovery: "did you reach them?" pushes, no-show and never-booked follow-up EMAILS (their texts are in the
@@ -69,7 +74,7 @@ export async function POST(request: Request) {
     } catch {
       aduQuiz = { error: 'adu quiz retry failed' };
     }
-    const body = { ...result, retention, notifications, calendar, signing, sms, reminders, recovery, bookings, aduQuiz };
+    const body = { ...result, retention, notifications, calendar, signing, sms, videoNoShows, reminders, recovery, bookings, aduQuiz };
     await recordAutomationRun('workflow_tick', startedAt, !result.failures, body);
     return NextResponse.json(body, { status: result.failures ? 207 : 200 });
   } catch {

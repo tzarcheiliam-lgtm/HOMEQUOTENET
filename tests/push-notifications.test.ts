@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
@@ -75,8 +75,13 @@ describe('push endpoint allowlist (SSRF guard)', () => {
 
 describe('notification categories', () => {
   const sql = readFileSync('supabase/migrations/0031_push_notifications.sql', 'utf8');
-  const prefsTable = sql.slice(sql.indexOf('create table if not exists public.notification_preferences'), sql.indexOf('alter table public.notification_preferences enable'));
-  const eventCheck = sql.slice(sql.indexOf('create table if not exists public.notification_events'), sql.indexOf('create index if not exists idx_notification_events_queue'));
+  // Later migrations add categories (0076 video_guest_joined): a preference column via ALTER TABLE, and a
+  // re-created outbox check constraint. The newest constraint wins.
+  const later = readdirSync('supabase/migrations').filter((f) => f.endsWith('.sql') && f > '0031').sort().map((f) => readFileSync(`supabase/migrations/${f}`, 'utf8'));
+  const addedColumns = later.flatMap((m) => [...m.matchAll(/alter table public\.notification_preferences add column if not exists (\w+ boolean not null default true)/g)].map((x) => x[1]));
+  const prefsTable = sql.slice(sql.indexOf('create table if not exists public.notification_preferences'), sql.indexOf('alter table public.notification_preferences enable')) + '\n' + addedColumns.join('\n');
+  const newestCheck = later.map((m) => /add constraint notification_events_type_check check \(type in \(([^)]*)\)/.exec(m)?.[1]).filter(Boolean).pop();
+  const eventCheck = newestCheck ?? sql.slice(sql.indexOf('create table if not exists public.notification_events'), sql.indexOf('create index if not exists idx_notification_events_queue'));
 
   it('every registry type has a preference column and an outbox type', () => {
     for (const id of NOTIFICATION_TYPE_IDS) {

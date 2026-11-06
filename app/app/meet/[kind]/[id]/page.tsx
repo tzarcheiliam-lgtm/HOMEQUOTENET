@@ -11,6 +11,7 @@ import { bookingLinkSecret } from '@/lib/booking/notify.server';
 import { siteUrl } from '@/lib/calendar/config';
 import { CopyGuestLink } from '@/components/video/copy-guest-link';
 import { VideoCall } from '@/components/video/video-call';
+import { CallNotice } from '@/components/video/call-shell';
 
 export const metadata: Metadata = { title: 'Video call · HomeQuote Network' };
 export const dynamic = 'force-dynamic';
@@ -43,15 +44,12 @@ export default async function HostVideoPage({ params }: { params: Promise<{ kind
       : closedMessage(windowFor(m, 'host'), m.hostTimeZone, 'host', kind);
 
   return (
-    <div className="fixed inset-0 z-[60] overflow-auto bg-[#111]">
+    <div className="fixed inset-0 z-[60] overflow-auto bg-[#0a1b3d]">
       {notice ? (
-        <main className="flex min-h-dvh flex-col items-center justify-center gap-3 px-6 text-center text-white">
-          <h1 className="text-xl font-semibold">{notice.title}</h1>
-          <p className="text-sm text-white/70">{title} · {when}</p>
-          <p className="max-w-md break-words text-sm text-white/80">{notice.body}</p>
+        <CallNotice title={notice.title} meta={`${title} · ${when}`} body={notice.body}>
           {m.videoRoom && guestUrl ? <CopyGuestLink url={guestUrl} /> : null}
-          <Link href={back} className="mt-2 text-sm text-white underline underline-offset-4">Back to HomeQuote</Link>
-        </main>
+          <Link href={back} className="text-sm text-white/70 underline-offset-4 hover:text-white hover:underline">Back to HomeQuote</Link>
+        </CallNotice>
       ) : (
         <>
           <VideoCall

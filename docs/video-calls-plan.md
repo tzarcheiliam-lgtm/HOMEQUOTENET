@@ -48,7 +48,7 @@ cancelled meeting's link stops working because the page re-checks the booking.
 `LIVEKIT_URL` (`wss://<project>.livekit.cloud`), `LIVEKIT_API_KEY`,
 `LIVEKIT_API_SECRET`. Until they are set nothing changes anywhere.
 
-## Phase 2 — know what happened (migration)
+## Phase 2 — know what happened (migration 0076) — BUILT 2026-11-06, see HOMEQUOTE_CONTEXT.md §52 (workflow events still to do)
 
 - `video_calls` table: meeting, room, host/guest joined + left times, duration.
 - `POST /api/video/webhook` (LiveKit webhooks, signature-verified): participant joined/left, room finished.
@@ -57,11 +57,38 @@ cancelled meeting's link stops working because the page re-checks the booking.
 - Workflow events `video_call.joined` / `video_call.no_show` / `video_call.ended`.
 - "Joined 2:03 pm · 31 min" chips on the appointment cards.
 
-## Phase 3 — AI follow-up
+## Phase 3 — AI follow-up (built, DORMANT; migration 0077; details in HOMEQUOTE_CONTEXT.md §51)
 
-- Recording/transcription **only with an on-screen consent step** (California is all-party consent).
-- Claude writes summary, objections, price discussed, next step into the prospect's notes and suggests the sale outcome.
-- Optional AI note-taker in the room (LiveKit Agents).
+- **Consent first (California is all-party consent).** The host taps **Record & summarize**; everyone
+  in the call gets a clear question. Capture starts only after **every** person (at least two) has
+  agreed to that session. Each person's "yes" is their own LiveKit participant attribute, and the
+  server re-reads the room from LiveKit before starting, so nobody can agree for someone else. A
+  status pill with **Stop** shows while it is on; anyone can stop. A newcomer pauses capture
+  *before* their join pass is issued; their mic stays off until they answer. The server writes
+  what it saw to `video_recording_consents`.
+- **Capture: LiveKit Egress, room composite, audio only** (Ogg/Opus, 32 kbps) → private Supabase
+  Storage bucket via its S3 endpoint. One file per uninterrupted stretch of consent; files rotate
+  at 50 min.
+- **Speech-to-text: Fish Audio `transcribe-1-pro`** with diarization. It reuses `FISH_API_KEY`
+  (no new vendor), at $0.36 per audio hour, behind a small `SpeechToText` interface.
+- **Claude** (same client and model as the assistant, structured output) writes the summary,
+  objections, price discussed, next step and a **suggested** outcome. The transcript is wrapped as
+  untrusted data. The note goes on top of the prospect's notes (sales meetings and links with a
+  prospect) or into the lead's timeline (homeowner appointments). The sale outcome is never set.
+- Audio is deleted once transcribed; the transcript and summary stay on `video_recordings`
+  (admins and the requester can read them).
+- **Why this approach**: Egress needs no new runtime on Vercel and handles joins and leaves itself.
+  Rejected: a LiveKit Agents transcriber (needs a worker deployed outside Vercel; keep it for live
+  captions later); browser-side recording (depends on guests' phones and gives guests upload
+  rights); per-track egress (a new egress for every reconnect).
+- **To turn on**: apply 0077 (after 0076). Enable Supabase Storage → S3 Connection and create an
+  access key. Set `VIDEO_TRANSCRIPTS_ENABLED=true`, `VIDEO_RECORDING_S3_ENDPOINT`, `_REGION`,
+  `_ACCESS_KEY_ID`, `_SECRET_ACCESS_KEY`, then redeploy. The Phase 2 webhook calls
+  `onVideoRoomEvent` (`lib/video/transcripts.server.ts`).
+- **Cost per 30-min call**: about $0.20 (Fish $0.18 + Claude about $0.02; egress inside LiveKit's
+  included minutes), or about $0.35 once past them (+$0.15 egress at $0.005/min).
+- Later: a transcript page, a "suggested outcome" chip on the appointment card, live captions or
+  an in-call AI note-taker (LiveKit Agents).
 
 ## Later
 
