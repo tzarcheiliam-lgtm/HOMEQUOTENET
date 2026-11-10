@@ -82,6 +82,15 @@
 
 .mk-link { text-decoration: underline; text-underline-offset: 4px; text-decoration-thickness: 2px; }
 
+/* ---- Range inputs ---------------------------------------------------------- */
+
+.mk-range {
+  height: 1.75rem;
+  background: transparent;
+  accent-color: var(--navy);
+  cursor: pointer;
+}
+
 /* ---- Entrance (hero only) ------------------------------------------------- */
 
 @keyframes mk-rise {

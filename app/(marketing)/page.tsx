@@ -2,9 +2,11 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArrowRight, Check, X } from 'lucide-react';
 import { site } from '@/content/site';
+import { homeContent } from '@/content/home';
 import { industries } from '@/content/industries';
 import { Container } from '@/components/marketing/primitives';
 import { FaqJsonLd } from '@/components/marketing/faq';
+import { MathCalc } from '@/components/marketing/mk-math';
 import { StickyCta } from '@/components/marketing/mk-sticky-cta';
 import { baseOpenGraph } from '@/lib/site-metadata';
 import './marketer.css';
@@ -33,6 +35,26 @@ const scope = [
   { item: 'Appointment flow', body: 'Support moving qualified inquiries into scheduled estimates.' },
   { item: 'Tracking and reporting', body: 'Spend, leads, cost per lead, appointments and lead quality, in plain numbers.' },
   { item: 'Weekly optimization, monthly review', body: 'We tune campaigns every week and go through the month with you.' },
+];
+
+const numbers = [
+  { name: 'Booking rate', body: 'The share of inquiries that become booked, qualified estimates.', who: 'We optimize this', ours: true },
+  { name: 'Show rate', body: 'The share of booked estimates that actually take place.', who: 'We optimize this', ours: true },
+  { name: 'Close rate', body: 'The share of estimates that become signed jobs.', who: 'You own this: your sales process decides it', ours: false },
+];
+
+const report = [
+  { m: 'Spend', t: 'Every dollar paid to Meta or Google.' },
+  { m: 'Inquiries', t: 'How many homeowners raised their hand.' },
+  { m: 'Booked appointments', t: 'Estimates that landed on your calendar.' },
+  { m: 'Shows', t: 'Booked estimates that actually took place.' },
+  { m: 'Estimates sent', t: 'Quotes you delivered, so we can optimize toward real jobs.' },
+];
+
+const next = [
+  { t: 'Answer a few questions', b: 'A short check on your trade, area and goals.' },
+  { t: 'Book a 30-minute call', b: 'Pick a time that works for you.' },
+  { t: 'We run your numbers', b: 'We work through your margins and close rate together. If the math does not work, we will tell you and we will not start.' },
 ];
 
 const weeks = [
@@ -118,6 +140,20 @@ export default function HomePage() {
         </Container>
       </section>
 
+      {/* Run your own math */}
+      <section id="math" className="mk-paper scroll-mt-20 py-24 sm:py-32">
+        <Container>
+          <h2 className="mk-h2 max-w-3xl">Run your own math before you talk to anyone.</h2>
+          <p className="mt-6 max-w-2xl text-pretty text-lg leading-8 text-[var(--ink-soft)]">
+            Marketing is worth it when the jobs it wins cost less than the jobs earn. Set your own
+            numbers and see what it has to deliver.
+          </p>
+          <div className="mt-14">
+            <MathCalc ctaHref={CTA_HREF} ctaLabel={CTA_LABEL} />
+          </div>
+        </Container>
+      </section>
+
       {/* Two ways to pay */}
       <section className="mk-mist py-24 sm:py-32">
         <Container>
@@ -172,6 +208,64 @@ export default function HomePage() {
         </Container>
       </section>
 
+      {/* Three numbers */}
+      <section className="mk-on-navy py-24 sm:py-32">
+        <Container>
+          <h2 className="mk-h2 max-w-3xl">Three numbers decide your results.</h2>
+          <p className="mt-6 max-w-2xl text-pretty text-lg leading-8 text-white/80">
+            Most reports stop at clicks. We track all three, and review them with you every week.
+          </p>
+          <div className="mt-14 grid gap-12 md:grid-cols-3 md:gap-10">
+            {numbers.map((n) => (
+              <div key={n.name} className={`border-t-4 pt-6 ${n.ours ? 'border-[var(--gold)]' : 'border-white'}`}>
+                <h3 className="font-[family-name:var(--font-sora)] text-3xl font-bold tracking-[-0.03em]">{n.name}</h3>
+                <p className="mt-4 text-[17px] leading-7 text-white/85">{n.body}</p>
+                <p className={`mt-5 text-base font-bold ${n.ours ? 'text-[var(--gold)]' : 'text-white'}`}>{n.who}</p>
+              </div>
+            ))}
+          </div>
+        </Container>
+      </section>
+
+      {/* Weekly report */}
+      <section className="mk-mist py-24 sm:py-32">
+        <Container className="grid gap-12 lg:grid-cols-12 lg:gap-16">
+          <div className="lg:col-span-5">
+            <h2 className="mk-h2">What is in your weekly report.</h2>
+            <p className="mt-6 text-pretty text-lg leading-8 text-[var(--ink-soft)]">
+              You see every dollar spent and every step after it. Ad spend is paid by you directly to
+              the platform, and we do not mark it up unless we agree otherwise in writing.
+            </p>
+          </div>
+          <div className="lg:col-span-7">
+            {report.map((r) => (
+              <div key={r.m} className="grid gap-1 border-t-2 border-[var(--navy)] py-5 last:border-b-2 sm:grid-cols-[13rem_1fr] sm:gap-8">
+                <h3 className="text-xl font-bold tracking-tight">{r.m}</h3>
+                <p className="text-[16px] leading-7 text-[var(--ink-soft)]">{r.t}</p>
+              </div>
+            ))}
+          </div>
+        </Container>
+      </section>
+
+      {/* Projects we market */}
+      <section className="mk-paper py-24 sm:py-32">
+        <Container>
+          <h2 className="mk-h2 max-w-3xl">The projects we market for you.</h2>
+          <p className="mt-6 max-w-2xl text-pretty text-lg leading-8 text-[var(--ink-soft)]">
+            Campaigns are built around the jobs you actually want, in the areas you actually serve.
+          </p>
+          <ul className="mt-14 grid gap-x-14 sm:grid-cols-2 lg:grid-cols-3">
+            {homeContent.services.map((p) => (
+              <li key={p.title} className="border-t-2 border-[var(--navy)] py-5">
+                <h3 className="text-xl font-bold tracking-tight">{p.title}</h3>
+                <p className="mt-1 text-[16px] leading-7 text-[var(--ink-soft)]">{p.description}</p>
+              </li>
+            ))}
+          </ul>
+        </Container>
+      </section>
+
       {/* First 30 days */}
       <section id="how" className="mk-on-navy scroll-mt-20 py-24 sm:py-32">
         <Container>
@@ -219,8 +313,24 @@ export default function HomePage() {
         </Container>
       </section>
 
+      {/* What happens when you click */}
+      <section className="mk-mist py-24 sm:py-32">
+        <Container>
+          <h2 className="mk-h2 max-w-3xl">What happens when you click.</h2>
+          <ol className="mt-14 grid gap-12 md:grid-cols-3 md:gap-10">
+            {next.map((n, i) => (
+              <li key={n.t} className="border-t-4 border-[var(--navy)] pt-6">
+                <p className="font-[family-name:var(--font-sora)] text-6xl font-bold leading-none tracking-[-0.06em] text-[var(--blue)]">{i + 1}</p>
+                <h3 className="mt-5 text-2xl font-bold tracking-tight">{n.t}</h3>
+                <p className="mt-2 max-w-sm text-[16px] leading-7 text-[var(--ink-soft)]">{n.b}</p>
+              </li>
+            ))}
+          </ol>
+        </Container>
+      </section>
+
       {/* FAQ */}
-      <section id="faq" className="mk-mist scroll-mt-20 py-24 sm:py-32">
+      <section id="faq" className="mk-paper scroll-mt-20 py-24 sm:py-32">
         <Container className="grid gap-12 lg:grid-cols-12 lg:gap-16">
           <h2 className="mk-h2 lg:col-span-4">Questions contractors ask.</h2>
           <div className="lg:col-span-8">
