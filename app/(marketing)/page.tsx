@@ -1,17 +1,15 @@
 import type { Metadata } from 'next';
-import Image from 'next/image';
-import { ArrowUpRight } from 'lucide-react';
+import Link from 'next/link';
+import { ArrowRight } from 'lucide-react';
 import { site } from '@/content/site';
-import { generalContractorPhotos as photos } from '@/content/industry-photos';
-import { photos as poolPhotos } from '@/content/photos';
-import { HomePicker, type PickerCategory } from '@/components/marketing/home-picker';
-import { ProjectFinder } from '@/components/marketing/project-finder';
+import { industries } from '@/content/industries';
+import { Container, Cta } from '@/components/marketing/primitives';
+import { FaqJsonLd } from '@/components/marketing/faq';
 import { baseOpenGraph } from '@/lib/site-metadata';
-import './home.css';
 
-const title = 'Book a Remodeling Appointment | HomeQuote Network';
+const title = 'HomeQuote Network | Marketing for Home-Service Contractors';
 const description =
-  'Planning a bathroom, kitchen, ADU or pool project? Pick your project and book a free in-home appointment with a licensed local contractor. No obligation.';
+  'We run the marketing for pool, remodeling, roofing, fencing, HVAC and ADU contractors: ads, landing pages, follow-up and reporting, for a flat monthly management fee. No pay-per-lead.';
 
 export const metadata: Metadata = {
   title: { absolute: title },
@@ -21,69 +19,60 @@ export const metadata: Metadata = {
   twitter: { card: 'summary_large_image', title, description },
 };
 
-/**
- * Each category goes to a live flow. Bathroom uses the instant estimator
- * (ballpark price range, then booking); the rest are short booking funnels.
- */
-const categories: PickerCategory[] = [
-  { id: 'bathroom', name: 'Bathroom', note: 'Get a ballpark price, then book', href: '/estimator/bathroom-remodel', photo: photos.bathroom },
-  { id: 'kitchen', name: 'Kitchen', note: 'Five quick questions, then book', href: '/estimate/kitchen-remodel', photo: photos.kitchen },
-  { id: 'adu', name: 'ADU', note: 'Design it, then book', href: '/adu-quiz', photo: photos.hero },
-  { id: 'pool', name: 'Pool', note: 'A few questions, then book', href: '/estimate/pool-remodeling', photo: poolPhotos.heroPool },
-];
-
-const headline = 'What are we remodeling?'.split(' ');
-
-const strip = [
-  'Tub-to-shower',
-  'Full kitchen remodel',
-  'ADU',
-  'Walk-in shower',
-  'Cabinets and counters',
-  'Garage conversion',
-  'Pool resurfacing',
-  'Accessible bathroom',
-  'Backyard unit',
-  'Spa or hot tub',
-  'Kitchen layout change',
-  'Add a bathroom',
+/** What the monthly management fee covers. */
+const services = [
+  { title: 'Strategy and setup', body: 'Targeting, offer and launch plan built around your trade, your area and the jobs you want.' },
+  { title: 'Meta and Google ads', body: 'Campaigns created, managed, tested and optimized for you.' },
+  { title: 'Creative and ad copy', body: 'Angles and copy written to get homeowners to raise their hand.' },
+  { title: 'Landing page and lead capture', body: 'A dedicated page and form with qualification questions, so the inquiries you get are worth calling.' },
+  { title: 'Speed-to-lead follow-up', body: 'New inquiries are contacted fast so they do not go cold.' },
+  { title: 'Appointment flow', body: 'Support moving qualified inquiries into scheduled estimates.' },
+  { title: 'Tracking and reporting', body: 'Spend, leads, cost per lead, appointments and lead quality, in plain numbers.' },
+  { title: 'Weekly optimization and monthly review', body: 'We tune campaigns every week and review the month with you.' },
 ];
 
 const steps = [
-  { title: 'Choose your project', body: 'Search or pick bathroom, kitchen, ADU or pool.' },
-  { title: 'Answer a few questions', body: 'Short, one at a time, and made for a phone.' },
-  { title: 'Book a time', body: 'Choose a day that works for you.' },
-  { title: 'Meet at your home', body: 'A free, no-obligation visit with a licensed local contractor.' },
+  { when: 'Week 1', title: 'Onboarding and setup', body: 'We collect your brand assets, photos, service areas and access, and build the landing page and follow-up system.' },
+  { when: 'Week 2', title: 'Launch', body: 'Campaigns go live and we check tracking end to end.' },
+  { when: 'Week 3', title: 'Optimize', body: 'We adjust based on lead quality, cost per lead, booked appointments and follow-up results.' },
+  { when: 'Week 4', title: 'Review', body: 'We go through performance together and plan month two.' },
 ];
 
-const promises = [
-  { title: 'Free in-home consultation', body: 'A licensed local contractor comes to you, looks at the space and talks through your project.' },
-  { title: 'No obligation', body: 'Ask questions, compare, and decide in your own time. Whether to hire anyone is up to you.' },
-  { title: 'Ballparks, not surprises', body: 'Where we show a price range it is labeled a ballpark, never a quote. A firm number comes at your visit.' },
+const notThis = [
+  { title: 'Not pay-per-lead', body: 'You pay a flat monthly management fee for the marketing work, not a price for each lead.' },
+  { title: 'Not shared leads', body: 'We do not sell or resell leads. We run marketing for your company.' },
+  { title: 'No ad spend markup', body: 'You pay ad spend directly to Meta or Google. We do not mark it up unless we agree otherwise in writing.' },
+  { title: 'No guarantees we cannot keep', body: 'We do not promise jobs, revenue, lead volume or cost per lead. We build, run and optimize the system. You run the estimates and close.' },
 ];
 
-function StripRow({ reverse = false }: { reverse?: boolean }) {
-  const items = reverse ? [...strip].reverse() : strip;
-  return (
-    <div className={`ho-strip-track ${reverse ? 'rev' : ''}`}>
-      {[0, 1].map((copy) =>
-        items.map((w, i) => (
-          <span
-            key={`${copy}-${w}`}
-            className={`ho-strip-item ${(i + (reverse ? 1 : 0)) % 2 ? 'o' : ''}`}
-            aria-hidden={copy === 1 ? true : undefined}
-          >
-            {w}
-          </span>
-        ))
-      )}
-    </div>
-  );
-}
+const fit = {
+  yes: [
+    'Jobs with healthy margins',
+    'A team that answers new inquiries quickly',
+    'Budget set aside for ad spend',
+    'A way to track which estimates turn into jobs',
+  ],
+  no: [
+    'Low-margin or small repair work',
+    'Slow follow-up on new inquiries',
+    'No budget for advertising',
+    'No tracking of estimates and closes',
+  ],
+};
+
+const faq = [
+  { question: 'Do you sell leads?', answer: 'No. We are a marketing company. We run ads, landing pages and follow-up for your business. We do not sell or resell leads, and we do not charge per lead.' },
+  { question: 'How does pricing work?', answer: 'A flat monthly management fee for the marketing work, plus ad spend that you pay directly to Meta or Google. We confirm the details on a call before anything starts.' },
+  { question: 'How long until my campaigns launch?', answer: 'We target launch within 7 to 10 business days after we receive your onboarding materials and platform access. Delays in getting us those materials delay the launch.' },
+  { question: 'Is there a long contract?', answer: 'The initial term is 30 days, then it continues month to month until either side ends it in writing.' },
+  { question: 'Do you guarantee results?', answer: 'No. Results depend on your market, pricing, availability and your own sales process. We do not guarantee closed jobs, revenue, lead volume or cost per lead.' },
+  { question: 'Which trades do you work with?', answer: `${industries.map((i) => i.navLabel).join(', ')}.` },
+];
 
 export default function HomePage() {
   return (
-    <div className="ho">
+    <>
+      <FaqJsonLd items={faq} />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
@@ -98,112 +87,156 @@ export default function HomePage() {
         }}
       />
 
-      {/* Hero: the question is the page */}
-      <section id="start" className="mx-auto w-full max-w-7xl scroll-mt-20 px-5 pb-20 pt-10 sm:px-8 sm:pt-14 lg:pb-28">
-        <HomePicker
-          categories={categories}
-          panel
-          intro={
-            <>
-          <h1 className="ho-display ho-words max-w-5xl text-[clamp(3rem,8vw,6.25rem)]">
-            {headline.map((w, i) => (
-              <span key={i} style={{ ['--w' as string]: i }}>
-                {w}
-              </span>
-            ))}
-          </h1>
-          <p
-            className="ho-fade mb-10 mt-5 max-w-2xl text-lg leading-8 text-[var(--ho-ink-soft)] sm:text-xl"
-            style={{ ['--w' as string]: headline.length }}
-          >
-            Pick one and book a free in-home visit with a licensed local contractor.
-          </p>
-            </>
-          }
-          below={
-            <div className="mt-8">
-              <ProjectFinder categories={categories} />
-              <p className="mt-5 text-sm text-[var(--ho-ink-soft)]">
-                Serving Los Angeles, Orange, Ventura, Riverside and San Bernardino counties.
-              </p>
+      {/* Hero */}
+      <section className="border-b border-[var(--hq-line)]">
+        <Container className="grid gap-14 py-20 sm:py-28 lg:grid-cols-12 lg:items-center lg:gap-10 lg:py-32">
+          <div className="lg:col-span-7">
+            <h1 className="text-balance text-[clamp(2.75rem,6.6vw,5.25rem)] font-semibold leading-[1.02] tracking-[-0.04em]">
+              We run the marketing for home-service contractors.
+            </h1>
+            <p className="mt-7 max-w-2xl text-pretty text-lg leading-8 text-[var(--hq-text-muted)] sm:text-xl sm:leading-9">
+              Ads, landing pages, follow-up and reporting, handled for a flat monthly
+              management fee. No pay-per-lead. No shared leads.
+            </p>
+            <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <Cta href={site.cta.primaryHref}>
+                {site.cta.primary}
+                <ArrowRight className="size-4" aria-hidden="true" />
+              </Cta>
+              <Cta href={site.cta.secondaryHref} variant="secondary">
+                {site.cta.secondary}
+              </Cta>
             </div>
-          }
-        />
-      </section>
+          </div>
 
-      {/* Kinetic project strip */}
-      <section className="ho-strip" aria-label="Projects we help with">
-        <StripRow />
-        <StripRow reverse />
-      </section>
-
-      {/* How it works: sticky story */}
-      <section id="how" className="mx-auto w-full max-w-7xl scroll-mt-20 px-5 py-24 sm:px-8 sm:py-36">
-        <div className="grid gap-12 lg:grid-cols-12 lg:gap-16">
           <div className="lg:col-span-5">
-            <div className="lg:sticky lg:top-32">
-              <h2 className="ho-display text-[clamp(2.25rem,5vw,4rem)]">
-                From idea to a visit at your home.
-              </h2>
-              <p className="mt-6 max-w-md text-lg leading-8 text-[var(--ho-ink-soft)]">
-                Four steps, no pressure at any of them.
+            <div className="hq-card p-7">
+              <p className="text-sm font-semibold">Included in the monthly fee</p>
+              <ul className="mt-5 divide-y divide-[var(--hq-line)]">
+                {['Meta and Google ad management', 'Landing page and lead capture', 'Speed-to-lead follow-up', 'Tracking and weekly reporting', 'Weekly optimization and monthly review'].map((x) => (
+                  <li key={x} className="py-3 text-[15px] text-[var(--hq-text-muted)]">{x}</li>
+                ))}
+              </ul>
+              <p className="mt-5 text-xs leading-5 text-[var(--hq-text-dim)]">
+                Ad spend is paid directly to the ad platform and is separate from the management fee.
               </p>
             </div>
           </div>
-          <ol className="lg:col-span-7">
-            {steps.map((st, i) => (
-              <li key={st.title} className="ho-step">
-                <span className="ho-step-n">{i + 1}</span>
-                <div className="self-end">
-                  <h3 className="ho-display text-[clamp(1.75rem,3.4vw,2.75rem)]">{st.title}</h3>
-                  <p className="mt-3 max-w-md text-lg leading-8 text-[var(--ho-ink-soft)]">{st.body}</p>
-                </div>
-              </li>
-            ))}
-          </ol>
-        </div>
+        </Container>
       </section>
 
-      {/* The promise: the one dark moment */}
-      <section className="ho-dark">
-        <Image
-          src={photos.darkLiving.src}
-          alt=""
-          width={photos.darkLiving.width}
-          height={photos.darkLiving.height}
-          sizes="100vw"
-        />
-        <div className="mx-auto w-full max-w-7xl px-5 py-28 sm:px-8 sm:py-40">
-          <h2 className="ho-display max-w-4xl text-[clamp(2.5rem,6.4vw,5.5rem)]">
-            Free. No obligation. Yours to decide.
+      {/* What we run */}
+      <section id="services" className="scroll-mt-20 py-24 sm:py-32">
+        <Container>
+          <h2 className="max-w-3xl text-balance text-[clamp(2rem,4.4vw,3.5rem)] font-semibold leading-[1.05] tracking-[-0.035em]">
+            What we run for you.
           </h2>
-          <ul className="mt-16 grid gap-10 md:grid-cols-3 md:gap-10">
-            {promises.map((p) => (
-              <li key={p.title} className="border-t border-white/40 pt-5">
-                <h3 className="ho-display text-2xl">{p.title}</h3>
-                <p className="mt-3 text-lg leading-8 text-white/85">{p.body}</p>
+          <ul className="mt-14 grid gap-x-12 gap-y-10 sm:grid-cols-2 lg:grid-cols-4">
+            {services.map((s) => (
+              <li key={s.title} className="border-t border-[var(--hq-line-strong)] pt-5">
+                <h3 className="text-lg font-semibold tracking-tight">{s.title}</h3>
+                <p className="mt-2 text-[15px] leading-7 text-[var(--hq-text-muted)]">{s.body}</p>
               </li>
             ))}
           </ul>
-        </div>
+        </Container>
+      </section>
+
+      {/* How we work */}
+      <section id="how" className="scroll-mt-20 border-y border-[var(--hq-line)] bg-[var(--hq-bg-raised)] py-24 sm:py-32">
+        <Container>
+          <h2 className="max-w-3xl text-balance text-[clamp(2rem,4.4vw,3.5rem)] font-semibold leading-[1.05] tracking-[-0.035em]">
+            Your first 30 days.
+          </h2>
+          <ol className="mt-14 grid gap-10 md:grid-cols-4 md:gap-6">
+            {steps.map((s) => (
+              <li key={s.when}>
+                <p className="text-sm font-semibold text-[var(--hq-accent-bright)]">{s.when}</p>
+                <h3 className="mt-3 text-xl font-semibold tracking-tight">{s.title}</h3>
+                <p className="mt-2 text-[15px] leading-7 text-[var(--hq-text-muted)]">{s.body}</p>
+              </li>
+            ))}
+          </ol>
+        </Container>
+      </section>
+
+      {/* What this is not */}
+      <section className="py-24 sm:py-32">
+        <Container>
+          <h2 className="max-w-3xl text-balance text-[clamp(2rem,4.4vw,3.5rem)] font-semibold leading-[1.05] tracking-[-0.035em]">
+            Straight answers about how we work.
+          </h2>
+          <ul className="mt-14 grid gap-x-12 gap-y-10 md:grid-cols-2">
+            {notThis.map((n) => (
+              <li key={n.title} className="border-t border-[var(--hq-line-strong)] pt-5">
+                <h3 className="text-xl font-semibold tracking-tight">{n.title}</h3>
+                <p className="mt-2 max-w-md text-[15px] leading-7 text-[var(--hq-text-muted)]">{n.body}</p>
+              </li>
+            ))}
+          </ul>
+        </Container>
+      </section>
+
+      {/* Fit */}
+      <section id="fit" className="scroll-mt-20 border-y border-[var(--hq-line)] bg-[var(--hq-bg-raised)] py-24 sm:py-32">
+        <Container>
+          <h2 className="max-w-3xl text-balance text-[clamp(2rem,4.4vw,3.5rem)] font-semibold leading-[1.05] tracking-[-0.035em]">
+            Who this works for.
+          </h2>
+          <div className="mt-14 grid gap-12 md:grid-cols-2">
+            <div>
+              <h3 className="text-lg font-semibold">A good fit</h3>
+              <ul className="mt-4 divide-y divide-[var(--hq-line)] border-y border-[var(--hq-line)]">
+                {fit.yes.map((x) => <li key={x} className="py-3 text-[15px] text-[var(--hq-text-muted)]">{x}</li>)}
+              </ul>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold">Probably not a fit</h3>
+              <ul className="mt-4 divide-y divide-[var(--hq-line)] border-y border-[var(--hq-line)]">
+                {fit.no.map((x) => <li key={x} className="py-3 text-[15px] text-[var(--hq-text-muted)]">{x}</li>)}
+              </ul>
+            </div>
+          </div>
+        </Container>
+      </section>
+
+      {/* FAQ */}
+      <section id="faq" className="scroll-mt-20 py-24 sm:py-32">
+        <Container className="grid gap-12 lg:grid-cols-12 lg:gap-16">
+          <h2 className="text-balance text-[clamp(2rem,4.4vw,3.5rem)] font-semibold leading-[1.05] tracking-[-0.035em] lg:col-span-4">
+            Questions contractors ask.
+          </h2>
+          <div className="divide-y divide-[var(--hq-line)] border-y border-[var(--hq-line)] lg:col-span-8">
+            {faq.map((item) => (
+              <details key={item.question} className="group">
+                <summary className="flex cursor-pointer list-none items-start justify-between gap-6 py-5 text-left [&::-webkit-details-marker]:hidden">
+                  <span className="text-base font-semibold leading-7">{item.question}</span>
+                  <span className="mt-1 text-[var(--hq-text-muted)] transition-transform duration-200 group-open:rotate-45" aria-hidden="true">+</span>
+                </summary>
+                <p className="max-w-2xl pb-6 pr-10 text-[15px] leading-7 text-[var(--hq-text-muted)]">{item.answer}</p>
+              </details>
+            ))}
+          </div>
+        </Container>
       </section>
 
       {/* Close */}
-      <section className="mx-auto w-full max-w-7xl px-5 py-24 sm:px-8 sm:py-36">
-        <div className="grid gap-12 lg:grid-cols-12 lg:items-end">
-          <h2 className="ho-display text-[clamp(2.75rem,7vw,6rem)] lg:col-span-6">Ready when you are.</h2>
-          <div className="lg:col-span-6">
-            <HomePicker categories={categories} />
-            <a
-              href={`tel:${site.contact.phoneHref}`}
-              className="ho-btn ho-btn-line mt-8"
-            >
-              Prefer to talk? Call {site.contact.phone}
-              <ArrowUpRight className="size-5" aria-hidden="true" />
-            </a>
+      <section className="border-t border-[var(--hq-line)] py-24 sm:py-32">
+        <Container className="flex flex-col items-start justify-between gap-10 lg:flex-row lg:items-end">
+          <h2 className="max-w-2xl text-balance text-[clamp(2.25rem,5vw,4rem)] font-semibold leading-[1.04] tracking-[-0.04em]">
+            Let us run your marketing.
+          </h2>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <Cta href={site.cta.primaryHref}>
+              {site.cta.primary}
+              <ArrowRight className="size-4" aria-hidden="true" />
+            </Cta>
+            <Link href="/book" className="py-3 text-sm font-semibold text-[var(--hq-text-muted)] underline-offset-4 hover:text-[var(--hq-text)] hover:underline">
+              Homeowner? Book a remodeling appointment
+            </Link>
           </div>
-        </div>
+        </Container>
       </section>
-    </div>
+    </>
   );
 }

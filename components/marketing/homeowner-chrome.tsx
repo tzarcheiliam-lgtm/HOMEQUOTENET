@@ -7,8 +7,8 @@ import { site } from '@/content/site';
 import { BrandLogo } from '@/components/brand-logo';
 
 /**
- * The homepage speaks to homeowners; every other marketing route still speaks
- * to contractors. The layout hands both versions of the header and footer to
+ * /book speaks to homeowners; every other marketing route (including the
+ * homepage) speaks to contractors. The layout hands both versions of the header and footer to
  * this switch, which picks one by pathname.
  */
 export function AudienceSwitch({
@@ -18,7 +18,7 @@ export function AudienceSwitch({
   home: ReactNode;
   other: ReactNode;
 }) {
-  return usePathname() === '/' ? home : other;
+  return usePathname() === '/book' ? home : other;
 }
 
 /** Flat header, Buildoly-style: logo, a few links, one button. */
@@ -26,7 +26,7 @@ export function HomeownerHeader() {
   return (
     <header className="ho-header sticky top-0 z-50 border-b border-[var(--ho-rule)] bg-white/90 backdrop-blur">
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-4 px-5 sm:h-20 sm:px-8">
-        <Link href="/" aria-label={`${site.name} home`} className="shrink-0 py-1.5">
+        <Link href="/book" aria-label={`${site.name} home`} className="shrink-0 py-1.5">
           <BrandLogo tone="primary" priority className="w-[150px]" />
         </Link>
         <nav aria-label="Primary" className="flex items-center gap-6 sm:gap-8">
@@ -70,7 +70,7 @@ export function HomeownerFooter() {
             <li className={h}>More</li>
             <li><Link href="/privacy">Privacy</Link></li>
             <li><Link href="/terms">Terms</Link></li>
-            <li><Link href="/contractors">For contractors</Link></li>
+            <li><Link href="/">For contractors</Link></li>
           </ul>
         </div>
       </div>
