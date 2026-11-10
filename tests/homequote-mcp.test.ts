@@ -287,3 +287,52 @@ describe('HomeQuote MCP: assigning leads needs the admin to approve in HomeQuote
     expect((await q(`select status from public.mcp_pending_actions where id=$1`, [b.data.request_id]))[0].status).toBe('pending'); // expired: never acted on
   });
 });
+
+describe('HomeQuote MCP: booking an appointment needs the admin to approve in HomeQuote', () => {
+  const fd = (o: Record<string, string>) => { const f = new FormData(); for (const [k, v] of Object.entries(o)) f.set(k, v); return f; };
+  let lead = ''; let co = ''; let asg = '';
+  const future = (days: number) => {
+    const d = new Date(Date.now() + days * 86_400_000);
+    return `${d.toISOString().slice(0, 10)}T10:00`;
+  };
+  beforeAll(async () => {
+    lead = randomUUID(); co = randomUUID(); asg = randomUUID();
+    await q(`insert into public.leads(id,first_name,last_name,status,source) values ($1,'Amber','Maldonado','assigned','meta')`, [lead]);
+    await q(`insert into public.contractors(id, name) values ($1,'Pool Masters LA')`, [co]);
+    await q(`insert into public.lead_assignments(id, lead_id, contractor_id) values ($1,$2,$3)`, [asg, lead, co]);
+  });
+
+  it('a key without the assign permission cannot propose a booking', async () => {
+    expect((await call(keys.writer, 'propose_appointment', { lead_id: lead, date_time: future(5) })).error?.message).toMatch(/Unknown tool/);
+  });
+
+  it('checks the request: a valid time, an assignment, not already booked', async () => {
+    expect((await call(keys.assigner, 'propose_appointment', { lead_id: lead, date_time: 'next monday' })).text).toMatch(/Pacific wall time/);
+    expect((await call(keys.assigner, 'propose_appointment', { lead_id: lead, date_time: '2020-01-01T10:00' })).text).toMatch(/already passed/);
+    const lone = randomUUID();
+    await q(`insert into public.leads(id,first_name,status,source) values ($1,'Solo','new','meta')`, [lone]);
+    expect((await call(keys.assigner, 'propose_appointment', { lead_id: lone, date_time: future(5) })).text).toMatch(/not assigned to a contractor yet/);
+  });
+
+  it('proposing books nothing; approving books it once and moves the lead to appointment set', async () => {
+    const when = future(6);
+    const r = await call(keys.assigner, 'propose_appointment', { lead_id: lead, date_time: when, notes: 'Tile & coping; wants a written estimate', reason: 'She picked this time by text' });
+    expect(r.data).toMatchObject({ status: 'waiting for your approval' });
+    expect(r.data.request).toMatch(/^Book Amber Maldonado with Pool Masters LA: .* at 10:00 AM \(Pacific\)/);
+    expect(await q(`select 1 from public.appointments where assignment_id=$1`, [asg])).toHaveLength(0);
+    expect(push.calls.at(-1)).toMatchObject({ title: 'Claude needs your OK' });
+
+    const { decideMcpAction: decide } = await import('@/lib/actions/claude-connector');
+    await decide(fd({ id: r.data.request_id, decision: 'approve' }));
+    await decide(fd({ id: r.data.request_id, decision: 'approve' }));
+    const appts = await q(`select scheduled_at, notes, created_by from public.appointments where assignment_id=$1`, [asg]);
+    expect(appts).toHaveLength(1);
+    expect(appts[0]).toMatchObject({ notes: 'Tile & coping; wants a written estimate', created_by: admin });
+    expect(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', minute: '2-digit' }).format(new Date(appts[0].scheduled_at))).toBe('10:00 AM');
+    expect((await q(`select status from public.leads where id=$1`, [lead]))[0].status).toBe('appointment_set');
+    expect((await q(`select status from public.lead_assignments where id=$1`, [asg]))[0].status).toBe('appointment_set');
+    expect((await q(`select status, result from public.mcp_pending_actions where id=$1`, [r.data.request_id]))[0]).toMatchObject({ status: 'approved', result: 'Booked.' });
+    expect((await q(`select body from public.lead_activities where lead_id=$1 and type='appointment'`, [lead]))[0].body).toMatch(/proposed by Claude, approved by Liam/);
+    expect((await call(keys.assigner, 'propose_appointment', { lead_id: lead, date_time: when })).text).toMatch(/already booked/);
+  });
+});

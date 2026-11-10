@@ -11,7 +11,8 @@ Always labeled "ballpark, not a quote". No AI pricing. No monthly payment amount
 copy of Buildoly's mobile flow: a landing page, three one-tap questions (size, finish, extras) over pre-rendered photos,
 a four-field contact step, then the range and the booking calendar (`revealRange: 'after_contact'`). The one-page
 configurator ("Pool Masters configurator") and the step-by-step flow described next still work: the configurator is the
-price/photo mapping the funnel reuses, and the builder is what `/estimator/bathroom-remodel` uses.
+price/photo mapping the funnel reuses. `/estimator/bathroom-remodel` now runs the same funnel ("Bathroom simple funnel"
+below); its step-by-step builder is kept working.
 
 ## Homeowner flow (step-by-step builder)
 
@@ -190,7 +191,111 @@ and backyard sits beside the questions (pinned above them on phones) and redraws
   the on-site visit" stays under the picture
 - The builder's result keeps "Ballpark, not a quote" directly above the booking button; other trades keep the button last
 
-## Bathroom builder (`/estimator/bathroom-remodel`)
+## Bathroom simple funnel (`/estimator/bathroom-remodel`)
+
+Since 2026-10-29 `/estimator/bathroom-remodel` (and `/embed/estimator/bathroom-remodel`) runs the same simple mobile
+funnel as Pool Masters (`experience: 'funnel'`), published for HomeQuote Network. Spec
+`content/estimators/homequote-bathroom-funnel.ts`; full summary in `HOMEQUOTE_CONTEXT.md` §33, "Bathroom simple funnel".
+
+- **Landing**: "Matched with licensed local bathroom pros" bar, HomeQuote Network badge + wordmark, "Bathrooms, remodeled
+  just for you", "Design your bathroom". No reviews, no projects (the network has none of its own).
+- **Three taps**: size (Guest / hall bath 5 x 8, Full bath 8 x 10, Primary suite 12 x 14 ft, to-scale plans), finish
+  (Standard / Luxe), layout (Walk-in shower, Tub & shower combo, Spa bath). **Follow-ups only when they apply**: shower
+  (walk-in or spa bath: Frameless glass, Curbless walk-in, Bench & niche), tub (spa bath: Soaking, Clawfoot, Sculpted
+  stone), vanity (full bath or primary suite: Single, Double, Floating double). 3 to 6 steps; the last says "Get my
+  estimate"; changing an earlier pick drops follow-ups that no longer apply (the pool engine).
+- **Pricing**: every option maps to bathroom template answers (`computeEstimate`; example SoCal prices,
+  `pricesConfirmed: false`). Added template refinements `showerStyle` and `tubStyle`, catalog `floating_double`.
+- **Contact + booking**: the pool components with network words: trust line "Free in-home consultation · Licensed local
+  pros · No obligation", booking on the HomeQuote team calendar ("A quick 10-minute call. Liam from HomeQuote will call
+  you at the time you pick."), contact card "Liam from HomeQuote". Leads file under the `bathroom-remodel` funnel
+  (homeowner = yes and a full remodel qualify; a "No" homeowner gets the review message instead of the calendar).
+- **Wording**: HomeQuote Network is not a contractor: no licence, years or "we build"; the footer says it connects
+  homeowners with licensed local contractors; photos are labelled "AI-generated example designs, not finished projects".
+- **Photos**: `public/estimator/bathroom/funnel/<key>.webp` + `-sm` (1800 / 1200 px), made with kie.ai
+  `nano-banana-pro` by `scripts/generate-bath-funnel-photos.mjs` (one room, every photo an edit of the master so a
+  swap reads as the same room; vanity options show the vanity wall with no tub or shower in view). Since 2026-10-30
+  each size has its own room (see "Size-aware photos" below).
+- **Generic funnel options** used here (the pool keeps its defaults): `variants` photo rule (was `matrix`), `designRecap`, `photoFit`,
+  `landing.heroFallback/logo`, `bookingStep.noRangeText/followUpText/reviewText`, `designDescription`, `photoNote`.
+- **Tests**: `tests/estimator-bath-funnel.test.tsx`.
+
+The step-by-step builder below is kept working; set `experience: 'builder'` in `content/estimators/homequote-bathroom.ts`
+to serve it again.
+
+## Kitchen simple funnel (`/estimator/kitchen-remodel`)
+
+Since 2026-10-30 `/estimator/kitchen-remodel` (+ `/design`, `/my-design`, `/embed/estimator/kitchen-remodel`) runs the
+same funnel for kitchen remodels, published for HomeQuote Network with the bathroom funnel's shape and network wording.
+Config `content/estimators/homequote-kitchen.ts` (`trade: 'kitchen'`, `experience: 'funnel'` only: kitchen has no
+builder), spec `content/estimators/homequote-kitchen-funnel.ts`; full summary in `HOMEQUOTE_CONTEXT.md` §33.
+
+- **Landing**: "Matched with licensed local kitchen pros", "Kitchens, remodeled just for you", "Design your kitchen in 60
+  seconds and get a ballpark price, with a free in-home consultation.", button "Design your kitchen", hero
+  `funnel/layout-island-luxe`, the HomeQuote horizontal logo. No reviews, no projects.
+- **Steps**: "Select your kitchen." Compact / galley (10 x 10 ft), Medium (12 x 14 ft), Large open kitchen (16 x 18 ft),
+  to-scale plans; "Choose your finish." Standard / Luxe; "Choose your layout." L-shaped / U-shaped / Kitchen with island.
+  Follow-ups: "Choose your cabinets." White / Warm wood / Two-tone (always); "Choose your island." Prep / Seating with
+  waterfall edge / With sink (island layout only); "Choose your appliances." Stainless / Pro range & hood / Panel-ready
+  built-ins (Luxe only: Standard already promises a stainless package). 4 to 6 steps; the last says "Get my estimate";
+  changing an earlier pick drops follow-ups that no longer apply.
+- **Pricing**: new template `lib/estimator/templates/kitchen.ts` + `lib/estimator/catalog/kitchen.ts` (example SoCal
+  prices, `pricesConfirmed: false`, `validateTemplate` clean); every option maps to template answers.
+- **Leads** file under the published `kitchen-remodel` funnel (homeowner yes + full remodel qualify; booking on the
+  HomeQuote team calendar with "Liam from HomeQuote").
+- **Photos**: `public/estimator/kitchen/funnel/<key>.webp` + `-sm`, made by `scripts/generate-kitchen-funnel-photos.mjs`
+  (kie.ai `nano-banana-pro`): one Southern California kitchen, every room photo an edit of `layout-island-luxe`; the
+  appliance options show a closer view of the cooking wall so the three packages read apart on a phone. Each photo has an
+  Unsplash stock fallback labelled as such. Since 2026-10-30 every step shows the chosen size and the picks so far (see
+  "Size-aware photos" below).
+- **Tests**: `tests/estimator-kitchen-funnel.test.tsx`.
+
+## Size-aware photos and the "Your design" recap (bathroom + kitchen, 2026-10-30)
+
+Owner: "If I choose small it doesn't show a small bathroom" and "I want it to feel like they are building it". Every step
+after the size now shows the room picked on step 1 with the earlier picks still in it, so the design visibly accumulates.
+
+- **Rooms**: bathroom guest / hall (5 x 8: narrow, vanity + toilet on one wall, tub-shower or walk-in across the end
+  wall), full (8 x 10: 60-in double vanity, toilet, tub / walk-in / compact spa), primary suite (the original set);
+  kitchen compact (10 x 10: L or U, no island), medium (12 x 14: L + a modest island, or L / U), large (the original set).
+  Each smaller room is a kie.ai `nano-banana-pro` text-to-image master drawn with the original master as a style reference
+  (same house), then edits. Keys add the size (`layout-walkin-luxe-guest`, `layout-l-standard-compact`); the largest
+  size keeps the old keys. Follow-ups are edits of the matching room photo and add the room
+  (`shower-curbless-walkin-standard-full`, `cabinets-wood-l-standard-compact`, `island-sink-luxe-medium`). A follow-up the
+  room photo already shows is that room photo itself (frameless shower, soaking tub, white cabinets on a standard or
+  luxe L / U path, the seating island, the compact pro range).
+- **Engine**: new photo rule `{kind: 'variants', by: [{stepId, ordered?}], photos: [{when, photo}]}`
+  (`lib/estimator/funnel/types.ts` / `engine.ts`): THIS step's option must match; the other steps compare in `by` order
+  (same pick < not named < different pick; an `ordered` step such as size counts the distance, so a missing size falls
+  back to the nearest); ties go to the photo listed first; `photoKey` = the file name. Room photos: `by` layout or finish,
+  then size (a guest spa bath / compact island, site-visit items, show the full / medium room). Follow-ups: layout, then
+  size, then finish. Preloading is unchanged (`stepOptionPhotos` uses the whole selection).
+- **Recap**: `FunnelSpec.designRecap {label}` shows "Your design: Full bath · Luxe · Walk-in shower" under the photo from
+  step 2 on (option `short`, else title; the current step's pick included, so it grows with each tap); the question
+  moves up 8 px so the button stays on screen on an iPhone 14 Pro; hidden on short phones (iPhone SE). Unset for the pool.
+- **Fallbacks** (combinations without their own photo, budget 800 credits): bathroom curbless / bench on a spa path show
+  the walk-in one of that room; primary standard curbless / bench and every primary standard tub show the primary luxe
+  one; guest spa bath = the full bath's spa photos (layout, shower, tub); full standard clawfoot / stone show the full
+  luxe one; the vanity step keeps the original vanity-wall photos (walnut, luxe) for every size and finish. Kitchen:
+  wood / two-tone exist for medium island (standard, luxe), medium L standard, compact L standard and the large luxe
+  island (wood); every other path shows the nearest one with the same layout (a U path shows the L one), else the
+  nearest size; compact island = the medium island kitchen; standard island prep / sink show the luxe one of that size;
+  medium appliances show the large kitchen's cooking-wall close-ups; compact stainless / panel are the U kitchen on an L
+  path too. `scripts/generate-kitchen-funnel-photos.mjs` has the standard medium prep / sink jobs commented out, ready.
+- **Tests**: `tests/estimator-funnel-size-photos.test.ts` (rule semantics, every size x path x step resolves to a file on
+  disk, the finish / layout photos change with the size, continuity, the recap, the pool unchanged).
+
+## Step photo framing (`photoFit` / `photoZoom` / `photoBackdrop`)
+
+The funnel photos are 3:2; the photo card is wider (7:4 on phones, wider on short phones and desktop), so `cover` cuts
+their top and bottom. Framing is set per spec (`FunnelSpec.photoFrame`) and per step (`FunnelStep.photoFit`
+'cover' | 'contain', `photoZoom` for contain, `photoBackdrop` 'white' | 'blur'), resolved by `stepPhotoFrame()` in
+`lib/estimator/funnel/engine.ts`. Unset = the pool's look (option photos contain at 1.3 on white, view / matrix photos
+cover), so Pool Masters is unchanged. Bathroom and kitchen show every room photo whole on a blurred copy of itself
+(`{fit: 'contain', zoom: 1, backdrop: 'blur'}`) and their size plans whole on white at zoom 1. The card size does not
+change, so nothing moves and every step still fits one phone screen. Tests: `tests/estimator-funnel-photo-frame.test.tsx`.
+
+## Bathroom builder (previous experience, `experience: 'builder'`)
 
 The same live-builder experience for bathroom remodels, published for HomeQuote Network (a matching network, not a
 contractor). Full technical summary: `HOMEQUOTE_CONTEXT.md` §33, "Live bathroom builder". In short:
@@ -256,7 +361,7 @@ file.
 hydration); steps are hashes so Back works.
 
 **Booking.** First and last name, mobile, email, ZIP, "do you own the home", the funnel consent wording and the optional
-measurement box (never pre-ticked). The request carries `configurator` (the selection), `answers`
+measurement box (pre-ticked unless the contractor is `opt_in`). The request carries `configurator` (the selection), `answers`
 (`selectionToAnswers`, for logs), `submissionId` and an optional timeline; the server re-prices from the selection only
 (`configuratorLeadDesign`) and stores `estimator_design`, `estimator_photos`, `estimator_design_url` and
 `estimator_check_on_site` (the property questions the page never asked). Reliability: one automatic retry on a network
@@ -279,27 +384,61 @@ Empire", floating header card with the logo and a menu, "Backyard pools, remodel
 "Design your pool" button, the evening hero photo (nothing drawn over it); below the fold three
 real projects and the licence). No photo carries a badge: one quiet footer line on every funnel page (and under the
 embed's column) says "Photos show example designs, AI-assisted from Pool Masters projects." (`FunnelSpec.photoNote`). `/estimator/pool-masters/design?step=1|2|3|contact|book&size=..&finish=..&extras=..`
-holds the steps (`noindex`). `/embed/estimator/pool-masters` starts at step 1.
+holds the steps (`noindex`; follow-up picks ride along as `&spa=..&kitchen=..&fire=..&cabana=..`). `/embed/estimator/pool-masters` starts at step 1.
 
-**Steps.** One question per screen: "STEP n OF 3", the photo (all option photos stacked and loaded, so a tap swaps it
-instantly), the question, option cards, one blue button.
+**Steps.** One question per screen: "STEP n OF m", the photo (all option photos stacked and loaded, so a tap swaps it
+instantly), the question, option cards, one blue button. m counts only the steps on the homeowner's path: 3 for just
+the pool, 4 with a spa, 7 for the full backyard (owner, 2026-10-29: "keep it simple; these are only design options
+shown if they choose it"). Follow-up steps carry `showWhen: { stepId: 'extras', anyOf }`; a hidden step has no pick
+(`normalizeFunnelSelection` drops it, so changing step 3 forgets follow-ups that no longer apply), no URL param and no
+price. The last step on the path says `finalCta` "Get my estimate"; the others "Continue".
 
-| Step | Options | Maps to | Photo |
+| Step (id) | Options (ids) | Maps to | Photo |
 | --- | --- | --- | --- |
-| Select your pool size. | Compact / Classic / Estate | configurator model small / medium / large | to-scale plan `funnel/size-*.webp` (fallback: aerial) |
-| Choose your finish. | Standard / Luxe | base rows / pebble + edge_glass_travertine + deck_porcelain | poolside view |
-| Add the extras. | Just the pool / Add a spa / The full backyard | none / spa / spa + outdoor_kitchen + patio_cover + fire_bowls | aerial view |
+| Select your pool size. (`size`) | Compact / Classic / Estate | configurator model small / medium / large | to-scale plan `funnel/size-*.webp` (fallback: aerial) |
+| Choose your finish. (`finish`) | Standard "Plaster, standard tile, precast coping" / Luxe "Pebble, glass tile, porcelain coping and deck" | base rows + coping concrete (labelled "Precast concrete") / pebble + edge_glass_travertine + deck_porcelain + coping **porcelain** | poolside view |
+| Add the extras. (`extras`) | Just the pool / Add a spa / The full backyard | none / spa / spa + outdoor_kitchen + patio_cover | aerial view |
+| Choose your spa. (`spa`, extras = spa or backyard) | Flush spa `flush` / Raised spa `raised` (default) / Zero-edge spa `zero_edge` | `spaStyle` | `funnel/spa-flush`, configurator `poolside-pebble-premium-spa`, `funnel/spa-zero-edge` |
+| Choose your outdoor kitchen. (`kitchen`, backyard) | Grill island `grill` / Full kitchen `full` (default) / Chef's kitchen `chef` | `kitchenStyle` | real `outdoor-kitchen-slab-counter`, `funnel/kitchen-full` (aerial crop), real `covered-outdoor-kitchen-bar` (PLACEHOLDER) |
+| Choose your fire feature. (`fire`, backyard) | Fire pit `pit` / Outdoor fireplace `fireplace` / Fire bowls `bowls` (default) | row fire_pit / addAnswers extras fireplace / row fire_bowls | real `fire-pit-stone-wall-seating`, `funnel/fire-fireplace`, configurator `evening-pebble-fire-spa` |
+| Choose your cabana. (`cabana`, backyard) | Pergola `pergola` / Cabana `cabana` / Covered lounge `lounge` (default) | `coverStyle` pergola / cabana / covered_lounge | real `covered-lounge-pool-dusk`, real `covered-outdoor-kitchen-bar` (PLACEHOLDER), `funnel/cabana-lounge` (aerial crop) |
 
-Prices: `estimateFunnel` = `computeEstimate` on `funnelAnswers` (the configurator's `selectionToAnswers`), with **no
-Go Luxe discount**, so Luxe totals sit above the configurator's Go Luxe figure. Classic + Luxe + spa is $65,000 –
-$106,500 (examples). No equipment or site questions: those are checked at the free on-site visit (the lead lists them).
+**Template additions (example prices).** Optional single questions, each shown only after its base pick, so the
+step-by-step builder can ask them too and the configurator (which never answers them) prices exactly as before:
+`spaStyle` (after `features.spa`; flush +$0, raised +$3k–7k, zero-edge +$10k–17k; `features.spa` itself is now the
+flush build at $15k–28k, and the configurator's spa row answers `spaStyle: raised`, so its spa stays $18k–35k:
+flush $15k–28k < raised $18k–35k < zero-edge $25k–45k), `kitchenStyle` (after `extras.kitchen` $8k–25k: grill +$0,
+full +$10k–18k, chef +$25k–40k), `coverStyle` (after `extras.patio_cover` $9k–22k: pergola +$0, cabana +$6k–12k,
+covered lounge +$12k–25k), and `extras.fireplace` ($8k–20k; fire pit $2.5k–7k, fire bowls 2 × $1.8k–3.5k). The
+template's concrete coping is relabelled "Precast concrete" (the catalog's separate `precast` option is gone);
+porcelain coping ($60–90/ft) comes from the catalog, enabled for Pool Masters in `content/estimators/pool-masters.ts`
+in place of coping "Help me choose" (the coping question allows four options). The Go Luxe bundle is unchanged (the
+funnel never uses it).
+
+Prices: `estimateFunnel` = `computeEstimate` on `funnelAnswers` (the configurator's `selectionToAnswers`, then each
+pick's `answers` replace and `addAnswers` add), with **no Go Luxe discount**. Examples, medium pool, Standard: just the
+pool $20,000–32,000; a spa adds $15k–28k / $18k–35k / $25k–45k by type. No equipment or site questions: those are
+checked at the free on-site visit (the lead lists them).
+
+**Recap and lead.** The price card's line uses each pick's `short` ('' leaves a pick out): "CLASSIC · LUXE · ZERO-EDGE
+SPA", "ESTATE · LUXE · FLUSH SPA · CHEF'S KITCHEN · FIREPLACE · CABANA", "CLASSIC · STANDARD · POOL ONLY". The lead
+summary has one plain line per step on the path ("Choose your spa: Zero-edge spa (Overflows on all four sides)"), then
+the configurator lines except the groups `summaryReplacesGroups` names (tile & coping, pool features, backyard: the
+steps say them exactly); one photo per step shown.
+
+**Follow-up photos** (`public/estimator/pool-masters/funnel/`, `scripts/generate-pool-funnel-options.mjs`, prompts in
+the script): kie.ai nano-banana-pro edits of this yard's configurator photos for `spa-flush`, `spa-zero-edge` and
+`fire-fireplace`; `kitchen-full` and `cabana-lounge` are crops of configurator aerials (`crops`); the rest reuse a
+configurator photo or a real Pool Masters job photo. **Open:** kie.ai credits ran out (2026-10-29), so Chef's kitchen and
+Cabana show a real photo of this yard's pergola kitchen bar as a placeholder (no pizza oven / curtains). Top up, run
+`generate kitchen-chef cabana-curtains` + `export`, and point those two options at `funnel/<key>.webp`.
 
 **Contact step.** "Your estimate is ready. / Where should we send it?" Name, Email, Phone number, **Home address**
 (Google address suggestions, see below), then "Are you the homeowner?" with two buttons "Yes" / "No"
 (`contactStep.homeowner`; the lead's `homeowner` yes / no, always asked and required by the route, never
 assumed), the button, the trust line, and the consent wording in small print under the button: tapping "Get my
 estimate" is the agreement (the request sends `consent: true` with that exact `consentText`; the route still checks the
-wording). The optional ad-measurement box is never pre-ticked. One error at a time; Return moves to the next field.
+wording). The optional ad-measurement box is pre-ticked unless the contractor is `opt_in`. One error at a time; Return moves to the next field.
 
 **Address autocomplete.** `components/estimator/funnel/contact/address-field.tsx` (ARIA combobox + listbox; 200 ms
 debounce, 3+ characters, white list with 1px #d0d0d0 border, 8px radius, 48px rows, arrows / Return / Escape, closes on

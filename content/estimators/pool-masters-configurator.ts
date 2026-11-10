@@ -249,7 +249,8 @@ export const POOL_MASTERS_CONFIGURATOR: ConfiguratorSpec = {
       view: 'aerial',
       kind: 'multi',
       rows: [
-        { id: 'spa', label: 'Spa', note: 'Raised spa with a spillover', answers: { scope: ['features'], features: ['spa'] } },
+        // The photos show a raised spa: spaStyle raised (spa + raised = the example $18k-35k).
+        { id: 'spa', label: 'Spa', note: 'Raised spa with a spillover', answers: { scope: ['features'], features: ['spa'], spaStyle: ['raised'] } },
         { id: 'baja', label: 'Baja shelf', note: 'Shallow lounging ledge', answers: { scope: ['features'], features: ['baja'] } },
         { id: 'fire_bowls', label: 'Fire bowls', note: 'A pair on the pool edge', answers: { scope: ['features'], features: ['fire'] }, view: 'evening' },
         { id: 'water_bowls', label: 'Water bowls', note: 'A pair spilling into the pool', answers: { scope: ['features'], features: ['water'] } },

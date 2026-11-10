@@ -12,6 +12,8 @@ import { parseWorkflowGraph, triggerOf } from '@/lib/workflows/graph';
 import { hashGraph } from '@/lib/workflows/graph/hash';
 import { sendPushNotification } from '@/lib/notifications/service';
 import { AREA_LABELS, AUTOMATIONS } from '@/lib/automations/registry';
+import { slotProblem } from '@/lib/appointments/book.server';
+import { parseWallTime } from '@/lib/availability/time';
 import { automationStatuses } from '@/lib/automations/status.server';
 import type { McpKey, McpScope } from './keys';
 
@@ -163,11 +165,11 @@ export const TOOLS: ToolDef[] = [
         db.from('sms_conversations').select('id,status,mode,sender_name,summary,workflow_owned').eq('lead_id', id).maybeSingle(),
         db.from('lead_assignments').select('id,contractor_id,status').eq('lead_id', id),
       ]);
-      const assignmentIds = (assigns ?? []).map((a: any) => a.id);
       const contractorIds = [...new Set((assigns ?? []).map((a: any) => a.contractor_id))];
       const [{ data: msgs }, { data: appts }, { data: cos }] = await Promise.all([
         convo ? db.from('sms_messages').select('direction,body,status,created_at').eq('conversation_id', (convo as any).id).order('created_at', { ascending: false }).limit(20) : Promise.resolve({ data: [] }),
-        assignmentIds.length ? db.from('appointments').select('id,assignment_id,scheduled_at,status,location').in('assignment_id', assignmentIds) : Promise.resolve({ data: [] }),
+        // appointments.lead_id (0070) also covers calls on the HomeQuote team calendar before any contractor is assigned.
+        db.from('appointments').select('id,assignment_id,scheduled_at,status,location').eq('lead_id', id),
         contractorIds.length ? db.from('contractors').select('id,name').in('id', contractorIds) : Promise.resolve({ data: [] }),
       ]);
       const coName = new Map((cos ?? []).map((c: any) => [c.id, c.name]));
@@ -197,13 +199,14 @@ export const TOOLS: ToolDef[] = [
       const from = str(args.from) ? new Date(String(args.from)) : new Date();
       const to = str(args.to) ? new Date(String(args.to)) : new Date(from.getTime() + 14 * 86_400_000);
       if (Number.isNaN(+from) || Number.isNaN(+to)) fail('from/to must be dates like 2026-10-28.');
-      let q = db.from('appointments').select('id,assignment_id,scheduled_at,status,location').gte('scheduled_at', from.toISOString()).lte('scheduled_at', to.toISOString());
+      let q = db.from('appointments').select('id,assignment_id,lead_id,contact_name,scheduled_at,status,location').gte('scheduled_at', from.toISOString()).lte('scheduled_at', to.toISOString());
       const status = str(args.status, 40); if (status) q = q.eq('status', status);
       const { data: appts } = await q.order('scheduled_at', { ascending: true }).limit(200);
-      const assignIds = [...new Set((appts ?? []).map((a: any) => a.assignment_id))];
+      // Team-calendar calls (0070) have no assignment yet: filter the nulls, and read the lead from appointments.lead_id.
+      const assignIds = [...new Set((appts ?? []).map((a: any) => a.assignment_id).filter(Boolean))];
       const { data: assigns } = assignIds.length ? await db.from('lead_assignments').select('id,lead_id,contractor_id').in('id', assignIds) : { data: [] };
       const byAssign = new Map((assigns ?? []).map((a: any) => [a.id, a]));
-      const leadIds = [...new Set((assigns ?? []).map((a: any) => a.lead_id))];
+      const leadIds = [...new Set([...(assigns ?? []).map((a: any) => a.lead_id), ...(appts ?? []).map((a: any) => a.lead_id)].filter(Boolean))];
       const coIds = [...new Set((assigns ?? []).map((a: any) => a.contractor_id))];
       const [{ data: leads }, { data: cos }] = await Promise.all([
         leadIds.length ? db.from('leads').select('id,first_name,last_name,phone,city').in('id', leadIds) : Promise.resolve({ data: [] }),
@@ -212,8 +215,8 @@ export const TOOLS: ToolDef[] = [
       const leadById = new Map((leads ?? []).map((l: any) => [l.id, l]));
       const coName = new Map((cos ?? []).map((c: any) => [c.id, c.name]));
       return (appts ?? []).map((a: any) => {
-        const as = byAssign.get(a.assignment_id) as any; const l = as ? (leadById.get(as.lead_id) as any) : null;
-        return { id: a.id, scheduled_at: a.scheduled_at, status: a.status, location: a.location, lead: l ? { id: l.id, name: name(l), phone: l.phone, city: l.city, link: link(`/app/leads/${l.id}`) } : null, contractor: as ? coName.get(as.contractor_id) ?? null : null };
+        const as = byAssign.get(a.assignment_id) as any; const l = leadById.get(as?.lead_id ?? a.lead_id) as any;
+        return { id: a.id, scheduled_at: a.scheduled_at, status: a.status, location: a.location, lead: l ? { id: l.id, name: name(l), phone: l.phone, city: l.city, link: link(`/app/leads/${l.id}`) } : a.contact_name ? { name: a.contact_name } : null, contractor: as ? coName.get(as.contractor_id) ?? null : null };
       });
     },
   },
@@ -537,9 +540,61 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: 'propose_appointment',
+    title: 'Propose booking an appointment',
+    description: 'Ask the admin to approve booking a free estimate visit for a lead with the contractor it is assigned to (for example the day and time the lead agreed to by text). Only use this when the admin asked for it in this conversation. Nothing is booked by this call: the admin approves or declines it in HomeQuote; once approved, the reminder texts start. date_time is Pacific (workspace) wall time, e.g. 2026-11-03T10:00.',
+    scope: 'assign',
+    inputSchema: {
+      type: 'object', required: ['lead_id', 'date_time'],
+      properties: {
+        lead_id: { type: 'string' },
+        contractor_id: { type: 'string', description: 'Contractor the lead is assigned to (from get_lead / list_contractors). Optional when the lead has exactly one assignment.' },
+        date_time: { type: 'string', description: 'Local (Pacific) date and time, YYYY-MM-DDTHH:mm.' },
+        notes: { type: 'string', description: 'Short notes for the visit, shown on the appointment.' },
+        reason: { type: 'string', description: 'Why, in a sentence, shown to the admin with the request.' },
+      },
+    },
+    summarize: (a) => `lead=${String(a.lead_id ?? '').slice(0, 36)} at=${String(a.date_time ?? '').slice(0, 20)}`,
+    run: async (db, args, key) => {
+      const leadId = uuid(args.lead_id, 'lead_id');
+      const raw = str(args.date_time, 40);
+      if (!raw || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(raw)) fail('date_time must be Pacific wall time like 2026-11-03T10:00.');
+      const startMs = parseWallTime(raw!, 'America/Los_Angeles');
+      if (startMs === null) fail('That date and time is not valid.');
+      const now = Date.now();
+      if (startMs! <= now) fail('That time has already passed.');
+      if (startMs! > now + 90 * 86_400_000) fail('Book within the next 90 days.');
+      const { data: lead } = await db.from('leads').select('id,first_name,last_name').eq('id', leadId).maybeSingle();
+      if (!lead) fail('No lead with that id.');
+      const { data: asgs } = await db.from('lead_assignments').select('id,contractor_id,status').eq('lead_id', leadId);
+      const open = ((asgs ?? []) as any[]).filter((a) => !['lost', 'returned', 'not_qualified'].includes(a.status));
+      const coId = args.contractor_id === undefined ? undefined : uuid(args.contractor_id, 'contractor_id');
+      const asg = coId ? open.find((a) => a.contractor_id === coId) : open.length === 1 ? open[0] : undefined;
+      if (!asg) fail(coId ? 'The lead is not assigned to that contractor. Assign it first (propose_lead_assignment).' : open.length ? 'The lead has several assignments: give contractor_id.' : 'The lead is not assigned to a contractor yet. Propose an assignment first.');
+      const at = new Date(startMs!).toISOString();
+      const { data: dup } = await db.from('appointments').select('id').eq('assignment_id', asg.id).eq('scheduled_at', at).in('status', ['scheduled', 'rescheduled']).limit(1).maybeSingle();
+      if (dup) fail('That appointment is already booked.');
+      const { count } = await db.from('mcp_pending_actions').select('id', { count: 'exact', head: true }).eq('key_id', key.id).eq('status', 'pending');
+      if ((count ?? 0) >= 20) fail('There are already 20 requests waiting for approval. Ask the admin to review them first.');
+      const { data: co } = await db.from('contractors').select('name').eq('id', asg.contractor_id).maybeSingle();
+      const coName = (co as any)?.name ?? 'the contractor';
+      const fmt = (o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', ...o }).format(new Date(startMs!));
+      const when = `${fmt({ weekday: 'short', month: 'short', day: 'numeric' })} at ${fmt({ hour: 'numeric', minute: '2-digit' })}`;
+      const conflict = await slotProblem(db as never, asg.contractor_id, startMs!);
+      const summary = `Book ${name(lead as any)} with ${coName}: ${when} (Pacific)${conflict ? `. Note: ${conflict}` : ''}`.slice(0, 500);
+      const { data: row, error } = await db.from('mcp_pending_actions').insert({
+        key_id: key.id, requested_for: key.actorId, kind: 'book_appointment', summary,
+        payload: { leadId, assignmentId: asg.id, startMs, notes: str(args.notes, 500) ?? null, reason: str(args.reason, 300) ?? null },
+      }).select('id').single();
+      if (error || !row) fail(/kind/i.test(error?.message ?? '') ? 'Booking requests need database migration 0071 first.' : 'Could not create the approval request.');
+      if (key.actorId) await sendPushNotification({ userIds: [key.actorId], type: 'workflow_alert', title: 'Claude needs your OK', body: `${summary}. Tap to approve or decline.`, url: '/app/claude-connector#approvals', db }).catch(() => undefined);
+      return { status: 'waiting for your approval', request_id: (row as any).id, request: summary, ...(conflict ? { availability: conflict } : {}), approve_at: link('/app/claude-connector#approvals'), note: 'Nothing has been booked yet. The admin approves or declines this in HomeQuote; it expires in 24 hours. Once approved, the reminder texts start.' };
+    },
+  },
+  {
     name: 'list_pending_approvals',
     title: 'Check approval requests',
-    description: 'Assignment requests made through this connector and whether the admin approved, declined or has not decided yet (newest first).',
+    description: 'Assignment and booking requests made through this connector and whether the admin approved, declined or has not decided yet (newest first).',
     scope: 'assign',
     inputSchema: { type: 'object', properties: {} },
     annotations: readOnly,

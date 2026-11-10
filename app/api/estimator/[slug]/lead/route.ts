@@ -17,11 +17,15 @@ import { configuratorSpecFor } from '@/lib/estimator/configurator/engine';
 import { funnelSpecFor } from '@/lib/estimator/funnel/engine';
 import { getEstimator } from '@/lib/estimator/registry';
 import {
-  ReplayCache, acceptedConsent, addressLine, bookingUrl, buildLeadPayload, configuratorLeadDesign, funnelLeadDesign, isHoneypot, originAllowed, parseLeadRequest, pickLikedLooks,
+  ReplayCache, acceptedConsent, addressLine, bookingUrl, buildLeadPayload, configuratorLeadDesign, estimatorBooking, funnelLeadDesign, isHoneypot, originAllowed, parseLeadRequest, pickLikedLooks,
   sanitizeEstimatorAnswers, type ConfiguratorLeadDesign,
 } from '@/lib/estimator/lead';
 import { estimatorConsentText, type EstimatorLeadResponse } from '@/lib/estimator/lead-client';
 import { signRenderToken } from '@/lib/estimator/render';
+import { signBookingTicket } from '@/app/api/booking/_lib/grant';
+import { speedAlertSoon } from '@/lib/booking/recovery.server';
+import { signedSharePath } from '@/lib/estimator/share.server';
+import { roofLeadMeasure } from '@/lib/estimator/roofing/roof.server';
 
 /**
  * Instant estimator lead capture. One request = one finished estimate + contact.
@@ -121,7 +125,9 @@ async function handle(request: Request, context: Context): Promise<Response> {
   let estimate = computeEstimate(template, { answers, dimensions: lead.dimensions });
   let design: ConfiguratorLeadDesign | undefined;
   if (funnelSpec && lead.funnel) {
-    ({ answers, estimate, design } = funnelLeadDesign(funnelSpec, template, lead.funnel, where));
+    // Roofing: the roof the server measured (signature checked) or the home-size band, never a browser price.
+    const measured = funnelSpec.addressFirst?.kind === 'roof' ? roofLeadMeasure(slug, lead.roof) : undefined;
+    ({ answers, estimate, design } = funnelLeadDesign(funnelSpec, template, lead.funnel, where, measured));
   } else if (spec && lead.configurator) {
     ({ answers, estimate, design } = configuratorLeadDesign(spec, template, lead.configurator, where));
   }
@@ -206,6 +212,8 @@ async function handle(request: Request, context: Context): Promise<Response> {
       after(async () => { try { await runAiCallQueue({ limit: 3 }); } catch { /* the scheduled tick retries */ } });
       if (smsConfigured() && leadId) after(async () => { try { await startSmsForLead(db, leadId); } catch { /* never blocks the submission */ } });
       if (funnel.integration_id) after(async () => { try { await deliverPendingFunnels(); } catch { /* the durable queue retains the job */ } });
+      // Speed-to-lead: push + email the owner and the calendar's hosts right away (once per lead; a switch in Texting).
+      if (leadId) speedAlertSoon({ leadId, event: 'submitted' });
 
       // Meta Lead: the funnel's event, never for an out-of-state ZIP, deduplicated against the
       // browser event through the id the page sent.
@@ -233,9 +241,24 @@ async function handle(request: Request, context: Context): Promise<Response> {
 
     // Optional photoreal render of their design: only for a lead that was really saved (null when renders are off).
     const renderToken = leadId ? signRenderToken(slug, leadId) ?? undefined : undefined;
+    // Booking: on the HomeQuote calendar, a ticket for this saved, qualified session (the booking
+    // API re-checks both and records the booking with every funnel side effect); otherwise the
+    // external link. A demo funnel books nothing.
+    const booking = estimatorBooking(contractor, funnel.config);
+    const bookingTicket = booking === 'homequote' && payload.qualified && leadId && !funnel.is_demo
+      ? signBookingTicket(session.id, 'estimator') ?? undefined : undefined;
+    if (bookingTicket) {
+      // The booking screen opens with this reply: count it as the calendar being shown (funnel analytics).
+      const { error: viewedError } = await db.from('funnel_events')
+        .upsert({ session_id: session.id, event: 'calendar_viewed', step_id: '' }, { onConflict: 'session_id,event,step_id', ignoreDuplicates: true });
+      if (viewedError) console.error('[estimator-lead] could not record calendar_viewed', viewedError.code ?? 'unknown');
+    }
     const done: EstimatorLeadResponse = {
       ok: true, estimate, qualified: payload.qualified,
-      calendarUrl: payload.qualified ? bookingUrl(contractor.calendarUrl ?? funnel.config.calendarUrl, payload.contact, attribution) : undefined,
+      calendarUrl: payload.qualified && booking === 'link' ? bookingUrl(contractor.calendarUrl ?? funnel.config.calendarUrl, payload.contact, attribution) : undefined,
+      ...(bookingTicket ? { bookingTicket } : {}),
+      // "Send my design to my partner": the signed read-only design page (picks only, nothing personal).
+      ...(funnelSpec && design?.funnel ? { shareUrl: signedSharePath(slug, funnelSpec, design.funnel.selection) } : {}),
       renderToken,
     };
     if (replayKey) replays.set(replayKey, done);

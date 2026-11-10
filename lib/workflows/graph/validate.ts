@@ -239,7 +239,7 @@ export function validateGraph(input: unknown, ctx: ValidationContext): { issues:
       issues.push(err('needs_contractor', `${label} needs a contractor. Scope this workflow to a contractor, or start it from "Lead assigned to contractor".`, { nodeId: n.id }));
     }
     if (typeDef.requiresAssignment && triggerDef && triggerDef.contractorScope !== 'required' && ctx.contractorId === null) {
-      issues.push(err('needs_assignment', `${label} needs a contractor-side lead record. Start the workflow from an assignment, appointment or estimate trigger.`, { nodeId: n.id }));
+      issues.push(err('needs_assignment', `${label} needs a contractor-side lead record. Start the workflow from an assignment, estimate or deal trigger (appointment triggers include HomeQuote team-calendar calls, which have no contractor), or scope it to a contractor.`, { nodeId: n.id }));
     }
     if (n.type === 'wait_duration' && parsed.success && (parsed.data as { mode: string }).mode === 'before_appointment' && !roots.has('appointment')) {
       issues.push(err('variable_unavailable', `${label}: "before the appointment" needs an appointment, which "${triggerDef?.label ?? 'this trigger'}" does not provide.`, { nodeId: n.id, field: 'mode' }));

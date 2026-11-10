@@ -1,5 +1,5 @@
 import type { ComponentType, ReactNode } from 'react';
-import type { EstimateInput, EstimatorQuestion, EstimatorTemplate, EstimatorTrade } from '@/lib/estimator/types';
+import type { BuilderTrade, EstimateInput, EstimatorQuestion, EstimatorTemplate } from '@/lib/estimator/types';
 import type { DesignItem, OptionLabeler } from '../builder';
 
 /**
@@ -103,7 +103,7 @@ export type ExampleVideo = { mp4?: string; webm?: string; poster: string; alt: s
 export type ExampleMedia = ({ kind: 'compare' } & ExampleImages) | ({ kind: 'video' } & ExampleVideo);
 
 export interface TradeBuilder<Spec = unknown> {
-  trade: EstimatorTrade;
+  trade: BuilderTrade;
   /** Answers (+ typed dimensions) -> the picture spec. Pure; visible answers only. */
   buildSpec(template: EstimatorTemplate, input: EstimateInput): Spec;
   /** The picture shown before the first answer (always captioned as an example). */

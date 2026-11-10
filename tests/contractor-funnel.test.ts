@@ -7,7 +7,7 @@ const state = vi.hoisted(() => ({
   inserted: [] as Record<string, unknown>[],
   updated: [] as Record<string, unknown>[],
   existing: null as null | Record<string, unknown>,
-  calendar: { url: 'https://calendly.com/hq/contractor', provider: 'calendly' } as null | { url: string; provider: string },
+  calendar: { url: '/app/calendar', provider: 'homequote' } as null | { url: string; provider: string },
 }));
 
 vi.mock('@/lib/supabase/admin', () => ({
@@ -27,6 +27,8 @@ vi.mock('@/lib/contractor-funnel/settings.server', async () => {
 import { answersSchema, contactSchema, qualifyContractor, DEFAULT_RULES, type Answers } from '@/lib/contractor-funnel/schema';
 import { POST as inquiry } from '@/app/api/contractor-funnel/inquiry/route';
 import { POST as booking } from '@/app/api/contractor-funnel/booking/route';
+import { parseGrant } from '@/app/api/booking/_lib/grant';
+import { contractorFunnelGrant } from '@/components/booking/types';
 
 const goodAnswers: Answers = {
   services: ['pools'], serviceArea: 'Encino, 91436', role: 'owner', projectValue: 'varies',
@@ -39,7 +41,8 @@ const req = (b: unknown) => new Request('http://t/api', { method: 'POST', body: 
 
 beforeEach(() => {
   state.insertResult = { error: null }; state.inserted = []; state.updated = []; state.existing = null;
-  state.calendar = { url: 'https://calendly.com/hq/contractor', provider: 'calendly' };
+  // HomeQuote's own sales calendar (the shipped default); Calendly only as the fallback case below.
+  state.calendar = { url: '/app/calendar', provider: 'homequote' };
 });
 
 describe('qualifyContractor', () => {
@@ -81,12 +84,19 @@ describe('POST /api/contractor-funnel/inquiry', () => {
     expect(json).toMatchObject({ status: 'qualified', calendar: state.calendar });
     expect(json.token).toMatch(/^[0-9a-f]{48}$/);
     expect(state.inserted[0].access_token_hash).not.toBe(json.token);
+    // The booking step books the sales calendar with this submission's grant (the public booking API).
+    expect(parseGrant(contractorFunnelGrant(SUB, json.token))).toEqual({ kind: 'submission', submissionId: SUB, token: json.token });
+  });
+  it('fallback: an external Calendly sales calendar is passed through unchanged', async () => {
+    state.calendar = { url: 'https://calendly.com/hq/contractor', provider: 'calendly' };
+    const json = await (await inquiry(req(body()))).json();
+    expect(json).toMatchObject({ status: 'qualified', calendar: { provider: 'calendly' } });
   });
   it('never shows a calendar when the save fails', async () => {
     state.insertResult = { error: { code: '500' } };
     const res = await inquiry(req(body()));
     expect(res.status).toBe(500);
-    expect(JSON.stringify(await res.json())).not.toContain('calendly');
+    expect((await res.json()).calendar).toBeUndefined();
   });
   it('needs_review gets no calendar', async () => {
     const json = await (await inquiry(req(body({ answers: { ...goodAnswers, capacity: 'none' } })))).json();

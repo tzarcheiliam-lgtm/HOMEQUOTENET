@@ -2,6 +2,7 @@ import { WORKFLOW_ACTIONS, type WorkflowActionType } from './actions';
 import { evaluateWorkflowConditions, resolveWorkflowPath, type ConditionEvaluation } from './evaluator';
 import { WORKFLOW_TRIGGER_CONFIG_SCHEMAS, workflowCanSeeEvent, type WorkflowEvent } from './events';
 import { orderedRootSteps, type Workflow, type WorkflowActionStep } from './definition';
+import { supersededByNativeBooking } from './native-booking';
 
 export interface WorkflowEvaluationContext {
   contractor: Record<string, unknown> | null;
@@ -36,6 +37,8 @@ export function triggerConfigMatches(workflow: Workflow, event: WorkflowEvent): 
   if (!parsed.success) return false;
   const config = parsed.data as { fromStatuses?: string[]; toStatuses?: string[]; channels?: string[]; results?: string[] };
   const payload = event.payload as Record<string, unknown>;
+  // Calendar bookings get the built-in notices; the old confirmation templates would double-send.
+  if (supersededByNativeBooking(workflow.templateKey, event.type, payload)) return false;
   if (config.fromStatuses && !config.fromStatuses.includes(String(payload.fromStatus ?? ''))) return false;
   if (config.toStatuses && !config.toStatuses.includes(String(payload.toStatus ?? ''))) return false;
   if (config.channels && !config.channels.includes(String(payload.channel ?? ''))) return false;

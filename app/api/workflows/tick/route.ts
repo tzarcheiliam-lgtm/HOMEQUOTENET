@@ -5,11 +5,14 @@ import { runCalendarMaintenance } from '@/lib/calendar/sync.server';
 import { runNotificationMaintenance } from '@/lib/notifications/outbox';
 import { signingMaintenance } from '@/lib/signing/service';
 import { retryPendingAduQuizLeads } from '@/lib/adu-quiz/leads.server';
+import { runBookingNotifications } from '@/lib/booking/reminders.server';
+import { runRecovery } from '@/lib/booking/recovery.server';
 import { checkBridgeHealth } from '@/lib/sms/health';
 import { notifyAdmins } from '@/lib/sms/health-notify';
 import { runTextReminders } from '@/lib/sms/reminders';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { processWorkflowTick, pruneWorkflowHistory } from '@/lib/workflows/runtime.server';
+import { runVideoNoShows } from '@/lib/video/no-shows.server';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -43,9 +46,27 @@ export async function POST(request: Request) {
     // Texting: alert the team if texts are waiting and the Mac bridge is not sending them. Best effort.
     let sms: unknown = null;
     try { sms = await checkBridgeHealth(createAdminClient(), { notify: notifyAdmins }); } catch { sms = { error: 'texting health check failed' }; }
-    // Reminder texts for booked meetings and follow-ups when homeowners don't reply. Best effort.
+    // Native calendar bookings: confirmations (email + text), 24 h / 1 h reminder EMAILS, cancellation notices. Best effort.
+    // Runs before the reminder texts so a booking's confirmation always goes first.
+    let bookings: unknown = null;
+    try {
+      const r = await runBookingNotifications();
+      bookings = { confirmations: r.confirmations, reminders: r.reminders, cancellations: r.cancellations, overlappingWorkflows: r.overlappingWorkflows };
+    } catch {
+      bookings = { error: 'booking notifications failed' };
+    }
+    // Reminder texts for booked meetings (sales meetings, on-site visits AND calendar calls: the only reminder texts)
+    // and follow-ups when homeowners don't reply. Best effort.
+    // Video sales meetings the rep opened and the contractor never joined become no-shows (before the reminder
+    // texts, so the no-show follow-up goes out in this same tick). Best effort.
+    let videoNoShows: unknown = null;
+    try { videoNoShows = await runVideoNoShows(); } catch { videoNoShows = { error: 'video no-show check failed' }; }
     let reminders: unknown = null;
     try { reminders = await runTextReminders(createAdminClient()); } catch { reminders = { error: 'text reminders failed' }; }
+    // Lead recovery: "did you reach them?" pushes, no-show and never-booked follow-up EMAILS (their texts are in the
+    // reminder texts above). Best effort.
+    let recovery: unknown = null;
+    try { recovery = await runRecovery(); } catch { recovery = { error: 'lead recovery failed' }; }
     // ADU quiz leads whose webhook delivery failed. Best effort; a failure never affects the tick.
     let aduQuiz: unknown = null;
     try {
@@ -53,7 +74,7 @@ export async function POST(request: Request) {
     } catch {
       aduQuiz = { error: 'adu quiz retry failed' };
     }
-    const body = { ...result, retention, notifications, calendar, signing, sms, reminders, aduQuiz };
+    const body = { ...result, retention, notifications, calendar, signing, sms, videoNoShows, reminders, recovery, bookings, aduQuiz };
     await recordAutomationRun('workflow_tick', startedAt, !result.failures, body);
     return NextResponse.json(body, { status: result.failures ? 207 : 200 });
   } catch {

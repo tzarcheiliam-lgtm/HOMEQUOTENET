@@ -6,6 +6,7 @@ import { tidyPhone } from '@/components/estimator/configurator/result/booking-st
 import { estimatorConsentText, funnelContactErrors, newSubmissionId, submitEstimatorLead, type EstimatorLeadRequest } from '@/lib/estimator/lead-client';
 import type { FunnelContactScreenProps } from '../screens';
 import { AddressField } from './address-field';
+import { readRoofState, roofLeadInput } from '../address/state';
 import {
   clearContactDraft,
   emptyFunnelFields,
@@ -67,8 +68,8 @@ export function FunnelContactScreen({ slug, spec, selection, contractor, heading
   // The latest fields for checks that run after an await (a resolved address pick).
   const fieldsRef = useRef(fields);
   fieldsRef.current = fields;
-  // Never pre-ticked (same as the configurator): only the visitor's own tick sends browser ids to Meta.
-  const [measurement, setMeasurement] = useState(false);
+  // Pre-ticked unless the contractor is set to opt_in (the owner's call); the visitor can still untick it.
+  const [measurement, setMeasurement] = useState(contractor.adMeasurement !== 'opt_in');
   const [consentWording, setConsentWording] = useState(() => estimatorConsentText(contractor.contractorName));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [sending, setSending] = useState(false);
@@ -79,6 +80,8 @@ export function FunnelContactScreen({ slug, spec, selection, contractor, heading
   const [ready, setReady] = useState(false);
   // One id per picks + details: a retry (ours or theirs) of the same submission is answered once.
   const submission = useRef<{ id: string; body: string } | null>(null);
+  // Roofing: the address came from the first screen; it shows as one line ("Change" opens the field again).
+  const [editAddress, setEditAddress] = useState(!spec.addressFirst);
 
   // Restore a draft after mount (no hydration mismatch; fixed-height fields, so nothing moves).
   useEffect(() => {
@@ -124,7 +127,9 @@ export function FunnelContactScreen({ slug, spec, selection, contractor, heading
     sendingRef.current = true;
     setSending(true);
     setErrors({});
-    const draft = funnelLeadRequest({ spec, selection, fields, consentText: consentWording, measurement, consentOnSubmit: true });
+    // The roof measured for the first screen's address; an address changed here since is sized from the band.
+    const roof = spec.addressFirst ? roofLeadInput(readRoofState(slug), fields.address) : undefined;
+    const draft = funnelLeadRequest({ spec, selection, fields, consentText: consentWording, measurement, consentOnSubmit: true, roof });
     const body = JSON.stringify(draft);
     if (!submission.current || submission.current.body !== body) submission.current = { id: newSubmissionId(), body };
     const res = await submitEstimatorLead(slug, { ...draft, tracking: readTracking(measurement), submissionId: submission.current.id });
@@ -137,6 +142,9 @@ export function FunnelContactScreen({ slug, spec, selection, contractor, heading
         estimate: res.estimate,
         qualified: res.qualified,
         calendarUrl: res.calendarUrl,
+        ...(res.bookingTicket ? { bookingTicket: res.bookingTicket } : {}),
+        ...(res.shareUrl ? { shareUrl: res.shareUrl } : {}),
+        ...(res.renderToken ? { renderToken: res.renderToken } : {}),
         contact: { firstName: draft.contact.firstName, lastName: draft.contact.lastName, email: draft.contact.email },
         selection: draft.funnel,
         saved: res.saved,
@@ -247,6 +255,21 @@ export function FunnelContactScreen({ slug, spec, selection, contractor, heading
             maxLength: 254,
           })}
           {text('phone', 'Phone number', { type: 'tel', autoComplete: 'tel', inputMode: 'tel', maxLength: 30 })}
+          {!editAddress && fields.address.trim() && !err('address') ? (
+            <div className="flex min-h-14 items-center justify-between gap-3 rounded-[8px] bg-white px-[15px] py-2 shadow-[inset_0_0_0_1px_var(--fn-line)]" data-funnel-address-line="">
+              <span className="min-w-0">
+                <span className="block text-[12px] leading-4 text-[var(--fn-muted)]">Home address</span>
+                <span className="block truncate text-[16px] leading-[22px] text-[var(--fn-ink)]">{fields.address}</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setEditAddress(true)}
+                className="relative shrink-0 text-[15px] font-medium text-[color:var(--fn-blue-ink)] after:absolute after:-inset-3 after:content-[''] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--fn-blue)]"
+              >
+                Change
+              </button>
+            </div>
+          ) : (
           <div>
             <AddressField
               slug={slug}
@@ -274,6 +297,7 @@ export function FunnelContactScreen({ slug, spec, selection, contractor, heading
             />
             <FieldError id={`${uid}-address-e`}>{err('address')}</FieldError>
           </div>
+          )}
         </div>
 
         <fieldset className="mt-4" aria-describedby={err('homeowner') ? `${uid}-homeowner-e` : undefined}>

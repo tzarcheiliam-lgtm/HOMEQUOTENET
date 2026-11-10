@@ -67,6 +67,8 @@ export function funnelLeadRequest(input: {
   measurement: boolean;
   /** The consent wording is shown under the button ("By tapping …"), no checkbox. */
   consentOnSubmit?: boolean;
+  /** Roofing: the measured roof (signed) or the home-size band from the address screen. */
+  roof?: EstimatorLeadRequest['roof'];
 }): EstimatorLeadRequest {
   const { spec, fields } = input;
   const selection = normalizeFunnelSelection(spec, input.selection);
@@ -102,6 +104,7 @@ export function funnelLeadRequest(input: {
     },
     consentText: input.consentText,
     measurement: input.measurement,
+    ...(input.roof ? { roof: input.roof } : {}),
   };
 }
 
@@ -167,3 +170,13 @@ export function saveContactDraft(slug: string, fields: FunnelContactFields) {
 }
 
 export const clearContactDraft = (slug: string) => write(draftKey(slug), null);
+
+/**
+ * Roofing: the address screen fills the contact step's address (it is not asked again there),
+ * keeping whatever else the draft already holds.
+ */
+export function prefillContactAddress(slug: string, address: string, place: AddressPlace | null) {
+  const d = read(draftKey(slug));
+  const prev = d && typeof d === 'object' ? (d as Record<string, unknown>) : {};
+  write(draftKey(slug), { ...prev, address: address.slice(0, 300), place });
+}

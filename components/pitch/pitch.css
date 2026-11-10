@@ -1,0 +1,114 @@
+/*
+ * HomeQuote sales deck (/app/pitch). Slides are laid out on a fixed 1600 x 900
+ * canvas and scaled to the screen, so a slide looks the same on a laptop, a
+ * projector and a Zoom screen share. Brand tokens: DESIGN_SYSTEM.md.
+ */
+/* In the components layer so Tailwind utilities on a slide (text-[44px], p-0...) win. */
+@layer components {
+  .pd {
+    --pd-blue: #0038b8;
+    --pd-blue-soft: #e8eefb;
+    --pd-navy: #0a1b3d;
+    --pd-navy-2: #12264f;
+    --pd-gold: #f5b700;
+    --pd-mist: #f4f7fc;
+    --pd-slate: #5b6b8c;
+    --pd-line: #dce3ef;
+    --pd-money: #047857;
+    --pd-money-on-dark: #4ade80;
+    color: var(--pd-navy);
+    font-family: var(--font-dm-sans), 'DM Sans', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .pd-stage {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 1600px;
+    height: 900px;
+    transform-origin: center center;
+    overflow: hidden;
+  }
+
+  .pd-slide {
+    position: absolute;
+    inset: 0;
+    padding: 88px 104px 96px;
+    display: flex;
+    flex-direction: column;
+  }
+  .pd-slide[data-tone='light'] { background: #fff; }
+  .pd-slide[data-tone='mist'] { background: var(--pd-mist); }
+  .pd-slide[data-tone='navy'] { background: var(--pd-navy); color: #fff; }
+
+  .pd-display {
+    font-family: var(--font-sora), 'Sora', sans-serif;
+    font-weight: 700;
+    font-size: 92px;
+    line-height: 1;
+    letter-spacing: -0.035em;
+  }
+  .pd-h2 {
+    font-family: var(--font-sora), 'Sora', sans-serif;
+    font-weight: 700;
+    font-size: 58px;
+    line-height: 1.04;
+    letter-spacing: -0.03em;
+    max-width: 1180px;
+  }
+  .pd-h3 {
+    font-family: var(--font-sora), 'Sora', sans-serif;
+    font-weight: 600;
+    font-size: 26px;
+    line-height: 1.2;
+    letter-spacing: -0.015em;
+  }
+  .pd-lead { font-size: 26px; line-height: 1.45; color: var(--pd-slate); max-width: 1100px; }
+  .pd-slide[data-tone='navy'] .pd-lead { color: rgba(255, 255, 255, 0.72); }
+  .pd-body { font-size: 20px; line-height: 1.5; }
+  .pd-small { font-size: 16px; line-height: 1.5; color: var(--pd-slate); }
+  .pd-slide[data-tone='navy'] .pd-small { color: rgba(255, 255, 255, 0.6); }
+  .pd-num { font-variant-numeric: tabular-nums; }
+  .pd-money { color: var(--pd-money); }
+  .pd-slide[data-tone='navy'] .pd-money, .pd-on-dark .pd-money { color: var(--pd-money-on-dark); }
+
+  .pd-focus:focus-visible,
+  .pd button:focus-visible,
+  .pd input:focus-visible,
+  .pd a:focus-visible {
+    outline: 3px solid var(--pd-gold);
+    outline-offset: 2px;
+  }
+
+  /* Range inputs in the calculator. */
+  .pd-range {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 6px;
+    border-radius: 999px;
+    background: linear-gradient(to right, var(--pd-blue) var(--pd-fill, 50%), var(--pd-line) var(--pd-fill, 50%));
+    cursor: pointer;
+  }
+  .pd-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #fff;
+    border: 3px solid var(--pd-blue);
+    box-shadow: 0 1px 3px rgba(10, 27, 61, 0.25);
+  }
+  .pd-range::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    border: 3px solid var(--pd-blue);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pd *, .pd *::before, .pd *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+}

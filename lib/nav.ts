@@ -28,10 +28,12 @@ const GROUP_BY_LABEL: Record<string, NavGroup> = {
   Contracts: 'Operations',
   'Documents & Signing': 'Operations',
   Appointments: 'Operations',
+  Calendar: 'Operations',
   Availability: 'Operations',
   'Call Logs': 'Operations',
   'Call Appointments': 'Operations',
   'Call Emails': 'Operations',
+  'Video Meetings': 'Operations',
   'Growth Tools': 'Growth',
   'Service Requests': 'Growth',
   Funnels: 'Growth',
@@ -124,6 +126,15 @@ const BASE_NAV_ITEMS: NavItem[] = [
     href: '/app/appointments',
     icon: 'CalendarDays',
     roles: ['admin', 'setter', 'contractor'],
+  },
+  // HomeQuote's own booking calendar (day / week): the team, sales and contractor calendars for admins, a
+  // contractor's own for them. Setters may open /app/calendar too (the page allows them) but their sidebar
+  // stays at its five sections (tests/setter-access.test.ts) until that product decision changes.
+  {
+    label: 'Calendar',
+    href: '/app/calendar',
+    icon: 'CalendarCheck',
+    roles: ['admin', 'contractor'],
   },
   // Contractors set when they can't take appointments and connect their calendar; admins/setters read it per contractor.
   {
@@ -319,6 +330,12 @@ const CALL_WORKSPACE_EXTRAS: NavItem[] = ([
     label: 'Call Emails',
     href: '/app/calls/emails',
     icon: 'Mail',
+    roles: ['admin', 'caller', 'setter'],
+  },
+  {
+    label: 'Video Meetings',
+    href: '/app/meetings',
+    icon: 'Video',
     roles: ['admin', 'caller', 'setter'],
   },
 ] as NavItem[]).map((i) => ({ ...i, group: GROUP_BY_LABEL[i.label] }));

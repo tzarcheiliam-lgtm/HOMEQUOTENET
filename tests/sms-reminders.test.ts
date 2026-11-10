@@ -215,8 +215,25 @@ describe('homeowner appointment reminders', () => {
   });
 });
 
+describe('calls booked on a HomeQuote calendar (0070)', () => {
+  it('a team-calendar call with no assignment yet is reminded from its lead; no "booked" text (the booking confirmation covers it)', async () => {
+    const leadId = randomUUID(); const appt = randomUUID();
+    await q(`insert into public.leads(id, first_name, last_name, phone, state, status, consent_granted) values ($1,'Kim','Ray','(818) 555-0788','CA','new',true)`, [leadId]);
+    const [{ id: team }] = await q(`select id from public.booking_calendars where kind='team'`);
+    await q(`insert into public.appointments(id, lead_id, calendar_id, scheduled_at, ends_at, time_zone, invitee_time_zone, meeting_type, created_at)
+      values ($1,$2,$3,'2026-10-23T22:00:00Z','2026-10-23T22:10:00Z','America/Los_Angeles','America/New_York','phone',$4)`, [appt, leadId, team, T.toISOString()]);
+    await run(T);
+    expect(await texts('+18185550788')).toHaveLength(0);
+    await run(at('2026-10-22T14:05:00Z')); // 10:05 AM in the homeowner's own zone (New York)
+    const out = await texts('+18185550788');
+    expect(out.map((o) => o.reminder_step)).toEqual(['day_before']);
+    expect(out[0].body).toBe('Hi Kim, Liam from HomeQuote here. Confirming your quick 10-minute call tomorrow at 6:00 PM. Reply YES to confirm or R to reschedule. Liam will call you from (747) 217-5713.');
+  });
+});
+
 describe('homeowner follow-ups when they never reply', () => {
-  it('follows up on day 1, 3 and 7, then closes; a reply afterwards reopens the conversation', async () => {
+  it('follows up on day 1, 3 and 7, then closes; a reply afterwards reopens the conversation (keep-going off)', async () => {
+    await q(`update public.sms_settings set reminder_config='{"followups":{"keepGoing":false}}' where id`);
     const leadId = randomUUID();
     await q(`insert into public.leads(id, first_name, last_name, phone, state, status) values ($1,'Ana','Diaz','(818) 555-0666','CA','new')`, [leadId]);
     const [c] = await q(`insert into public.sms_conversations(lead_id, sender_name, phone_e164, status) values ($1,'HomeQuote','+18185550666','active') returning id`, [leadId]);
@@ -235,6 +252,39 @@ describe('homeowner follow-ups when they never reply', () => {
     const agent = vi.fn(async () => ({ message: 'Great! Want a call or keep texting?', mode: null, qualification: 'unknown' as const, call_time: null, handoff: false, close: false, summary: 'Came back.' }));
     await handleInbound(sb, { phone: '+18185550666', body: 'sorry, been busy. still interested', guid: `g-${randomUUID()}` }, { agent, now: () => new Date(T.getTime() + 11 * D), aiConfigured: true });
     expect(agent).toHaveBeenCalled();
+    await q(`update public.sms_settings set reminder_config='{}' where id`);
+  });
+
+  it('keeps texting every 3 days after the follow-ups until they text STOP (the default)', async () => {
+    const leadId = randomUUID();
+    await q(`insert into public.leads(id, first_name, last_name, phone, state, status) values ($1,'Cy','Moe','(818) 555-0677','CA','new')`, [leadId]);
+    const [c] = await q(`insert into public.sms_conversations(lead_id, sender_name, phone_e164, status) values ($1,'HomeQuote','+18185550677','active') returning id`, [leadId]);
+    await q(`insert into public.sms_messages(conversation_id, lead_id, direction, body, status, sent_at, created_at) values ($1,$2,'out','Hey Cy','sent',$3,$3)`, [c.id, leadId, T.toISOString()]);
+    for (const d of [1, 3, 7, 10, 13]) {
+      await run(new Date(T.getTime() + d * D + 5 * 60_000));
+      await run(new Date(T.getTime() + d * D + 10 * 60_000)); // a second tick sends nothing extra
+      await q(`update public.sms_messages set status='sent', sent_at=created_at where status='queued'`);
+    }
+    const out = await texts('+18185550677');
+    expect(out.map((o) => o.reminder_step)).toEqual([null, 'first', 'second', 'keep_1', 'keep_2', 'keep_3']);
+    for (const o of out.slice(3)) expect(o.body).toMatch(/Text STOP to stop these\.$/);
+    expect(new Set(out.slice(3).map((o) => o.body)).size).toBe(3); // a different line each time
+    expect((await q(`select status from public.sms_conversations where id=$1`, [c.id]))[0].status).toBe('active');
+
+    // STOP ends it for good.
+    await handleInbound(sb, { phone: '+18185550677', body: 'STOP', guid: `g-${randomUUID()}` }, { now: () => new Date(T.getTime() + 14 * D) });
+    await run(new Date(T.getTime() + 16 * D + 5 * 60_000));
+    await run(new Date(T.getTime() + 19 * D + 5 * 60_000));
+    expect((await texts('+18185550677')).filter((o) => o.reminder_step?.startsWith('keep_'))).toHaveLength(3);
+  });
+
+  it('stops keeping on once the lead is booked or moved on', async () => {
+    const leadId = randomUUID();
+    await q(`insert into public.leads(id, first_name, last_name, phone, state, status) values ($1,'Di','Fox','(818) 555-0688','CA','appointment_set')`, [leadId]);
+    const [c] = await q(`insert into public.sms_conversations(lead_id, sender_name, phone_e164, status) values ($1,'HomeQuote','+18185550688','active') returning id`, [leadId]);
+    await q(`insert into public.sms_messages(conversation_id, lead_id, direction, body, status, sent_at, created_at) values ($1,$2,'out','Hey Di','sent',$3,$3)`, [c.id, leadId, T.toISOString()]);
+    await run(new Date(T.getTime() + 7 * D + 5 * 60_000));
+    expect((await texts('+18185550688')).filter((o) => o.reminder_step)).toHaveLength(0);
   });
 
   it('stops as soon as they reply', async () => {

@@ -18,7 +18,9 @@ const m = vi.hoisted(() => ({
   rpc: vi.fn(),
   inserts: [] as { table: string; row: Record<string, unknown> }[],
   updates: [] as { table: string; row: Record<string, unknown> }[],
+  upserts: [] as { table: string; row: Record<string, unknown> }[],
 }));
+const SESSION_ID = '0d6f7c4e-8a51-4c3e-9b0a-6f1d2e3c4b5a';
 
 vi.mock('server-only', () => ({}));
 vi.mock('next/server', async (orig) => ({ ...(await orig<typeof import('next/server')>()), after: () => undefined }));
@@ -31,9 +33,13 @@ vi.mock('@/lib/supabase/admin', () => ({
         m.updates.push({ table, row });
         return { eq: () => ({ is: async () => ({ error: null }) }) };
       },
+      upsert: async (row: Record<string, unknown>) => {
+        m.upserts.push({ table, row });
+        return { error: null };
+      },
       insert: (row: Record<string, unknown>) => {
         m.inserts.push({ table, row });
-        const saved = { data: { ...row, id: 'sess-1', version: 0, created_at: '2026-10-01T10:00:00Z' }, error: null };
+        const saved = { data: { ...row, id: SESSION_ID, version: 0, created_at: '2026-10-01T10:00:00Z' }, error: null };
         return Object.assign(Promise.resolve({ error: null }), { select: () => ({ single: async () => saved }) });
       },
     }),
@@ -57,6 +63,7 @@ vi.mock('@/lib/meta/audit.server', () => ({ directSendAudit: () => ({ reserve: a
 vi.mock('@/lib/meta/capi', async (orig) => ({ ...(await orig<typeof import('@/lib/meta/capi')>()), sendMetaEvent: vi.fn() }));
 
 import { POST } from '@/app/api/estimator/[slug]/lead/route';
+import { parseGrant } from '@/app/api/booking/_lib/grant';
 import { FunnelBookingScreen } from '@/components/estimator/funnel/booking/funnel-booking';
 import { priceEyebrow, priceRange, readCalendlyMessage } from '@/components/estimator/funnel/booking/state';
 import { FunnelContactScreen } from '@/components/estimator/funnel/contact/funnel-contact';
@@ -71,7 +78,7 @@ import {
 } from '@/components/estimator/funnel/contact/state';
 import type { FunnelLeadResult } from '@/components/estimator/funnel/screens';
 import { publicTemplate } from '@/lib/estimator/config';
-import { allFunnelSelections, encodeFunnelSelection, estimateFunnel, funnelAnswers, funnelSpecFor } from '@/lib/estimator/funnel/engine';
+import { activeSteps, allFunnelSelections, encodeFunnelSelection, estimateFunnel, funnelAnswers, funnelSpecFor } from '@/lib/estimator/funnel/engine';
 import { funnelLeadDesign, parseLeadRequest, sanitizeEstimatorAnswers } from '@/lib/estimator/lead';
 import { ADDRESS_NEEDS_ZIP, describeFunnelDesign, estimatorConsentText, funnelContactErrors, splitFullName } from '@/lib/estimator/lead-client';
 import { getEstimator } from '@/lib/estimator/registry';
@@ -80,7 +87,7 @@ const { template, contractor } = getEstimator('pool-masters')!;
 const spec = funnelSpecFor(contractor)!;
 const funnelConfig = funnelSchema.parse(poolMastersFunnel);
 const pub = publicTemplate(template, contractor);
-const picks = { size: 'classic', finish: 'luxe', extras: 'spa' };
+const picks = { size: 'classic', finish: 'luxe', extras: 'spa', spa: 'zero_edge' };
 const fields = {
   ...emptyFunnelFields(),
   name: '  Jordan  Rivera ',
@@ -109,6 +116,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   m.inserts.length = 0;
   m.updates.length = 0;
+  m.upserts.length = 0;
+  vi.stubEnv('BOOKING_TICKET_SECRET', 'test-booking-secret');
   m.funnel = { id: 'f1', slug: 'pool-masters', is_demo: false, contractor_id: 'c1', integration_id: null, config: funnelConfig };
   m.rpc.mockResolvedValue({ data: { id: 'sess-1', lead_id: 'lead-9' }, error: null });
 });
@@ -201,22 +210,34 @@ describe('funnel lead route', () => {
     expect(answers.estimator_design).toContain('Select your pool size: Classic (About 30 × 15 ft)');
     expect(answers.estimator_design).toContain('Choose your finish: Luxe');
     expect(answers.estimator_design).toContain('Add the extras: Add a spa');
+    expect(answers.estimator_design).toContain('Choose your spa: Zero-edge spa (Overflows on all four sides)');
+    expect(answers.estimator_photos).toContain('https://homequote.example/estimator/pool-masters/funnel/spa-zero-edge.webp');
     expect(answers.estimator_photos).toContain('https://homequote.example/estimator/pool-masters/funnel/size-classic.webp');
     expect(answers.estimator_photos).toMatch(/\/configurator\/aerial-[a-z-]*spa[a-z-]*\.webp/);
-    expect(answers.estimator_design_url).toBe('https://homequote.example/estimator/pool-masters/design?size=classic&finish=luxe&extras=spa');
+    expect(answers.estimator_design_url).toBe('https://homequote.example/estimator/pool-masters/design?size=classic&finish=luxe&extras=spa&spa=zero_edge');
     expect(answers.estimator_check_on_site).toBeTruthy();
     const meta = (activity().metadata as { estimator: { funnel: { selection: unknown; titles: string[] } } }).estimator;
-    expect(meta.funnel).toEqual({ selection: picks, titles: ['Classic', 'Luxe', 'Add a spa'] });
+    expect(meta.funnel).toEqual({ selection: picks, titles: ['Classic', 'Luxe', 'Add a spa', 'Zero-edge spa'] });
     expect(String(activity().body)).toMatch(/Their design:\n- Select your pool size: Classic/);
     expect(String(activity().body)).not.toMatch(/Go Luxe bundle saving/);
     expect(rpcArgs().p_qualified).toBe(true);
   });
-  it('returns the Calendly link prefilled for a qualified homeowner', async () => {
+  it('books on the HomeQuote calendar: a booking ticket for the saved session, no Calendly link', async () => {
     const body = await (await post(request())).json();
-    const url = new URL(body.calendarUrl);
-    expect(url.hostname).toBe('calendly.com');
-    expect(url.searchParams.get('name')).toBe('Jordan Rivera');
-    expect(url.searchParams.get('email')).toBe('jordan@example.test');
+    expect(body.calendarUrl).toBeUndefined();
+    expect(parseGrant(body.bookingTicket)).toEqual({ kind: 'session', sessionId: SESSION_ID, source: 'estimator' });
+    expect(rpcArgs().p_step).toBe('calendar');
+    // The booking screen opens with this reply: the funnel's calendar_viewed analytics event.
+    expect(m.upserts).toEqual([{ table: 'funnel_events', row: { session_id: SESSION_ID, event: 'calendar_viewed', step_id: '' } }]);
+  });
+  it('no booking ticket without a secret, or for a demo funnel', async () => {
+    vi.stubEnv('BOOKING_TICKET_SECRET', '');
+    vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', '');
+    expect((await (await post(request())).json()).bookingTicket).toBeUndefined();
+    vi.stubEnv('BOOKING_TICKET_SECRET', 'test-booking-secret');
+    m.funnel = { ...(m.funnel as object), is_demo: true };
+    expect((await (await post(request())).json()).bookingTicket).toBeUndefined();
+    expect(m.upserts).toEqual([]);
   });
   it('a request without the ownership answer is refused (it is never assumed)', async () => {
     const { homeowner: _h, ...rest } = request();
@@ -263,6 +284,7 @@ describe('funnel lead route', () => {
     expect(body.ok).toBe(true);
     expect(body.qualified).toBe(false);
     expect(body.calendarUrl).toBeUndefined();
+    expect(body.bookingTicket).toBeUndefined();
     expect(body.saved).toBeUndefined();
     expect(rpcArgs().p_qualified).toBe(false);
     expect(String(activity().body)).toContain('Homeowner: no, they rent');
@@ -276,17 +298,55 @@ describe('funnel lead route', () => {
     for (const sel of allFunnelSelections(spec)) {
       const { estimate, design } = funnelLeadDesign(spec, template, sel, { origin: 'https://x.test', slug: 'pool-masters' });
       expect(estimate.low).toBeGreaterThan(0);
-      expect(design.photos).toHaveLength(spec.steps.length);
-      expect(design.summary.slice(0, 3)).toEqual(describeFunnelDesign(spec, sel));
+      const shown = activeSteps(spec, sel);
+      expect(design.photos.map((p) => p.view)).toEqual(shown.map((s) => s.id));
+      expect(design.summary.slice(0, shown.length)).toEqual(describeFunnelDesign(spec, sel));
+      // The steps name the coping, spa, kitchen, fire and shade; the configurator's approximate lines are left out.
+      expect(design.summary.some((l) => /^(Tile & coping|Pool features|Backyard):/.test(l))).toBe(false);
       expect(design.designUrl).toContain(encodeFunnelSelection(spec, sel));
     }
   });
 });
 
+describe('funnel lead summary: follow-up picks in plain words', () => {
+  it('lists every follow-up pick of the full backyard for the contractor, and prices them', () => {
+    const sel = { size: 'estate', finish: 'luxe', extras: 'backyard', spa: 'flush', kitchen: 'chef', fire: 'pit', cabana: 'cabana' };
+    const { design, estimate } = funnelLeadDesign(spec, template, sel, { origin: 'https://x.test', slug: 'pool-masters' });
+    expect(design.summary.slice(0, 7)).toEqual([
+      'Select your pool size: Estate (About 36 × 18 ft or larger)',
+      'Choose your finish: Luxe (Pebble, glass tile, porcelain coping and deck)',
+      'Add the extras: The full backyard (Spa, outdoor kitchen, fire and shade)',
+      'Choose your spa: Flush spa (Level with the pool, spills in)',
+      "Choose your outdoor kitchen: Chef's kitchen (Everything, plus a pizza oven)",
+      'Choose your fire feature: Fire pit (A built-in gathering spot)',
+      'Choose your cabana: Cabana (Roofed, with flowing curtains)',
+    ]);
+    // The flush spa is the base spa (no extra line); the upgrades each add one.
+    const lines = estimate.lines.map((l) => l.label);
+    expect(lines.join(' | ')).toMatch(/Spa/);
+    expect(lines.join(' | ')).toMatch(/Chef's kitchen/);
+    expect(lines.join(' | ')).toMatch(/Fire pit/);
+    expect(lines.join(' | ')).toMatch(/Cabana/);
+    expect(lines.join(' | ')).toMatch(/Porcelain/);
+    expect(lines.join(' | ')).not.toMatch(/Fire bowls|Travertine/);
+    expect(design.photos).toHaveLength(7);
+  });
+
+  it('a changed "Add the extras." sends no stale follow-up picks', () => {
+    const { design } = funnelLeadDesign(spec, template, { size: 'classic', finish: 'standard', extras: 'pool', spa: 'flush', kitchen: 'chef' }, { origin: 'https://x.test', slug: 'pool-masters' });
+    expect(design.funnel!.selection).toEqual({ size: 'classic', finish: 'standard', extras: 'pool' });
+    expect(design.summary.join(' ')).not.toMatch(/Choose your (spa|outdoor kitchen)/);
+    expect(design.summary).toContain('Choose your finish: Standard (Plaster, standard tile, precast coping)');
+  });
+});
+
 describe('booking screen helpers', () => {
   it('names the picks over the range', () => {
-    expect(priceEyebrow(spec, picks)).toBe('Classic · Luxe · With spa');
-    expect(priceEyebrow(spec, { size: 'estate', finish: 'standard', extras: 'backyard' })).toBe('Estate · Standard · Full backyard');
+    expect(priceEyebrow(spec, picks)).toBe('Classic · Luxe · Zero-edge spa');
+    expect(priceEyebrow(spec, { size: 'classic', finish: 'standard', extras: 'pool' })).toBe('Classic · Standard · Pool only');
+    expect(priceEyebrow(spec, { size: 'estate', finish: 'standard', extras: 'backyard', kitchen: 'chef', fire: 'fireplace' })).toBe(
+      'Estate · Standard · Raised spa · Chef’s kitchen · Fireplace · Covered lounge'.replace('’', "'"),
+    );
     expect(priceRange({ low: 65000, high: 106500 })).toBe('$65,000 – $106,500');
     expect(priceRange({ low: null, high: null })).toBeNull();
   });
@@ -338,7 +398,7 @@ describe('screens render', () => {
     expect(html).toContain(estimatorConsentText(contractor.contractorName).replace(/'/g, '&#x27;'));
     expect(html).toContain('By tapping');
     expect(html).toContain('CSLB #1112793');
-    // Four text fields + the ownership buttons, no consent checkbox, the measurement box never pre-ticked.
+    // Four text fields + the ownership buttons, no consent checkbox, the measurement box pre-ticked (opt-out contractor).
     expect(html.match(/data-text=""/g)).toHaveLength(4);
     expect(html).toContain('Are you the homeowner?');
     expect(html).toContain('>Yes<');
@@ -347,7 +407,7 @@ describe('screens render', () => {
     expect(html).not.toMatch(/type="radio"[^>]*checked/);
     expect(html).not.toContain('Do you own this home?');
     expect(html).not.toMatch(/data-field="consent"/);
-    expect(html).not.toMatch(/type="checkbox"[^>]*checked/);
+    expect(html).toMatch(/type="checkbox"[^>]*checked/);
     // Name, email and phone say "Next"; the address too until the ownership question is answered.
     expect(html.match(/enterKeyHint="next"/gi)).toHaveLength(4);
     expect(html).not.toMatch(/★|reviews/i);
@@ -357,21 +417,41 @@ describe('screens render', () => {
     const result: FunnelLeadResult = {
       estimate: { ...estimate.estimate, low: estimate.total!.low, high: estimate.total!.high },
       qualified: true,
-      calendarUrl: 'https://calendly.com/homequotenetwork/30min?name=Jordan+Rivera&email=j%40x.test',
+      bookingTicket: 'hqb1.e.ticket',
       contact: { firstName: 'Jordan', lastName: 'Rivera', email: 'j@x.test' },
     };
     const html = renderToStaticMarkup(
       <FunnelBookingScreen slug="pool-masters" spec={spec} contractor={contractor} template={pub} selection={picks} result={result} embedded={false} headingId="h" />,
     );
-    expect(html).toContain('Book your free on-site estimate');
-    expect(html.replace(/<[^>]+>/g, '')).toContain('Classic · Luxe · With spa');
+    expect(html).toContain('Book your free call');
+    // HomeQuote's own booking flow (times load in the browser), never a Calendly frame.
+    expect(html).toContain('data-funnel-calendar="homequote"');
+    expect(html).toContain('data-booking-flow=""');
+    // "Pick a time for a quick 10-minute call with Liam from Pool Masters." once the calendar loads (filled from it, never "{minutes}").
+    expect(spec.bookingStep.bookingTitle).toBe('Pick a time for a quick {minutes}-minute call with {host}.');
+    expect(html).toContain('data-booking-intro=""');
+    expect(html).not.toContain('{minutes}');
+    expect(html).not.toMatch(/calendly|<iframe/i);
+    expect(html.replace(/<[^>]+>/g, '')).toContain('Classic · Luxe · Zero-edge spa');
     expect(html).toContain(priceRange(result.estimate)!);
     expect(html).toContain('Ballpark price, not a quote');
     expect(html).toContain('Example prices');
     expect(html).toContain('Financing available');
     expect(html).not.toMatch(/\/mo\b|per month/i);
     expect(html).toContain('tel:+18186436888');
+  });
+  it('the booking step falls back to an external calendar link without a ticket', () => {
+    const result: FunnelLeadResult = {
+      estimate: estimateFunnel(spec, template, picks).estimate,
+      qualified: true,
+      calendarUrl: 'https://calendly.com/homequotenetwork/30min?name=Jordan+Rivera&email=j%40x.test',
+      contact: { firstName: 'Jordan', lastName: 'Rivera', email: 'j@x.test' },
+    };
+    const html = renderToStaticMarkup(
+      <FunnelBookingScreen slug="pool-masters" spec={spec} contractor={contractor} template={pub} selection={picks} result={result} embedded={false} headingId="h" />,
+    );
     expect(html).toContain('Open the calendar in a new tab');
+    expect(html).not.toContain('data-booking-flow');
   });
   it('the booking step without a booking link (outside the area) says we will call', () => {
     const result: FunnelLeadResult = {
@@ -397,7 +477,7 @@ describe('screens render', () => {
     );
     expect(html).toContain('Your project needs a personal review.');
     expect(html).toContain('Your ballpark estimate');
-    expect(html).not.toContain('Book your free on-site estimate');
+    expect(html).not.toContain('Book your free call');
     expect(html).not.toContain('within one business day');
     expect(html).not.toContain('calendly');
     const unsaved = renderToStaticMarkup(

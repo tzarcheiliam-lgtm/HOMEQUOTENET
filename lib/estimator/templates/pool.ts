@@ -139,7 +139,8 @@ export const POOL_TEMPLATE: EstimatorTemplate = {
       screen: 'edge',
       showWhen: { questionId: 'scope', anyOf: ['tile_coping'] },
       options: [
-        { id: 'concrete', label: 'Concrete', note: 'Budget-friendly and sturdy', swatch: 'concrete', price: { unit: 'perimeter_lf', low: 40, high: 60 } },
+        // Precast concrete: the standard coping (the funnel's "Standard" says so).
+        { id: 'concrete', label: 'Precast concrete', note: 'Budget-friendly, sturdy shaped edge', swatch: 'concrete', price: { unit: 'perimeter_lf', low: 40, high: 60 } },
         { id: 'travertine', label: 'Travertine', note: 'Soft natural stone that stays cool', swatch: 'travertine', price: { unit: 'perimeter_lf', low: 65, high: 95 } },
         { id: 'stone', label: 'Natural stone', note: 'Premium cut stone', swatch: 'stone', price: { unit: 'perimeter_lf', low: 55, high: 100 } },
         { id: 'unsure', label: 'Help me choose', note: 'We will show the full range', price: { unit: 'perimeter_lf', low: 40, high: 100 } },
@@ -186,13 +187,35 @@ export const POOL_TEMPLATE: EstimatorTemplate = {
         {
           id: 'spa',
           label: 'Spa',
+          // The base (flush) spa; the optional spaStyle question adds a raised or zero-edge build.
           note: 'Attached hot tub',
           siteVisit: 'New or raised spa (plumbing, electrical and structure)',
-          price: { unit: 'flat', low: 18000, high: 35000 },
+          price: { unit: 'flat', low: 15000, high: 28000 },
         },
         { id: 'water', label: 'Water bowls', note: 'Two bowls, priced each', price: { unit: 'each', low: 1500, high: 3000, quantity: 2 } },
         { id: 'fire', label: 'Fire bowls', note: 'Two bowls, priced each', price: { unit: 'each', low: 1800, high: 3500, quantity: 2 } },
         { id: 'lighting', label: 'LED pool lights', note: 'Two lights, priced each', price: { unit: 'each', low: 700, high: 1200, quantity: 2 } },
+      ],
+    },
+    {
+      // Optional refinement of the spa (the Pool Masters funnel's "Choose your spa." always answers it).
+      // Prices are what each build adds to the spa above: flush about $15k-28k, raised $18k-35k, zero-edge $25k-45k.
+      id: 'spaStyle',
+      label: 'Which kind of spa?',
+      kind: 'single',
+      summaryLabel: 'Spa',
+      showWhen: { questionId: 'features', anyOf: ['spa'] },
+      optional: true,
+      options: [
+        { id: 'flush', label: 'Flush spa', note: 'Level with the pool, spills in' },
+        { id: 'raised', label: 'Raised spa', note: 'Dark-tile wall with a spillway', price: { unit: 'flat', low: 3000, high: 7000 } },
+        {
+          id: 'zero_edge',
+          label: 'Zero-edge spa',
+          note: 'Overflows on all four sides',
+          siteVisit: 'Zero-edge spa (structure and plumbing)',
+          price: { unit: 'flat', low: 10000, high: 17000 },
+        },
       ],
     },
     {
@@ -228,6 +251,41 @@ export const POOL_TEMPLATE: EstimatorTemplate = {
         { id: 'patio_cover', label: 'Patio cover', note: 'Shade for the seating area', price: { unit: 'flat', low: 9000, high: 22000 } },
         { id: 'turf_planting', label: 'Turf and planting', note: 'Artificial turf and new plants', price: { unit: 'flat', low: 4000, high: 12000 } },
         { id: 'fire_pit', label: 'Fire pit', note: 'A built-in gathering spot', price: { unit: 'flat', low: 2500, high: 7000 } },
+        {
+          id: 'fireplace',
+          label: 'Outdoor fireplace',
+          note: 'A built fireplace wall',
+          siteVisit: 'Outdoor fireplace (gas line and footing)',
+          price: { unit: 'flat', low: 8000, high: 20000 },
+        },
+      ],
+    },
+    {
+      // Optional refinements of the kitchen and the patio cover (the Pool Masters funnel always answers them).
+      // Prices are what each adds to the kitchen / patio cover above.
+      id: 'kitchenStyle',
+      label: 'Which kind of outdoor kitchen?',
+      kind: 'single',
+      summaryLabel: 'Outdoor kitchen',
+      showWhen: { questionId: 'extras', anyOf: ['kitchen'] },
+      optional: true,
+      options: [
+        { id: 'grill', label: 'Grill island', note: 'Built-in grill and counter' },
+        { id: 'full', label: 'Full kitchen', note: 'With bar seating', price: { unit: 'flat', low: 10000, high: 18000 } },
+        { id: 'chef', label: "Chef's kitchen", note: 'With a pizza oven', price: { unit: 'flat', low: 25000, high: 40000 } },
+      ],
+    },
+    {
+      id: 'coverStyle',
+      label: 'Which kind of shade?',
+      kind: 'single',
+      summaryLabel: 'Shade',
+      showWhen: { questionId: 'extras', anyOf: ['patio_cover'] },
+      optional: true,
+      options: [
+        { id: 'pergola', label: 'Pergola', note: 'Open beams, filtered shade' },
+        { id: 'cabana', label: 'Cabana', note: 'Roofed, with curtains', price: { unit: 'flat', low: 6000, high: 12000 } },
+        { id: 'covered_lounge', label: 'Covered lounge', note: 'Solid roof, lights and a fan', price: { unit: 'flat', low: 12000, high: 25000 } },
       ],
     },
     {
@@ -272,7 +330,7 @@ export const POOL_TEMPLATE: EstimatorTemplate = {
       id: 'refresh',
       label: 'Refresh',
       description: 'A fresh look for the pool itself: new surface, tile and edge.',
-      includes: ['New quartz pool surface', 'Porcelain waterline tile', 'Concrete coping'],
+      includes: ['New quartz pool surface', 'Porcelain waterline tile', 'Precast concrete coping'],
       answers: {
         scope: ['surface', 'tile_coping'],
         surface: ['quartz'],

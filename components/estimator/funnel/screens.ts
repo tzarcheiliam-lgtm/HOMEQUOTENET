@@ -19,7 +19,10 @@ export type FunnelLeadResult = {
   estimate: Estimate;
   /** false for renters / out-of-area ZIPs (the lead is still saved for review). */
   qualified: boolean;
+  /** External booking link (the Calendly fallback); unset on the HomeQuote calendar. */
   calendarUrl?: string;
+  /** HomeQuote calendar: the booking ticket the lead route returned (the booking screen books with it). */
+  bookingTicket?: string;
   /** For the scheduler prefill (Calendly name / email params). */
   contact: { firstName: string; lastName: string; email: string };
   /**
@@ -31,6 +34,10 @@ export type FunnelLeadResult = {
   saved?: boolean;
   /** Their answer to "Are you the homeowner?" ('no' = not the owner): picks the honest unqualified wording. */
   homeowner?: 'yes' | 'no';
+  /** "Send my design to my partner": the signed read-only design page path the lead route returned. */
+  shareUrl?: string;
+  /** Short-lived token for an optional AI render (roofing: "See it on your house"); absent when renders are off. */
+  renderToken?: string;
 };
 
 export type FunnelContactScreenProps = {

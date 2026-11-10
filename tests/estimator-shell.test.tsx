@@ -1,6 +1,7 @@
 import { readFileSync, statSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import { HOMEQUOTE_BATHROOM_ESTIMATOR } from '@/content/estimators/homequote-bathroom';
 import { EXAMPLE_LABELS, ExampleCompare, HERO_IMAGES } from '@/components/estimator/scene/example-compare';
 import { ScenePanel } from '@/components/estimator/scene/scene-panel';
 import { EstimatorFooter } from '@/components/estimator/shell/estimator-footer';
@@ -216,6 +217,11 @@ describe('/estimator/[slug] page', () => {
   });
 
   it('promises a realistic photo only when the server can make one (step-by-step builder)', async () => {
+    // The bathroom page runs the simple funnel now; its builder (experience 'builder') is still kept working.
+    HOMEQUOTE_BATHROOM_ESTIMATOR.experience = 'builder';
+    onTestFinished(() => {
+      HOMEQUOTE_BATHROOM_ESTIMATOR.experience = 'funnel';
+    });
     const bathroom = async () => renderToStaticMarkup(await EstimatorPage({ params: Promise.resolve({ slug: 'bathroom-remodel' }) }));
     delete process.env.KIE_API_KEY;
     const off = await bathroom();

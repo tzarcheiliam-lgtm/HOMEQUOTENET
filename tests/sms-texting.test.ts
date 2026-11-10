@@ -78,13 +78,18 @@ describe('the AI agent', () => {
     expect(r.message).not.toContain('http');
     expect(agentResultSchema.safeParse({ ...ok, qualification: 'maybe' }).success).toBe(false);
   });
-  it('the prompt is built around booking the free estimate visit, as a request the team confirms', () => {
-    expect(SMS_SYSTEM_PROMPT).toMatch(/Your one goal: get them to agree on a day and rough time for a free in-home estimate visit/);
+  it('the prompt books from real open times in one text: visit for texters, call for talkers', () => {
+    expect(SMS_SYSTEM_PROMPT).toMatch(/If they would rather text, book the free in-home estimate visit/);
+    expect(SMS_SYSTEM_PROMPT).toMatch(/If they would rather talk, book a quick phone call/);
+    expect(SMS_SYSTEM_PROMPT).toMatch(/offer exactly 3 times/);
+    expect(SMS_SYSTEM_PROMPT).toMatch(/Do NOT ask "weekday or weekend\?", "morning or afternoon\?"/);
+    expect(SMS_SYSTEM_PROMPT).toMatch(/Never offer or confirm a time that is not in the list/);
+    expect(SMS_SYSTEM_PROMPT).toMatch(/book_slot/);
+    expect(SMS_SYSTEM_PROMPT).toMatch(/never write the confirmation yourself/);
+    // Without open times it still falls back to a request the team confirms.
     expect(SMS_SYSTEM_PROMPT).toMatch(/appointment_time/);
-    expect(SMS_SYSTEM_PROMPT).toMatch(/Never confirm an exact time yourself/);
-    expect(SMS_SYSTEM_PROMPT).toMatch(/confirm an exact appointment time/);
     expect(SMS_SYSTEM_PROMPT).toMatch(/people who decide should be there/);
-    expect(SMS_SYSTEM_PROMPT).not.toMatch(/get them to a quick call/);
+    expect(agentResultSchema.safeParse({ ...ok, book_slot: 'v2' }).success).toBe(true);
     expect(agentResultSchema.safeParse({ ...ok, appointment_time: 'Saturday morning' }).success).toBe(true);
     expect(agentResultSchema.safeParse({ ...ok, appointment_time: 'x'.repeat(201) }).success).toBe(false);
   });

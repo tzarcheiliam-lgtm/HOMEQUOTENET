@@ -117,13 +117,14 @@ export async function automationStatuses(db: Db = createAdminClient(), now = new
       if (!textingOn) return { off: 'Texting is switched off on the Texting page.' };
       if (id === 'sms_bridge') return bridgeUp ? { note: 'Connected.' } : { attention: bridgeSeen ? `Not connected. Last check-in ${ago(bridgeSeen, now)}.` : 'The Mac bridge has never checked in.' };
       if (id === 'sms_first_text' && waiting > 0 && !bridgeUp) return { attention: `${waiting} text${waiting === 1 ? '' : 's'} waiting for the Mac bridge.` };
-      if (id.startsWith('sms_reminders') || id === 'sms_followups' || id === 'sms_unconfirmed_alert') {
+      if (id.startsWith('sms_reminders') || id === 'sms_followups' || id === 'sms_unconfirmed_alert' || id === 'sms_unbooked_followup') {
         if (!rem) return { off: 'Run database migration 0068 to turn this on.' };
         if (id === 'sms_reminders_contractor' && !rem.contractor.enabled) return { off: 'Switched off under Reminders & follow-ups.' };
         if (id === 'sms_reminders_homeowner' && !rem.homeowner.enabled) return { off: 'Switched off under Reminders & follow-ups.' };
         if (id === 'sms_followups' && !rem.followups.enabled) return { off: 'Switched off under Reminders & follow-ups.' };
         if (id === 'sms_followups') return { note: `Days ${rem.followups.days.join(', ')} after the first text.` };
         if (id === 'sms_unconfirmed_alert' && (!rem.unconfirmedAlert || !rem.contractor.enabled)) return { off: 'Switched off under Reminders & follow-ups.' };
+        if (id === 'sms_unbooked_followup' && !rem.recovery.unbooked) return { off: 'Switched off under Reminders & follow-ups → Lead recovery.' };
       }
       return {};
     }
@@ -146,6 +147,12 @@ export async function automationStatuses(db: Db = createAdminClient(), now = new
     }
     if (id === 'workflows') return liveWorkflows ? { note: `${liveWorkflows} live workflow${liveWorkflows === 1 ? '' : 's'}.` } : { off: 'No workflows are live.' };
     if (id === 'sms_bridge_alert') return textingOn ? {} : { off: 'Texting is switched off.' };
+    if (id === 'speed_to_lead_alert' || id === 'no_show_recovery') {
+      if (!rem) return { off: 'Run database migration 0068 to turn this on.' };
+      if (id === 'speed_to_lead_alert' && !rem.recovery.speedAlert) return { off: 'Switched off under Reminders & follow-ups → Lead recovery.' };
+      if (id === 'no_show_recovery' && !rem.recovery.noShow && !rem.recovery.heldPrompt) return { off: 'Switched off under Reminders & follow-ups → Lead recovery.' };
+      return {};
+    }
     return {};
   };
 
@@ -162,7 +169,7 @@ export async function automationStatuses(db: Db = createAdminClient(), now = new
     if (sw.attention) return { ...base, state: 'attention', note: sw.attention };
     const stale = STALE_AFTER[a.id];
     if (stale && (!p?.lastRunAt || now.getTime() - new Date(p.lastRunAt).getTime() > stale)) {
-      return { ...base, state: 'attention', note: p?.lastRunAt ? `Hasn’t run since ${ago(new Date(p.lastRunAt), now)}. Check the GitHub Actions schedule.` : 'No runs recorded yet. Check the GitHub Actions secrets.' };
+      return { ...base, state: 'attention', note: p?.lastRunAt ? `Hasn’t run since ${ago(new Date(p.lastRunAt), now)}. Check Supabase Cron (select * from scheduler_status) and the GitHub Actions backup.` : 'No runs recorded yet. Check that its secret is in Supabase Vault (migration 0074) or GitHub Actions.' };
     }
     if (base.failed7d > 0) return { ...base, state: 'attention', note: `${base.failed7d} failed in the last 7 days.` };
     return { ...base, state: 'on', note: sw.note ?? null };

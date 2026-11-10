@@ -1,7 +1,7 @@
 import { consentText, type FunnelConfig } from '../funnels/schema.ts';
 import { normalizeSelection, selectedRows } from './configurator/engine.ts';
 import type { ConfiguratorSelection, ConfiguratorSpec } from './configurator/types.ts';
-import { normalizeFunnelSelection, pickedOptions } from './funnel/engine.ts';
+import { activeSteps, normalizeFunnelSelection, pickedOptions } from './funnel/engine.ts';
 import type { FunnelSelection, FunnelSpec } from './funnel/types.ts';
 import { addressZip, currentPlace, type AddressPlace } from './address-client.ts';
 import type { Answers, Estimate, PoolDimensions } from './types.ts';
@@ -69,6 +69,12 @@ export type EstimatorLeadRequest = {
    */
   funnel?: FunnelSelection;
   /**
+   * Roofing (FunnelSpec.addressFirst): the roof the server measured (with its
+   * signature, lib/estimator/roofing/roof.server.ts) or the "How big is your
+   * home?" band. The server prices only a measurement whose signature verifies.
+   */
+  roof?: { measure?: { areaSqft: number; pitchDeg: number; segments: number; exp: number; sig: string }; band?: string };
+  /**
    * One id per submission, reused by the automatic retry, so a retry after a
    * lost response gets the first reply back instead of saving the lead twice.
    */
@@ -82,9 +88,17 @@ export type EstimatorLeadResponse =
       estimate: Estimate;
       /** false for renters / out-of-area ZIPs (lead still saved for review). */
       qualified: boolean;
+      /** External booking link (the Calendly / link fallback); absent on the HomeQuote calendar. */
       calendarUrl?: string;
+      /**
+       * Booking ticket for the HomeQuote calendar (the public booking API's grant, a
+       * week long): qualified leads that were saved, on a natively booking estimator.
+       */
+      bookingTicket?: string;
       /** Short-lived token for the optional photoreal render (absent when renders are off). */
       renderToken?: string;
+      /** "Send my design": the signed read-only design page path (funnel estimators only; picks only, nothing personal). */
+      shareUrl?: string;
       /** false when nothing was saved (an unqualified visitor on a funnel set to 'stop'). */
       saved?: boolean;
     }
@@ -237,7 +251,8 @@ export const funnelErrorKey = (key: string) =>
 export function describeFunnelDesign(spec: FunnelSpec, selection: FunnelSelection): string[] {
   const sel = normalizeFunnelSelection(spec, selection);
   const picked = pickedOptions(spec, sel);
-  return spec.steps.map((s, i) => `${s.label.replace(/[.?!]$/, '')}: ${picked[i].title} (${picked[i].subtitle})`);
+  // One line per step shown on this path (follow-ups only when picked), e.g. "Choose your spa: Zero-edge spa (Overflows on all four sides)".
+  return activeSteps(spec, sel).map((s, i) => `${s.label.replace(/[.?!]$/, '')}: ${picked[i].title} (${picked[i].subtitle})`);
 }
 
 /* ------------------------------------------------------------------ */

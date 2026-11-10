@@ -1,14 +1,14 @@
 import { z } from 'zod';
-import { consentText, contactSchema, inServiceArea, matches, qualify, serviceAreaValid, type FunnelConfig } from '@/lib/funnels/schema';
+import { consentText, contactSchema, inServiceArea, matches, qualify, serviceAreaValid, usesNativeCalendar, type FunnelConfig } from '@/lib/funnels/schema';
 import { encodeSelection, estimateSelection, normalizeSelection, photoFor, photoSrc, selectionToAnswers } from './configurator/engine.ts';
 import type { ConfiguratorSelection, ConfiguratorSpec, Range } from './configurator/types.ts';
-import { formatRange, picksFor, visibleQuestions } from './engine.ts';
-import { encodeFunnelSelection, estimateFunnel, funnelAnswers, funnelPhoto, normalizeFunnelSelection, photoKey, pickedTitles, toConfiguratorSelection } from './funnel/engine.ts';
+import { computeEstimate, formatRange, picksFor, visibleQuestions } from './engine.ts';
+import { activeSteps, encodeFunnelSelection, estimateFunnel, funnelAnswers, funnelPhoto, normalizeFunnelSelection, photoKey, pickedTitles, toConfiguratorSelection } from './funnel/engine.ts';
 import type { FunnelSelection, FunnelSpec } from './funnel/types.ts';
 import {
   LEAD_TIMELINES, describeConfiguratorDesign, describeFunnelDesign, estimatorConsentText, normalizeZip, usPhoneDigits, type EstimatorLeadRequest,
 } from './lead-client.ts';
-import type { Answers, ContractorEstimatorConfig, Estimate, EstimatorTemplate, GalleryImage } from './types.ts';
+import type { Answers, ContractorEstimatorConfig, Estimate, EstimatorTemplate, GalleryImage, PoolDimensions } from './types.ts';
 
 /**
  * Server side of estimator lead capture (used by POST /api/estimator/[slug]/lead).
@@ -90,6 +90,16 @@ export const leadRequestSchema = z.object({
   measurement: z.boolean().default(false),
   tracking,
   configurator: selection.optional(),
+  // Roofing (FunnelSpec.addressFirst): the server-signed roof measurement, else the "How big is your home?"
+  // band. Only priced after the server verifies the signature (lib/estimator/roofing/roof.server.ts); a bad
+  // value is dropped (the band default is priced), never a failed lead.
+  roof: z.object({
+    measure: z.object({
+      areaSqft: z.number().finite(), pitchDeg: z.number().finite(), segments: z.number().int().min(1).max(200),
+      exp: z.number().int(), sig: z.string().max(64),
+    }).optional(),
+    band: z.string().max(20).optional(),
+  }).optional().catch(undefined),
   // The funnel's picks (step id -> option id); unknown steps and options fall back to the defaults.
   funnel: z.record(z.string().max(50), z.string().max(50)).refine((f) => Object.keys(f).length <= 20, 'Too many steps').optional(),
   submissionId: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/).optional().catch(undefined),
@@ -306,6 +316,21 @@ const PROJECT_ALIASES: Record<string, Record<string, string[]>> = {
     full: ['full_remodel'],
     refresh: ['other'],
   },
+  // The kitchen-remodel funnel's own services (content/funnels/kitchen-remodel.json); both qualify.
+  kitchen: {
+    full: ['full_remodel'],
+    refresh: ['cabinets_counters'],
+  },
+  // The adu funnel's services (content/funnels/adu.json) use the same ids as the template's project options.
+  adu: {
+    detached: ['detached'],
+    attached: ['attached'],
+    garage: ['garage'],
+  },
+  // The roof-replacement funnel's own service (content/funnels/roof-replacement.json).
+  roofing: {
+    replace: ['roof_replacement'],
+  },
 };
 
 function projectAliases(trade: string, project: string | undefined): string[] {
@@ -411,6 +436,11 @@ export const estimatorSourceLabel = (template: Pick<EstimatorTemplate, 'trade'>)
  */
 export function describeSize(template: Pick<EstimatorTemplate, 'trade'>, geometry: Estimate['geometry']): [key: string, text: string] {
   const how = geometry.source === 'dimensions' ? 'typed dimensions' : `${geometry.size} preset`;
+  if (template.trade === 'roofing') {
+    // The roof arrives as (priced sq ft / 50) x 50 ft (lib/estimator/roofing/roof.ts roofDimensions).
+    const priced = Math.round(geometry.lengthFt * geometry.widthFt);
+    return ['estimator_roof', `${priced.toLocaleString('en-US')} sq ft of priced roof (roof area x waste x pitch factor; ${geometry.source === 'dimensions' ? 'measured or band' : `${geometry.size} preset`})`];
+  }
   if (template.trade === 'pool') {
     return ['estimator_pool', `${geometry.shape.replace('_', '-')}, about ${geometry.lengthFt} x ${geometry.widthFt} ft (${how})`];
   }
@@ -494,10 +524,20 @@ export function funnelLeadDesign(
   template: EstimatorTemplate,
   raw: unknown,
   where: { origin: string; slug: string },
+  /**
+   * A size the picks cannot carry, already verified on the server (the roofing funnel's roof):
+   * the dimensions it prices, answers it sets (e.g. the home-size band) and lines that lead the summary.
+   */
+  measured?: { dimensions: PoolDimensions; answers?: Answers; summary?: string[] },
 ): { answers: Answers; estimate: Estimate; design: ConfiguratorLeadDesign } {
   const selection = normalizeFunnelSelection(spec, raw);
-  const answers = sanitizeEstimatorAnswers(template, funnelAnswers(spec, selection));
-  const quote = estimateFunnel(spec, template, selection);
+  const answers = sanitizeEstimatorAnswers(template, { ...funnelAnswers(spec, selection), ...(measured?.answers ?? {}) });
+  const quote = measured
+    ? (() => {
+        const estimate = computeEstimate(template, { answers, dimensions: measured.dimensions });
+        return { estimate, total: estimate.low !== null && estimate.high !== null ? { low: estimate.low, high: estimate.high } : null };
+      })()
+    : estimateFunnel(spec, template, selection);
   const absolute = (src: string) => {
     try {
       return new URL(src, where.origin).toString();
@@ -507,8 +547,13 @@ export function funnelLeadDesign(
   };
   const cfgSel = toConfiguratorSelection(spec, selection) ?? undefined;
   // What "Standard" / "Luxe" really include, from the configurator (its size line repeats the first step).
-  const includes = spec.configurator && cfgSel ? describeConfiguratorDesign(spec.configurator, cfgSel).filter((l) => !l.startsWith('Size:')) : [];
-  const photos = spec.steps.map((s) => {
+  // Groups the steps already name exactly (spec.summaryReplacesGroups: coping, spa, kitchen, fire, shade) are left out.
+  const replaced = new Set((spec.summaryReplacesGroups ?? []).map((id) => spec.configurator?.groups.find((g) => g.id === id)?.title).filter(Boolean));
+  const includes =
+    spec.configurator && cfgSel
+      ? describeConfiguratorDesign(spec.configurator, cfgSel).filter((l) => !l.startsWith('Size:') && !replaced.has(l.slice(0, l.indexOf(':'))))
+      : [];
+  const photos = activeSteps(spec, selection).map((s) => {
     const photo = funnelPhoto(spec, s.id, selection);
     return { view: s.id, label: s.label.replace(/[.?!]$/, ''), key: photoKey(spec, s.id, selection), url: absolute(photo.src), alt: photo.alt };
   });
@@ -519,7 +564,7 @@ export function funnelLeadDesign(
     design: {
       ...(cfgSel ? { selection: cfgSel } : {}),
       funnel: { selection, titles: pickedTitles(spec, selection) },
-      summary: [...describeFunnelDesign(spec, selection), ...includes],
+      summary: [...(measured?.summary ?? []), ...describeFunnelDesign(spec, selection), ...includes],
       photos,
       designUrl: absolute(`/estimator/${encodeURIComponent(where.slug)}/design?${encodeFunnelSelection(spec, selection)}`),
       total,
@@ -593,7 +638,7 @@ export function buildLeadPayload(input: LeadPayloadInput): LeadPayload {
     `${source}: ballpark ${range} (not a quote${template.pricesConfirmed ? '' : '; example prices'})`,
     ...(address ? [`Home address: ${address}${details?.verified ? ' (picked from Google suggestions)' : ' (typed)'}`] : []),
     ...(mapUrl ? [`Map: ${mapUrl}`] : []),
-    `Homeowner: ${request.homeowner === 'yes' ? 'yes, the pool is at their home' : 'no, they rent'}`,
+    `Homeowner: ${request.homeowner === 'yes' ? (template.trade === 'pool' ? 'yes, the pool is at their home' : 'yes, they own the home') : 'no, they rent'}`,
     ...(design ? ['Their design:', ...design.summary.map((d) => `- ${d}`)] : []),
     ...(design ? ['Price lines:'] : []),
     ...estimate.lines.map((l) => `- ${l.label}: ${formatRange(l.low, l.high)}`),
@@ -611,7 +656,7 @@ export function buildLeadPayload(input: LeadPayloadInput): LeadPayload {
     qualified,
     areaValid,
     completed,
-    nextStep: qualified && funnel.config.calendarUrl ? 'calendar' : 'thanks',
+    nextStep: qualified && estimatorBooking(contractor, funnel.config) !== 'none' ? 'calendar' : 'thanks',
     activity: {
       body: lines.join('\n'),
       metadata: {
@@ -655,8 +700,26 @@ export function buildLeadPayload(input: LeadPayloadInput): LeadPayload {
 }
 
 /* ------------------------------------------------------------------ */
-/* Booking link                                                        */
+/* Booking                                                             */
 /* ------------------------------------------------------------------ */
+
+/**
+ * How a qualified estimator lead books: 'homequote' = HomeQuote's own calendar
+ * (the route returns a booking ticket, the screen records the booking server-side),
+ * 'link' = the external calendarUrl (Calendly fallback), 'none' = no booking step
+ * (the screen says we will call). The contractor's own setting wins, then the
+ * lead funnel's calendarProvider; a contractor link only counts with a URL.
+ */
+export function estimatorBooking(
+  contractor: Pick<ContractorEstimatorConfig, 'calendarProvider' | 'calendarUrl'>,
+  config: Pick<FunnelConfig, 'calendarProvider' | 'calendarUrl'>,
+): 'homequote' | 'link' | 'none' {
+  if (contractor.calendarProvider === 'homequote') return 'homequote';
+  if (contractor.calendarProvider === 'none') return 'none';
+  if (contractor.calendarProvider === 'link') return contractor.calendarUrl ?? config.calendarUrl ? 'link' : 'none';
+  if (usesNativeCalendar(config)) return 'homequote';
+  return contractor.calendarUrl ?? config.calendarUrl ? 'link' : 'none';
+}
 
 /** The booking link with the homeowner's name/email (and UTMs) prefilled, for Calendly links only. */
 export function bookingUrl(

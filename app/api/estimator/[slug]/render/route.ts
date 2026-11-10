@@ -7,6 +7,9 @@ import {
   renderPromptFor, rendersEnabled, signTaskRef, uploadRenderImage, verifyRenderToken,
 } from '@/lib/estimator/render';
 import type { RenderStart } from '@/lib/estimator/render-client';
+import { funnelAnswers, funnelSpecFor, normalizeFunnelSelection } from '@/lib/estimator/funnel/engine';
+import { roofRepaintPrompt } from '@/lib/estimator/roofing/roof';
+import type { RegisteredEstimator } from '@/lib/estimator/registry';
 
 /**
  * Start a photoreal render of the homeowner's finished design (optional; on
@@ -67,6 +70,23 @@ function limitWords(network: boolean | undefined): { perDesign: string; perHour:
       };
 }
 
+/**
+ * The edit prompt: the trade's (pool / bathroom design illustration -> photo), or for the roofing
+ * funnel the repaint of the homeowner's own house photo with the material and colour they picked
+ * (from their picks on the server, never browser text).
+ */
+function promptFor(registered: RegisteredEstimator, rawFunnel: unknown): string {
+  const spec = funnelSpecFor(registered.contractor);
+  if (registered.template.trade !== 'roofing' || !spec) return renderPromptFor(registered.template.trade);
+  const answers = funnelAnswers(spec, normalizeFunnelSelection(spec, rawFunnel));
+  const material = answers.material?.[0] ?? 'asphalt';
+  // The material's own colour question ("tileColor"), lib/estimator/templates/roofing.ts.
+  const colourQ = registered.template.questions.find((q) => q.id === `${material}Color`);
+  const colourId = answers[`${material}Color`]?.[0];
+  const colour = colourQ?.options.find((o) => o.id === colourId)?.label ?? colourQ?.options[0]?.label ?? 'Charcoal';
+  return roofRepaintPrompt(material, colour);
+}
+
 export async function POST(request: Request, context: Context) {
   if (!sameOrigin(request)) return refuse('invalid', 'Invalid origin.', 403);
   const slug = (await context.params).slug;
@@ -83,7 +103,7 @@ export async function POST(request: Request, context: Context) {
       ? refuse('invalid', 'That picture is too large to send.', 413)
       : refuse('invalid', 'We couldn’t read that request. Please try again.', 400);
   }
-  const { renderToken, image } = (body && typeof body === 'object' ? body : {}) as { renderToken?: unknown; image?: unknown };
+  const { renderToken, image, funnel } = (body && typeof body === 'object' ? body : {}) as { renderToken?: unknown; image?: unknown; funnel?: unknown };
 
   const grant = verifyRenderToken(slug, renderToken);
   if (!grant) return refuse('invalid', 'This design session has expired. Refresh the page to start a new one.', 401);
@@ -140,7 +160,7 @@ export async function POST(request: Request, context: Context) {
     }
 
     const imageUrl = await uploadRenderImage(picture, `${slug}-${activityId}`);
-    const taskId = await createRenderTask(imageUrl, renderPromptFor(registered.template.trade));
+    const taskId = await createRenderTask(imageUrl, promptFor(registered, funnel));
     const taskRef = signTaskRef(slug, grant.leadId, taskId);
     if (!taskRef) throw new Error('Could not sign the task');
 

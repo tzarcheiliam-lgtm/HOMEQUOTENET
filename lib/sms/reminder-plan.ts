@@ -93,6 +93,19 @@ export function planFollowUps(c: { openedAt: Date; lastInboundAt: Date | null; l
   };
 }
 
+/**
+ * Keep going after the follow-ups: one text every `everyDays`, starting `startDays` after the anchor, until they reply
+ * (which moves the anchor) or text STOP. Returns only the step due now (keep_1, keep_2, …), with half a day of slack.
+ */
+export function planKeepGoing(c: { anchor: Date; startDays: number; everyDays: number; now: Date }): PlannedStep<string>[] {
+  const start = c.anchor.getTime() + c.startDays * DAY;
+  const every = c.everyDays * DAY;
+  if (c.now.getTime() < start) return [];
+  const k = Math.floor((c.now.getTime() - start) / every);
+  const due = start + k * every;
+  return [{ step: `keep_${k + 1}`, dueAt: new Date(due), until: new Date(due + 12 * HOUR) }];
+}
+
 /** "today at 2:00 PM", "tomorrow at 2:00 PM" or "Thursday, Oct 30 at 2:00 PM", seen from `from`, in `timeZone`. */
 export function describeWhen(meeting: Date, from: Date, timeZone: string): { when: string; day: string; time: string } {
   const time = new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', minute: '2-digit' }).format(meeting);

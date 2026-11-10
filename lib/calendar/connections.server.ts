@@ -8,7 +8,8 @@ type Db = ReturnType<typeof createAdminClient>;
 export interface ConnectionRow {
   id: string;
   user_id: string;
-  contractor_id: string;
+  /** Null for a HomeQuote team/sales calendar host's own connection (0070). */
+  contractor_id: string | null;
   provider: 'google' | 'apple_caldav';
   calendar_id: string;
   encrypted_credentials: string;

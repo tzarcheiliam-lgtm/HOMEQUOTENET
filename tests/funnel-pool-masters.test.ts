@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
-import { calendlyEmbedUrl, calendlyUri, consentText, funnelSchema, qualify, visibleQuestions } from '@/lib/funnels/schema';
+import { calendlyEmbedUrl, calendlyUri, consentText, funnelSchema, hasCalendarStep, qualify, usesNativeCalendar, visibleQuestions } from '@/lib/funnels/schema';
 import { verifyCalendlyBooking } from '@/lib/funnels/calendly';
 
 const read = (path: string) => funnelSchema.parse(JSON.parse(readFileSync(path, 'utf8')));
@@ -17,10 +17,13 @@ describe('Ethan / Pool Masters LA funnel', () => {
     expect(service.options.filter(o => o.featured).map(o => o.value)).toEqual(['full_build', 'full_remodel', 'backyard']);
     expect(JSON.stringify(ethan)).not.toMatch(/equipment/i);
   });
-  it('asks only project, ZIP, homeowner and timeline, and books through Calendly', () => {
+  it('asks only project, ZIP, homeowner and timeline, and books on the HomeQuote calendar (no Calendly)', () => {
     expect(ethan.questions.map(q => q.id)).toEqual(['service', 'zip', 'homeowner', 'timeline']);
-    expect(ethan.calendarProvider).toBe('calendly');
-    expect(ethan.calendarHeadline).toBe('Great — your project looks like a fit. Choose a time below for your free pool consultation.');
+    expect(ethan.calendarProvider).toBe('homequote');
+    expect(ethan.calendarUrl).toBeUndefined();
+    expect(hasCalendarStep(ethan)).toBe(true);
+    expect(JSON.stringify(ethan)).not.toMatch(/calendly/i);
+    expect(ethan.calendarHeadline).toBe('Great — your project looks like a fit. Book a free call about your pool.');
     expect(consentText(ethan)).toContain('HomeQuote Network and Pool Masters LA');
     const answers = { service: 'full_build', zip: '91423', homeowner: 'yes', timeline: 'researching' };
     expect(qualify(ethan, answers)).toBe(true);
@@ -37,9 +40,10 @@ describe('Ethan / Pool Masters LA funnel', () => {
     // San Diego and Bakersfield stay out.
     for (const zip of ['92101', '93301']) expect(qualify(ethan, { ...answers, zip }), zip).toBe(false);
   });
-  it('leaves the general form unchanged', () => {
+  it('leaves the general form unchanged, booking the HomeQuote team calendar', () => {
     expect(general.clientName).toBe('HomeQuote Network');
-    expect(general.calendarProvider).toBe('ghl');
+    expect(general.calendarProvider).toBe('homequote');
+    expect(general.calendarUrl).toBeUndefined();
     expect(general.calendarHeadline).toBeUndefined();
     expect(general.questions[0].options.map(o => o.value)).toEqual(['full_remodel', 'resurfacing', 'tile', 'equipment', 'spa', 'backyard', 'other']);
     expect(general.questions[0].options.some(o => o.featured)).toBe(false);
@@ -47,14 +51,27 @@ describe('Ethan / Pool Masters LA funnel', () => {
   });
 });
 
-describe('Calendly embed', () => {
+describe('calendar step', () => {
+  it('is always on for the HomeQuote calendar, only with a URL for GHL / Calendly, and stored configs keep their meaning', () => {
+    const { calendarProvider: _p, calendarUrl: _u, ...bare } = ethan;
+    void _p; void _u;
+    const stored = funnelSchema.parse(bare);
+    expect(stored.calendarProvider).toBe('ghl');
+    expect(hasCalendarStep(stored)).toBe(false);
+    expect(hasCalendarStep(funnelSchema.parse({ ...bare, calendarUrl: 'https://ghl.example/widget', calendarId: 'c1' }))).toBe(true);
+    expect(hasCalendarStep(funnelSchema.parse({ ...bare, calendarProvider: 'calendly' }))).toBe(false);
+    expect(usesNativeCalendar(funnelSchema.parse({ ...bare, calendarProvider: 'homequote' }))).toBe(true);
+  });
+});
+
+describe('Calendly embed (fallback)', () => {
   it('prefills name/email, passes UTMs and enables embed events', () => {
     const url = new URL(calendlyEmbedUrl('https://calendly.com/example/consult', 'homequotenet.com', { name: 'Ana Diaz', email: 'ana@example.test' }, { utm_campaign: 'pool-fall', fbclid: 'x' }));
     expect(Object.fromEntries(url.searchParams)).toEqual({ embed_domain: 'homequotenet.com', embed_type: 'Inline', hide_gdpr_banner: '1', name: 'Ana Diaz', email: 'ana@example.test', utm_campaign: 'pool-fall' });
   });
   it('only accepts calendly.com booking pages and Calendly API URIs', () => {
-    expect(funnelSchema.safeParse({ ...ethan, calendarUrl: 'https://evil.example/consult' }).success).toBe(false);
-    expect(funnelSchema.safeParse({ ...ethan, calendarUrl: 'https://calendly.com/pool/consult' }).success).toBe(true);
+    expect(funnelSchema.safeParse({ ...ethan, calendarProvider: 'calendly', calendarUrl: 'https://evil.example/consult' }).success).toBe(false);
+    expect(funnelSchema.safeParse({ ...ethan, calendarProvider: 'calendly', calendarUrl: 'https://calendly.com/pool/consult' }).success).toBe(true);
     expect(calendlyUri.safeParse('https://api.calendly.com/scheduled_events/abc-1/invitees/def-2').success).toBe(true);
     expect(calendlyUri.safeParse('https://evil.example/scheduled_events/abc').success).toBe(false);
   });

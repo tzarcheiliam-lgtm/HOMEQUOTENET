@@ -1,0 +1,109 @@
+/*
+ * HomeQuote look for the LiveKit call UI (§48/§52): Navy surfaces, Blue
+ * actions, Gold only as a small accent, DM Sans body. Scoped to .hq-call so
+ * nothing else on the site is touched.
+ */
+.hq-call[data-lk-theme] {
+  --lk-bg: #0a1b3d;
+  --lk-bg2: #12264f;
+  --lk-bg3: #1a3262;
+  --lk-bg4: #233d73;
+  --lk-bg5: #2c4884;
+  --lk-fg: #ffffff;
+  --lk-fg2: #eef2fa;
+  --lk-border-color: rgba(255, 255, 255, 0.1);
+  --lk-accent-fg: #ffffff;
+  --lk-accent-bg: #0038b8;
+  --lk-accent2: #1d52c9;
+  --lk-accent3: #3a68d1;
+  --lk-accent4: #5680da;
+  --lk-danger: #ef4444;
+  --lk-control-fg: #ffffff;
+  --lk-control-bg: rgba(255, 255, 255, 0.07);
+  --lk-control-hover-bg: rgba(255, 255, 255, 0.13);
+  --lk-control-active-bg: rgba(255, 255, 255, 0.18);
+  --lk-control-active-hover-bg: rgba(255, 255, 255, 0.22);
+  --lk-font-family: var(--font-dm-sans), 'DM Sans', system-ui, sans-serif;
+  --lk-border-radius: 12px;
+  --lk-grid-gap: 10px;
+  font-family: var(--lk-font-family);
+}
+
+/* Pre-join: sits inside our own card, so drop LiveKit's panel styling. */
+.hq-call .lk-prejoin {
+  background: transparent;
+  padding: 0;
+  width: 100%;
+  gap: 0.875rem;
+}
+.hq-call .lk-prejoin .lk-video-container {
+  border-radius: 14px;
+  background: #071330;
+}
+.hq-call .lk-prejoin .lk-camera-off-note {
+  background: #071330;
+}
+.hq-call .lk-prejoin .lk-button-group > .lk-button {
+  min-height: 44px;
+}
+.hq-call .lk-form-control {
+  min-height: 48px;
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  color: #ffffff;
+}
+.hq-call .lk-form-control:focus {
+  outline: 2px solid #0038b8;
+  outline-offset: 1px;
+}
+.hq-call .lk-join-button {
+  min-height: 50px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 1rem;
+  background: #0038b8;
+}
+.hq-call .lk-join-button:hover {
+  background: #1d52c9;
+}
+
+/* In the call. */
+.hq-call .lk-room-container,
+.hq-call .lk-video-conference {
+  background: #0a1b3d;
+}
+.hq-call .lk-participant-tile {
+  background: #12264f;
+  border-radius: 14px;
+}
+.hq-call .lk-participant-metadata-item {
+  background: rgba(7, 19, 48, 0.72);
+  border-radius: 8px;
+}
+.hq-call .lk-control-bar {
+  background: #071330;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.hq-call .lk-disconnect-button {
+  background: #dc2626;
+  border-color: transparent;
+  color: #ffffff;
+}
+.hq-call .lk-disconnect-button:not(:disabled):hover {
+  background: #b91c1c;
+}
+.hq-call .lk-chat {
+  background: #12264f;
+}
+
+@keyframes hq-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.hq-pulse {
+  animation: hq-pulse 1.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hq-pulse { animation: none; }
+}

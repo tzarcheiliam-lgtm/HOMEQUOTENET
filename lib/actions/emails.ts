@@ -6,6 +6,9 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { sendProspectEmailCore, type SendEmailState as CoreSendState } from '@/lib/emails/prospect-send.server';
 import { MEETING_CONFIRMED_KEY } from '@/lib/emails/call-followups';
 import { meetingInvite } from '@/lib/emails/meeting-invite';
+import { videoLinksFor } from '@/lib/video/rooms.server';
+import { ownMeetingLink } from '@/lib/video/links';
+import { siteUrl } from '@/lib/calendar/config';
 
 // A 'use server' file may only export async functions and types declared here.
 export type SendEmailState = CoreSendState;
@@ -94,6 +97,7 @@ export async function sendQuickEmail(_previous: SendEmailState, formData: FormDa
   if (!input.prospect_id) return { ok: false, error: 'Choose a company', contactSaved: false };
 
   let attachments;
+  let message = input.message;
   if (input.template_key === MEETING_CONFIRMED_KEY) {
     const { data } = await createAdminClient()
       .from('prospect_sales_appointments')
@@ -105,6 +109,7 @@ export async function sendQuickEmail(_previous: SendEmailState, formData: FormDa
       .limit(1);
     const m = (data ?? [])[0] as { id: string; scheduled_at: string; appointment_type: string | null; contact_info: string | null } | undefined;
     if (m) {
+      const videoUrl = videoLinksFor('sales_appointment', m.id, { meetingType: m.appointment_type, ownLink: ownMeetingLink(m.contact_info), live: true }, siteUrl())?.guestUrl ?? null;
       attachments = [
         meetingInvite({
           id: m.id,
@@ -112,8 +117,11 @@ export async function sendQuickEmail(_previous: SendEmailState, formData: FormDa
           appointmentType: m.appointment_type,
           contactInfo: m.contact_info,
           organizer: me.full_name || 'HomeQuote Network',
+          videoUrl,
         }),
       ];
+      // A HomeQuote video room: the email itself carries the join link too, not only the invite.
+      if (videoUrl && !message.includes(videoUrl)) message = `${message.trimEnd()}\n\nJoin the video call here (no app needed): ${videoUrl}`;
     }
   }
 
@@ -123,7 +131,7 @@ export async function sendQuickEmail(_previous: SendEmailState, formData: FormDa
     recipientEmail: input.recipient_email,
     templateKey: input.template_key,
     subject: input.subject,
-    message: input.message,
+    message,
     serviceInterests: services(input.service_interests),
     attachments,
     allowRepeat: input.allow_repeat,

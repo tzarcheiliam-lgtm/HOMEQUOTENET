@@ -57,5 +57,22 @@ export async function decideMcpAction(formData: FormData): Promise<void> {
     await db.from('mcp_pending_actions').update(r.ok ? { result: `Done: ${r.added} new assignment(s).` } : { status: 'failed', result: r.error }).eq('id', id);
     revalidatePath(`/app/leads/${p.leadId}`);
   }
+  if (approve && claimed.kind === 'book_appointment') {
+    const p = claimed.payload as { leadId: string; assignmentId: string; startMs: number; notes?: string | null; reason?: string | null };
+    const { bookAppointmentAs } = await import('@/lib/appointments/book.server');
+    const r = await bookAppointmentAs(db, {
+      assignmentId: p.assignmentId, startMs: p.startMs, actorId: profile.id, notes: p.notes ?? null, overrideAvailability: true,
+      activity: `Appointment scheduled — proposed by Claude, approved by ${profile.full_name || profile.email || 'an admin'}${p.reason ? `. Reason: ${p.reason}` : ''}`,
+    });
+    await db.from('mcp_pending_actions').update(r.ok ? { result: `Booked${r.overridden ? ` (outside availability: ${r.overridden})` : ''}.` } : { status: 'failed', result: r.error.slice(0, 500) }).eq('id', id);
+    if (r.ok) {
+      const [{ flushNotificationsSoon }, { flushCalendarSyncSoon }, { runTextRemindersSoon }] = await Promise.all([
+        import('@/lib/notifications/outbox'), import('@/lib/calendar/sync.server'), import('@/lib/sms/reminders'),
+      ]);
+      flushNotificationsSoon(); flushCalendarSyncSoon(); runTextRemindersSoon();
+    }
+    revalidatePath(`/app/leads/${p.leadId}`);
+    revalidatePath('/app/calls/appointments');
+  }
   revalidatePath('/app/claude-connector');
 }

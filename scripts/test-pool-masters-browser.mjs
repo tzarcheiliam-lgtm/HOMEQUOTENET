@@ -20,7 +20,7 @@ mkdir('.qa-screenshots', { recursive: true }, () => {});
 const browser = await chromium.launch();
 const results = [];
 try {
-  const config = funnelSchema.parse({ ...JSON.parse(readFileSync('content/funnels/clients/pool-masters-la.json', 'utf8')), calendarUrl: calendly });
+  const config = funnelSchema.parse({ ...JSON.parse(readFileSync('content/funnels/clients/pool-masters-la.json', 'utf8')), calendarProvider: 'calendly', calendarUrl: calendly }); // the shipped config books the HomeQuote calendar; this run exercises the Calendly fallback
   await db.query("insert into public.contractors(id,name) values($1,'HomeQuote automated QA fixture (Pool Masters)')", [ids.contractor]);
   await db.query('insert into public.funnels(id,slug,contractor_id,published,config) values($1,$2,$3,true,$4)', [ids.funnel, slug, ids.contractor, config]);
 

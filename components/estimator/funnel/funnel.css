@@ -90,6 +90,10 @@
     .es-fn .fn-photo {
       aspect-ratio: 2.8 / 1;
     }
+    /* No room for the "Your design" recap: the button must stay on screen. */
+    .es-fn .fn-recap {
+      display: none;
+    }
   }
   /* Laptop screens about 900 px tall: a flatter photo keeps the step on one screen. */
   @media (min-width: 1024px) and (max-height: 960px) {
@@ -169,6 +173,15 @@
   /* Photo layers: the picked one fades in over the others (all loaded, so a tap swaps instantly). */
   .es-fn .fn-layer {
     transition: opacity 180ms ease-out;
+  }
+  /*
+   * Behind a room photo shown whole (photoBackdrop 'blur'): the same photo,
+   * blurred and a little larger so its soft edge stays outside the card, and a
+   * touch darker so the photo's own edge reads.
+   */
+  .es-fn .fn-backdrop {
+    filter: blur(18px) brightness(0.9) saturate(1.05);
+    scale: 1.2;
   }
 
   /* Screen change: a short fade and 8 px slide in the direction of travel. Never on first paint. */

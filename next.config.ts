@@ -5,11 +5,22 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR || '.next',
   // pdf.js / OCR / fonts load assets from node_modules + lib/signing/assets at runtime.
   serverExternalPackages: ['pdfjs-dist', 'tesseract.js', '@napi-rs/canvas', 'fontkit'],
+  // Code that reads public/ at runtime with a dynamic path (the vCard logo, the funnel photo
+  // checks) makes the tracer pull in ALL of public/, including ~55 MB of estimator photos that no
+  // function reads. Keep those photos (served statically) out of every function: the extra size
+  // pushed the deployment past Vercel's function limit.
+  outputFileTracingExcludes: {
+    '/**': ['./public/estimator/**'],
+    '/estimator/**': ['./public/**'],
+    '/embed/**': ['./public/**'],
+  },
   outputFileTracingIncludes: {
     '/app/documents/**': ['./lib/signing/assets/**', './node_modules/pdfjs-dist/standard_fonts/**', './node_modules/pdfjs-dist/cmaps/**', './node_modules/pdfjs-dist/wasm/**', './node_modules/pdfjs-dist/iccs/**', './node_modules/tesseract.js-core/**'],
     // Contracts render PDFs in server actions: the Unicode font and the HomeQuote logo must ship with those routes.
     '/app/contracts/**': ['./lib/signing/assets/DejaVuSans.ttf', './public/assets/brand/hq-logo-horizontal.png'],
     '/app/contractors/**': ['./lib/signing/assets/DejaVuSans.ttf', './public/assets/brand/hq-logo-horizontal.png'],
+    // The host vCard turns these logos into its PHOTO (lib/booking/host-photo.server.ts).
+    '/api/booking/contact/**': ['./public/images/brand/poolmasters-logo.png', './public/images/brand/homequote-network-logo.webp', './public/images/brand/homequote-network-logo.png'],
     '/api/**': ['./lib/signing/assets/**', './node_modules/pdfjs-dist/standard_fonts/**', './node_modules/pdfjs-dist/cmaps/**', './node_modules/pdfjs-dist/wasm/**', './node_modules/pdfjs-dist/iccs/**', './node_modules/tesseract.js-core/**'],
   },
   experimental: {
@@ -21,6 +32,8 @@ const nextConfig: NextConfig = {
     return [
       { source: '/bathroom-remodel', destination: '/estimate/bathroom-remodel', permanent: false },
       { source: '/kitchen-remodel', destination: '/estimate/kitchen-remodel', permanent: false },
+      // The ADU design funnel (HomeQuote Network, /estimator/adu); /adu-quiz and /adu-estimator are separate pages.
+      { source: '/adu', destination: '/estimator/adu', permanent: false },
       // The old Creative Studio page was replaced by the Seret studio.
       { source: '/app/creative-studio', destination: '/studio', permanent: false },
     ];

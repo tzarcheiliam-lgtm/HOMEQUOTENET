@@ -1,0 +1,217 @@
+/*
+ * HomeQuote booking UI (slot picker, confirm, "You're booked", manage page).
+ * Matched to the Buildoly "Book your free call" screen the owner pointed at:
+ * day headings over a column of full-width blue time buttons, nothing else
+ * competing. Inside the estimator funnel (.es-fn) every token follows the
+ * funnel's own (--fn-*); elsewhere the same values stand alone.
+ * Scoped to .bk so nothing leaks into the host page.
+ */
+.bk {
+  --bk-accent: var(--fn-blue, #0071e3);
+  --bk-accent-hover: var(--fn-blue-hover, #0068d1);
+  --bk-accent-press: var(--fn-blue-press, #005fbf);
+  --bk-accent-ink: var(--fn-blue-ink, #0062c4);
+  --bk-ink: var(--fn-ink, #0a0a0a);
+  --bk-text: var(--fn-text, #1f1e1c);
+  --bk-muted: var(--fn-muted, #6f6b64);
+  --bk-hair: var(--fn-hair, #e4e1db);
+  --bk-skeleton: var(--fn-track, #e9e6e0);
+  --bk-focus: var(--fn-focus, rgb(0 113 227 / 0.35));
+  --bk-ease-out: var(--fn-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+  color: var(--bk-ink);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* The one loud element: a full-width blue time button, 56px tall (well over the 48px target). */
+.bk-slot {
+  display: flex;
+  width: 100%;
+  min-height: 56px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 8px;
+  background: var(--bk-accent);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.005em;
+  font-variant-numeric: tabular-nums;
+  transition-property: background-color, transform, box-shadow;
+  transition-duration: 160ms;
+  transition-timing-function: var(--bk-ease-out);
+  touch-action: manipulation;
+  user-select: none;
+}
+@media (hover: hover) {
+  .bk-slot:hover { background: var(--bk-accent-hover); }
+}
+.bk-slot:active { background: var(--bk-accent-press); transform: scale(0.98); }
+.bk-slot:focus-visible { outline: none; box-shadow: 0 0 0 2px #fff, 0 0 0 5px var(--bk-accent); }
+.bk-slot[aria-selected='true'] { background: var(--bk-ink); }
+/* The booking's current time on the reschedule picker: shown for reference, not offered.
+   Only picker options: a confirm button that is busy stays solid blue (see aria-busy). */
+.bk-slot[role='option'][aria-disabled='true'] {
+  background: transparent;
+  color: var(--bk-muted);
+  box-shadow: inset 0 0 0 1px var(--bk-hair);
+  cursor: default;
+  transform: none;
+}
+
+/* In flight ("Booking your call…"): still the same blue button, a touch quieter, spinner inside. */
+.bk-slot[aria-busy='true'] { opacity: 0.86; cursor: progress; transform: none; }
+.bk-slot:disabled:not([aria-busy='true']) { cursor: default; }
+
+/* Times: one column on phones (the Buildoly look); 2–3 columns once the picker is wide (desktop). */
+.bk-picker { container-type: inline-size; width: 100%; }
+.bk-times { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+@container (min-width: 420px) { .bk-times { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container (min-width: 600px) { .bk-times { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+/* Quiet secondary action (outline), same height family. */
+.bk-secondary {
+  display: inline-flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 8px;
+  padding: 0 16px;
+  background: #fff;
+  color: var(--bk-ink);
+  font-size: 15.5px;
+  font-weight: 500;
+  box-shadow: inset 0 0 0 1px var(--bk-hair), 0 1px 1px rgb(0 0 0 / 0.03);
+  transition-property: background-color, transform, box-shadow;
+  transition-duration: 160ms;
+  transition-timing-function: var(--bk-ease-out);
+  touch-action: manipulation;
+}
+@media (hover: hover) {
+  .bk-secondary:hover { background: #faf9f7; }
+}
+.bk-secondary:active { transform: scale(0.98); }
+.bk-secondary:focus-visible,
+.bk-link:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--bk-focus); }
+
+/* Text action with a full 48px hit area. */
+.bk-link {
+  display: inline-flex;
+  min-height: 48px;
+  align-items: center;
+  gap: 6px;
+  border-radius: 6px;
+  color: var(--bk-accent-ink);
+  font-size: 15.5px;
+  font-weight: 500;
+  text-underline-offset: 3px;
+  touch-action: manipulation;
+}
+@media (hover: hover) {
+  .bk-link:not(:disabled):hover { text-decoration: underline; }
+}
+.bk-link:disabled { color: var(--bk-muted); opacity: 0.6; cursor: default; }
+
+.bk-skeleton {
+  border-radius: 8px;
+  background: var(--bk-skeleton);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .bk-skeleton { animation: bk-pulse 1.4s ease-in-out infinite; }
+  /* One reveal when a view is shown after the homeowner acts (not on first load). */
+  .bk-enter { animation: bk-enter 260ms var(--bk-ease-out) both; }
+}
+@keyframes bk-pulse {
+  50% { opacity: 0.55; }
+}
+@keyframes bk-enter {
+  from { opacity: 0; transform: translateY(6px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bk-slot, .bk-secondary { transition-duration: 0ms; }
+  .bk-slot:active, .bk-secondary:active { transform: none; }
+}
+
+.bk-heading { text-wrap: balance; }
+/* Standalone booking pages (manage link): keep the funnel's face; the site's global h1–h3 rule would switch to Sora. */
+.bk-page .bk :is(h1, h2, h3, h4) { font-family: inherit; }
+.bk-copy { text-wrap: pretty; }
+
+/* Destructive confirm (cancel a call): same quiet outline, red text (7.1:1 on white). */
+.bk-secondary.bk-danger { color: #a3271b; }
+
+/*
+ * On a dark host page (the contractor sales funnel's navy card): the same
+ * layout, light on dark. The blue time buttons stay as they are; text, rules,
+ * the outline buttons and the selected time flip so every line stays legible.
+ */
+.bk-on-dark .bk {
+  --bk-ink: #f4f6fb;
+  --bk-text: #dce3ef;
+  --bk-muted: #a7b3c8;
+  --bk-hair: rgb(255 255 255 / 0.18);
+  --bk-skeleton: rgb(255 255 255 / 0.1);
+  --bk-accent-ink: #8cc0ff;
+  --bk-focus: rgb(140 192 255 / 0.45);
+}
+.bk-on-dark .bk-secondary { background: transparent; }
+@media (hover: hover) {
+  .bk-on-dark .bk-secondary:hover { background: rgb(255 255 255 / 0.06); }
+}
+.bk-on-dark .bk-slot[aria-selected='true'] { background: #fff; color: #0a0a0a; }
+.bk-on-dark .bk-slot:focus-visible { box-shadow: 0 0 0 2px #0b1730, 0 0 0 5px var(--bk-accent); }
+.bk-on-dark .bk-secondary.bk-danger { color: #ffa196; }
+
+/*
+ * "You're booked": a soft check, the time set large, a hairline, who calls,
+ * then the host's contact card ("Save Liam's number") as the one loud action.
+ */
+.bk-check {
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 14px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bk-accent) 11%, transparent);
+  color: var(--bk-accent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .bk-check { animation: bk-pop 420ms var(--bk-ease-out) both; }
+}
+@keyframes bk-pop {
+  from { opacity: 0; transform: scale(0.6); }
+}
+.bk-when { font-variant-numeric: tabular-nums; }
+.bk-rule { box-shadow: inset 0 1px 0 var(--bk-hair); }
+
+.bk-contact {
+  border-radius: 14px;
+  padding: 16px;
+  background: var(--bk-card, #fafaf8);
+  box-shadow: inset 0 0 0 1px var(--bk-hair);
+}
+.bk-avatar {
+  display: inline-flex;
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px var(--bk-hair), 0 1px 2px rgb(0 0 0 / 0.05);
+}
+.bk-avatar img { width: 100%; height: 100%; padding: 6px; object-fit: contain; }
+
+/* Add to calendar: stacked on phones, side by side once there is room. */
+.bk-add { container-type: inline-size; }
+.bk-add-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+@container (min-width: 460px) { .bk-add-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.bk-on-dark .bk { --bk-card: rgb(255 255 255 / 0.05); }
+.bk-on-dark .bk-avatar { background: #fff; }

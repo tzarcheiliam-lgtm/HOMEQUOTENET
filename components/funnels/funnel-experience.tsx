@@ -7,10 +7,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { DEFAULT_PLACEHOLDERS, MAX_ANSWER_LENGTH, calendlyEmbedUrl, consentText, contactSchema, isRequired, isTextQuestion, resolveStep, serviceAreaValid, validateAnswer, visibleQuestions, type FunnelConfig, type Session } from '@/lib/funnels/schema';
+import { DEFAULT_PLACEHOLDERS, MAX_ANSWER_LENGTH, calendlyEmbedUrl, consentText, contactSchema, hasCalendarStep, isRequired, isTextQuestion, resolveStep, serviceAreaValid, usesNativeCalendar, validateAnswer, visibleQuestions, type FunnelConfig, type Session } from '@/lib/funnels/schema';
 import { previewAdvance, previewAnswersForStep } from '@/lib/funnels/builder';
 import { trackFunnel } from '@/lib/funnels/tracking';
 import { buildContactVCard, vcardFileName } from '@/lib/funnels/vcard';
+import { BookingFlow } from '@/components/booking/booking-flow';
 
 const STATE_NAMES: Record<string, string> = { CA: 'California' };
 
@@ -81,7 +82,7 @@ export function FunnelExperience({ slug, initialConfig, demo, previewMode, jumpT
     if (previewMode) {
       setError('');
       if ('contact' in body) {
-        const nextStep = session.qualified && config.calendarUrl ? 'calendar' : 'thanks';
+        const nextStep = session.qualified && hasCalendarStep(config) ? 'calendar' : 'thanks';
         setSession({ ...session, contact_submitted_at: new Date().toISOString(), current_step: nextStep });
         return;
       }
@@ -107,7 +108,10 @@ export function FunnelExperience({ slug, initialConfig, demo, previewMode, jumpT
   const questions = visibleQuestions(config, session?.answers ?? {});
   const index = questions.findIndex(q => q.id === step);
   const question = questions[index];
-  const total = questions.length + 2 + (config.calendarUrl ? 1 : 0);
+  const calendarStep = hasCalendarStep(config);
+  // HomeQuote's own calendar: the booking flow renders in the page (no embed, no polling).
+  const native = usesNativeCalendar(config);
+  const total = questions.length + 2 + (calendarStep ? 1 : 0);
   const current = index >= 0 ? index + 1 : step === 'qualification' ? questions.length + 1 : step === 'contact' ? questions.length + 2 : total;
   // Repair a saved step that no longer matches a visible question, so the next click works too.
   useEffect(() => {
@@ -140,13 +144,15 @@ export function FunnelExperience({ slug, initialConfig, demo, previewMode, jumpT
     if (session.booked_at) trackFunnel(session.id, slug, 'Schedule', config.trackingPixels.metaPixelId, config.industry);
   }, [session, tracking, config, slug, demo, previewMode]);
   useEffect(() => {
-    if (previewMode || !session?.contact_submitted_at || !config.calendarUrl || step !== 'calendar') return;
+    if (previewMode || !session?.contact_submitted_at || !calendarStep || step !== 'calendar') return;
     void fetch(endpoint, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: session.version, calendarViewed: true }) });
+    // The external calendars confirm a booking on their own side; the native flow reports it (onBooked).
+    if (native) return;
     const timer = setInterval(async () => {
       try { const res = await fetch(endpoint); if (res.ok) { const data = await res.json(); setSession(data.session); } } catch { /* A later poll retries. */ }
     }, 10000);
     return () => clearInterval(timer);
-  }, [previewMode, session?.contact_submitted_at, session?.version, config.calendarUrl, step, endpoint]);
+  }, [previewMode, session?.contact_submitted_at, session?.version, calendarStep, native, step, endpoint]);
 
   // Calendly reports a completed booking to the embedding page via postMessage.
   // Only messages from calendly.com are accepted; the server re-checks the session.
@@ -185,7 +191,9 @@ export function FunnelExperience({ slug, initialConfig, demo, previewMode, jumpT
     const meta = tracking ? { fbp: cookie('_fbp'), fbc: cookie('_fbc') } : undefined;
     void save({ contact: contact.data, ...(meta && (meta.fbp || meta.fbc) ? { meta } : {}) });
   }
-  const done = !!session?.booked_at || step === 'thanks';
+  // A call booked on the HomeQuote calendar stays on the calendar step, which shows it (time, add to calendar, change link).
+  const nativeBooked = native && step === 'calendar' && !!session?.booked_at;
+  const done = (!!session?.booked_at && !nativeBooked) || step === 'thanks';
   // Purely a copy decision (which reviewMessage to show); the real enforcement is
   // server-side in qualify()/serviceAreaValid() — see lib/funnels/schema.ts.
   const zipQuestionId = config.questions.find(q => q.type === 'zip')?.id;
@@ -194,11 +202,13 @@ export function FunnelExperience({ slug, initialConfig, demo, previewMode, jumpT
   const outOfServiceArea = !!strictStates.length && !!zipQuestionId && !!session?.answers[zipQuestionId]
     && !serviceAreaValid(config, session.answers[zipQuestionId]);
   const title = done ? session?.booked_at ? 'You’re on the calendar.' : config.thankYouPage.headline
-    : step === 'calendar' ? config.calendarHeadline ?? 'Choose a time for your free estimate'
+    : nativeBooked ? 'You’re on the calendar.'
+    : step === 'calendar' ? config.calendarHeadline ?? (native ? 'Book your free call' : 'Choose a time for your free estimate')
     : step === 'qualification' ? checking ? 'Checking availability in your area…' : session?.qualified ? config.qualifiedMessage : outOfServiceArea ? 'Outside our current service area' : config.reviewMessage
     : step === 'contact' ? 'Who should we reach out to?' : question?.headline;
   const calendarUrl = config.calendarUrl ? new URL(config.calendarUrl) : null;
   if (calendarUrl && session && !calendly) calendarUrl.searchParams.set('hqn_session_id', session.id);
+  const vcard = buildContactVCard(config);
 
   // Funnels still carrying the pre-rebrand default colours render in the HomeQuote brand blue/navy; custom colours are respected.
   const primaryColor = config.primaryColor.toLowerCase() === '#196dcc' ? '#0038B8' : config.primaryColor;
@@ -212,13 +222,13 @@ export function FunnelExperience({ slug, initialConfig, demo, previewMode, jumpT
       </header>
       {demo && !previewMode && <div className="funnel-demo">Interactive demo · No contractor is contacted and no appointment is booked.</div>}
       {previewMode && <div className="funnel-demo">Live preview · Nothing here is saved.</div>}
-      <div className="funnel-progress-copy"><span>{config.industry}</span><span>{done ? 'Complete' : `${current} of ${total}`}</span></div>
-      <div className="funnel-progress" role="progressbar" aria-label="Your progress" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done ? total : current}><span style={{ width: `${(done ? 1 : current / total) * 100}%` }} /></div>
+      <div className="funnel-progress-copy"><span>{config.industry}</span><span>{done || nativeBooked ? 'Complete' : `${current} of ${total}`}</span></div>
+      <div className="funnel-progress" role="progressbar" aria-label="Your progress" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done || nativeBooked ? total : current}><span style={{ width: `${(done || nativeBooked ? 1 : current / total) * 100}%` }} /></div>
       <div className="funnel-toolbar">{session && !session.contact_submitted_at && (index > 0 || ['qualification', 'contact'].includes(step))
         ? <button onClick={back} disabled={busy} className="funnel-back"><ArrowLeft size={17} /> Back</button> : <span />}
         <span>About a minute. Built around you.</span></div>
       <section className="funnel-screen" key={step} aria-busy={busy}>
-        <div className="funnel-eyebrow">{done ? <CheckCircle2 size={19} /> : step === 'qualification' ? <Sparkles size={19} /> : <ClipboardList size={19} />}<span>{done ? 'THANK YOU' : 'A LITTLE ABOUT YOUR PROJECT'}</span></div>
+        <div className="funnel-eyebrow">{done || nativeBooked ? <CheckCircle2 size={19} /> : step === 'qualification' ? <Sparkles size={19} /> : <ClipboardList size={19} />}<span>{done || nativeBooked ? 'THANK YOU' : 'A LITTLE ABOUT YOUR PROJECT'}</span></div>
         <h1 ref={heading} tabIndex={-1}>{title}</h1>
         {question?.description && <p className="funnel-description">{question.description}</p>}
         {!session && <p className="funnel-description" role="status">{busy ? 'Getting things ready…' : 'Let’s get started.'}</p>}
@@ -267,21 +277,34 @@ export function FunnelExperience({ slug, initialConfig, demo, previewMode, jumpT
           <div><Label htmlFor="email">Email address</Label><Input id="email" name="email" type="email" autoComplete="email" maxLength={254} required /></div>
           <div className="funnel-honeypot" aria-hidden="true"><label>Website<input name="website" tabIndex={-1} autoComplete="off" /></label></div>
           <label className="funnel-consent"><input type="checkbox" name="consent" required /><span>{consentText(config)} <a href="/privacy" target="_blank" rel="noreferrer">Privacy policy</a> · <a href="/terms" target="_blank" rel="noreferrer">Terms</a></span></label>
-          <Button type="submit" className="funnel-primary" disabled={busy}>{busy ? 'Saving your request…' : demo ? 'Preview the next step' : session?.qualified && config.calendarUrl ? 'Choose my estimate time' : 'Request my free estimate'}<ArrowRight size={18} /></Button>
+          <Button type="submit" className="funnel-primary" disabled={busy}>{busy ? 'Saving your request…' : demo ? 'Preview the next step' : session?.qualified && calendarStep ? native ? 'Pick a time for my call' : 'Choose my estimate time' : 'Request my free estimate'}<ArrowRight size={18} /></Button>
         </form>}
-        {step === 'calendar' && !done && calendarUrl && previewMode && <div className="funnel-calendar">
+        {step === 'calendar' && !done && native && previewMode && <div className="funnel-calendar">
+          <p className="funnel-description">Your request is saved. Pick a time for a quick call with the team.</p>
+          <div className="funnel-preview-calendar">The HomeQuote calendar shows open times here for a real visitor{session?.booked_at ? ' (preview: booked)' : ''}.</div>
+          {!session?.booked_at && <Button className="funnel-primary" onClick={() => void save({ simulateBooking: true })}>Preview: simulate a booking</Button>}
+        </div>}
+        {step === 'calendar' && !done && native && !previewMode && <div className="funnel-calendar funnel-calendar-native" data-funnel-native-calendar="">
+          {demo ? <p className="funnel-description">In a published funnel, open times from the calendar show here. Nothing is booked in the demo.</p>
+            : session?.bookingTicket ? <BookingFlow grant={session.bookingTicket} heading={null} headingLevel={2}
+              intro={session.booked_at ? null : 'Your request is saved. Pick a time for a quick {minutes}-minute call with {host}.'}
+              onBooked={() => setSession(s => s && { ...s, booked_at: s.booked_at ?? new Date().toISOString() })} />
+            : <p className="funnel-description">Your request is saved. Online booking isn’t available right now, so the team will call you to set up a time.</p>}
+          {nativeBooked && vcard && <><p>Save our number so you recognise us when we call.</p><Button className="funnel-primary" type="button" onClick={() => saveToContacts(config)}><UserPlus size={18} /> Save {config.clientName} to my contacts</Button></>}
+        </div>}
+        {step === 'calendar' && !done && !native && calendarUrl && previewMode && <div className="funnel-calendar">
           <p className="funnel-description">{calendly ? 'Your request is saved. Pick the day and time that works for you.' : 'Pick the day and time that works for you.'}</p>
           <div className="funnel-preview-calendar">{calendly ? 'Calendly' : 'GHL'} calendar embeds here for a real visitor.<br />{calendarUrl.toString()}</div>
           <Button className="funnel-primary" onClick={() => void save({ simulateBooking: true })}>Preview: simulate a booking</Button>
           <p>Booking confirmation will appear here after the calendar confirms your appointment. If no times work, the team has your request and can follow up.</p>
         </div>}
-        {step === 'calendar' && !done && calendarUrl && !previewMode && <div className="funnel-calendar">
+        {step === 'calendar' && !done && !native && calendarUrl && !previewMode && <div className="funnel-calendar">
           <p className="funnel-description">{calendly ? 'Your request is saved. Pick the day and time that works for you.' : 'Pick the day and time that works for you.'}</p>
           <iframe title={`Book an estimate with ${config.clientName}`} src={calendlySrc ?? calendarUrl.toString()} referrerPolicy="strict-origin-when-cross-origin" allow="payment" />
           <p>Booking confirmation will appear here after the calendar confirms your appointment. If no times work, the team has your request and can follow up.</p>
         </div>}
         {done && <div className="funnel-result"><div className="funnel-success"><CheckCircle2 size={36} /></div><p>{demo ? 'You’ve completed the demo. In a published client funnel, these details reach HomeQuote and the connected CRM.' : session?.booked_at ? 'Your appointment has been confirmed. Please check your calendar confirmation for the details.' : config.thankYouPage.message}</p>
-          {buildContactVCard(config) && <><p>Save our number so you recognise us when we call about your estimate.</p><Button className="funnel-primary" type="button" onClick={() => saveToContacts(config)}><UserPlus size={18} /> Save {config.clientName} to my contacts</Button></>}</div>}
+          {vcard && <><p>Save our number so you recognise us when we call about your estimate.</p><Button className="funnel-primary" type="button" onClick={() => saveToContacts(config)}><UserPlus size={18} /> Save {config.clientName} to my contacts</Button></>}</div>}
         {error && <div className="funnel-error" role="alert">{error}{!session && <button onClick={() => void start()} disabled={busy}>Try again</button>}</div>}
         {busy && session && <span className="sr-only" role="status">Saving your progress</span>}
       </section>

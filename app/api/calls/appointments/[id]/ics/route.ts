@@ -4,6 +4,8 @@ import { createClient } from '@/lib/supabase/server';
 import { buildCalendar } from '@/lib/calendar/ics';
 import { siteUrl } from '@/lib/calendar/config';
 import { salesMeetingEvent } from '@/lib/calls/calendar-links';
+import { videoLinksFor } from '@/lib/video/rooms.server';
+import { ownMeetingLink } from '@/lib/video/links';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,6 +33,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   if (!a) return new NextResponse('Not found', { status: 404 });
 
   const prospect = (Array.isArray(a.prospect) ? a.prospect[0] : a.prospect) as { company_name: string; phone: string | null } | null;
+  const site = siteUrl();
+  const video = videoLinksFor('sales_appointment', a.id, { meetingType: a.appointment_type, ownLink: ownMeetingLink(a.contact_info), live: true }, site);
   const e = salesMeetingEvent(
     {
       id: a.id,
@@ -43,8 +47,9 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       appointmentType: a.appointment_type,
       contactInfo: a.contact_info,
       notes: a.notes,
+      videoUrl: video ? `${site}${video.hostHref}` : null,
     },
-    siteUrl()
+    site
   );
   const updatedMs = Date.parse(a.updated_at);
   const ics = buildCalendar(

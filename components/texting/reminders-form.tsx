@@ -5,16 +5,26 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { saveReminderSettings, type SmsActionState } from '@/lib/actions/sms';
-import { DEFAULT_REMINDER_CONFIG, MAX_REMINDER_TEMPLATE, REMINDER_PLACEHOLDERS, reminderTemplateProblem, renderReminder, type ReminderVars } from '@/lib/sms/reminder-config';
+import { DEFAULT_REMINDER_CONFIG, MAX_REMINDER_TEMPLATE, REMINDER_PLACEHOLDERS, reminderTemplateProblem, renderReminder, type RecoveryConfig, type ReminderVars } from '@/lib/sms/reminder-config';
 import { MEETING_STEPS, type FollowUpStep, type MeetingStep } from '@/lib/sms/reminder-plan';
 
 type Templates<K extends string> = Record<K, string>;
 export interface ReminderFormValue {
   contractor: { enabled: boolean; host: string; brand: string; templates: Templates<MeetingStep> };
   homeowner: { enabled: boolean; templates: Templates<MeetingStep> };
-  followups: { enabled: boolean; days: number[]; templates: Templates<FollowUpStep> };
+  followups: { enabled: boolean; days: number[]; keepGoing: boolean; everyDays: number; templates: Templates<FollowUpStep> };
   unconfirmedAlert: boolean;
+  recovery: RecoveryConfig;
 }
+
+/** Lead recovery switches (lib/booking/recovery.server.ts), with what each one sends. */
+const RECOVERY_ITEMS: { key: keyof RecoveryConfig; label: string; hint: string }[] = [
+  { key: 'speedAlert', label: 'Speed-to-lead alert', hint: 'The moment a funnel or estimator lead comes in, and again when they book: a push to you and the calendar’s hosts and an email with their picks, ballpark, a tap-to-call link and the lead.' },
+  { key: 'noShow', label: 'No-show follow-up', hint: '30 minutes after a call or visit is marked no-show: “Sorry we missed you! Want to pick a new time?” by text (reply R) and email (with the link). Once per appointment.' },
+  { key: 'heldPrompt', label: 'Ask me if a call happened', hint: 'A push to the host 30 minutes after a calendar call ends if it’s still “scheduled”, to mark it held or no-show. Never changes it by itself.' },
+  { key: 'missedCall', label: '“Couldn’t reach them” button', hint: 'On a call in the Calendar: texts and emails them a link to pick a new time, at most once every 6 hours.' },
+  { key: 'unbooked', label: 'Follow up when they don’t book a call', hint: '2 hours after they give their details without booking: one text (“your design and ballpark are ready, want a quick call?”) and one email with their design and a link to pick a time. Never once they booked, opted out, or someone texted or called them.' },
+];
 
 const MEETING_WHEN: Record<MeetingStep, { label: string; when: string; sampleWhen: string }> = {
   booked: { label: 'Booked', when: 'Right after it’s booked', sampleWhen: 'Thursday, Nov 6 at 2:00 PM' },
@@ -72,7 +82,8 @@ export function RemindersForm({ value }: { value: ReminderFormValue }) {
   const days = daysText.split(/[\s,]+/).filter(Boolean).map(Number);
   const daysProblem = days.some((n) => !Number.isInteger(n) || n < 1 || n > 30) ? 'Use whole days from 1 to 30.' : new Set(days).size !== days.length || days.length < 1 || days.length > 3 ? 'Pick one to three different days.' : null;
   const templates = [...Object.values(cfg.contractor.templates), ...Object.values(cfg.homeowner.templates), ...Object.values(cfg.followups.templates)];
-  const anyProblem = !!daysProblem || templates.some((t) => !!reminderTemplateProblem(t));
+  const everyProblem = cfg.followups.keepGoing && (!Number.isInteger(cfg.followups.everyDays) || cfg.followups.everyDays < 2 || cfg.followups.everyDays > 30) ? 'Use 2 to 30 days.' : null;
+  const anyProblem = !!daysProblem || !!everyProblem || templates.some((t) => !!reminderTemplateProblem(t));
   const payload = JSON.stringify({ ...cfg, followups: { ...cfg.followups, days } });
   const set = <K extends keyof ReminderFormValue>(k: K, v: Partial<ReminderFormValue[K]>) => setCfg((c) => ({ ...c, [k]: typeof c[k] === 'object' ? { ...(c[k] as object), ...v } : v }));
   const host = cfg.contractor.host.trim() || d.contractor.host;
@@ -104,12 +115,12 @@ export function RemindersForm({ value }: { value: ReminderFormValue }) {
       </section>
 
       <section className="space-y-3 rounded-lg border p-4">
-        <Toggle checked={cfg.homeowner.enabled} onChange={(v) => set('homeowner', { enabled: v })} label="Homeowner appointments" hint="Estimate visits booked on a lead. Texts come from the contractor’s texting name." />
+        <Toggle checked={cfg.homeowner.enabled} onChange={(v) => set('homeowner', { enabled: v })} label="Homeowner appointments" hint="Estimate visits booked on a lead, and calls homeowners book on a HomeQuote calendar ({how} reads “free estimate visit” or “quick 10-minute call”; a call’s booking confirmation text replaces the Booked step). Texts come from the contractor’s texting name." />
         {cfg.homeowner.enabled && (
           <ol className="space-y-4 border-l [&>li]:-ml-[5px]">
             {MEETING_STEPS.map((s) => (
               <StepEditor key={s} id={`rem_h_${s}`} label={MEETING_WHEN[s].label} when={MEETING_WHEN[s].when} value={cfg.homeowner.templates[s]} fallback={d.homeowner.templates[s]}
-                vars={{ first_name: 'Sam', host: 'Acme Remodeling', when: MEETING_WHEN[s].sampleWhen }}
+                vars={{ first_name: 'Sam', host: 'Acme Remodeling', how: 'free estimate visit', when: MEETING_WHEN[s].sampleWhen }}
                 onChange={(v) => set('homeowner', { templates: { ...cfg.homeowner.templates, [s]: v } })} />
             ))}
           </ol>
@@ -117,15 +128,25 @@ export function RemindersForm({ value }: { value: ReminderFormValue }) {
       </section>
 
       <section className="space-y-3 rounded-lg border p-4">
-        <Toggle checked={cfg.followups.enabled} onChange={(v) => set('followups', { enabled: v })} label="Follow up when a homeowner doesn’t reply" hint="Stops as soon as they reply, text STOP, or a person takes over. After the last one the request is closed; a reply opens it again." />
+        <Toggle checked={cfg.followups.enabled} onChange={(v) => set('followups', { enabled: v })} label="Follow up when a homeowner doesn’t reply" hint={cfg.followups.keepGoing ? 'Stops as soon as they reply, book, text STOP, or a person takes over.' : 'Stops as soon as they reply, text STOP, or a person takes over. After the last one the request is closed; a reply opens it again.'} />
         {cfg.followups.enabled && (<>
           <div className="max-w-xs space-y-1.5">
             <Label htmlFor="rem_days">Days after the first text</Label>
             <Input id="rem_days" value={daysText} inputMode="numeric" onChange={(e) => setDaysText(e.target.value)} placeholder="1, 3, 7" aria-invalid={!!daysProblem} />
             {daysProblem ? <p role="alert" className="text-xs text-destructive">{daysProblem}</p> : <p className="text-xs text-muted-foreground">Up to three, e.g. 1, 3, 7.</p>}
           </div>
+          <Toggle checked={cfg.followups.keepGoing} onChange={(v) => set('followups', { keepGoing: v })} label="Keep texting until they reply or text STOP"
+            hint={`After the follow-ups, one text every ${cfg.followups.everyDays} days with no end date: a different line each time, often with real open times, ending “Text STOP to stop these.” The last follow-up below is then not sent. Many texts with no reply can get your number reported as junk.`} />
+          {cfg.followups.keepGoing && (
+            <div className="max-w-xs space-y-1.5">
+              <Label htmlFor="rem_every">Every how many days</Label>
+              <Input id="rem_every" type="number" min={2} max={30} value={cfg.followups.everyDays} onChange={(e) => set('followups', { everyDays: Number(e.target.value) })} aria-invalid={!!everyProblem} />
+              {everyProblem ? <p role="alert" className="text-xs text-destructive">{everyProblem}</p> : null}
+            </div>
+          )}
           <ol className="space-y-4 border-l [&>li]:-ml-[5px]">
-            {[...sortedDays.map((day, i) => ({ step: (i === sortedDays.length - 1 ? 'final' : (['first', 'second'] as const)[i]) as FollowUpStep, when: `Day ${day}, if they never replied` })),
+            {[...sortedDays.map((day, i) => ({ step: (i === sortedDays.length - 1 ? 'final' : (['first', 'second'] as const)[i]) as FollowUpStep, when: `Day ${day}, if they never replied` }))
+              .filter((x) => !(cfg.followups.keepGoing && x.step === 'final')),
               { step: 'nudge' as const, when: 'They replied, then went quiet on our question' }, { step: 'nudge_last' as const, when: 'Still quiet 3 days after their last reply' }].map(({ step: s, when }) => (
               <StepEditor key={s} id={`rem_f_${s}`} label={FOLLOW_LABEL[s]} when={when} value={cfg.followups.templates[s]} fallback={d.followups.templates[s]}
                 vars={{ first_name: 'Sam', project: 'bathroom remodel', sender: 'HomeQuote' }}
@@ -133,6 +154,14 @@ export function RemindersForm({ value }: { value: ReminderFormValue }) {
             ))}
           </ol>
         </>)}
+      </section>
+
+      <section className="space-y-3 rounded-lg border p-4" aria-labelledby="rem_recovery">
+        <h3 id="rem_recovery" className="text-sm font-semibold">Lead recovery</h3>
+        <p className="text-xs text-muted-foreground">Texts follow the same texting rules and never carry links (the emails do). Each one goes out once.</p>
+        {RECOVERY_ITEMS.map((item) => (
+          <Toggle key={item.key} checked={cfg.recovery[item.key]} onChange={(v) => setCfg((c) => ({ ...c, recovery: { ...c.recovery, [item.key]: v } }))} label={item.label} hint={item.hint} />
+        ))}
       </section>
 
       <p className="text-xs text-muted-foreground">Fill-ins: {REMINDER_PLACEHOLDERS.map((p) => <code key={p} className="mx-0.5 rounded bg-muted px-1">{p}</code>)}. Links are removed.</p>

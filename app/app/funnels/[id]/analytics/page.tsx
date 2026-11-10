@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireRole } from '@/lib/auth';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { funnelSchema } from '@/lib/funnels/schema';
+import { funnelSchema, hasCalendarStep } from '@/lib/funnels/schema';
 import { conversion, type FunnelCounts } from '@/lib/funnels/analytics';
 import type { FunnelStatus } from '@/lib/funnels/builder';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -60,7 +60,7 @@ export default async function FunnelAnalyticsPage({ params }: { params: Promise<
         <Card><CardHeader><CardTitle>Question dropoff</CardTitle></CardHeader><CardContent><Table><TableHeader><TableRow><TableHead>Question</TableHead><TableHead>Viewed</TableHead><TableHead>Completed</TableHead><TableHead>Completion</TableHead><TableHead>Dropoff</TableHead></TableRow></TableHeader><TableBody>{config.questions.map(q => { const viewed = count('step_viewed', q.id); const completed = count('step_completed', q.id); return <TableRow key={q.id}><TableCell>{q.headline}{q.showWhen.length ? ' (conditional)' : ''}</TableCell><TableCell>{viewed}</TableCell><TableCell>{completed}</TableCell><TableCell>{conversion(completed, viewed)}</TableCell><TableCell>{conversion(Math.max(0, viewed - completed), viewed)}</TableCell></TableRow>; })}</TableBody></Table><p className="mt-4 text-xs text-muted-foreground">Branch questions use only sessions that saw that question. Each session is counted once per event. In-progress sessions are included.</p></CardContent></Card>
         {!funnel.is_demo && <Card><CardHeader><CardTitle>Recent submissions</CardTitle></CardHeader><CardContent>{recent?.length ? <Table><TableHeader><TableRow><TableHead>Submitted</TableHead><TableHead>Lead</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>{recent.map(r => {
           const lead = (Array.isArray(r.lead) ? r.lead[0] : r.lead) as { first_name: string | null; last_name: string | null } | null;
-          const rowStatus = r.booked_at ? 'Appointment booked' : r.qualified ? (config.calendarUrl ? 'Submitted, not booked' : 'Submitted') : 'Needs review';
+          const rowStatus = r.booked_at ? 'Appointment booked' : r.qualified ? (hasCalendarStep(config) ? 'Submitted, not booked' : 'Submitted') : 'Needs review';
           return <TableRow key={r.id}><TableCell>{new Date(r.contact_submitted_at!).toLocaleString('en-US', { timeZone: 'America/Los_Angeles', dateStyle: 'medium', timeStyle: 'short' })}</TableCell>
             <TableCell>{r.lead_id ? <Link className="underline" href={`/app/leads/${r.lead_id}`}>{[lead?.first_name, lead?.last_name].filter(Boolean).join(' ') || 'View lead'}</Link> : '—'}</TableCell>
             <TableCell>{rowStatus}</TableCell></TableRow>;

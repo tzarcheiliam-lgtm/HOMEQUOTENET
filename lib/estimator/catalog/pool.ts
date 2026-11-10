@@ -33,9 +33,9 @@ export const POOL_CATALOG: EstimatorCatalog = {
   ],
   coping: [
     ...fromTemplate('coping'),
-    { id: 'precast', label: 'Precast concrete', note: 'Shaped concrete with a finished edge', price: { unit: 'perimeter_lf', low: 45, high: 65 } },
     { id: 'poured_in_place', label: 'Poured-in-place concrete', note: 'Cast on site, seamless look', price: { unit: 'perimeter_lf', low: 40, high: 65 } },
-    { id: 'porcelain', label: 'Porcelain', note: 'Thick porcelain pavers', price: { unit: 'perimeter_lf', low: 60, high: 90 } },
+    // The Pool Masters funnel's Luxe coping (swapped in for "Help me choose" in content/estimators/pool-masters.ts).
+    { id: 'porcelain', label: 'Porcelain', note: 'Thick porcelain pavers', swatch: 'porcelain_deck', price: { unit: 'perimeter_lf', low: 60, high: 90 } },
     { id: 'brick', label: 'Brick', note: 'Traditional brick edge', price: { unit: 'perimeter_lf', low: 45, high: 70 } },
     { id: 'bluestone_limestone', label: 'Bluestone or limestone', note: 'Cut natural stone', price: { unit: 'perimeter_lf', low: 70, high: 110 } },
   ],

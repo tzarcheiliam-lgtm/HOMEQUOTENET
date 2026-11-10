@@ -11,7 +11,7 @@ import {
   refreshAccessToken,
   upsertEvent,
 } from '@/lib/calendar/google';
-import { decryptCalendarSecret, encryptCalendarSecret, googleCalendarReady } from '@/lib/calendar/config';
+import { decryptCalendarSecret, encryptCalendarSecret, googleCalendarConfig, googleCalendarReady } from '@/lib/calendar/config';
 
 const json = (status: number, body: unknown = {}) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 const event = { summary: 's', description: 'd', startIso: '2026-10-20T16:00:00.000Z', endIso: '2026-10-20T17:00:00.000Z' };
@@ -84,5 +84,25 @@ describe('google calendar client', () => {
     expect(googleCalendarReady()).toBe(true);
     delete process.env.GOOGLE_CALENDAR_CLIENT_ID;
     expect(googleCalendarReady()).toBe(false);
+  });
+
+  it('falls back to the Gmail OAuth client (same Google project) with the calendar callback on the site', () => {
+    for (const k of ['GOOGLE_CALENDAR_CLIENT_ID', 'GOOGLE_CALENDAR_CLIENT_SECRET', 'GOOGLE_CALENDAR_REDIRECT_URI']) delete process.env[k];
+    process.env.GOOGLE_GMAIL_CLIENT_ID = 'gmail-id';
+    process.env.GOOGLE_GMAIL_CLIENT_SECRET = 'gmail-secret';
+    process.env.NEXT_PUBLIC_SITE_URL = 'https://homequote.test/';
+    try {
+      expect(googleCalendarConfig()).toEqual({
+        clientId: 'gmail-id',
+        clientSecret: 'gmail-secret',
+        redirectUri: 'https://homequote.test/api/integrations/google-calendar/oauth/callback',
+      });
+      expect(googleCalendarReady()).toBe(true);
+      // A half-set calendar client is a mistake, not a reason to borrow Gmail's.
+      process.env.GOOGLE_CALENDAR_CLIENT_ID = 'cal-only';
+      expect(googleCalendarConfig()).toBeNull();
+    } finally {
+      for (const k of ['GOOGLE_GMAIL_CLIENT_ID', 'GOOGLE_GMAIL_CLIENT_SECRET', 'NEXT_PUBLIC_SITE_URL']) delete process.env[k];
+    }
   });
 });

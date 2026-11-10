@@ -25,8 +25,9 @@ export const POOL_MASTERS_ESTIMATOR: ContractorEstimatorConfig = {
   financingDisclosure:
     'Financing is provided by third-party lenders, including Lyon Financial, and is subject to credit approval. Pool Masters LA is not a lender and does not make credit decisions, set rates, or guarantee approval. All financing terms, rates and monthly payments are determined by the lender based on your application.',
   funnelSlug: 'pool-masters',
-  // Same booking link as content/funnels/clients/pool-masters-la.json.
-  calendarUrl: 'https://calendly.com/homequotenetwork/30min',
+  // Books a quick free 10-minute call (Liam) on Pool Masters' own HomeQuote calendar (as the
+  // pool-masters funnel, content/funnels/clients/pool-masters-la.json); no Calendly.
+  calendarProvider: 'homequote',
   // The simple mobile funnel (landing, three taps, contact, then the range and booking):
   // prices never reach the browser before the contact step. The one-page
   // configurator spec stays attached (the funnel reuses its rows and photos).
@@ -37,7 +38,13 @@ export const POOL_MASTERS_ESTIMATOR: ContractorEstimatorConfig = {
   // Mirrors the funnel's trackingPixels.consentMode.
   adMeasurement: 'opt_out',
   pricesConfirmed: false,
-  options: Object.fromEntries(Object.entries(POOL_MASTERS_OPTION_IMAGES).map(([key, image]) => [key, { image }])),
+  options: {
+    ...Object.fromEntries(Object.entries(POOL_MASTERS_OPTION_IMAGES).map(([key, image]) => [key, { image }])),
+    // The funnel's Luxe finish has porcelain coping (from the catalog); "Help me choose" makes room for it
+    // (the coping question allows four options, and the funnel never asks it).
+    'coping.porcelain': { enabled: true },
+    'coping.unsure': { enabled: false },
+  },
   gallery: POOL_MASTERS_GALLERY,
   // From the brochure (V3): licensed & insured, serving SoCal since 2010, complimentary on-site estimates.
   facts: ['Licensed & insured', 'Serving SoCal since 2010', 'Free on-site estimate'],

@@ -113,8 +113,6 @@ export default async function ApplyPage({
                 <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm">
                   <a
                     href={site.contact.booking}
-                    target="_blank"
-                    rel="noopener noreferrer"
                     className="inline-block py-2 font-semibold text-[var(--hq-accent-bright)] hover:underline"
                   >
                     Book a call →

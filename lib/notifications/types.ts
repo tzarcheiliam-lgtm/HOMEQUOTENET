@@ -15,6 +15,7 @@ export const NOTIFICATION_TYPES = [
   { id: 'form_submission', label: 'Form submissions', description: 'A funnel or form is submitted.', roles: ['admin'] },
   { id: 'payment_received', label: 'Payments', description: 'A payment is confirmed.', roles: ['admin'] },
   { id: 'workflow_alert', label: 'Automation alerts', description: 'An automation raises an alert.', roles: ['admin', 'contractor'] },
+  { id: 'video_guest_joined', label: 'Video call guest joined', description: 'Someone joins your HomeQuote video call before you do.', roles: ['admin', 'setter', 'caller'] },
 ] as const satisfies readonly { id: string; label: string; description: string; roles: readonly UserRole[] }[];
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number]['id'];
@@ -106,6 +107,7 @@ export const ALLOWED_AUDIENCES: Record<NotificationType, readonly Audience[]> = 
   callback_due: ['admins', 'assigned_caller'],
   payment_received: ['admins'],
   workflow_alert: ['admins'],
+  video_guest_joined: ['admins', 'assigned_setter', 'assigned_caller'],
 };
 
 const rule = (...on: Audience[]): RoutingRule => ({
@@ -127,4 +129,6 @@ export const DEFAULT_ROUTING: Record<NotificationType, RoutingRule> = {
   callback_due: rule('assigned_caller'),
   payment_received: rule('admins'),
   workflow_alert: rule('admins'),
+  // The meeting's own rep (link host, sales meeting partner / booker) and the admins who run sales calls.
+  video_guest_joined: rule('admins', 'assigned_setter', 'assigned_caller'),
 };

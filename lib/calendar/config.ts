@@ -15,12 +15,27 @@ function env(name: string): string | undefined {
   return process.env[name]?.trim() || undefined;
 }
 
+/** The calendar OAuth callback (registered as an authorized redirect URI on the Google OAuth client). */
+export const CALENDAR_CALLBACK_PATH = '/api/integrations/google-calendar/oauth/callback';
+
+/**
+ * The calendar's own OAuth client when GOOGLE_CALENDAR_* are set; otherwise the
+ * Gmail OAuth client (same Google Cloud project, GOOGLE_GMAIL_CLIENT_ID/_SECRET)
+ * with the calendar callback on NEXT_PUBLIC_SITE_URL. That client must have the
+ * Google Calendar API enabled and this callback as an authorized redirect URI.
+ */
 export function googleCalendarConfig(): { clientId: string; clientSecret: string; redirectUri: string } | null {
   const clientId = env('GOOGLE_CALENDAR_CLIENT_ID');
   const clientSecret = env('GOOGLE_CALENDAR_CLIENT_SECRET');
   const redirectUri = env('GOOGLE_CALENDAR_REDIRECT_URI');
-  if (!clientId || !clientSecret || !redirectUri) return null;
-  return { clientId, clientSecret, redirectUri };
+  if (clientId && clientSecret && redirectUri) return { clientId, clientSecret, redirectUri };
+  const gmailId = env('GOOGLE_GMAIL_CLIENT_ID');
+  const gmailSecret = env('GOOGLE_GMAIL_CLIENT_SECRET');
+  const site = env('NEXT_PUBLIC_SITE_URL');
+  if (!clientId && !clientSecret && gmailId && gmailSecret && site) {
+    return { clientId: gmailId, clientSecret: gmailSecret, redirectUri: redirectUri ?? `${site.replace(/\/$/, '')}${CALENDAR_CALLBACK_PATH}` };
+  }
+  return null;
 }
 
 /** Dedicated key if set, otherwise the existing Gmail token key (same AES-256-GCM scheme). */

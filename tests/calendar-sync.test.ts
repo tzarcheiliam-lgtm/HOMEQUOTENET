@@ -12,11 +12,17 @@ const h = vi.hoisted(() => ({
 }));
 
 function builder(table: string) {
-  const filters: [string, unknown, 'eq' | 'in'][] = [];
+  const filters: [string, unknown, 'eq' | 'in' | 'is' | 'gte' | 'lte'][] = [];
   let mode: 'select' | 'update' | 'delete' = 'select';
   let patch: Row = {};
   const rows = () => h.tables[table] ?? (h.tables[table] = []);
-  const match = (r: Row) => filters.every(([k, v, op]) => (op === 'in' ? (v as unknown[]).includes(r[k]) : r[k] === v));
+  const match = (r: Row) =>
+    filters.every(([k, v, op]) =>
+      op === 'in' ? (v as unknown[]).includes(r[k])
+      : op === 'is' ? (r[k] ?? null) === v
+      : op === 'gte' ? r[k] >= (v as string)
+      : op === 'lte' ? r[k] <= (v as string)
+      : r[k] === v);
   const run = () => {
     const hit = rows().filter(match);
     if (mode === 'update') hit.forEach((r) => Object.assign(r, patch));
@@ -27,6 +33,11 @@ function builder(table: string) {
     select: () => api,
     eq: (k: string, v: unknown) => (filters.push([k, v, 'eq']), api),
     in: (k: string, v: unknown[]) => (filters.push([k, v, 'in']), api),
+    is: (k: string, v: unknown) => (filters.push([k, v, 'is']), api),
+    gte: (k: string, v: unknown) => (filters.push([k, v, 'gte']), api),
+    lte: (k: string, v: unknown) => (filters.push([k, v, 'lte']), api),
+    limit: () => api,
+    order: () => api,
     update: (p: Row) => ((mode = 'update'), (patch = p), api),
     delete: () => ((mode = 'delete'), api),
     maybeSingle: async () => ({ data: run().data?.[0] ?? null, error: null }),
@@ -37,7 +48,14 @@ function builder(table: string) {
       else rows().push({ ...row });
       return { error: null };
     },
-    insert: async (row: Row) => (rows().push({ ...row }), { error: null }),
+    insert: async (row: Row) => {
+      // The partial unique index: one pending job per kind + item.
+      if (table === 'calendar_sync_jobs' && rows().some((r) => !r.processed_at && (r.kind ?? 'appointment') === (row.kind ?? 'appointment') && r.appointment_id === row.appointment_id)) {
+        return { error: { message: 'duplicate key' } };
+      }
+      rows().push({ ...row });
+      return { error: null };
+    },
     then: (resolve: (v: unknown) => void) => resolve(run()),
   };
   return api;

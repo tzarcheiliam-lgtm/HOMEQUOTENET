@@ -4,14 +4,16 @@ import './funnel.css';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import { stepOptionPhotos } from '@/lib/estimator/funnel/engine';
+import { activeSteps, designRecap, normalizeFunnelSelection, stepOptionPhotos, stepPhotoFrame } from '@/lib/estimator/funnel/engine';
 import type { FunnelSelection, FunnelSpec } from '@/lib/estimator/funnel/types';
 import type { ContractorEstimatorConfig, EstimatorTemplate } from '@/lib/estimator/types';
+import { FunnelAddressScreen } from './address/funnel-address';
 import { FunnelFooter, FunnelLogo } from './chrome';
 import type { FunnelLeadResult } from './screens';
 import { FunnelBookingScreen, FunnelContactScreen } from './slots';
 import { StepPhoto } from './step-photo';
 import {
+  clampScreen,
   nextScreen,
   parseScreen,
   prevScreen,
@@ -106,6 +108,8 @@ export function Funnel({
     let scr = screenRef.current;
     // The booking step needs a lead sent for these picks; without one (new tab, cleared storage, edited URL) the contact step opens.
     if (scr.kind === 'book' && !resultFor(spec, res, sel)) scr = { kind: 'contact' };
+    // Stored picks with fewer follow-up steps than the URL's ?step=: the path's last step.
+    scr = clampScreen(spec, scr, sel);
     setSelection(sel);
     setResult(res);
     setScreen(scr);
@@ -113,10 +117,11 @@ export function Funnel({
     setHydrated(true);
 
     const onPop = () => {
-      let next = parseScreen(spec, new URLSearchParams(window.location.search).get('step'));
+      const sel = selectionRef.current;
+      let next = clampScreen(spec, parseScreen(spec, new URLSearchParams(window.location.search).get('step'), sel), sel);
       if (next.kind === 'book' && !currentRef.current) next = { kind: 'contact' };
       const cur = screenRef.current;
-      setDirection(screenOrder(spec, next) < screenOrder(spec, cur) ? 'back' : 'fwd');
+      setDirection(screenOrder(spec, next, sel) < screenOrder(spec, cur, sel) ? 'back' : 'fwd');
       setScreen(next);
       // An older entry carries the picks of its time: keep the current ones.
       window.history.replaceState(window.history.state, '', screenUrl(spec, window.location.pathname, next, selectionRef.current, window.location.search));
@@ -156,7 +161,8 @@ export function Funnel({
     (next: FunnelScreen) => {
       const cur = screenRef.current;
       if (sameScreen(cur, next)) return;
-      setDirection(screenOrder(spec, next) < screenOrder(spec, cur) ? 'back' : 'fwd');
+      const sel = selectionRef.current;
+      setDirection(screenOrder(spec, next, sel) < screenOrder(spec, cur, sel) ? 'back' : 'fwd');
       setScreen(next);
       const state: HistoryState = { fn: screenParam(next), fnFrom: screenParam(cur) };
       window.history.pushState(state, '', screenUrl(spec, window.location.pathname, next, selectionRef.current, window.location.search));
@@ -166,7 +172,7 @@ export function Funnel({
 
   const back = useCallback(() => {
     const cur = screenRef.current;
-    const prev = prevScreen(spec, cur);
+    const prev = prevScreen(spec, cur, selectionRef.current);
     if (!prev) return;
     const state = window.history.state as HistoryState;
     // We pushed this entry from the previous screen: the browser's Back is the same move (and keeps history tidy).
@@ -193,7 +199,7 @@ export function Funnel({
 
   useEffect(() => {
     if (!hydrated || screen.kind !== 'step') return;
-    const next = spec.steps[screen.index + 1];
+    const next = activeSteps(spec, selection)[screen.index + 1];
     if (!next) return;
     const t = window.setTimeout(() => {
       for (const p of Object.values(stepOptionPhotos(spec, next.id, selection))) {
@@ -213,8 +219,8 @@ export function Funnel({
 
   /* ---------------- Render ---------------- */
 
-  const label = stepLabel(spec, screen);
-  const canGoBack = screen.kind !== 'book' && prevScreen(spec, screen) !== null;
+  const label = stepLabel(spec, screen, selection);
+  const canGoBack = screen.kind !== 'book' && prevScreen(spec, screen, selection) !== null;
   const enter = direction === 'back' ? 'fn-enter-back' : direction === 'fwd' ? 'fn-enter-fwd' : '';
   // The embed layout already wraps the page in <main id="main">.
   const Main = embedded ? 'div' : 'main';
@@ -225,27 +231,38 @@ export function Funnel({
         <header className="mx-auto flex h-[46px] w-full max-w-[1120px] items-center px-5 sm:px-8 lg:h-[68px]">
           <Link href={homeHref ?? `/estimator/${slug}`} aria-label={`${contractor.contractorName} home`} className="-mx-1 rounded-[4px] px-1 py-1 focus-visible:outline-2 focus-visible:outline-[var(--fn-blue)]">
             <span className="lg:hidden">
-              <FunnelLogo contractor={contractor} height={26} priority />
+              <FunnelLogo contractor={contractor} logo={spec.landing.logo} height={26} priority />
             </span>
             <span className="hidden lg:block">
-              <FunnelLogo contractor={contractor} height={32} />
+              <FunnelLogo contractor={contractor} logo={spec.landing.logo} height={32} />
             </span>
           </Link>
         </header>
       )}
       <Main id={embedded ? undefined : 'main'} className={`flex-1 ${embedded ? 'pt-3' : ''}`}>
         <div className="mx-auto w-full max-w-[624px] px-8 pb-12 lg:pb-16 lg:pt-2">
-          {label ? <StepBar label={label} value={progress(spec, screen)} onBack={canGoBack ? back : undefined} /> : null}
+          {label ? <StepBar label={label} value={progress(spec, screen, selection)} onBack={canGoBack ? back : undefined} /> : null}
           <div key={screenParam(screen)} className={enter}>
-            {screen.kind === 'step' ? (
+            {screen.kind === 'address' ? (
+              // Roofing: the address and the roof, before the design steps.
+              <FunnelAddressScreen
+                slug={slug}
+                spec={spec}
+                missing={missing}
+                headingId={HEADING_ID}
+                onContinue={() => go(nextScreen(spec, screen, selectionRef.current))}
+                onRoofChange={() => setResult(null)}
+              />
+            ) : screen.kind === 'step' ? (
               <StepScreen
                 spec={spec}
                 index={screen.index}
                 selection={selection}
                 missing={missing}
                 first={screen.index === 0}
-                onPick={(stepId, optionId) => setSelection((s) => ({ ...s, [stepId]: optionId }))}
-                onContinue={() => go(nextScreen(spec, screen))}
+                // Normalized: a changed "Add the extras." drops the follow-up picks that no longer apply.
+                onPick={(stepId, optionId) => setSelection((s) => normalizeFunnelSelection(spec, { ...s, [stepId]: optionId }))}
+                onContinue={() => go(nextScreen(spec, screen, selectionRef.current))}
               />
             ) : screen.kind === 'contact' ? (
               <div className="min-h-[560px] pt-[22px] lg:pt-10">
@@ -292,7 +309,7 @@ export function Funnel({
   );
 }
 
-/** "STEP 2 OF 3" over a thin progress bar, with the back arrow in the gutter. */
+/** "STEP 2 OF 3" (of 4 or 7 with follow-ups) over a thin progress bar, with the back arrow in the gutter. */
 function StepBar({ label, value, onBack }: { label: string; value: number; onBack?: () => void }) {
   return (
     <div className="relative pl-[26px] pt-[7px] lg:pt-3">
@@ -339,7 +356,7 @@ function StepScreen({
   onPick: (stepId: string, optionId: string) => void;
   onContinue: () => void;
 }) {
-  const step = spec.steps[index];
+  const step = activeSteps(spec, selection)[index] ?? spec.steps[0];
   const picked = selection[step.id];
   const photos = useMemo(
     () => Object.entries(stepOptionPhotos(spec, step.id, selection)).map(([id, p]) => [id, resolvePhoto(p, missing)] as [string, ReturnType<typeof resolvePhoto>]),
@@ -349,7 +366,10 @@ function StepScreen({
     e.preventDefault();
     onContinue();
   };
-  const isView = step.photo.kind === 'view';
+  // The step's (or the spec's) framing; the pool's default: plans and follow-ups on white zoomed in, views cover.
+  const frame = useMemo(() => stepPhotoFrame(spec, step), [spec, step]);
+  // "Your design: Full bath · Luxe · Walk-in shower": the picks so far, growing with each tap (bathroom / kitchen).
+  const recap = designRecap(spec, selection, index);
 
   return (
     <form onSubmit={onSubmit} noValidate>
@@ -357,11 +377,17 @@ function StepScreen({
         <StepPhoto
           photos={photos}
           selected={picked}
-          fit={isView ? 'cover' : 'contain'}
+          frame={frame}
           priority={first}
         />
+        {recap.length > 0 && spec.designRecap ? (
+          <p className="fn-recap mt-[6px] truncate text-[13px] leading-[16px] text-[var(--fn-muted)] lg:mt-3 lg:text-[14px] lg:leading-[20px]" aria-live="polite">
+            <span className="font-[520] text-[var(--fn-ink)]">{spec.designRecap.label}:</span> {recap.join(' · ')}
+          </p>
+        ) : null}
       </div>
-      <h1 id={HEADING_ID} tabIndex={-1} className="fn-h1 mt-[18px] text-balance outline-none lg:mt-7">
+      {/* With the recap the question moves up by about as much, so the button stays on screen (iPhone 14 Pro: 660 px). */}
+      <h1 id={HEADING_ID} tabIndex={-1} className={`fn-h1 ${recap.length > 0 && spec.designRecap ? 'mt-[10px] lg:mt-5' : 'mt-[18px] lg:mt-7'} text-balance outline-none`}>
         {step.label}
       </h1>
       <fieldset className="mt-5 lg:mt-6">
@@ -387,7 +413,7 @@ function StepScreen({
         </div>
       </fieldset>
       <button type="submit" className="fn-btn mt-[13px] h-[47px] w-full text-[17px] lg:mt-4 lg:h-[52px] lg:text-[18px]">
-        {stepCta(spec, index)}
+        {stepCta(spec, index, selection)}
       </button>
     </form>
   );
