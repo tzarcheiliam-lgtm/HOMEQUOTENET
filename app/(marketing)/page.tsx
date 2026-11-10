@@ -1,11 +1,10 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Check, X } from 'lucide-react';
 import { site } from '@/content/site';
 import { industries } from '@/content/industries';
 import { Container } from '@/components/marketing/primitives';
 import { FaqJsonLd } from '@/components/marketing/faq';
-import { WeeklyReport } from '@/components/marketing/mk-report';
 import { StickyCta } from '@/components/marketing/mk-sticky-cta';
 import { baseOpenGraph } from '@/lib/site-metadata';
 import './marketer.css';
@@ -25,40 +24,22 @@ export const metadata: Metadata = {
 const CTA_HREF = site.contact.booking;
 const CTA_LABEL = 'Check if we’re a fit';
 
-const versus = [
-  { them: 'You pay for every lead, good or bad', us: 'One flat monthly fee for the marketing work' },
-  { them: 'The same inquiry can go to several contractors', us: 'We do not sell or resell leads. Campaigns run for your company' },
-  { them: 'Reports stop at clicks and cost per lead', us: 'Reports follow spend, inquiries, booked estimates, shows and estimates sent' },
-  { them: 'You race everyone else to the phone', us: 'A speed-to-lead follow-up system contacts new inquiries fast' },
+const scope = [
+  { item: 'Strategy and setup', body: 'Targeting, offer and launch plan built around your trade, your area and the jobs you want.' },
+  { item: 'Meta and Google ads', body: 'Campaigns created, managed, tested and optimized for you.' },
+  { item: 'Creative and ad copy', body: 'Angles and copy written to get homeowners to raise their hand.' },
+  { item: 'Landing page and lead capture', body: 'A dedicated page and form with qualification questions, so inquiries are worth calling.' },
+  { item: 'Speed-to-lead follow-up', body: 'New inquiries are contacted fast so they do not go cold.' },
+  { item: 'Appointment flow', body: 'Support moving qualified inquiries into scheduled estimates.' },
+  { item: 'Tracking and reporting', body: 'Spend, leads, cost per lead, appointments and lead quality, in plain numbers.' },
+  { item: 'Weekly optimization, monthly review', body: 'We tune campaigns every week and go through the month with you.' },
 ];
 
-const services = [
-  { title: 'Strategy and setup', body: 'Targeting, offer and launch plan built around your trade, your area and the jobs you want.' },
-  { title: 'Meta and Google ads', body: 'Campaigns created, managed, tested and optimized for you.' },
-  { title: 'Creative and ad copy', body: 'Angles and copy written to get homeowners to raise their hand.' },
-  { title: 'Landing page and lead capture', body: 'A dedicated page and form with qualification questions, so inquiries are worth calling.' },
-  { title: 'Speed-to-lead follow-up', body: 'New inquiries are contacted fast so they do not go cold.' },
-  { title: 'Appointment flow', body: 'Support moving qualified inquiries into scheduled estimates.' },
-  { title: 'Tracking and reporting', body: 'Spend, leads, cost per lead, appointments and lead quality, in plain numbers.' },
-  { title: 'Weekly optimization, monthly review', body: 'We tune campaigns every week and review the month with you.' },
-];
-
-const flow = [
-  { n: '1', title: 'Ad', body: 'Your campaign reaches homeowners planning your kind of project.', you: false },
-  { n: '2', title: 'Landing page', body: 'A page and form qualify the inquiry.', you: false },
-  { n: '3', title: 'Follow-up', body: 'Our system contacts it fast.', you: false },
-  { n: '4', title: 'Booked estimate', body: 'It lands on your calendar.', you: false },
-  { n: '5', title: 'You close', body: 'You run the estimate and win the job.', you: true },
-];
-
-const weHandle = ['Campaigns and ad optimization', 'Landing page and funnel', 'Follow-up and booking support', 'Weekly reporting'];
-const youHandle = ['Answer new inquiries quickly', 'Keep calendar time open', 'Show up and run the estimates', 'Tell us which estimates become jobs'];
-
-const steps = [
-  { when: 'Week 1', title: 'Onboarding and setup', body: 'We collect your brand assets, photos, service areas and access, and build the landing page and follow-up system.' },
-  { when: 'Week 2', title: 'Launch', body: 'Campaigns go live and we check tracking end to end.' },
-  { when: 'Week 3', title: 'Optimize', body: 'We adjust based on lead quality, cost per lead, booked appointments and follow-up results.' },
-  { when: 'Week 4', title: 'Review', body: 'We go through performance together and plan month two.' },
+const weeks = [
+  { w: 'Week 1', title: 'Setup', body: 'We collect your brand assets, photos, service areas and access, and build the landing page and follow-up system.' },
+  { w: 'Week 2', title: 'Launch', body: 'Campaigns go live and we check tracking end to end.' },
+  { w: 'Week 3', title: 'Optimize', body: 'We adjust based on lead quality, cost per lead, booked appointments and follow-up results.' },
+  { w: 'Week 4', title: 'Review', body: 'We go through performance together and plan month two.' },
 ];
 
 const fit = {
@@ -75,22 +56,6 @@ const faq = [
   { question: 'Do you guarantee results?', answer: 'No. Results depend on your market, pricing, availability and your own sales process. We do not guarantee closed jobs, revenue, lead volume or cost per lead.' },
   { question: 'Which trades do you work with?', answer: `${industries.map((i) => i.navLabel).join(', ')}.` },
 ];
-
-const strip = ['Pool contractors', 'Remodelers', 'Roofers', 'Fencing', 'HVAC', 'ADU builders', 'General contractors'];
-
-function Strip() {
-  return (
-    <div className="mk-strip-track">
-      {[0, 1].map((c) =>
-        strip.map((w, i) => (
-          <span key={`${c}-${w}`} className={`mk-strip-item ${i % 2 ? 'o' : ''}`} aria-hidden={c === 1 ? true : undefined}>
-            {w}
-          </span>
-        ))
-      )}
-    </div>
-  );
-}
 
 export default function HomePage() {
   return (
@@ -110,162 +75,162 @@ export default function HomePage() {
         }}
       />
 
-      {/* Hero */}
-      <section className="mk-hero">
-        <Container className="grid gap-14 py-16 sm:py-24 lg:grid-cols-12 lg:items-center lg:gap-12 lg:py-28">
+      {/* Hero: the page opens as a quote */}
+      <section className="mk-gold">
+        <Container className="grid gap-14 py-14 sm:py-20 lg:grid-cols-12 lg:items-center lg:gap-10 lg:py-24">
           <div className="lg:col-span-7">
-            <h1 className="mk-display mk-rise text-[clamp(3rem,7.6vw,6.25rem)]">
+            <h1 className="mk-display mk-rise text-[clamp(3.25rem,8.4vw,7rem)]">
               Stop buying leads. Hire a marketing team.
             </h1>
-            <p className="mk-rise mt-7 max-w-2xl text-pretty text-lg leading-8 text-[var(--hq-text-muted)] sm:text-xl sm:leading-9" style={{ ['--d' as string]: 3 }}>
-              We run your ads, landing pages and follow-up for one flat monthly fee. No pay-per-lead.
-              No shared leads. No ad-spend markup.
+            <p className="mk-rise mt-8 max-w-xl text-pretty text-lg leading-8 sm:text-xl sm:leading-9" style={{ ['--d' as string]: 3 }}>
+              We run your ads, landing pages and follow-up for one flat monthly fee. No pay-per-lead,
+              no shared leads, no ad-spend markup.
             </p>
-            <div className="mk-rise mt-10 flex flex-col gap-3 sm:flex-row sm:items-center" style={{ ['--d' as string]: 4 }}>
-              <Link href={CTA_HREF} className="mk-btn mk-btn-gold">
+            <div className="mk-rise mt-10 flex flex-col gap-4 sm:flex-row sm:items-center" style={{ ['--d' as string]: 4 }}>
+              <Link href={CTA_HREF} className="mk-btn mk-btn-navy">
                 {CTA_LABEL}
                 <ArrowRight className="size-5" aria-hidden="true" />
               </Link>
-              <a href="#services" className="mk-btn mk-btn-ghost">See what’s included</a>
+              <a href="#scope" className="mk-link py-3 text-base font-semibold">See what the fee covers</a>
             </div>
-            <ul className="mk-trust mk-rise mt-8" style={{ ['--d' as string]: 5 }}>
-              <li>Flat monthly fee</li>
-              <li>30 days to start, then month to month</li>
-              <li>Ad spend goes straight to Meta and Google</li>
-            </ul>
           </div>
-          <div className="lg:col-span-5">
-            <WeeklyReport />
+
+          <div className="mk-rise lg:col-span-5" style={{ ['--d' as string]: 5 }}>
+            <div className="mk-sheet">
+              <div className="flex items-baseline justify-between border-b-2 border-[var(--navy)] pb-3">
+                <p className="font-[family-name:var(--font-sora)] text-4xl font-bold tracking-[-0.04em]">Quote</p>
+                <p className="text-sm font-semibold">HomeQuote Network</p>
+              </div>
+              <div className="pt-2">
+                <div className="mk-sheet-line"><span className="k">Prepared for</span><span className="l" /><span className="v">Your company</span></div>
+                <div className="mk-sheet-line"><span className="k">Scope</span><span className="l" /><span className="v">Ads, page, follow-up, reports</span></div>
+                <div className="mk-sheet-line"><span className="k">Management fee</span><span className="l" /><span className="v">Flat, every month</span></div>
+                <div className="mk-sheet-line"><span className="k">Ad spend</span><span className="l" /><span className="v">You pay Meta or Google</span></div>
+                <div className="mk-sheet-line"><span className="k">Per-lead charges</span><span className="l" /><span className="v">None</span></div>
+                <div className="mk-sheet-line"><span className="k">Term</span><span className="l" /><span className="v">30 days, then monthly</span></div>
+              </div>
+              <div className="mt-8 min-h-[6.5rem] pr-36 text-xs leading-5 text-[var(--ink-soft)]">
+                Sample layout. Your fee and details are confirmed on a call before anything starts.
+              </div>
+              <div className="mk-stamp" aria-hidden="true">Not per lead</div>
+            </div>
           </div>
         </Container>
       </section>
 
-      {/* Trades strip */}
-      <section className="mk-strip" aria-label="Trades we work with">
-        <Strip />
+      {/* Two ways to pay */}
+      <section className="mk-mist py-24 sm:py-32">
+        <Container>
+          <h2 className="mk-h2 max-w-3xl">Two ways to pay for marketing.</h2>
+          <div className="mt-14 grid gap-10 md:grid-cols-2 md:gap-14">
+            <div className="mk-receipt them">
+              <p className="text-lg font-bold">A lead service</p>
+              <div className="mt-3">
+                <div className="row"><span>Lead 1</span><span className="l" /><span>per lead</span></div>
+                <div className="row"><span>Lead 2</span><span className="l" /><span>per lead</span></div>
+                <div className="row"><span>Lead 3 (also sent to 2 other contractors)</span><span className="l" /><span>per lead</span></div>
+                <div className="row"><span>Lead 4</span><span className="l" /><span>per lead</span></div>
+              </div>
+              <div className="total flex justify-between gap-4"><span>Total</span><span>Depends on the month</span></div>
+              <p className="mt-5 text-xs leading-5">Illustration of how many lead services bill. Not a specific company.</p>
+            </div>
+
+            <div className="mk-receipt">
+              <p className="text-lg font-bold">HomeQuote Network</p>
+              <div className="mt-3">
+                <div className="row"><span>Marketing management</span><span className="l" /><span className="font-semibold">Flat monthly fee</span></div>
+                <div className="row"><span>Ad spend</span><span className="l" /><span className="font-semibold">Paid by you to Meta or Google</span></div>
+                <div className="row"><span>Per-lead charges</span><span className="l" /><span className="font-semibold">None</span></div>
+                <div className="row"><span>Shared leads</span><span className="l" /><span className="font-semibold">None</span></div>
+              </div>
+              <div className="total flex justify-between gap-4"><span>Management fee</span><span>Same every month</span></div>
+            </div>
+          </div>
+          <p className="mt-12 max-w-2xl text-pretty text-lg leading-8 text-[var(--ink-soft)]">
+            Many lead services sell the same inquiry to several contractors. We do not sell or resell
+            leads. We run the marketing for your company and report from ad spend all the way to estimates.
+          </p>
+        </Container>
       </section>
 
-      {/* Versus */}
-      <section className="py-24 sm:py-32">
+      {/* Scope of work */}
+      <section id="scope" className="mk-paper scroll-mt-20 py-24 sm:py-32">
         <Container>
-          <h2 className="mk-display mk-reveal max-w-4xl text-[clamp(2.25rem,5vw,4rem)]">
-            Lead services sell you inquiries. We run your marketing.
-          </h2>
+          <h2 className="mk-h2 max-w-3xl">What the monthly fee covers.</h2>
           <div className="mt-14">
-            <div className="hidden pb-3 text-sm font-semibold md:grid md:grid-cols-2 md:gap-12">
-              <p className="text-[var(--hq-text-dim)]">Typical lead services</p>
-              <p className="text-[var(--hq-accent-bright)]">HomeQuote Network</p>
-            </div>
-            {versus.map((v) => (
-              <div key={v.us} className="mk-vs-row mk-reveal">
-                <p className="mk-vs-them text-[15px] leading-7">{v.them}</p>
-                <p className="mk-vs-us text-[17px] leading-7">{v.us}</p>
+            {scope.map((s) => (
+              <div key={s.item} className="mk-scope-row">
+                <h3 className="text-xl font-bold tracking-tight">{s.item}</h3>
+                <p className="col-span-2 row-start-2 max-w-xl text-[16px] leading-7 text-[var(--ink-soft)] md:col-span-1 md:row-start-auto">{s.body}</p>
+                <span className="inline-flex items-center gap-2 text-sm font-semibold text-[var(--blue)]">
+                  <Check className="size-5" aria-hidden="true" /> Included
+                </span>
               </div>
             ))}
-            <div className="border-t border-[var(--hq-line)]" />
           </div>
-        </Container>
-      </section>
-
-      {/* What we run */}
-      <section id="services" className="scroll-mt-20 border-y border-[var(--hq-line)] bg-[var(--hq-bg-raised)] py-24 sm:py-32">
-        <Container>
-          <h2 className="mk-display mk-reveal max-w-3xl text-[clamp(2.25rem,5vw,4rem)]">
-            Everything that fills the calendar, handled.
-          </h2>
-          <ul className="mt-14 grid gap-x-10 gap-y-10 sm:grid-cols-2 lg:grid-cols-4">
-            {services.map((s, i) => (
-              <li key={s.title} className="mk-reveal border-t-2 border-[var(--hq-accent-bright)] pt-5">
-                <p className="text-sm font-semibold text-[var(--hq-text-dim)]">{String(i + 1).padStart(2, '0')}</p>
-                <h3 className="mt-2 text-lg font-semibold tracking-tight">{s.title}</h3>
-                <p className="mt-2 text-[15px] leading-7 text-[var(--hq-text-muted)]">{s.body}</p>
-              </li>
-            ))}
-          </ul>
-        </Container>
-      </section>
-
-      {/* From ad to estimate, who does what */}
-      <section className="py-24 sm:py-32">
-        <Container>
-          <h2 className="mk-display mk-reveal max-w-3xl text-[clamp(2.25rem,5vw,4rem)]">
-            From ad to estimate. We run it, you close it.
-          </h2>
-          <ol className="mk-flow mt-16 grid gap-10 sm:grid-cols-2 lg:grid-cols-5 lg:gap-6">
-            {flow.map((f) => (
-              <li key={f.n} className="mk-reveal">
-                <span className={`mk-node ${f.you ? 'you' : ''}`}>{f.n}</span>
-                <h3 className="mt-5 text-xl font-semibold tracking-tight">{f.title}</h3>
-                <p className="mt-2 text-[15px] leading-7 text-[var(--hq-text-muted)]">{f.body}</p>
-              </li>
-            ))}
-          </ol>
-          <div className="mt-20 grid gap-12 md:grid-cols-2">
-            <div className="mk-reveal">
-              <h3 className="text-lg font-semibold text-[var(--hq-accent-bright)]">HomeQuote handles</h3>
-              <ul className="mt-4 divide-y divide-[var(--hq-line)] border-y border-[var(--hq-line)]">
-                {weHandle.map((x) => <li key={x} className="py-3 text-[16px]">{x}</li>)}
-              </ul>
-            </div>
-            <div className="mk-reveal">
-              <h3 className="mk-gold-text text-lg font-semibold">You handle</h3>
-              <ul className="mt-4 divide-y divide-[var(--hq-line)] border-y border-[var(--hq-line)]">
-                {youHandle.map((x) => <li key={x} className="py-3 text-[16px]">{x}</li>)}
-              </ul>
-            </div>
-          </div>
+          <p className="mt-8 text-sm text-[var(--ink-soft)]">Ad spend is separate and paid directly to the ad platform.</p>
         </Container>
       </section>
 
       {/* First 30 days */}
-      <section id="how" className="scroll-mt-20 border-y border-[var(--hq-line)] bg-[var(--hq-bg-raised)] py-24 sm:py-32">
+      <section id="how" className="mk-on-navy scroll-mt-20 py-24 sm:py-32">
         <Container>
-          <h2 className="mk-display mk-reveal max-w-3xl text-[clamp(2.25rem,5vw,4rem)]">Your first 30 days.</h2>
-          <ol className="mt-14 grid gap-10 md:grid-cols-4 md:gap-6">
-            {steps.map((s) => (
-              <li key={s.when} className="mk-reveal border-t-2 border-[var(--mk-gold)] pt-5">
-                <p className="text-sm font-semibold mk-gold-text">{s.when}</p>
-                <h3 className="mt-3 text-xl font-semibold tracking-tight">{s.title}</h3>
-                <p className="mt-2 text-[15px] leading-7 text-[var(--hq-text-muted)]">{s.body}</p>
+          <h2 className="mk-h2 max-w-3xl">Your first 30 days.</h2>
+          <div className="mk-gantt mt-14" role="img" aria-label="Setup in week 1, launch in week 2, optimization in weeks 3 and 4, review in week 4">
+            <span />
+            {['Week 1', 'Week 2', 'Week 3', 'Week 4'].map((w) => <span key={w} className="h">{w}</span>)}
+            <span className="lab">Setup</span><span className="bar" style={{ gridColumn: '2 / 3' }} /><span style={{ gridColumn: '3 / 6' }} />
+            <span className="lab">Launch</span><span style={{ gridColumn: '2 / 3' }} /><span className="bar" style={{ gridColumn: '3 / 4' }} /><span style={{ gridColumn: '4 / 6' }} />
+            <span className="lab">Optimize</span><span style={{ gridColumn: '2 / 4' }} /><span className="bar" style={{ gridColumn: '4 / 6' }} />
+            <span className="lab">Review</span><span style={{ gridColumn: '2 / 5' }} /><span className="bar" style={{ gridColumn: '5 / 6' }} />
+          </div>
+          <ol className="mt-16 grid gap-10 md:grid-cols-4 md:gap-6">
+            {weeks.map((s) => (
+              <li key={s.w}>
+                <h3 className="text-xl font-bold tracking-tight">{s.w}: {s.title}</h3>
+                <p className="mt-2 text-[16px] leading-7 text-white/80">{s.body}</p>
               </li>
             ))}
           </ol>
+          <p className="mt-12 text-lg font-semibold">After that it runs month to month.</p>
         </Container>
       </section>
 
       {/* Fit */}
-      <section id="fit" className="scroll-mt-20 py-24 sm:py-32">
+      <section id="fit" className="mk-paper scroll-mt-20 py-24 sm:py-32">
         <Container>
-          <h2 className="mk-display mk-reveal max-w-3xl text-[clamp(2.25rem,5vw,4rem)]">We’d rather tell you if it won’t work.</h2>
-          <div className="mt-14 grid gap-12 md:grid-cols-2">
-            <div className="mk-reveal">
-              <h3 className="text-lg font-semibold">A good fit</h3>
-              <ul className="mt-4 divide-y divide-[var(--hq-line)] border-y border-[var(--hq-line)]">
-                {fit.yes.map((x) => <li key={x} className="py-3 text-[16px] text-[var(--hq-text-muted)]">{x}</li>)}
-              </ul>
-            </div>
-            <div className="mk-reveal">
-              <h3 className="text-lg font-semibold">Probably not a fit</h3>
-              <ul className="mt-4 divide-y divide-[var(--hq-line)] border-y border-[var(--hq-line)]">
-                {fit.no.map((x) => <li key={x} className="py-3 text-[16px] text-[var(--hq-text-muted)]">{x}</li>)}
-              </ul>
-            </div>
+          <h2 className="mk-h2 max-w-3xl">We’d rather tell you if it won’t work.</h2>
+          <div className="mt-14 grid gap-14 md:grid-cols-2">
+            <ul>
+              {fit.yes.map((x) => (
+                <li key={x} className="flex items-center gap-4 border-t-2 border-[var(--navy)] py-5 text-lg font-semibold last:border-b-2">
+                  <Check className="size-6 shrink-0 text-[var(--blue)]" aria-hidden="true" /> {x}
+                </li>
+              ))}
+            </ul>
+            <ul>
+              {fit.no.map((x) => (
+                <li key={x} className="flex items-center gap-4 border-t-2 border-[var(--navy)] py-5 text-lg text-[var(--ink-soft)] last:border-b-2">
+                  <X className="size-6 shrink-0" aria-hidden="true" /> {x}
+                </li>
+              ))}
+            </ul>
           </div>
         </Container>
       </section>
 
       {/* FAQ */}
-      <section id="faq" className="scroll-mt-20 border-t border-[var(--hq-line)] py-24 sm:py-32">
+      <section id="faq" className="mk-mist scroll-mt-20 py-24 sm:py-32">
         <Container className="grid gap-12 lg:grid-cols-12 lg:gap-16">
-          <h2 className="mk-display text-[clamp(2.25rem,4.6vw,3.75rem)] lg:col-span-4">Questions contractors ask.</h2>
-          <div className="divide-y divide-[var(--hq-line)] border-y border-[var(--hq-line)] lg:col-span-8">
+          <h2 className="mk-h2 lg:col-span-4">Questions contractors ask.</h2>
+          <div className="lg:col-span-8">
             {faq.map((item) => (
-              <details key={item.question} className="group">
+              <details key={item.question} className="group border-t-2 border-[var(--navy)] last:border-b-2">
                 <summary className="flex cursor-pointer list-none items-start justify-between gap-6 py-5 text-left [&::-webkit-details-marker]:hidden">
-                  <span className="text-lg font-semibold leading-7">{item.question}</span>
-                  <span className="mt-1 text-xl text-[var(--hq-text-muted)] transition-transform duration-200 group-open:rotate-45" aria-hidden="true">+</span>
+                  <span className="text-xl font-bold leading-7 tracking-tight">{item.question}</span>
+                  <span className="mt-0.5 text-2xl leading-none transition-transform duration-200 group-open:rotate-45" aria-hidden="true">+</span>
                 </summary>
-                <p className="max-w-2xl pb-6 pr-10 text-[16px] leading-7 text-[var(--hq-text-muted)]">{item.answer}</p>
+                <p className="max-w-2xl pb-6 pr-10 text-[16px] leading-7 text-[var(--ink-soft)]">{item.answer}</p>
               </details>
             ))}
           </div>
@@ -273,25 +238,20 @@ export default function HomePage() {
       </section>
 
       {/* Close */}
-      <section className="relative isolate overflow-hidden border-t border-[var(--hq-line)] py-28 sm:py-40">
-        <div aria-hidden="true" className="absolute inset-x-0 -bottom-1/2 -z-10 mx-auto h-[40rem] w-[60rem] max-w-full rounded-full bg-[radial-gradient(circle,rgb(0_56_184/0.5),transparent_65%)]" />
-        <Container className="text-center">
-          <h2 className="mk-display mk-reveal mx-auto max-w-4xl text-[clamp(2.75rem,7vw,6rem)]">
-            Find out if we’re a fit.
-          </h2>
-          <p className="mk-reveal mx-auto mt-6 max-w-xl text-lg leading-8 text-[var(--hq-text-muted)]">
-            Answer a few questions. If it won’t work for your business, we’ll tell you.
-          </p>
-          <div className="mk-reveal mt-10 flex justify-center">
-            <Link href={CTA_HREF} className="mk-btn mk-btn-gold">
+      <section className="mk-gold py-24 sm:py-36">
+        <Container className="flex flex-col items-start justify-between gap-10 lg:flex-row lg:items-end">
+          <h2 className="mk-display max-w-3xl text-[clamp(3rem,8vw,6.5rem)]">Find out if we’re a fit.</h2>
+          <div className="max-w-sm">
+            <p className="text-lg leading-8">Answer a few questions. If it won’t work for your business, we’ll tell you.</p>
+            <Link href={CTA_HREF} className="mk-btn mk-btn-navy mt-6">
               {CTA_LABEL}
               <ArrowRight className="size-5" aria-hidden="true" />
             </Link>
+            <p className="mt-6 text-sm">
+              Homeowner?{' '}
+              <Link href="/book" className="mk-link font-semibold">Book a remodeling appointment</Link>
+            </p>
           </div>
-          <p className="mt-10 text-sm text-[var(--hq-text-dim)]">
-            Homeowner?{' '}
-            <Link href="/book" className="underline underline-offset-4 hover:text-[var(--hq-text)]">Book a remodeling appointment</Link>
-          </p>
         </Container>
       </section>
 
