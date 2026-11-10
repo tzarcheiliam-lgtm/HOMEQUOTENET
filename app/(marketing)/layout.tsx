@@ -2,6 +2,11 @@ import type { Metadata } from 'next';
 import './marketing.css';
 import { SiteHeader } from '@/components/marketing/site-header';
 import { SiteFooter } from '@/components/marketing/site-footer';
+import {
+  AudienceSwitch,
+  HomeownerFooter,
+  HomeownerHeader,
+} from '@/components/marketing/homeowner-chrome';
 import { site } from '@/content/site';
 import { industries } from '@/content/industries';
 import { baseOpenGraph } from '@/lib/site-metadata';
@@ -14,7 +19,6 @@ export const metadata: Metadata = {
   },
   description: site.description,
   applicationName: site.name,
-  authors: [{ name: site.founder }],
   alternates: { canonical: '/' },
   openGraph: {
     ...baseOpenGraph,
@@ -50,11 +54,16 @@ export default function MarketingLayout({
       >
         Skip to content
       </a>
-      <SiteHeader
-        industries={industries.map((i) => ({ label: i.navLabel, href: `/${i.slug}` }))}
+      <AudienceSwitch
+        home={<HomeownerHeader />}
+        other={
+          <SiteHeader
+            industries={industries.map((i) => ({ label: i.navLabel, href: `/${i.slug}` }))}
+          />
+        }
       />
       <main id="main">{children}</main>
-      <SiteFooter />
+      <AudienceSwitch home={<HomeownerFooter />} other={<SiteFooter />} />
     </div>
   );
 }

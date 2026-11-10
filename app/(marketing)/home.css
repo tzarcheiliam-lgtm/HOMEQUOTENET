@@ -1,0 +1,491 @@
+/*
+  Homeowner homepage. Scoped to .ho (page) and .ho-header / .ho-footer (chrome),
+  so nothing here reaches the contractor pages or the CRM.
+
+  White ground, navy ink, brand Blue for what is interactive. One dark moment
+  (the promise band) and one kinetic moment (the project strip).
+*/
+
+.ho,
+.ho-header,
+.ho-footer {
+  --ho-blue: #0038b8;
+  --ho-navy: #0a1b3d;
+  --ho-ink-soft: #4a5a7d; /* 6.9:1 on white */
+  --ho-rule: #e3e9f5;
+  --ho-mist: #f4f7fc;
+  color: var(--ho-navy);
+  background: #fff;
+  color-scheme: light;
+}
+
+.ho {
+  scrollbar-color: var(--ho-navy) var(--ho-mist);
+}
+
+.ho ::selection,
+.ho-header ::selection,
+.ho-footer ::selection {
+  background: var(--ho-blue);
+  color: #fff;
+}
+
+.ho :where(a, button, summary):focus-visible,
+.ho-header :where(a, button):focus-visible,
+.ho-footer :where(a, button):focus-visible {
+  outline: 2px solid var(--ho-blue);
+  outline-offset: 4px;
+  border-radius: 6px;
+}
+
+.ho-dark :where(a, button):focus-visible {
+  outline-color: #fff;
+}
+
+.ho-display {
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  line-height: 1.02;
+  text-wrap: balance;
+}
+
+.ho-header a,
+.ho-footer a {
+  color: inherit;
+}
+
+.ho-header a:hover,
+.ho-footer a:hover {
+  color: var(--ho-blue);
+}
+
+/* ---- Entrance --------------------------------------------------------------- */
+
+@keyframes ho-rise {
+  from {
+    opacity: 0.001;
+    transform: translateY(22px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.ho-words > span {
+  display: inline-block;
+  margin-right: 0.26em;
+  animation: ho-rise 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--w, 0) * 80ms);
+}
+
+.ho-fade {
+  animation: ho-rise 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--w, 0) * 80ms + 60ms);
+}
+
+/* ---- Buttons ---------------------------------------------------------------- */
+
+.ho-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  min-height: 3.5rem;
+  padding: 0 1.75rem;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 1rem;
+  line-height: 1;
+  white-space: nowrap;
+  transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1), background-color 160ms ease, color 160ms ease;
+}
+
+.ho-btn:active {
+  transform: translateY(1px);
+}
+
+.ho-btn-dark {
+  background: var(--ho-navy);
+  color: #fff !important;
+}
+
+.ho-btn-dark:hover {
+  background: var(--ho-blue);
+}
+
+.ho-btn-light {
+  background: #fff;
+  color: var(--ho-navy) !important;
+}
+
+.ho-btn-light:hover {
+  background: #dbe5ff;
+}
+
+.ho-btn-line {
+  border: 1.5px solid currentColor;
+}
+
+.ho-btn-line:hover {
+  background: rgb(10 27 61 / 0.06);
+}
+
+.ho-dark .ho-btn-line:hover {
+  background: rgb(255 255 255 / 0.12);
+}
+
+/* ---- Project picker --------------------------------------------------------- */
+
+.hp-list {
+  border-top: 2px solid var(--ho-navy);
+}
+
+.hp-item {
+  border-bottom: 1px solid var(--ho-rule);
+  animation: ho-rise 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--i, 0) * 90ms + 500ms);
+}
+
+.hp-item:last-child {
+  border-bottom: 2px solid var(--ho-navy);
+}
+
+.hp-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 0;
+  color: inherit;
+}
+
+@media (min-width: 1024px) {
+  .hp-row {
+    padding: 1.35rem 0;
+  }
+}
+
+.hp-thumb {
+  display: block;
+  flex: none;
+  width: 4.5rem;
+  height: 4.5rem;
+  overflow: hidden;
+  border-radius: 16px;
+  background: var(--ho-rule);
+}
+
+.hp-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hp-name {
+  display: block;
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-weight: 600;
+  font-size: clamp(1.75rem, 4.6vw, 3.4rem);
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+  transition: transform 450ms cubic-bezier(0.16, 1, 0.3, 1), color 250ms ease;
+}
+
+.hp-note {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.95rem;
+  color: var(--ho-ink-soft);
+}
+
+.hp-go {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 3.25rem;
+  height: 3.25rem;
+  border: 1.5px solid var(--ho-navy);
+  border-radius: 999px;
+  transition: background-color 250ms ease, color 250ms ease, transform 450ms cubic-bezier(0.16, 1, 0.3, 1), border-color 250ms ease;
+}
+
+@media (min-width: 1024px) {
+  .hp-row[data-active='true'] .hp-go {
+    background: var(--ho-navy);
+    border-color: var(--ho-navy);
+    color: #fff;
+    transform: rotate(45deg);
+  }
+
+  .hp-row[data-active='true'] .hp-name {
+    transform: translateX(14px);
+    color: var(--ho-blue);
+  }
+}
+
+.hp-row:hover .hp-go,
+.hp-row:focus-visible .hp-go {
+  background: var(--ho-navy);
+  border-color: var(--ho-navy);
+  color: #fff;
+  transform: rotate(45deg);
+}
+
+/* Photograph panel (desktop). Photos stack; the active one fades and settles in. */
+
+.hp-stage {
+  position: sticky;
+  top: 6.5rem;
+  overflow: hidden;
+  aspect-ratio: 4 / 5;
+  max-height: calc(100svh - 8rem);
+  width: 100%;
+  border-radius: 28px;
+  background: var(--ho-rule);
+  box-shadow: 0 2px 4px rgb(10 27 61 / 0.06), 0 40px 70px -40px rgb(10 27 61 / 0.55);
+}
+
+.hp-stage-img {
+  object-fit: cover;
+  opacity: 0;
+  transform: scale(1.09);
+  transition: opacity 800ms cubic-bezier(0.16, 1, 0.3, 1), transform 1600ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.hp-stage-img[data-active='true'] {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.hp-stage-chip {
+  position: absolute;
+  left: 1.25rem;
+  bottom: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.75rem 1.1rem;
+  border-radius: 16px;
+  background: rgb(255 255 255 / 0.94);
+  font-size: 0.95rem;
+}
+
+/* ---- Search ----------------------------------------------------------------- */
+
+.ho-search {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  max-width: 40rem;
+  height: 3.75rem;
+  padding: 0 1.25rem;
+  border: 1.5px solid var(--ho-rule);
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 10px 28px -18px rgb(10 27 61 / 0.35);
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+
+.ho-search:focus-within {
+  border-color: var(--ho-blue);
+  box-shadow: 0 0 0 4px rgb(0 56 184 / 0.12), 0 10px 28px -18px rgb(10 27 61 / 0.35);
+}
+
+.ho-search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  background: transparent;
+  color: var(--ho-navy);
+  font-size: 1.0625rem;
+}
+
+.ho .ho-search input,
+.ho .ho-search input:focus,
+.ho .ho-search input:focus-visible {
+  outline: none;
+  box-shadow: none;
+  border: 0;
+  border-radius: 0;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.ho-search input::placeholder {
+  color: var(--ho-ink-soft);
+  opacity: 0.85;
+}
+
+.ho-results {
+  max-width: 40rem;
+  margin-top: 0.75rem;
+  border: 1.5px solid var(--ho-rule);
+  border-radius: 18px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.ho-results li + li {
+  border-top: 1px solid var(--ho-rule);
+}
+
+.ho-results a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  font-weight: 600;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.ho-results a:hover,
+.ho-results a:focus-visible {
+  background: var(--ho-mist);
+  color: var(--ho-blue);
+}
+
+/* ---- Project strip (kinetic) ------------------------------------------------ */
+
+.ho-strip {
+  overflow: hidden;
+  border-block: 1px solid var(--ho-rule);
+  padding: 1.75rem 0;
+  background: var(--ho-mist);
+}
+
+.ho-strip-track {
+  display: flex;
+  width: max-content;
+  animation: ho-slide 60s linear infinite;
+}
+
+.ho-strip-track.rev {
+  animation-direction: reverse;
+  animation-duration: 75s;
+  margin-top: 0.75rem;
+}
+
+.ho-strip:hover .ho-strip-track {
+  animation-play-state: paused;
+}
+
+.ho-strip-item {
+  flex: none;
+  padding: 0 1.5rem;
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-weight: 600;
+  font-size: clamp(2rem, 5vw, 3.75rem);
+  letter-spacing: -0.04em;
+  white-space: nowrap;
+}
+
+.ho-strip-item.o {
+  color: transparent;
+  -webkit-text-stroke: 1.5px var(--ho-navy);
+}
+
+@keyframes ho-slide {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* ---- Steps (sticky story) --------------------------------------------------- */
+
+.ho-step {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr;
+  gap: 1.25rem;
+  padding: 2.5rem 0;
+  border-top: 1.5px solid var(--ho-navy);
+}
+
+@media (min-width: 768px) {
+  .ho-step {
+    grid-template-columns: 9rem 1fr;
+    padding: 4rem 0;
+  }
+}
+
+.ho-step-n {
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-weight: 700;
+  font-size: clamp(4.5rem, 10vw, 8rem);
+  line-height: 0.85;
+  letter-spacing: -0.06em;
+  color: transparent;
+  -webkit-text-stroke: 1.5px var(--ho-blue);
+}
+
+/* Progressive: steps brighten as they cross the middle of the screen. */
+@supports (animation-timeline: view()) {
+  .ho-step {
+    animation: ho-step-in linear both;
+    animation-timeline: view();
+    animation-range: entry 10% cover 45%;
+  }
+
+  @keyframes ho-step-in {
+    from {
+      opacity: 0.25;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+}
+
+/* ---- Promise band (dark) ---------------------------------------------------- */
+
+.ho-dark {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  color: #fff;
+  background: var(--ho-navy);
+}
+
+.ho-dark > img {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.ho-dark::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(180deg, rgb(10 27 61 / 0.55), rgb(10 27 61 / 0.82));
+}
+
+.ho-dark a {
+  color: inherit;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ho-words > span,
+  .ho-fade,
+  .hp-item,
+  .hp-name,
+  .hp-go,
+  .hp-stage-img,
+  .ho-btn,
+  .ho-step {
+    animation: none;
+    transition: none;
+  }
+  .ho-strip-track {
+    animation: none;
+    flex-wrap: wrap;
+    width: auto;
+  }
+  .ho-strip-item[aria-hidden='true'] {
+    display: none;
+  }
+}

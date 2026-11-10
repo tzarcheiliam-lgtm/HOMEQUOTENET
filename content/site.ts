@@ -13,13 +13,13 @@ export const site = {
   founder: 'Liam Tzarchei',
   operator: 'Tzarchei Investments',
   tagline:
-    'Qualified booked appointments for home-service contractors. Pay per appointment we set on your calendar.',
+    'We run the marketing for home-service contractors: ads, landing pages, follow-up and reporting for a flat monthly management fee.',
 
   /** Default <title> and link-preview title for any route without its own. */
-  defaultTitle: 'HomeQuote Network | Qualified Contractor Leads',
+  defaultTitle: 'HomeQuote Network | Marketing for Home-Service Contractors',
   /** Default meta / Open Graph description for any route without its own. */
   description:
-    'HomeQuote Network delivers qualified homeowner leads and booked estimate appointments to remodeling, roofing, fencing, HVAC and pool contractors across Southern California.',
+    'HomeQuote Network runs the marketing for pool, remodeling, roofing, fencing, HVAC and ADU contractors across Southern California: ads, landing pages, follow-up and reporting for a flat monthly management fee.',
 
   contact: {
     email: 'info@homequotenet.com',
@@ -36,19 +36,18 @@ export const site = {
   },
 
   nav: [
-    { label: 'How it works', href: '/#how-it-works' },
+    { label: 'What we run', href: '/#services' },
+    { label: 'How it works', href: '/#how' },
     /* wideOnly: hidden in the desktop bar below 1280px, where the Industries
        menu needs the room. Always listed in the mobile sheet. */
-    { label: 'Projects', href: '/#projects', wideOnly: true },
-    { label: 'Appointment standards', href: '/lead-standards' },
-    { label: 'Working together', href: '/#options' },
+    { label: 'Who it\u2019s for', href: '/#fit', wideOnly: true },
     { label: 'FAQ', href: '/#faq', wideOnly: true },
   ],
 
   footerLinks: {
     company: [
-      { label: 'Appointment standards', href: '/lead-standards' },
       { label: 'Contractor application', href: '/apply' },
+      { label: 'Homeowners: book a visit', href: '/book' },
     ],
     legal: [
       { label: 'Privacy Policy', href: '/privacy' },
@@ -57,16 +56,12 @@ export const site = {
   },
 
   cta: {
-    primary: 'Check Appointment Availability',
-    /*
-      Header-only. The full label pushes the nav onto two lines at 1024-1280px
-      once "Appointment standards" is in the bar; in the header the surrounding
-      nav already supplies the context.
-    */
-    primaryShort: 'Check Availability',
+    primary: 'Apply to Work With Us',
+    /* Header-only: the short label keeps the nav on one line at 1024-1280px. */
+    primaryShort: 'Apply',
     primaryHref: '/apply',
-    secondary: 'See How It Works',
-    secondaryHref: '/#how-it-works',
+    secondary: 'See What We Run',
+    secondaryHref: '/#services',
     managed: 'Discuss Managed Growth',
     managedHref: '/apply?track=managed',
   },
@@ -89,11 +84,11 @@ export const disclaimers = {
     to promise, and that line has to stay sharp.
   */
   noGuarantee:
-    'HomeQuote Network does not guarantee attendance, estimates, sales, revenue, or profitability. We guarantee that anything billed as a booked appointment met the agreed qualification and scheduling standard when delivered. Attending the appointment, estimating, and closing the job are the contractor’s responsibility.',
+    'HomeQuote Network does not guarantee closed jobs, revenue, lead volume, cost per lead, return on ad spend or profitability. Results depend on market conditions, pricing, availability and the contractor’s own sales process.',
   agreementGoverns:
-    'Final qualification, duplicate, cancellation, rescheduling, no-show, replacement, and dispute terms are defined in each partner agreement.',
+    'Scope, fees, ad spend, term and cancellation are defined in each service agreement.',
   pricing:
-    'Pricing per booked appointment depends on project types, market, qualification requirements, and expected volume. Pricing is confirmed before launch.',
+    'Services are priced as a flat monthly management fee. Ad spend is paid separately, directly to the ad platform. Pricing is confirmed before launch.',
   systemPreview:
     'Example workflow — interface preview only. Not client data or reported results.',
 } as const;
