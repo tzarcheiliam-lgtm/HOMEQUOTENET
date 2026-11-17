@@ -7,7 +7,7 @@ import { signingMaintenance } from '@/lib/signing/service';
 import { retryPendingAduQuizLeads } from '@/lib/adu-quiz/leads.server';
 import { runBookingNotifications } from '@/lib/booking/reminders.server';
 import { runRecovery } from '@/lib/booking/recovery.server';
-import { checkBridgeHealth } from '@/lib/sms/health';
+import { alertFailedTexts, checkBridgeHealth } from '@/lib/sms/health';
 import { notifyAdmins } from '@/lib/sms/health-notify';
 import { runTextReminders } from '@/lib/sms/reminders';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -46,6 +46,9 @@ export async function POST(request: Request) {
     // Texting: alert the team if texts are waiting and the Mac bridge is not sending them. Best effort.
     let sms: unknown = null;
     try { sms = await checkBridgeHealth(createAdminClient(), { notify: notifyAdmins }); } catch { sms = { error: 'texting health check failed' }; }
+    // Texts that finally failed to deliver: tell the team once so the lead gets a call or email instead. Best effort.
+    let failedTexts: unknown = null;
+    try { failedTexts = await alertFailedTexts(createAdminClient(), { notify: notifyAdmins }); } catch { failedTexts = { error: 'failed-text alert failed' }; }
     // Native calendar bookings: confirmations (email + text), 24 h / 1 h reminder EMAILS, cancellation notices. Best effort.
     // Runs before the reminder texts so a booking's confirmation always goes first.
     let bookings: unknown = null;
@@ -74,7 +77,7 @@ export async function POST(request: Request) {
     } catch {
       aduQuiz = { error: 'adu quiz retry failed' };
     }
-    const body = { ...result, retention, notifications, calendar, signing, sms, videoNoShows, reminders, recovery, bookings, aduQuiz };
+    const body = { ...result, retention, notifications, calendar, signing, sms, failedTexts, videoNoShows, reminders, recovery, bookings, aduQuiz };
     await recordAutomationRun('workflow_tick', startedAt, !result.failures, body);
     return NextResponse.json(body, { status: result.failures ? 207 : 200 });
   } catch {

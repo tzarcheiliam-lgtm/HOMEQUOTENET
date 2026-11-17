@@ -5,7 +5,7 @@ import { bridgeUnauthorized } from '@/lib/sms/bridge-auth';
 import { ackOutbound } from '@/lib/sms/service';
 
 export const dynamic = 'force-dynamic';
-const schema = z.object({ id: z.string().uuid(), ok: z.boolean(), error: z.string().max(300).optional() });
+const schema = z.object({ id: z.string().uuid(), ok: z.boolean(), error: z.string().max(300).optional(), retryable: z.boolean().optional() });
 
 /** The Mac reports whether Messages accepted a text. */
 export async function POST(request: Request) {
@@ -13,6 +13,6 @@ export async function POST(request: Request) {
   if (denied) return denied;
   const body = schema.safeParse(await request.json().catch(() => null));
   if (!body.success) return NextResponse.json({ error: 'Invalid' }, { status: 400 });
-  try { await ackOutbound(createAdminClient(), body.data.id, body.data.ok, body.data.error); return NextResponse.json({ ok: true }); }
+  try { await ackOutbound(createAdminClient(), body.data.id, body.data.ok, body.data.error, { retryable: body.data.retryable }); return NextResponse.json({ ok: true }); }
   catch { return NextResponse.json({ error: 'Unavailable' }, { status: 503 }); }
 }

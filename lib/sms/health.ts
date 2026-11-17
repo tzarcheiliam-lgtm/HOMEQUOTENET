@@ -1,5 +1,6 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { note } from './core';
 
 type Db = SupabaseClient;
 
@@ -58,4 +59,56 @@ export async function checkBridgeHealth(db: Db, deps: HealthDeps = {}): Promise<
     url: '/app/texting',
   });
   return { state: 'alerted', waiting: stuck.waiting };
+}
+
+export type FailedTextsResult = { state: 'none' } | { state: 'alerted'; count: number } | { state: 'unavailable' };
+
+/**
+ * The last line of defence. A text that ended up `failed` (retries used up, Messages never confirmed, or the number can't
+ * be reached) is announced ONCE to the team with who to follow up with, and noted on the lead's timeline, so a lead is
+ * never silently left waiting. Cancelled texts (opt-out, "stop all texting", a person took over) are deliberate and ignored.
+ * Runs on the existing 5-minute scheduler.
+ */
+export async function alertFailedTexts(db: Db, deps: HealthDeps = {}): Promise<FailedTextsResult> {
+  const now = (deps.now ?? (() => new Date()))();
+  const since = new Date(now.getTime() - 48 * 3600_000).toISOString();
+  const { data, error } = await db.from('sms_messages').select('id,lead_id,conversation_id,error')
+    .eq('direction', 'out').eq('status', 'failed').is('failure_notified_at', null)
+    .gte('created_at', since).order('created_at').limit(50);
+  if (error) return { state: 'unavailable' }; // migration 0078 not applied yet
+  const all = (data ?? []) as { id: string; lead_id: string | null; conversation_id: string; error: string | null }[];
+  // Deliberate cancellations are marked handled without an alert, so they never crowd real failures out of this page.
+  const cancelled = all.filter((r) => /^cancelled/i.test(r.error ?? ''));
+  if (cancelled.length) await db.from('sms_messages').update({ failure_notified_at: now.toISOString() }).in('id', cancelled.map((r) => r.id));
+  const rows = all.filter((r) => !/^cancelled/i.test(r.error ?? ''));
+  if (!rows.length) return { state: 'none' };
+
+  // Claim first so two overlapping ticks cannot announce the same texts twice.
+  const { data: claimed } = await db.from('sms_messages').update({ failure_notified_at: now.toISOString() })
+    .in('id', rows.map((r) => r.id)).is('failure_notified_at', null).select('id');
+  const mine = new Set(((claimed ?? []) as { id: string }[]).map((r) => r.id));
+  const fresh = rows.filter((r) => mine.has(r.id));
+  if (!fresh.length) return { state: 'none' };
+
+  const leadIds = [...new Set(fresh.map((r) => r.lead_id).filter((x): x is string => !!x))];
+  const convIds = [...new Set(fresh.map((r) => r.conversation_id))];
+  const [{ data: leads }, { data: convs }] = await Promise.all([
+    leadIds.length ? db.from('leads').select('id,first_name').in('id', leadIds) : Promise.resolve({ data: [] }),
+    db.from('sms_conversations').select('id,phone_e164').in('id', convIds),
+  ]);
+  const nameOf = new Map(((leads ?? []) as { id: string; first_name: string | null }[]).map((l) => [l.id, l.first_name?.trim() || 'a lead']));
+  const phoneOf = new Map(((convs ?? []) as { id: string; phone_e164: string }[]).map((c) => [c.id, c.phone_e164]));
+
+  for (const r of fresh) {
+    await note(db, r.lead_id, `Text could not be delivered (${r.error ?? 'unknown error'}). Follow up with a call or email.`, { sms_failed: true, message_id: r.id }).catch(() => undefined);
+  }
+  const who = fresh.slice(0, 5).map((r) => `${r.lead_id ? nameOf.get(r.lead_id) : 'a contact'} ${phoneOf.get(r.conversation_id) ?? ''}`.trim()).join(', ');
+  const more = fresh.length > 5 ? ` and ${fresh.length - 5} more` : '';
+  await deps.notify?.({
+    title: `${fresh.length} text${fresh.length === 1 ? '' : 's'} could not be delivered`,
+    body: `Texting gave up on: ${who}${more}. Call or email ${fresh.length === 1 ? 'them' : 'these leads'} so ${fresh.length === 1 ? 'they are' : 'nobody is'} left waiting.`,
+    url: fresh.length === 1 && fresh[0].lead_id ? `/app/leads/${fresh[0].lead_id}` : '/app/texting',
+    linkLabel: 'Open lead',
+  });
+  return { state: 'alerted', count: fresh.length };
 }

@@ -27,6 +27,7 @@ const CHAT_DB = process.env.CHAT_DB ?? join(homedir(), 'Library', 'Messages', 'c
 const STATE_DIR = join(homedir(), '.homequote-sms-bridge');
 const STATE_FILE = join(STATE_DIR, 'state.json');
 const POLL_MS = 4000;
+const VERIFY_MS = 45_000; // how long to watch Messages for a delivery error after each send
 const APPLE_EPOCH_MS = Date.UTC(2001, 0, 1);
 
 if (!BASE || TOKEN.length < 24) {
@@ -66,14 +67,61 @@ end run`;
 async function sendVia(kind, number, text) {
   await run('osascript', ['-e', SEND_SCRIPT, number, text, kind], { timeout: 30_000 });
 }
+/** Newest row id in Messages' database, taken just before a send so the text we send can be found afterwards. */
+async function lastRowId() {
+  const [row] = await query('select coalesce(max(ROWID),0) as m from message');
+  return Number(row?.m ?? 0);
+}
+
+/**
+ * Messages says "sent" as soon as it accepts a text, even if Apple then fails to deliver it. Watch the Messages database
+ * for what really happened: 'delivered', 'failed' (Messages recorded an error, so nothing reached the person) or
+ * 'unknown' (can't tell: no row found, no Full Disk Access, recipient's phone is just off). Only 'failed' is ever retried.
+ */
+async function verifyDelivery(number, afterRowId) {
+  if (!/^\+?\d{10,15}$/.test(number)) return 'unknown';
+  const deadline = Date.now() + VERIFY_MS;
+  while (Date.now() < deadline) {
+    await sleep(3000);
+    let row;
+    try {
+      [row] = await query(
+        `select m.is_delivered as delivered, m.is_sent as sent, m.error as error, m.service as service
+           from message m join handle h on h.ROWID = m.handle_id
+          where m.is_from_me = 1 and m.ROWID > ${Number(afterRowId)} and h.id = '${number}'
+          order by m.ROWID desc limit 1`);
+    } catch { return 'unknown'; }
+    if (!row) continue;
+    if (Number(row.error) !== 0) return 'failed';
+    if (Number(row.delivered) === 1) return 'delivered';
+    if (row.service === 'SMS' && Number(row.sent) === 1) return 'delivered'; // SMS has no delivery receipts
+  }
+  return 'unknown';
+}
+
+/** Returns { fallback: true } when the iMessage failed and a green-bubble SMS went out instead. Throws when nothing went out. */
 async function sendText(number, text) {
-  if (DRY) { log('[dry run] would send to', number, JSON.stringify(text)); return; }
-  try { await sendVia('imessage', number, text); }
-  catch (e) {
+  if (DRY) { log('[dry run] would send to', number, JSON.stringify(text)); return {}; }
+  let before = 0;
+  try { before = await lastRowId(); } catch { /* no database access: send anyway, just can't double-check */ }
+  try {
+    await sendVia('imessage', number, text);
+  } catch (e) {
     if (!SMS_FALLBACK) throw e;
     log('iMessage failed, trying SMS fallback');
     await sendVia('sms', number, text);
+    return { fallback: true };
   }
+  if (!before) return {};
+  const outcome = await verifyDelivery(number, before);
+  if (outcome !== 'failed') return {};
+  // Messages accepted the text but recorded a delivery error: it did not reach them.
+  if (SMS_FALLBACK) {
+    log('iMessage delivery failed, trying SMS fallback');
+    await sendVia('sms', number, text);
+    return { fallback: true };
+  }
+  throw new Error('Messages could not deliver the text (not delivered)');
 }
 
 async function sendOutbound() {
@@ -85,7 +133,10 @@ async function sendOutbound() {
       log('sent', m.id);
     } catch (e) {
       const msg = String(e?.stderr || e?.message || e).split('\n')[0].slice(0, 280);
-      await api('ack', { id: m.id, ok: false, error: msg }).catch(() => {});
+      // Messages refused it or recorded a delivery error, so nothing went out and the app may queue it again (a few minutes
+      // later, up to 3 tries). If osascript timed out we can't know whether it sent, so that one is never retried.
+      const retryable = !(e?.killed || e?.signal);
+      await api('ack', { id: m.id, ok: false, error: msg, retryable }).catch(() => {});
       log('FAILED', m.id, msg);
     }
     // Human pace: a few seconds between texts, never a burst.

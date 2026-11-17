@@ -10,7 +10,7 @@ vi.mock('server-only', () => ({}));
 import { finalizeOutbound, isHelp, isOptOut, openingMessage, projectLabel } from '@/lib/sms/rules';
 import { agentResultSchema, runSmsAgent, SMS_SYSTEM_PROMPT } from '@/lib/sms/agent';
 import { ackOutbound, claimOutbound, handleInbound, metaProject, queueWorkflowText, startSmsForLead, startSmsForMetaLead } from '@/lib/sms/service';
-import { checkBridgeHealth, describeStuck } from '@/lib/sms/health';
+import { alertFailedTexts, checkBridgeHealth, describeStuck } from '@/lib/sms/health';
 import { presetConfig } from '@/lib/funnels/presets';
 
 describe('opt-out and message rules', () => {
@@ -262,12 +262,64 @@ describe('the bridge queue', () => {
     await ackOutbound(sb, m.id, false, 'Not an iMessage user');
     expect((await q(`select status, error from public.sms_messages where id=$1`, [m.id]))[0]).toMatchObject({ status: 'failed', error: 'Not an iMessage user' });
   });
+  it('puts a send the bridge knows failed back in line, twice, then leaves it failed', async () => {
+    await q(`delete from public.sms_messages`);
+    const { leadId } = await newLead();
+    await startSmsForLead(sb, leadId, T);
+    await due();
+    const row = async (id: string) => (await q(`select status, attempts, send_after > now() as later, error from public.sms_messages where id=$1`, [id]))[0];
+    let [m] = await claimOutbound(sb, 5);
+    await ackOutbound(sb, m.id, false, 'Messages could not deliver', { retryable: true });
+    expect(await row(m.id)).toMatchObject({ status: 'queued', attempts: 1, later: true });
+    expect(await claimOutbound(sb, 5)).toHaveLength(0); // waits out the delay
+    await due();
+    [m] = await claimOutbound(sb, 5);
+    await ackOutbound(sb, m.id, false, 'Messages could not deliver', { retryable: true });
+    expect(await row(m.id)).toMatchObject({ status: 'queued', attempts: 2 });
+    await due();
+    [m] = await claimOutbound(sb, 5);
+    await ackOutbound(sb, m.id, false, 'Messages could not deliver', { retryable: true });
+    expect(await row(m.id)).toMatchObject({ status: 'failed', attempts: 3, error: 'Messages could not deliver' });
+  });
+  it('never retries a failure the bridge could not be sure about', async () => {
+    await q(`delete from public.sms_messages`);
+    const { leadId } = await newLead();
+    await startSmsForLead(sb, leadId, T);
+    await due();
+    const [m] = await claimOutbound(sb, 5);
+    await ackOutbound(sb, m.id, false, 'timed out', { retryable: false });
+    expect((await q(`select status from public.sms_messages where id=$1`, [m.id]))[0].status).toBe('failed');
+  });
   it('does not send a message scheduled for later', async () => {
     await q(`delete from public.sms_messages`);
     const { leadId } = await newLead();
     await startSmsForLead(sb, leadId, new Date(Date.now() + 0));
     await q(`update public.sms_messages set send_after = now() + interval '1 hour' where lead_id=$1`, [leadId]);
     expect(await claimOutbound(sb, 5)).toHaveLength(0);
+  });
+});
+
+describe('failed texts reach a person', () => {
+  const failedText = async (error: string) => {
+    await q(`delete from public.sms_messages`);
+    const { leadId } = await newLead(); await startSmsForLead(sb, leadId, T);
+    await q(`update public.sms_messages set status='failed', error=$2 where lead_id=$1`, [leadId, error]);
+    return leadId;
+  };
+  it('announces a failed text once, with a note on the lead', async () => {
+    const leadId = await failedText('Bridge did not confirm within 10 minutes');
+    const notify = vi.fn(async () => undefined);
+    expect(await alertFailedTexts(sb, { notify })).toEqual({ state: 'alerted', count: 1 });
+    expect((notify.mock.calls[0] as any)[0]).toMatchObject({ title: '1 text could not be delivered', url: `/app/leads/${leadId}` });
+    expect((await q(`select 1 from public.lead_activities where lead_id=$1 and body like 'Text could not be delivered%'`, [leadId])).length).toBe(1);
+    expect(await alertFailedTexts(sb, { notify })).toEqual({ state: 'none' });
+    expect(notify).toHaveBeenCalledTimes(1);
+  });
+  it('ignores texts that were cancelled on purpose', async () => {
+    await failedText('Cancelled: recipient opted out');
+    const notify = vi.fn(async () => undefined);
+    expect(await alertFailedTexts(sb, { notify })).toEqual({ state: 'none' });
+    expect(notify).not.toHaveBeenCalled();
   });
 });
 

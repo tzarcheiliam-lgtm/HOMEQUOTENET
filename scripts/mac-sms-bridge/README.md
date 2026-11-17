@@ -36,6 +36,11 @@ launchctl load ~/Library/LaunchAgents/com.homequote.sms-bridge.plist
 ```
 Logs: `/tmp/homequote-sms-bridge.log`.
 
+## If a text doesn't get through
+- After each send the bridge watches Messages for up to 45 seconds. If Messages records a delivery error it sends a green-bubble SMS instead (when `BRIDGE_SMS_FALLBACK=true`), otherwise it reports the failure and the app tries again in 2 minutes, then 10 minutes (3 tries in all).
+- If it still fails, the team gets a push + email naming the lead and number, and a note appears on the lead. Follow up by call or email.
+- Delivery checking needs Full Disk Access (step 2). Without it the bridge still sends, it just can't see delivery errors.
+
 ## Safety built in
 - Nothing is sent until an admin turns texting on; the **Stop all texting** button halts it instantly.
 - Texts go out only 8am–9pm in the lead's time zone (changeable), at most the daily limit, a few seconds apart.

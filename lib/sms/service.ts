@@ -496,7 +496,32 @@ export async function claimOutbound(db: Db, limit = 5): Promise<ClaimedMessage[]
   return (data ?? []) as ClaimedMessage[];
 }
 
-export async function ackOutbound(db: Db, id: string, ok: boolean, error?: string) {
-  const now = new Date().toISOString();
-  await db.from('sms_messages').update(ok ? { status: 'sent', sent_at: now, error: null } : { status: 'failed', error: (error ?? 'Send failed').slice(0, 300) }).eq('id', id).eq('status', 'sending');
+/** A text is handed to the bridge at most this many times. */
+export const MAX_SEND_ATTEMPTS = 3;
+/** Minutes to wait before attempt 2 and attempt 3. */
+export const RETRY_DELAY_MINUTES = [2, 10];
+
+/**
+ * The Mac reports a result. `retryable` is only set when the bridge KNOWS nothing went out (Messages refused the send, or
+ * Messages recorded a delivery error), so a retry can never double-text. Anything ambiguous stays failed and is escalated
+ * to a person by `alertFailedTexts`.
+ */
+export async function ackOutbound(db: Db, id: string, ok: boolean, error?: string, opts: { retryable?: boolean; now?: Date } = {}) {
+  const now = (opts.now ?? new Date()).toISOString();
+  if (ok) { await db.from('sms_messages').update({ status: 'sent', sent_at: now, error: null }).eq('id', id).eq('status', 'sending'); return; }
+  const message = (error ?? 'Send failed').slice(0, 300);
+  if (opts.retryable) {
+    // `attempts` arrives with migration 0078; without it a failed send simply stays failed.
+    const { data, error: readErr } = await db.from('sms_messages').select('attempts').eq('id', id).eq('status', 'sending').maybeSingle();
+    const attempts = Number((data as { attempts?: number } | null)?.attempts ?? 0);
+    if (!readErr && data && attempts < MAX_SEND_ATTEMPTS) {
+      const delay = RETRY_DELAY_MINUTES[Math.min(Math.max(attempts - 1, 0), RETRY_DELAY_MINUTES.length - 1)];
+      const retryAt = new Date(new Date(now).getTime() + delay * 60_000).toISOString();
+      const { data: requeued } = await db.from('sms_messages')
+        .update({ status: 'queued', send_after: retryAt, claimed_at: null, error: `Retrying (attempt ${attempts} failed): ${message}`.slice(0, 300) })
+        .eq('id', id).eq('status', 'sending').select('id');
+      if (requeued?.length) return;
+    }
+  }
+  await db.from('sms_messages').update({ status: 'failed', error: message }).eq('id', id).eq('status', 'sending');
 }
