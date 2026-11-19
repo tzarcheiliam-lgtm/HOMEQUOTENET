@@ -24,11 +24,35 @@ export const REC_ATTR = 'hq.rec_consent';
 export const ROOM_META_KEY = 'hqRec';
 /** Bump when the wording changes; stored with every consent. */
 export const CONSENT_VERSION = 'v1-2026-11';
+/** The video-mode wording's version (see videoConsentCopy). */
+export const VIDEO_CONSENT_VERSION = 'v1-video-2026-11';
 /** People needed in the room before capture starts (a recording of one person talking to nobody is useless). */
 export const MIN_PARTICIPANTS = 2;
 
-/** The wording shown in the call. Change it here (and bump CONSENT_VERSION). */
-export const CONSENT_COPY = {
+/**
+ * 'video': a watchable recording (video + audio) kept in HomeQuote, deleted after the retention period.
+ * 'transcript': audio only, turned into a transcript + AI summary, audio deleted.
+ */
+export type RecordingMode = 'video' | 'transcript';
+
+export interface ConsentCopy {
+  requestButton: string;
+  title: string;
+  body: (requester: string) => string;
+  detail: string;
+  agree: string;
+  decline: string;
+  recording: string;
+  paused: (missing: string) => string;
+  waitingOthers: string;
+  waitingJoin: string;
+  stop: string;
+  micHeld: string;
+  stoppedHost: string;
+}
+
+/** The wording shown in the call in transcript mode. Change it here (and bump CONSENT_VERSION). */
+export const CONSENT_COPY: ConsentCopy = {
   requestButton: 'Record & summarize',
   title: 'Record this call?',
   body: (requester: string) =>
@@ -42,7 +66,24 @@ export const CONSENT_COPY = {
   waitingJoin: 'Starts when the other person joins and agrees',
   stop: 'Stop recording',
   micHeld: 'Your microphone is off until you answer.',
-} as const;
+  stoppedHost: 'Recording stopped. The notes will be in HomeQuote in a few minutes.',
+};
+
+/** The wording in video mode. Change it here (and bump VIDEO_CONSENT_VERSION). */
+export function videoConsentCopy(retentionDays: number): ConsentCopy {
+  return {
+    ...CONSENT_COPY,
+    requestButton: 'Record',
+    body: (requester: string) =>
+      `${requester} would like to record this call (video and audio) so HomeQuote can watch it again later. Recording starts only after everyone here agrees, and anyone can stop it at any time.`,
+    detail: `Only the HomeQuote team can watch the recording, and it is deleted automatically after ${retentionDays} days.`,
+    recording: 'Recording',
+    stoppedHost: 'Recording stopped. It will be ready to watch in HomeQuote in a few minutes.',
+  };
+}
+
+export const consentCopy = (mode: RecordingMode, retentionDays: number): ConsentCopy => (mode === 'video' ? videoConsentCopy(retentionDays) : CONSENT_COPY);
+export const consentVersion = (mode: RecordingMode) => (mode === 'video' ? VIDEO_CONSENT_VERSION : CONSENT_VERSION);
 
 // --- database lifecycle --------------------------------------------------------------------------
 
@@ -212,8 +253,15 @@ export function meetingFromRoomName(roomName: unknown): { kind: 'appointment' | 
   return m ? { kind: SEGMENT_KIND[m[1] as keyof typeof SEGMENT_KIND], id: m[2] } : null;
 }
 
-/** Storage key of one audio segment. */
-export const segmentPath = (recordingId: string, seq: number) => `calls/${recordingId}/${String(seq).padStart(2, '0')}.ogg`;
+/** Storage key of one recorded file (audio .ogg in transcript mode, .mp4 in video mode). */
+export const segmentPath = (recordingId: string, seq: number, ext: 'ogg' | 'mp4' = 'ogg') => `calls/${recordingId}/${String(seq).padStart(2, '0')}.${ext}`;
+/** A video-mode file (playable), told apart by its name. */
+export const isVideoPath = (path: string) => /\.mp4$/i.test(path);
+
+/** When a recording is deleted: retentionDays after it was made. */
+export function expiresAt(createdAtMs: number, retentionDays: number): number {
+  return createdAtMs + retentionDays * 86_400_000;
+}
 
 /** Rotate the audio file before this age so one file stays under the speech-to-text 60-minute limit. */
 export const SEGMENT_ROTATE_MS = 50 * 60_000;

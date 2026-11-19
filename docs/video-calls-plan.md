@@ -57,7 +57,15 @@ cancelled meeting's link stops working because the page re-checks the booking.
 - Workflow events `video_call.joined` / `video_call.no_show` / `video_call.ended`.
 - "Joined 2:03 pm · 31 min" chips on the appointment cards.
 
-## Phase 3 — AI follow-up (built, DORMANT; migration 0077; details in HOMEQUOTE_CONTEXT.md §51)
+## Phase 3 — recording (built, OFF; migration 0077; details in HOMEQUOTE_CONTEXT.md §51)
+
+**Chosen 2026-11-19: video mode** (`VIDEO_RECORDING_ENABLED=true`): the same all-party consent, but
+LiveKit records a watchable MP4 (720p) to an S3-compatible bucket (Cloudflare R2 recommended; the
+Supabase free plan's 50 MB file cap is too small for video). Watch at `/app/recordings`, a "Watch"
+link goes into the prospect's notes, and every recording is deleted after 90 days. No transcript
+or AI. The transcript + AI summary mode below is still in the code (`VIDEO_TRANSCRIPTS_ENABLED`).
+
+### Transcript mode (original plan)
 
 - **Consent first (California is all-party consent).** The host taps **Record & summarize**; everyone
   in the call gets a clear question. Capture starts only after **every** person (at least two) has

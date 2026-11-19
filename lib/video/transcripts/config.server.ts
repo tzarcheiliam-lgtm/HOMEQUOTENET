@@ -1,27 +1,34 @@
 import 'server-only';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { livekitConfig } from '@/lib/video/livekit.server';
+import type { RecordingMode } from './consent';
 
 /**
- * Video call transcripts (Phase 3, §51) ship DORMANT. They are on only when ALL of these are set:
- *   VIDEO_TRANSCRIPTS_ENABLED=true          the switch
+ * Video call recording (§51) ships OFF. Two modes; at most one is on:
+ *
+ * VIDEO mode (watchable recordings, kept RETENTION days then deleted):
+ *   VIDEO_RECORDING_ENABLED=true            the switch
  *   LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET   (already set for video rooms, §48)
- *   ANTHROPIC_API_KEY                        Claude writes the summary (already set)
- *   FISH_API_KEY                             Fish Audio speech-to-text (already set for AI calling, §18)
- *   VIDEO_RECORDING_S3_ENDPOINT              Supabase Storage S3 endpoint: https://<project-ref>.storage.supabase.co/storage/v1/s3
- *   VIDEO_RECORDING_S3_REGION                the project's region (Storage settings, e.g. us-west-1)
- *   VIDEO_RECORDING_S3_ACCESS_KEY_ID         Storage S3 access key (Storage -> S3 Connection -> New access key)
+ *   VIDEO_RECORDING_S3_ENDPOINT             any S3-compatible store. Cloudflare R2: https://<account id>.r2.cloudflarestorage.com
+ *                                           (Supabase Storage also works: https://<ref>.storage.supabase.co/storage/v1/s3,
+ *                                            but the free plan caps files at 50 MB, about 5 minutes of video)
+ *   VIDEO_RECORDING_S3_REGION               R2: auto
+ *   VIDEO_RECORDING_S3_ACCESS_KEY_ID        an access key that can read, write and delete in the bucket
  *   VIDEO_RECORDING_S3_SECRET_ACCESS_KEY
- * Optional:
- *   VIDEO_RECORDING_BUCKET                   default 'video-recordings' (created by 0077)
- *   VIDEO_RECORDING_KEEP_AUDIO=true          keep the audio after transcription (default: delete it)
- *   VIDEO_SUMMARY_MODEL                      default: the assistant's model (ANTHROPIC_MODEL, else lib/assistant/config DEFAULT_MODEL)
- *   FISH_ASR_MODEL                           default 'transcribe-1-pro'
- * The S3 keys are handed to LiveKit Egress (inside the egress request, over TLS) so it can upload
- * the audio; HomeQuote itself reads and deletes the files with the Supabase service role.
+ *   VIDEO_RECORDING_BUCKET                  default 'video-recordings'
+ *   VIDEO_RECORDING_RETENTION_DAYS          default 90
+ *
+ * TRANSCRIPT mode (audio only -> Fish Audio transcript -> Claude summary in the CRM; audio deleted):
+ *   VIDEO_TRANSCRIPTS_ENABLED=true + the LiveKit and S3 settings above (Supabase Storage S3 endpoint),
+ *   ANTHROPIC_API_KEY, FISH_API_KEY. Optional VIDEO_RECORDING_KEEP_AUDIO, VIDEO_SUMMARY_MODEL, FISH_ASR_MODEL.
+ *
+ * VIDEO_RECORDING_ENABLED wins if both switches are set. The S3 keys are handed to LiveKit Egress
+ * (inside the egress request, over TLS) so it can upload; HomeQuote signs short-lived links with them.
  */
-export interface TranscriptsConfig {
+export interface RecordingConfig {
+  mode: RecordingMode;
   s3: { endpoint: string; region: string; accessKey: string; secret: string; bucket: string };
+  retentionDays: number;
   fishApiKey: string;
   fishModel: string | undefined;
   summaryModel: string | undefined;
@@ -30,18 +37,33 @@ export interface TranscriptsConfig {
 }
 
 const env = (name: string) => process.env[name]?.trim() || undefined;
+const on = (name: string) => env(name)?.toLowerCase() === 'true';
 
-export function transcriptsConfig(): TranscriptsConfig | null {
-  if (env('VIDEO_TRANSCRIPTS_ENABLED')?.toLowerCase() !== 'true') return null;
+export const DEFAULT_RETENTION_DAYS = 90;
+
+/** Which mode the switches ask for (before checking keys). Also used by the join pass. */
+export function requestedRecordingMode(): RecordingMode | null {
+  if (on('VIDEO_RECORDING_ENABLED')) return 'video';
+  if (on('VIDEO_TRANSCRIPTS_ENABLED')) return 'transcript';
+  return null;
+}
+
+export function recordingConfig(): RecordingConfig | null {
+  const mode = requestedRecordingMode();
+  if (!mode) return null;
   const lk = livekitConfig();
   const endpoint = env('VIDEO_RECORDING_S3_ENDPOINT');
   const region = env('VIDEO_RECORDING_S3_REGION');
   const accessKey = env('VIDEO_RECORDING_S3_ACCESS_KEY_ID');
   const secret = env('VIDEO_RECORDING_S3_SECRET_ACCESS_KEY');
-  const fishApiKey = env('FISH_API_KEY');
-  if (!lk || !env('ANTHROPIC_API_KEY') || !fishApiKey || !endpoint || !region || !accessKey || !secret || !/^https:\/\//i.test(endpoint)) return null;
+  if (!lk || !endpoint || !region || !accessKey || !secret || !/^https:\/\//i.test(endpoint)) return null;
+  const fishApiKey = env('FISH_API_KEY') ?? '';
+  if (mode === 'transcript' && (!env('ANTHROPIC_API_KEY') || !fishApiKey)) return null;
+  const days = Number.parseInt(env('VIDEO_RECORDING_RETENTION_DAYS') ?? '', 10);
   return {
+    mode,
     s3: { endpoint, region, accessKey, secret, bucket: env('VIDEO_RECORDING_BUCKET') ?? 'video-recordings' },
+    retentionDays: Number.isFinite(days) && days >= 1 && days <= 3650 ? days : DEFAULT_RETENTION_DAYS,
     fishApiKey,
     fishModel: env('FISH_ASR_MODEL'),
     summaryModel: env('VIDEO_SUMMARY_MODEL'),
@@ -50,11 +72,9 @@ export function transcriptsConfig(): TranscriptsConfig | null {
     livekit: { httpUrl: lk.url.replace(/^ws(s?):\/\//i, 'http$1://'), apiKey: lk.apiKey, apiSecret: lk.apiSecret },
   };
 }
-
-export function videoTranscriptsEnabled(): boolean {
-  return transcriptsConfig() !== null;
+export function videoRecordingEnabled(): boolean {
+  return recordingConfig() !== null;
 }
-
 /**
  * Bearer token for the internal processing route, derived from the LiveKit secret so no
  * new env var is needed. Rotating LIVEKIT_API_SECRET rotates it.

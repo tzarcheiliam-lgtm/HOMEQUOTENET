@@ -13,6 +13,8 @@ import { CopyGuestLink } from '@/components/video/copy-guest-link';
 import { videoLinksFor } from '@/lib/video/rooms.server';
 import { callSummaries } from '@/lib/video/events.server';
 import { VideoCallHistory } from '@/components/video/call-history';
+import { recordingsFor } from '@/lib/data/recordings';
+import { WatchRecordingLink } from '@/components/recordings/watch-recording-link';
 import { LATE_MS, ownMeetingLink } from '@/lib/video/links';
 import { cn } from '@/lib/utils';
 import { Select } from '@/components/ui/select';
@@ -86,7 +88,10 @@ export default async function SalesAppointmentsPage({
   const adds = await listCalendarAdds(rows.map((r) => r.id));
   // Reminder texts (admins can read them; RLS returns nothing for callers, or before migration 0068).
   // Who joined each video meeting and for how long (§52; empty before migration 0076).
-  const videoHistory = await callSummaries(await createClient(), 'sales_appointment', rows.filter((r) => r.appointment_type === 'video').map((r) => r.id));
+  const videoIds = rows.filter((r) => r.appointment_type === 'video').map((r) => r.id);
+  const videoHistory = await callSummaries(await createClient(), 'sales_appointment', videoIds);
+  // Recordings of those calls the user may watch (§51; admins + whoever recorded).
+  const recordings = await recordingsFor(await createClient(), 'sales_appointment', videoIds);
   const chips = new Map<string, ReminderChip>();
   if (rows.length) {
     const { data: rem } = await (await createClient()).from('sms_reminders').select('ref_id,step,status,anchor_at,created_at').eq('kind', 'sales_meeting').in('ref_id', rows.map((r) => r.id));
@@ -114,7 +119,16 @@ export default async function SalesAppointmentsPage({
   const videoButtons = (a: (typeof rows)[number], compact = false) => {
     const v = videoOf(a);
     const h = videoHistory.get(a.id);
-    if (!v) return h ? <VideoCallHistory summary={h} timeZone={a.time_zone} noShow={a.status === 'no_show'} /> : null;
+    const rec = recordings.get(a.id);
+    if (!v) {
+      if (!h && !rec) return null;
+      return (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          {h ? <VideoCallHistory summary={h} timeZone={a.time_zone} noShow={a.status === 'no_show'} /> : null}
+          <WatchRecordingLink rec={rec} />
+        </div>
+      );
+    }
     return (
       <div className={cn('flex flex-wrap items-center gap-2', compact && '[&_a]:h-7 [&_a]:px-2 [&_a]:text-xs [&_button]:h-7 [&_button]:px-2 [&_button]:text-xs')}>
         <Link href={v.hostHref} className={cn(buttonVariants({ size: 'sm' }), 'gap-1.5')}>
@@ -123,6 +137,7 @@ export default async function SalesAppointmentsPage({
         </Link>
         {v.guestUrl ? <CopyGuestLink url={v.guestUrl} tone="light" /> : null}
         {h ? <VideoCallHistory summary={h} timeZone={a.time_zone} noShow={a.status === 'no_show'} /> : null}
+        <WatchRecordingLink rec={rec} />
       </div>
     );
   };
