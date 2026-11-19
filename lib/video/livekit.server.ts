@@ -70,8 +70,8 @@ export async function mintJoinPass(input: {
     canPublish: true,
     canSubscribe: true,
     canPublishData: true,
-    // §51: lets each participant set their OWN recording-consent attribute. Only while call transcripts are switched on.
-    canUpdateOwnMetadata: process.env.VIDEO_TRANSCRIPTS_ENABLED?.trim().toLowerCase() === 'true',
+    // §51: lets each participant set their OWN recording-consent attribute. Only while call recording is switched on.
+    canUpdateOwnMetadata: ['VIDEO_RECORDING_ENABLED', 'VIDEO_TRANSCRIPTS_ENABLED'].some((k) => process.env[k]?.trim().toLowerCase() === 'true'),
   });
   return { serverUrl: cfg.url, participantToken: await at.toJwt(), roomName: input.roomName, participantName: input.name };
 }

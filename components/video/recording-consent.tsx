@@ -10,14 +10,14 @@ import {
   syncRecording,
   type RecordingAvailability,
 } from '@/lib/actions/video-recording';
-import { CONSENT_COPY, MIN_PARTICIPANTS, REC_ATTR, missingConsent, namesList, parseRoomRec, type RoomRec } from '@/lib/video/transcripts/consent';
+import { MIN_PARTICIPANTS, REC_ATTR, consentCopy, missingConsent, namesList, parseRoomRec, type ConsentCopy, type RoomRec } from '@/lib/video/transcripts/consent';
 
 /**
  * All-party recording consent for HomeQuote video calls (§51). Self-contained: mount it anywhere
- * inside <LiveKitRoom>; it needs no props. Renders nothing unless call transcripts are switched on
- * (the server says so), so it is safe to mount everywhere.
+ * inside <LiveKitRoom>; it needs no props. Renders nothing unless call recording is switched on
+ * (the server says so, and which mode: a watchable video, or a transcript), so it is safe to mount everywhere.
  *
- * - The host sees "Record & summarize". Asking counts as the host's own consent.
+ * - The host sees "Record" ("Record & summarize" in transcript mode). Asking counts as the host's own consent.
  * - Everyone else gets a clear question. Capture starts only after EVERY person in the room agreed
  *   (the server checks LiveKit's participant list; this component cannot start anything).
  * - While capture is on, everyone sees a banner with Stop. Anyone can stop it at any time.
@@ -51,10 +51,10 @@ export function RecordingConsent() {
   }, [roomName]);
 
   if (!roomName || !avail?.enabled) return null;
-  return <ConsentControls roomName={roomName} rec={parseRoomRec(metadata)} canRequest={avail.canRequest} />;
+  return <ConsentControls roomName={roomName} rec={parseRoomRec(metadata)} canRequest={avail.canRequest} copy={consentCopy(avail.mode, avail.retentionDays)} />;
 }
 
-function ConsentControls({ roomName, rec, canRequest }: { roomName: string; rec: RoomRec | null; canRequest: boolean }) {
+function ConsentControls({ roomName, rec, canRequest, copy }: { roomName: string; rec: RoomRec | null; canRequest: boolean; copy: ConsentCopy }) {
   const participants = useParticipants();
   const { localParticipant, isMicrophoneEnabled } = useLocalParticipant();
   const capturing = useIsRecording();
@@ -145,28 +145,28 @@ function ConsentControls({ roomName, rec, canRequest }: { roomName: string; rec:
       const r = await stopRecording(roomName, localParticipant.identity, reason);
       if (!r.ok) return setNote(r.error);
       releaseMic();
-      setNote(reason === 'declined' ? 'This call will not be recorded.' : canRequest ? 'Recording stopped. The notes will be in HomeQuote in a few minutes.' : 'Recording stopped.');
+      setNote(reason === 'declined' ? 'This call will not be recorded.' : canRequest ? copy.stoppedHost : 'Recording stopped.');
     });
 
   const onAir = capturing || rec?.state === 'recording';
   const status = !rec
-    ? capturing ? CONSENT_COPY.recording : null
-    : rec.state === 'recording' ? CONSENT_COPY.recording
-    : rec.state === 'paused' ? CONSENT_COPY.paused(namesList(missing))
-    : people.length < MIN_PARTICIPANTS ? CONSENT_COPY.waitingJoin
-    : missing.length ? `${CONSENT_COPY.waitingOthers} (${namesList(missing)})`
+    ? capturing ? copy.recording : null
+    : rec.state === 'recording' ? copy.recording
+    : rec.state === 'paused' ? copy.paused(namesList(missing))
+    : people.length < MIN_PARTICIPANTS ? copy.waitingJoin
+    : missing.length ? `${copy.waitingOthers} (${namesList(missing)})`
     : 'Starting the recording…';
 
   return (
     <>
-      <div className="pointer-events-none absolute left-3 top-3 z-20 flex max-w-[calc(100%-1.5rem)] flex-col items-start gap-2" style={BODY_FONT}>
+      <div className="pointer-events-none absolute right-3 top-3 z-20 flex max-w-[calc(100%-1.5rem)] flex-col items-end gap-2" style={BODY_FONT}>
         {status ? (
           <div role="status" aria-live="polite" className="pointer-events-auto flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm" style={{ background: MIST, color: NAVY, borderColor: '#D9E1EE' }}>
             <span aria-hidden="true" className={`size-2.5 shrink-0 rounded-full ${onAir ? 'motion-safe:animate-pulse' : ''}`} style={{ background: onAir ? RED : SLATE }} />
             <span className="min-w-0 truncate">{status}</span>
             {rec ? (
               <button type="button" onClick={() => stop('stopped')} disabled={busy} className="ml-1 rounded-full px-2.5 py-0.5 text-xs font-medium text-white disabled:opacity-60" style={{ background: NAVY }}>
-                {CONSENT_COPY.stop}
+                {copy.stop}
               </button>
             ) : null}
           </div>
@@ -180,7 +180,7 @@ function ConsentControls({ roomName, rec, canRequest }: { roomName: string; rec:
             style={{ background: MIST, color: NAVY, borderColor: '#D9E1EE' }}
           >
             <span aria-hidden="true" className="size-2.5 rounded-full" style={{ background: GOLD }} />
-            {busy ? 'Asking…' : CONSENT_COPY.requestButton}
+            {busy ? 'Asking…' : copy.requestButton}
           </button>
         ) : null}
         {note ? (
@@ -189,12 +189,12 @@ function ConsentControls({ roomName, rec, canRequest }: { roomName: string; rec:
           </p>
         ) : null}
       </div>
-      {needsAnswer && rec ? <ConsentDialog rec={rec} busy={busy} micHeld={micHeld} onAgree={agree} onDecline={() => stop('declined')} /> : null}
+      {needsAnswer && rec ? <ConsentDialog rec={rec} copy={copy} busy={busy} micHeld={micHeld} onAgree={agree} onDecline={() => stop('declined')} /> : null}
     </>
   );
 }
 
-function ConsentDialog({ rec, busy, micHeld, onAgree, onDecline }: { rec: RoomRec; busy: boolean; micHeld: boolean; onAgree: () => void; onDecline: () => void }) {
+function ConsentDialog({ rec, copy, busy, micHeld, onAgree, onDecline }: { rec: RoomRec; copy: ConsentCopy; busy: boolean; micHeld: boolean; onAgree: () => void; onDecline: () => void }) {
   const titleId = useId();
   const bodyId = useId();
   const box = useRef<HTMLDivElement>(null);
@@ -213,19 +213,19 @@ function ConsentDialog({ rec, busy, micHeld, onAgree, onDecline }: { rec: RoomRe
         style={{ background: MIST, color: NAVY, borderColor: '#D9E1EE' }}
       >
         <h2 id={titleId} className="font-display text-lg font-semibold">
-          {CONSENT_COPY.title}
+          {copy.title}
         </h2>
         <div id={bodyId} className="mt-2 space-y-2 text-sm leading-6">
-          <p>{CONSENT_COPY.body(rec.by)}</p>
-          <p style={{ color: SLATE }}>{CONSENT_COPY.detail}</p>
-          {micHeld ? <p className="font-medium">{CONSENT_COPY.micHeld}</p> : null}
+          <p>{copy.body(rec.by)}</p>
+          <p style={{ color: SLATE }}>{copy.detail}</p>
+          {micHeld ? <p className="font-medium">{copy.micHeld}</p> : null}
         </div>
         <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button type="button" onClick={onDecline} disabled={busy} className="min-h-11 rounded-lg border px-4 text-sm font-medium disabled:opacity-60" style={{ borderColor: SLATE, color: NAVY, background: 'transparent' }}>
-            {CONSENT_COPY.decline}
+            {copy.decline}
           </button>
           <button type="button" onClick={onAgree} disabled={busy} className="min-h-11 rounded-lg px-4 text-sm font-semibold text-white disabled:opacity-60" style={{ background: BLUE }}>
-            {CONSENT_COPY.agree}
+            {copy.agree}
           </button>
         </div>
       </div>

@@ -3,14 +3,20 @@ import Anthropic from '@anthropic-ai/sdk';
 import { assistantModel } from '@/lib/assistant/config';
 import { classifyProviderError } from '@/lib/assistant/errors';
 import { estimateCostMicros } from '@/lib/assistant/pricing';
+import { siteUrl } from '@/lib/calendar/config';
 import { videoWhen } from '@/lib/video/copy';
+import { formatDay, recordingNote, recordingPath } from '@/lib/video/recordings/shared';
 import { clients, refreshSegments, type Clients, type RecordingRow, type SegmentRow } from './capture.server';
+import { expiresAt, isVideoPath } from './consent';
 import { fishSpeechToText } from './fish-stt';
 import { SpeechToTextError, transcribeSegments, transcriptLines, type SpeechToText, type Transcript, type TranscriptTurn } from './stt';
 import { SUMMARY_MAX_TOKENS, SUMMARY_SCHEMA, buildSummaryPrompt, parseCallSummary, summaryNote, type CallSummary } from './summary';
 
 /**
- * After a call: transcribe the audio segments (Fish Audio), have Claude write the summary, write it to
+ * After a call, VIDEO mode: wait for LiveKit to finish uploading, then mark the recording ready and
+ * add a "Watch" link to the prospect's notes or the lead's timeline. Nothing is transcribed.
+ *
+ * After a call, TRANSCRIPT mode: transcribe the audio segments (Fish Audio), have Claude write the summary, write it to
  * the prospect's notes or the lead's timeline, and delete the audio. Runs in its own function
  * (POST /api/video/transcripts/process, maxDuration 300) so a long transcription never holds up the
  * LiveKit webhook. Each step is saved as it finishes, so a retry skips what is already done.
@@ -45,9 +51,44 @@ export async function processPendingRecordings(limit = 3, deps: ProcessDeps = {}
   return counts;
 }
 
+type LoadedRecording = RecordingRow & { transcript_turns: TranscriptTurn[] | null; summary: CallSummary | null; note_written_at: string | null; audio_deleted_at: string | null; attempts: number; created_at: string };
+
 async function load(c: Clients, id: string) {
-  const { data } = await c.db.from('video_recordings').select('id, meeting_kind, meeting_id, room_name, state, requested_by, requested_by_name, prospect_id, lead_id, meeting_context, capture_started_at, transcript_turns, summary, note_written_at, audio_deleted_at, attempts').eq('id', id).maybeSingle();
-  return data as (RecordingRow & { transcript_turns: TranscriptTurn[] | null; summary: CallSummary | null; note_written_at: string | null; audio_deleted_at: string | null; attempts: number }) | null;
+  const { data } = await c.db.from('video_recordings').select('id, meeting_kind, meeting_id, room_name, state, requested_by, requested_by_name, prospect_id, lead_id, meeting_context, capture_started_at, transcript_turns, summary, note_written_at, audio_deleted_at, attempts, created_at').eq('id', id).maybeSingle();
+  return data as LoadedRecording | null;
+}
+
+/** Write a note once: the prospect's notes, else the lead's timeline, else nowhere (a link with no prospect). */
+async function writeNote(c: Clients, rec: LoadedRecording, note: string, metadata: Record<string, unknown>): Promise<boolean> {
+  if (rec.prospect_id) {
+    const { data, error } = await c.db.rpc('video_prepend_prospect_note', { p_prospect_id: rec.prospect_id, p_note: note });
+    return !error && data === true;
+  }
+  if (rec.lead_id) {
+    const { error } = await c.db.from('lead_activities').insert({ lead_id: rec.lead_id, actor_id: rec.requested_by, type: 'note', body: note, metadata: { source: 'video_call', recording_id: rec.id, ...metadata } });
+    return !error;
+  }
+  return true;
+}
+
+async function finishVideo(c: Clients, rec: LoadedRecording, files: SegmentRow[], fail: (m: string, retryable: boolean) => Promise<ProcessOutcome>): Promise<ProcessOutcome> {
+  if (!files.length) return fail('No video was saved for this recording. Check the LiveKit Egress and storage settings.', false);
+  const seconds = files.reduce((n, f) => n + (Number(f.duration_seconds) || 0), 0);
+  await c.db.from('video_recordings').update({ audio_seconds: Math.round(seconds * 100) / 100 }).eq('id', rec.id);
+  if (!rec.note_written_at) {
+    const ctx = rec.meeting_context ?? {};
+    const tz = ctx.timeZone || 'America/Los_Angeles';
+    const note = recordingNote({
+      when: ctx.startMs ? videoWhen(ctx.startMs, tz) : null,
+      seconds,
+      url: `${siteUrl()}${recordingPath(rec.id)}`,
+      deleteOn: formatDay(expiresAt(Date.parse(rec.created_at), c.cfg.retentionDays), tz),
+    });
+    if (!(await writeNote(c, rec, note, { kind: 'video_recording' }))) return fail('Could not add the recording to the CRM notes.', true);
+    await c.db.from('video_recordings').update({ note_written_at: new Date().toISOString() }).eq('id', rec.id);
+  }
+  await c.db.from('video_recordings').update({ state: 'done', error: null }).eq('id', rec.id);
+  return 'done';
 }
 
 async function waitForUploads(c: Clients, id: string, sleep: (ms: number) => Promise<void>): Promise<SegmentRow[] | null> {
@@ -84,6 +125,8 @@ export async function processRecording(c: Clients, id: string, deps: ProcessDeps
 
   const files = segs.filter((s) => s.status === 'complete');
   const t0 = files.length ? new Date(files[0].started_at).getTime() : 0;
+
+  if (rec.meeting_context?.mode === 'video' || files.some((f) => isVideoPath(f.storage_path))) return finishVideo(c, rec, files, fail);
 
   // 1. Transcript (skipped on a retry that already has one).
   let turns = rec.transcript_turns;
@@ -165,16 +208,7 @@ export async function processRecording(c: Clients, id: string, deps: ProcessDeps
   if (!rec.note_written_at) {
     const minutes = turns.length ? Math.max(1, Math.round((turns[turns.length - 1].end - turns[0].start) / 60)) : null;
     const note = summaryNote(summary, { kind: rec.meeting_kind, when, minutes });
-    let written = false;
-    if (rec.prospect_id) {
-      const { data, error } = await c.db.rpc('video_prepend_prospect_note', { p_prospect_id: rec.prospect_id, p_note: note });
-      written = !error && data === true;
-    } else if (rec.lead_id) {
-      const { error } = await c.db.from('lead_activities').insert({ lead_id: rec.lead_id, actor_id: rec.requested_by, type: 'note', body: note, metadata: { source: 'video_call', recording_id: id } });
-      written = !error;
-    } else {
-      written = true; // a meeting link with no prospect: the summary stays on the recording only
-    }
+    const written = await writeNote(c, rec, note, {});
     if (!written) return fail('Could not write the summary to the CRM.', true);
     await c.db.from('video_recordings').update({ note_written_at: new Date().toISOString() }).eq('id', id);
   }

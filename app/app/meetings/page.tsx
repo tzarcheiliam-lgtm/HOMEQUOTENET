@@ -1,4 +1,7 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
+import { PlayCircle } from 'lucide-react';
+import { buttonVariants } from '@/components/ui/button';
 import { requireCallWorkspace } from '@/lib/auth';
 import { listMeetingLinks, prospectInvitee } from '@/lib/data/meeting-links';
 import { videoRoomsEnabled } from '@/lib/video/livekit.server';
@@ -24,7 +27,12 @@ export default async function MeetingsPage({ searchParams }: { searchParams: Pro
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <PageHeader title="Video meetings" description="Make a meeting link, send it, and join from here. No app needed on their side." />
+      <PageHeader title="Video meetings" description="Make a meeting link, send it, and join from here. No app needed on their side.">
+        <Link href="/app/recordings" className={buttonVariants({ variant: 'outline', size: 'sm' }) + ' gap-1.5'}>
+          <PlayCircle className="size-4" aria-hidden="true" />
+          Recordings
+        </Link>
+      </PageHeader>
       {!enabled ? (
         <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           Video calls are not set up yet: add LIVEKIT_URL, LIVEKIT_API_KEY and LIVEKIT_API_SECRET in Vercel.

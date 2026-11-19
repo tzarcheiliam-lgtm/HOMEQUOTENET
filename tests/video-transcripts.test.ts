@@ -125,6 +125,7 @@ describe('room metadata + names', () => {
   });
   it('names files and rotates long ones before the 60-minute speech-to-text limit', () => {
     expect(segmentPath(REC, 3)).toBe(`calls/${REC}/03.ogg`);
+    expect(segmentPath(REC, 1, 'mp4')).toBe(`calls/${REC}/01.mp4`);
     expect(shouldRotate(0, 49 * 60_000)).toBe(false);
     expect(shouldRotate(0, 50 * 60_000)).toBe(true);
     expect(REC_ATTR).toBe('hq.rec_consent');
@@ -315,9 +316,11 @@ describe('ships dormant', () => {
   afterEach(() => vi.unstubAllEnvs());
 
   it('is off unless the switch AND every key are set', async () => {
-    const { transcriptsConfig } = await import('@/lib/video/transcripts/config.server');
+    const { recordingConfig: transcriptsConfig } = await import('@/lib/video/transcripts/config.server');
     setEnv(FULL);
     const cfg = transcriptsConfig()!;
+    expect(cfg.mode).toBe('transcript');
+    expect(cfg.retentionDays).toBe(90);
     expect(cfg.livekit.httpUrl).toBe('https://hq.livekit.cloud');
     expect(cfg.s3.bucket).toBe('video-recordings');
     expect(cfg.keepAudio).toBe(false);

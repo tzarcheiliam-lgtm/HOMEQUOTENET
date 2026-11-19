@@ -4,6 +4,7 @@ import { bookingLinkSecret } from '@/lib/booking/notify.server';
 import { siteUrl } from '@/lib/calendar/config';
 import { GUEST_EARLY_MS, LATE_MS, isUuid, videoGuestPath, videoGuestToken, videoHostPath } from '@/lib/video/links';
 import { callSummaries, type CallSummary } from '@/lib/video/events.server';
+import { recordingsFor, type RecordingStatus } from '@/lib/data/recordings';
 
 export type MeetingLinkStatus = 'open' | 'upcoming' | 'ended' | 'cancelled';
 
@@ -24,6 +25,8 @@ export interface MeetingLinkRow {
   hostPath: string;
   /** Who joined and for how long (§52), when anyone has. */
   history: CallSummary | null;
+  /** The newest recording of this call the user may watch (§51). */
+  recording?: { id: string; status: RecordingStatus };
 }
 
 export function linkStatus(r: { cancelledAt: string | null; startsAt: string; endsAt: string }, nowMs = Date.now()): MeetingLinkStatus {
@@ -73,10 +76,15 @@ export async function listMeetingLinks(): Promise<{ rows: MeetingLinkRow[]; read
       guestUrl: token ? `${site}${videoGuestPath(token)}` : null,
       hostPath: videoHostPath('link', r.id),
       history: null as CallSummary | null,
+      recording: undefined as MeetingLinkRow['recording'],
     };
   });
   const history = await callSummaries(supabase, 'link', rows.map((r) => r.id));
-  for (const r of rows) r.history = history.get(r.id) ?? null;
+  const recordings = await recordingsFor(supabase, 'link', rows.map((r) => r.id));
+  for (const r of rows) {
+    r.history = history.get(r.id) ?? null;
+    r.recording = recordings.get(r.id);
+  }
   // Open first, then upcoming (soonest first), then the rest (newest first).
   const rank: Record<MeetingLinkStatus, number> = { open: 0, upcoming: 1, ended: 2, cancelled: 3 };
   rows.sort((a, b) => rank[a.status] - rank[b.status] || (a.status === 'upcoming' ? Date.parse(a.startsAt) - Date.parse(b.startsAt) : Date.parse(b.startsAt) - Date.parse(a.startsAt)));

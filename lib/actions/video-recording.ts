@@ -1,32 +1,37 @@
 'use server';
 
+import { revalidatePath } from 'next/cache';
 import { getProfile } from '@/lib/auth';
-import { cleanDisplayName } from '@/lib/video/links';
+import { createClient } from '@/lib/supabase/server';
+import { cleanDisplayName, isUuid } from '@/lib/video/links';
+import { purgeRecording } from '@/lib/video/recordings/retention.server';
 import { meetingForHost, windowFor } from '@/lib/video/rooms.server';
 import { kickTranscriptProcessing } from '@/lib/video/transcripts.server';
 import { clients, requestCapture, stopCapture, syncCapture } from '@/lib/video/transcripts/capture.server';
-import { meetingFromRoomName, roomStateFor, type RoomRecState } from '@/lib/video/transcripts/consent';
+import { meetingFromRoomName, roomStateFor, type RecordingMode, type RoomRecState } from '@/lib/video/transcripts/consent';
 
 /**
  * Server actions behind components/video/recording-consent.tsx (§51). The browser only ever names the
  * ROOM; every decision re-reads LiveKit's participant list on the server, so nothing a browser sends
  * can start capture. Each participant's consent is their own LiveKit attribute (only their browser
- * can set it). All of this is off (enabled: false) until transcripts are configured.
+ * can set it). All of this is off (enabled: false) until recording is configured.
  */
 
-export type RecordingAvailability = { enabled: false } | { enabled: true; canRequest: boolean };
+export type RecordingAvailability = { enabled: false } | { enabled: true; canRequest: boolean; mode: RecordingMode; retentionDays: number };
 export type RecordingActionResult = { ok: true; id?: string; state?: RoomRecState; missing?: string[]; waitingForJoin?: boolean } | { ok: false; error: string };
 
-const OFF: RecordingActionResult = { ok: false, error: 'Call notes are not available.' };
+const OFF: RecordingActionResult = { ok: false, error: 'Recording is not available.' };
 
 /** Is recording available in this room, and may the current user ask for it (a signed-in host who can see the meeting)? */
 export async function recordingAvailability(roomName: string): Promise<RecordingAvailability> {
   const ref = meetingFromRoomName(roomName);
-  if (!ref || !clients()) return { enabled: false };
+  const c = clients();
+  if (!ref || !c) return { enabled: false };
+  const base = { enabled: true as const, mode: c.cfg.mode, retentionDays: c.cfg.retentionDays };
   const me = await getProfile().catch(() => null);
-  if (!me?.is_active) return { enabled: true, canRequest: false };
+  if (!me?.is_active) return { ...base, canRequest: false };
   const m = await meetingForHost(ref.kind, ref.id);
-  return { enabled: true, canRequest: !!m && m.videoRoom };
+  return { ...base, canRequest: !!m && m.videoRoom };
 }
 
 /** Host only: ask everyone in the call to agree to recording. Starts nothing by itself. */
@@ -64,4 +69,22 @@ export async function stopRecording(roomName: string, identity: string, reason: 
   const done = await stopCapture(c, roomName, reason === 'declined' ? 'declined' : 'stopped');
   if (done?.state === 'stopped') kickTranscriptProcessing();
   return { ok: true, state: 'off' };
+}
+
+/**
+ * Delete a recording's files now, before the automatic deletion (§51). Admins and the person who
+ * started it (the same people RLS lets read it); the row stays as a record that it existed.
+ */
+export async function deleteRecordingNow(formData: FormData): Promise<void> {
+  const id = formData.get('id');
+  const me = await getProfile().catch(() => null);
+  const c = clients();
+  if (!me?.is_active || !c || !isUuid(id)) return;
+  const db = await createClient();
+  const { data } = await db.from('video_recordings').select('id, state').eq('id', id).maybeSingle();
+  const row = data as { id: string; state: string } | null;
+  if (!row || !['done', 'failed'].includes(row.state)) return;
+  await purgeRecording(c, row.id);
+  revalidatePath('/app/recordings');
+  revalidatePath(`/app/recordings/${row.id}`);
 }

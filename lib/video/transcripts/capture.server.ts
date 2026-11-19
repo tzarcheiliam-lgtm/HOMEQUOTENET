@@ -8,18 +8,19 @@ import {
   EncodingOptions,
   RoomServiceClient,
   S3Upload,
+  VideoCodec,
   type EgressInfo,
   type ParticipantInfo,
 } from 'livekit-server-sdk';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { VideoMeeting } from '@/lib/video/rooms.server';
-import { transcriptsConfig, type TranscriptsConfig } from './config.server';
+import { recordingConfig, type RecordingConfig } from './config.server';
 import {
-  CONSENT_VERSION,
   LIVE_STATES,
   REC_ATTR,
   captureDecision,
+  consentVersion,
   nextRecordingState,
   roomStateFor,
   segmentPath,
@@ -30,9 +31,11 @@ import {
 } from './consent';
 
 /**
- * Capture: LiveKit Egress (room-composite, AUDIO ONLY, Ogg/Opus at 32 kbps) uploaded to the private
- * Supabase Storage bucket through its S3 endpoint. One egress per uninterrupted stretch of consent;
- * a pause ends the file and a resume starts the next one (video_recording_segments).
+ * Capture: LiveKit Egress (room-composite) uploaded to a private S3-compatible bucket.
+ * - video mode: MP4 (720p, 24 fps, H.264 + AAC, about 10 MB a minute), the "speaker" layout.
+ * - transcript mode: AUDIO ONLY, Ogg/Opus at 32 kbps.
+ * One egress per uninterrupted stretch of consent; a pause ends the file and a resume starts the
+ * next one (video_recording_segments), so a recording can have several parts.
  *
  * Every start is decided from LiveKit's own participant list at that moment (captureDecision), never
  * from what a browser says, and claimed with a conditional UPDATE so two racing callers cannot start
@@ -49,7 +52,7 @@ export interface RecordingRow {
   requested_by_name: string | null;
   prospect_id: string | null;
   lead_id: string | null;
-  meeting_context: { guestName?: string; subject?: string | null; startMs?: number; timeZone?: string; hostLabel?: string } | null;
+  meeting_context: { guestName?: string; subject?: string | null; startMs?: number; timeZone?: string; hostLabel?: string; mode?: 'video' | 'transcript' } | null;
   capture_started_at: string | null;
 }
 
@@ -71,16 +74,28 @@ const SEG_COLS = 'id, recording_id, seq, egress_id, storage_path, status, starte
 const MAX_FAILED_SEGMENTS = 3;
 /** Speech is fine at 32 kbps Opus: ~14 MB an hour, well under the speech-to-text upload limit. */
 const AUDIO_BITRATE_KBPS = 32;
+/** Video mode: 720p at 24 fps, 1.2 Mbps H.264 + 96 kbps AAC, about 10 MB a minute (300 MB for 30 minutes). */
+const VIDEO_ENCODING = {
+  width: 1280,
+  height: 720,
+  framerate: 24,
+  videoCodec: VideoCodec.H264_MAIN,
+  videoBitrate: 1200,
+  audioCodec: AudioCodec.AAC,
+  audioBitrate: 96,
+  audioFrequency: 48000,
+  keyFrameInterval: 4,
+} as const;
 
 export interface Clients {
-  cfg: TranscriptsConfig;
+  cfg: RecordingConfig;
   db: SupabaseClient;
   rooms: RoomServiceClient;
   egress: EgressClient;
 }
 
 export function clients(): Clients | null {
-  const cfg = transcriptsConfig();
+  const cfg = recordingConfig();
   if (!cfg) return null;
   const { httpUrl, apiKey, apiSecret } = cfg.livekit;
   return { cfg, db: createAdminClient(), rooms: new RoomServiceClient(httpUrl, apiKey, apiSecret), egress: new EgressClient(httpUrl, apiKey, apiSecret) };
@@ -158,8 +173,8 @@ export async function requestCapture(c: Clients, m: VideoMeeting, requester: { i
       lead_id: m.leadId,
       requested_by: requester.id,
       requested_by_name: requester.name.slice(0, 80),
-      meeting_context: { guestName: m.guestName, subject: m.subject, startMs: m.startMs, timeZone: m.hostTimeZone, hostLabel: m.hostLabel },
-      consent_version: CONSENT_VERSION,
+      meeting_context: { guestName: m.guestName, subject: m.subject, startMs: m.startMs, timeZone: m.hostTimeZone, hostLabel: m.hostLabel, mode: c.cfg.mode },
+      consent_version: consentVersion(c.cfg.mode),
       state: 'asking',
     })
     .select(REC_COLS)
@@ -207,7 +222,7 @@ export async function syncCapture(c: Clients, roomName: string, nowMs = Date.now
         participant_identity: p.identity.slice(0, 120),
         participant_name: p.name.slice(0, 120),
         participant_role: p.identity.startsWith('host-') ? 'host' : 'guest',
-        consent_version: CONSENT_VERSION,
+        consent_version: consentVersion(c.cfg.mode),
       })),
       { onConflict: 'recording_id,participant_identity', ignoreDuplicates: true },
     );
@@ -220,7 +235,8 @@ export async function syncCapture(c: Clients, roomName: string, nowMs = Date.now
     return { state: after?.state ?? rec.state, missing: [], waitingForJoin: false };
   }
 
-  if (rec.state === 'recording') await rotateIfLong(c, rec, nowMs);
+  // Only audio for speech-to-text needs splitting; a video stays one file per stretch of consent.
+  if (rec.state === 'recording' && c.cfg.mode === 'transcript') await rotateIfLong(c, rec, nowMs);
   return { state: rec.state, missing: d.missing, waitingForJoin: d.waitingForJoin };
 }
 
@@ -259,20 +275,23 @@ async function startSegment(c: Clients, rec: RecordingRow): Promise<StartResult>
   const failed = segs.filter((s) => s.status === 'failed').length;
   if (failed >= MAX_FAILED_SEGMENTS) return { ok: false, error: 'The recorder failed to start several times. Check the LiveKit Egress and storage settings.', giveUp: true };
   const seq = (segs.at(-1)?.seq ?? 0) + 1;
-  const path = segmentPath(rec.id, seq);
+  const video = c.cfg.mode === 'video';
+  const path = segmentPath(rec.id, seq, video ? 'mp4' : 'ogg');
   const { endpoint, region, accessKey, secret, bucket } = c.cfg.s3;
   const file = new EncodedFileOutput({
-    fileType: EncodedFileType.OGG,
+    fileType: video ? EncodedFileType.MP4 : EncodedFileType.OGG,
     filepath: path,
     disableManifest: true,
     output: { case: 's3', value: new S3Upload({ endpoint, region, accessKey, secret, bucket, forcePathStyle: true }) },
   });
   let info: EgressInfo;
   try {
-    info = await c.egress.startRoomCompositeEgress(rec.room_name, { file }, {
-      audioOnly: true,
-      encodingOptions: new EncodingOptions({ audioCodec: AudioCodec.OPUS, audioBitrate: AUDIO_BITRATE_KBPS, audioFrequency: 48000 }),
-    });
+    info = video
+      ? await c.egress.startRoomCompositeEgress(rec.room_name, { file }, { layout: 'speaker', encodingOptions: new EncodingOptions({ ...VIDEO_ENCODING }) })
+      : await c.egress.startRoomCompositeEgress(rec.room_name, { file }, {
+          audioOnly: true,
+          encodingOptions: new EncodingOptions({ audioCodec: AudioCodec.OPUS, audioBitrate: AUDIO_BITRATE_KBPS, audioFrequency: 48000 }),
+        });
   } catch (e) {
     console.error('[video-transcripts] egress start', (e as Error).message);
     await c.db.from('video_recording_segments').insert({ recording_id: rec.id, seq, storage_path: path, status: 'failed', error: 'The recorder could not start.' });
