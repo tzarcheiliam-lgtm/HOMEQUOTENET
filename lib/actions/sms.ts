@@ -171,74 +171,99 @@ export async function saveReminderSettings(_prev: SmsActionState, fd: FormData):
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
-// The introductory voice note (lib/sms/voice-note.ts). The browser uploads straight to the private bucket with a
-// one-time signed upload link, then saveVoiceNote records it; the old file is deleted once the new one is saved.
+// Introductory voice notes (lib/sms/voice-note.ts): HomeQuote's own (Texting page) and one per contractor (contractor
+// page; contractorId). The browser uploads straight to the private bucket with a one-time signed upload link, then
+// saveVoiceNote records it; the old file is deleted once the new one is saved, unless texts still wait on it.
 // ---------------------------------------------------------------------------------------------------------------------
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const ownerId = (v: unknown): string | null => (typeof v === 'string' && UUID_RE.test(v) ? v : null);
+/** Where an owner's voice notes live in the bucket: intro/ for HomeQuote, contractors/<id>/ for a contractor. */
+const voiceFolder = (contractorId: string | null) => (contractorId ? `contractors/${contractorId}` : 'intro');
+type VoiceRow = { voice_note_path?: string | null };
+/** The row holding an owner's voice note settings: sms_settings (HomeQuote) or the contractor. */
+function voiceRow(db: ReturnType<typeof createAdminClient>, contractorId: string | null) {
+  return {
+    read: async () => ((contractorId
+      ? await db.from('contractors').select('voice_note_path').eq('id', contractorId).maybeSingle()
+      : await db.from('sms_settings').select('voice_note_path').eq('id', true).maybeSingle()).data ?? null) as VoiceRow | null,
+    update: (patch: Record<string, unknown>) => (contractorId
+      ? db.from('contractors').update(patch).eq('id', contractorId)
+      : db.from('sms_settings').update(patch).eq('id', true)),
+  };
+}
+const refreshVoice = (contractorId: string | null) => { refresh(); if (contractorId) revalidatePath(`/app/contractors/${contractorId}`); };
 
 export type VoiceUploadPrep = { ok: true; path: string; token: string } | { ok: false; error: string };
 
-export async function prepareVoiceNoteUpload(mime: string): Promise<VoiceUploadPrep> {
+export async function prepareVoiceNoteUpload(mime: string, contractorId: string | null = null): Promise<VoiceUploadPrep> {
   await requireRole(['admin']);
+  if (contractorId !== null && !ownerId(contractorId)) return { ok: false, error: 'Unknown contractor.' };
   if (!(VOICE_NOTE_MIME as readonly string[]).includes(mime)) return { ok: false, error: 'Use an MP3, M4A, WAV, AAC or CAF audio file.' };
-  const path = `intro/${randomUUID()}.${VOICE_NOTE_EXT[mime]}`;
+  const path = `${voiceFolder(contractorId)}/${randomUUID()}.${VOICE_NOTE_EXT[mime]}`;
   const { data, error } = await createAdminClient().storage.from(VOICE_NOTE_BUCKET).createSignedUploadUrl(path);
   if (error || !data) return { ok: false, error: 'Could not start the upload. Has database migration 0078 been applied?' };
   return { ok: true, path, token: data.token };
 }
 
 const voiceSaveSchema = z.object({
-  path: z.string().regex(/^intro\/[0-9a-f-]{36}\.(mp3|m4a|aac|wav|caf)$/),
+  path: z.string().regex(/^(intro|contractors\/[0-9a-f-]{36})\/[0-9a-f-]{36}\.(mp3|m4a|aac|wav|caf)$/),
   mime: z.enum(VOICE_NOTE_MIME),
   seconds: z.number().int().min(1).max(MAX_VOICE_SECONDS),
+  contractorId: z.string().uuid().nullable().optional(),
 });
 
-export async function saveVoiceNote(input: { path: string; mime: string; seconds: number }): Promise<SmsActionState> {
+export async function saveVoiceNote(input: { path: string; mime: string; seconds: number; contractorId?: string | null }): Promise<SmsActionState> {
   const me = await requireRole(['admin']);
   const parsed = voiceSaveSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.path[0] === 'seconds' ? `Keep the voice note under ${MAX_VOICE_SECONDS} seconds.` : 'That upload could not be used.' };
+  const contractorId = parsed.data.contractorId ?? null;
+  const folder = voiceFolder(contractorId);
+  if (!parsed.data.path.startsWith(`${folder}/`)) return { ok: false, error: 'That upload could not be used.' };
   const db = createAdminClient();
-  const name = parsed.data.path.slice('intro/'.length);
-  const { data: found } = await db.storage.from(VOICE_NOTE_BUCKET).list('intro', { search: name, limit: 1 });
+  const name = parsed.data.path.slice(folder.length + 1);
+  const { data: found } = await db.storage.from(VOICE_NOTE_BUCKET).list(folder, { search: name, limit: 1 });
   if (!found?.some((f) => f.name === name)) return { ok: false, error: 'The upload did not finish. Try again.' };
-  const { data: before } = await db.from('sms_settings').select('voice_note_path').eq('id', true).maybeSingle();
+  const row = voiceRow(db, contractorId);
+  const before = await row.read();
   const now = new Date().toISOString();
-  const { error } = await db.from('sms_settings').update({
-    voice_note_path: parsed.data.path, voice_note_mime: parsed.data.mime, voice_note_seconds: parsed.data.seconds, voice_note_updated_at: now, updated_by: me.id, updated_at: now,
-  }).eq('id', true);
+  const { error } = await row.update({
+    voice_note_path: parsed.data.path, voice_note_mime: parsed.data.mime, voice_note_seconds: parsed.data.seconds, voice_note_updated_at: now,
+    ...(contractorId ? {} : { updated_by: me.id, updated_at: now }),
+  });
   if (error) return { ok: false, error: 'Could not save. Has database migration 0078 been applied?' };
-  const old = (before as { voice_note_path?: string | null } | null)?.voice_note_path;
+  const old = before?.voice_note_path;
   // Keep the old file while texts that use it may still be waiting to send.
   if (old && old !== parsed.data.path) {
     const { count } = await db.from('sms_messages').select('id', { count: 'exact', head: true }).eq('attachment_path', old).in('status', ['queued', 'sending']);
     if (!count) await db.storage.from(VOICE_NOTE_BUCKET).remove([old]);
   }
-  refresh();
+  refreshVoice(contractorId);
   return { ok: true, message: 'Voice note saved.' };
 }
 
-/** Turns the voice memo question on or off (a voice note must be uploaded first), or deletes the voice note. */
+/** Turns a voice memo question on or off (a voice note must be uploaded first), or deletes the voice note. */
 export async function setVoiceNote(fd: FormData): Promise<void> {
   const me = await requireRole(['admin']);
+  const contractorId = ownerId(fd.get('contractorId'));
   const db = createAdminClient();
+  const row = voiceRow(db, contractorId);
   const now = new Date().toISOString();
+  const stamp = contractorId ? {} : { updated_by: me.id, updated_at: now };
   const what = String(fd.get('do') ?? '');
   if (what === 'remove') {
-    const { data } = await db.from('sms_settings').select('voice_note_path').eq('id', true).maybeSingle();
-    const path = (data as { voice_note_path?: string | null } | null)?.voice_note_path;
-    await db.from('sms_settings').update({ voice_note_enabled: false, voice_note_path: null, voice_note_mime: null, voice_note_seconds: null, voice_note_updated_at: now, updated_by: me.id, updated_at: now }).eq('id', true);
+    const path = (await row.read())?.voice_note_path;
+    await row.update({ voice_note_enabled: false, voice_note_path: null, voice_note_mime: null, voice_note_seconds: null, voice_note_updated_at: now, ...stamp });
     if (path) {
       await db.from('sms_messages').update({ status: 'failed', error: 'Cancelled: the voice note was deleted' }).eq('attachment_path', path).eq('status', 'queued');
       await db.storage.from(VOICE_NOTE_BUCKET).remove([path]);
     }
   } else {
     const enable = what === 'on';
-    if (enable) {
-      const { data } = await db.from('sms_settings').select('voice_note_path').eq('id', true).maybeSingle();
-      if (!(data as { voice_note_path?: string | null } | null)?.voice_note_path) throw new Error('Upload a voice note first');
-    }
-    await db.from('sms_settings').update({ voice_note_enabled: enable, updated_by: me.id, updated_at: now }).eq('id', true);
+    if (enable && !(await row.read())?.voice_note_path) throw new Error('Upload a voice note first');
+    await row.update({ voice_note_enabled: enable, ...stamp });
   }
-  refresh();
+  refreshVoice(contractorId);
 }
 
 const voiceWordingSchema = z.object({ voice_offer_template: z.string().max(1000), voice_link_template: z.string().max(1000) }).superRefine((v, ctx) => {
@@ -248,17 +273,17 @@ const voiceWordingSchema = z.object({ voice_offer_template: z.string().max(1000)
   if (link) ctx.addIssue({ code: 'custom', message: link, path: ['voice_link_template'] });
 });
 
-/** The voice memo question and the line before the booking link. Blank = the built-in wording. */
+/** The voice memo question (and, for HomeQuote, the shared line before the booking link). Blank = the built-in wording. */
 export async function saveVoiceNoteWording(_prev: SmsActionState, fd: FormData): Promise<SmsActionState> {
   const me = await requireRole(['admin']);
+  const contractorId = ownerId(fd.get('contractorId'));
   const parsed = voiceWordingSchema.safeParse({ voice_offer_template: String(fd.get('voice_offer_template') ?? ''), voice_link_template: String(fd.get('voice_link_template') ?? '') });
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Check the wording.' };
-  const { error } = await createAdminClient().from('sms_settings').update({
-    voice_offer_template: parsed.data.voice_offer_template.trim() || null,
-    voice_link_template: parsed.data.voice_link_template.trim() || null,
-    updated_by: me.id, updated_at: new Date().toISOString(),
-  }).eq('id', true);
+  const offer = parsed.data.voice_offer_template.trim() || null;
+  const { error } = await voiceRow(createAdminClient(), contractorId).update(contractorId
+    ? { voice_offer_template: offer }
+    : { voice_offer_template: offer, voice_link_template: parsed.data.voice_link_template.trim() || null, updated_by: me.id, updated_at: new Date().toISOString() });
   if (error) return { ok: false, error: 'Could not save. Has database migration 0078 been applied?' };
-  refresh();
+  refreshVoice(contractorId);
   return { ok: true, message: 'Saved.' };
 }

@@ -9,7 +9,7 @@ import type { Alert } from './health';
 import { notifyAdmins } from './health-notify';
 import { DEFAULT_ZONES, MAX_AI_TURNS } from './config';
 import { handleLeadReminderReply, handleProspectReply } from './reminder-replies';
-import { isLive, loadSettings, note, phoneInUse, queue, sentToday, voiceNoteReady, type Db, type SmsSettings } from './core';
+import { isLive, loadSettings, note, phoneInUse, queue, sentToday, voiceSourceFor, type Db, type VoiceSource } from './core';
 import { isClearYes, VOICE_NOTE_BUCKET, VOICE_NOTE_HISTORY, voiceLinkLine, voiceOfferMessage } from './voice-note';
 import { signVisitGrant, visitUrl } from './visit-link';
 import { finalizeOutbound, helpReply, isHelp, isOptOut, isStart, metaProject, openingMessage, optOutConfirmation, projectLabel, SENDER_HOUSE } from './rules';
@@ -77,6 +77,9 @@ export async function leadContext(db: Db, leadId: string): Promise<{ firstName: 
   return { firstName, project: metaProject(answers), known: Object.fromEntries(Object.entries(answers).filter(([, v]) => typeof v === 'string')) };
 }
 
+/** A conversation that opens with the voice memo question remembers whose voice note it offered. */
+const voiceColumns = (v: VoiceSource | null) => (v ? { voice_note_state: 'offered', voice_note_contractor_id: v.contractorId } : {});
+
 export type StartResult = { started: true; conversationId: string } | { started: false; reason: string };
 
 /** Called right after a real funnel lead is saved. Idempotent (one conversation per lead) and never throws. */
@@ -106,10 +109,10 @@ async function startSmsForLeadInner(db: Db, leadId: string, now: Date): Promise<
 
     const houseName = settings.house_sender_name?.trim().slice(0, 40) || SENDER_HOUSE;
     const sender = house ? houseName : (co?.senderName?.trim() || snap.clientName || houseName).slice(0, 80);
-    // The owner's voice note is HomeQuote's own introduction: only HomeQuote conversations get the voice memo question.
-    const voice = house && voiceNoteReady(settings);
+    // HomeQuote's voice note for house funnels, the contractor's own for its branded funnel (none set: the usual first text).
+    const voice = await voiceSourceFor(db, settings, house ? null : (funnel.contractor_id as string)).catch(() => null);
     const { data: convo, error } = await db.from('sms_conversations').insert({
-      lead_id: leadId, contractor_id: funnel.contractor_id ?? null, sender_name: sender, phone_e164: phone, ...(voice ? { voice_note_state: 'offered' } : {}),
+      lead_id: leadId, contractor_id: funnel.contractor_id ?? null, sender_name: sender, phone_e164: phone, ...voiceColumns(voice),
     }).select('id,lead_id').single();
     if (error || !convo) return { started: false, reason: 'exists' };
     const zones = resolveZones({ state: lead.state as string | null, zip: lead.zip as string | null }) ?? DEFAULT_ZONES;
@@ -118,7 +121,7 @@ async function startSmsForLeadInner(db: Db, leadId: string, now: Date): Promise<
     const when = nextEligible(ready, zones, { startHour: settings.window_start_hour, endHour: settings.window_end_hour }) ?? ready;
     const template = (co?.openingTemplate?.trim() || settings.opening_template?.trim()) || null;
     const opening = voice
-      ? voiceOfferMessage({ template: settings.voice_offer_template, firstName: lead.first_name as string | null, senderName: sender, project: projectLabel(snap.industry) })
+      ? voiceOfferMessage({ template: voice.offerTemplate, firstName: lead.first_name as string | null, senderName: sender, project: projectLabel(snap.industry) })
       : openingMessage({ firstName: lead.first_name as string | null, senderName: sender, project: projectLabel(snap.industry), template });
     await queue(db, convo as { id: string; lead_id: string }, opening, { ai: false, sendAfter: when });
     await note(db, leadId, `Automatic text queued${when > now ? ` for ${when.toISOString()} (outside texting hours)` : ''}.`);
@@ -168,15 +171,15 @@ async function startSmsForMetaLeadInner(db: Db, leadId: string, now: Date, sourc
 
     const houseName = settings.house_sender_name?.trim().slice(0, 40) || SENDER_HOUSE;
     const sender = source.senderName?.trim().slice(0, 40) || houseName;
-    const voice = !contractorId && voiceNoteReady(settings);
+    const voice = await voiceSourceFor(db, settings, contractorId).catch(() => null);
     const { data: convo, error } = await db.from('sms_conversations').insert({
-      lead_id: leadId, contractor_id: contractorId, sender_name: sender, phone_e164: phone, ...(voice ? { voice_note_state: 'offered' } : {}),
+      lead_id: leadId, contractor_id: contractorId, sender_name: sender, phone_e164: phone, ...voiceColumns(voice),
     }).select('id,lead_id').single();
     if (error || !convo) return { started: false, reason: 'exists' };
     const zones = resolveZones({ state: lead.state as string | null, zip: lead.zip as string | null }) ?? DEFAULT_ZONES;
     const when = nextEligible(now, zones, { startHour: settings.window_start_hour, endHour: settings.window_end_hour }) ?? now;
     const opening = voice
-      ? voiceOfferMessage({ template: settings.voice_offer_template, firstName: lead.first_name as string | null, senderName: sender, project: metaProject(answers) })
+      ? voiceOfferMessage({ template: voice.offerTemplate, firstName: lead.first_name as string | null, senderName: sender, project: metaProject(answers) })
       : openingMessage({ firstName: lead.first_name as string | null, senderName: sender, project: metaProject(answers) });
     await queue(db, convo as { id: string; lead_id: string }, opening, { ai: false, sendAfter: when });
     await note(db, leadId, `Automatic text queued${when > now ? ` for ${when.toISOString()} (outside texting hours)` : ''}.`);
@@ -230,7 +233,7 @@ export async function handleInbound(db: Db, input: InboundInput, deps: InboundDe
       .in('status', ['sent', 'sending', 'queued']).gte('created_at', new Date(now.getTime() - 30 * 60_000).toISOString()).order('created_at', { ascending: false }).limit(20);
     if ((recentOut ?? []).some((m: { body: string }) => normalizeBody(m.body) === normalizeBody(body))) return { handled: true, reason: 'echo' };
   }
-  const c = convo as { id: string; lead_id: string | null; prospect_id?: string | null; sender_name: string; status: string; ai_turns: number; mode?: string | null; call_time_preference?: string | null; workflow_owned?: boolean; contractor_id?: string | null; voice_note_state?: string | null };
+  const c = convo as { id: string; lead_id: string | null; prospect_id?: string | null; sender_name: string; status: string; ai_turns: number; mode?: string | null; call_time_preference?: string | null; workflow_owned?: boolean; contractor_id?: string | null; voice_note_state?: string | null; voice_note_contractor_id?: string | null };
   const { data: inRow } = await db.from('sms_messages').insert({ conversation_id: c.id, lead_id: c.lead_id, ...(c.prospect_id ? { prospect_id: c.prospect_id } : {}), direction: 'in', body, status: 'received', external_guid: input.guid, sent_at: input.receivedAt ?? now.toISOString() }).select('id').single();
   await db.from('sms_conversations').update({ last_inbound_at: now.toISOString(), updated_at: now.toISOString() }).eq('id', c.id);
 
@@ -452,13 +455,12 @@ export async function confirmBooked(
  * shows a link alone as a preview card). The bridge sends them in this order a few seconds apart; a voice note that
  * fails to send never holds up the link. Without a link secret only the voice note goes out.
  */
-async function sendVoiceNoteAndLink(db: Db, c: { id: string; lead_id: string; sender_name: string }, settings: SmsSettings, lead: { firstName: string | null; project: string | null }, now: Date): Promise<boolean> {
-  if (!voiceNoteReady(settings)) return false;
+async function sendVoiceNoteAndLink(db: Db, c: { id: string; lead_id: string; sender_name: string }, voice: VoiceSource, lead: { firstName: string | null; project: string | null }, now: Date): Promise<boolean> {
   const at = (ms: number) => new Date(now.getTime() + ms);
-  await queue(db, c, '', { ai: false, sendAfter: at(4000 + Math.floor(Math.random() * 4000)), attachment: { path: settings.voice_note_path!, mime: settings.voice_note_mime! } });
+  await queue(db, c, '', { ai: false, sendAfter: at(4000 + Math.floor(Math.random() * 4000)), attachment: { path: voice.path, mime: voice.mime } });
   const grant = signVisitGrant(c.id, now.getTime());
   if (grant) {
-    await queue(db, c, voiceLinkLine({ template: settings.voice_link_template, firstName: lead.firstName, senderName: c.sender_name, project: lead.project }), { ai: false, sendAfter: at(9000) });
+    await queue(db, c, voiceLinkLine({ template: voice.linkTemplate, firstName: lead.firstName, senderName: c.sender_name, project: lead.project }), { ai: false, sendAfter: at(9000) });
     await queue(db, c, visitUrl(grant), { ai: false, sendAfter: at(10_000) });
   }
   await db.from('sms_conversations').update({ voice_note_state: 'sent', updated_at: now.toISOString() }).eq('id', c.id);
@@ -466,7 +468,7 @@ async function sendVoiceNoteAndLink(db: Db, c: { id: string; lead_id: string; se
   return true;
 }
 
-async function replyWithAgent(db: Db, c: { id: string; lead_id: string; sender_name: string; ai_turns: number; mode?: string | null; call_time_preference?: string | null; voice_note_state?: string | null }, deps: InboundDeps, now: Date): Promise<InboundResult> {
+async function replyWithAgent(db: Db, c: { id: string; lead_id: string; sender_name: string; ai_turns: number; mode?: string | null; call_time_preference?: string | null; voice_note_state?: string | null; voice_note_contractor_id?: string | null }, deps: InboundDeps, now: Date): Promise<InboundResult> {
   const settings = await loadSettings(db);
   const handoff = async (reason: string) => {
     await db.from('sms_conversations').update({ status: 'handoff', updated_at: now.toISOString() }).eq('id', c.id);
@@ -488,9 +490,12 @@ async function replyWithAgent(db: Db, c: { id: string; lead_id: string; sender_n
   const project = metaAnswers ? metaProject(metaAnswers) : projectLabel(snap.industry);
   const firstName = (lead?.first_name as string | null) ?? null;
   // Asked "can I send you a quick voice memo?" and they plainly said yes: no AI needed.
-  const voiceOffer = c.voice_note_state === 'offered' && voiceNoteReady(settings);
+  // The voice note offered (HomeQuote's or that contractor's), as it is now: switched off or deleted since = no voice note.
+  const voice = c.voice_note_state === 'offered' ? await voiceSourceFor(db, settings, c.voice_note_contractor_id ?? null).catch(() => null) : null;
+  const voiceOffer = !!voice;
+  if (c.voice_note_state === 'offered' && !voice) await db.from('sms_conversations').update({ voice_note_state: 'declined' }).eq('id', c.id);
   const lastIn = [...((msgs ?? []) as { direction: string; body: string }[])].reverse().find((m) => m.direction === 'in')?.body ?? '';
-  if (voiceOffer && isClearYes(lastIn) && (await sendVoiceNoteAndLink(db, c, settings, { firstName, project }, now))) return { handled: true, replied: true, reason: 'voice_note' };
+  if (voice && isClearYes(lastIn) && (await sendVoiceNoteAndLink(db, c, voice, { firstName, project }, now))) return { handled: true, replied: true, reason: 'voice_note' };
   const aiOn = deps.aiConfigured ?? !!process.env.ANTHROPIC_API_KEY?.trim();
   if (!aiOn && !deps.agent) return handoff('the AI assistant is not configured');
   const history: SmsTurn[] = ((msgs ?? []) as { direction: string; body: string; status: string; attachment_path?: string | null }[])
@@ -517,7 +522,7 @@ async function replyWithAgent(db: Db, c: { id: string; lead_id: string; sender_n
   }
   // The voice memo question: a yes (in any words) sends it; still asking keeps the question open; anything else moves on.
   if (voiceOffer && !result.close && !result.handoff) {
-    if (result.voice_note === 'yes' && (await sendVoiceNoteAndLink(db, c, settings, { firstName, project }, now))) {
+    if (result.voice_note === 'yes' && voice && (await sendVoiceNoteAndLink(db, c, voice, { firstName, project }, now))) {
       await db.from('sms_conversations').update({ ai_turns: c.ai_turns + 1, qualification: result.qualification, summary: result.summary, updated_at: now.toISOString() }).eq('id', c.id);
       return { handled: true, replied: true, reason: 'voice_note' };
     }

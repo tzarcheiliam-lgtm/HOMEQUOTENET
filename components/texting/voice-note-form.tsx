@@ -22,6 +22,10 @@ export interface VoiceNoteValue {
   offerTemplate: string;
   linkTemplate: string;
   senderName: string;
+  /** A contractor's own voice note (its contractor page); absent = HomeQuote's (Texting page). */
+  contractorId?: string | null;
+  /** Contractor page: the general memo question, shown as the placeholder. */
+  generalOfferTemplate?: string;
 }
 
 const EXT_MIME: Record<string, string> = { mp3: 'audio/mpeg', m4a: 'audio/x-m4a', aac: 'audio/aac', wav: 'audio/wav', caf: 'audio/x-caf' };
@@ -85,11 +89,11 @@ export function VoiceNoteForm({ value }: { value: VoiceNoteValue }) {
     if (seconds > MAX_VOICE_SECONDS) return setError(`Keep the voice note under ${MAX_VOICE_SECONDS} seconds (this one is ${Math.round(seconds)}).`);
     setPhase('saving');
     try {
-      const prep = await prepareVoiceNoteUpload(mime);
+      const prep = await prepareVoiceNoteUpload(mime, value.contractorId ?? null);
       if (!prep.ok) throw new Error(prep.error);
       const { error: upErr } = await createClient().storage.from(VOICE_NOTE_BUCKET).uploadToSignedUrl(prep.path, prep.token, blob, { contentType: mime });
       if (upErr) throw new Error('The upload failed. Check your connection and try again.');
-      const r = await saveVoiceNote({ path: prep.path, mime, seconds: Math.max(1, Math.round(seconds)) });
+      const r = await saveVoiceNote({ path: prep.path, mime, seconds: Math.max(1, Math.round(seconds)), contractorId: value.contractorId ?? null });
       if (!r?.ok) throw new Error(r?.error ?? 'Could not save.');
       setSavedMsg(r.message ?? 'Saved.');
       router.refresh();
@@ -149,8 +153,9 @@ export function VoiceNoteForm({ value }: { value: VoiceNoteValue }) {
     <div className="space-y-6">
       <div className="space-y-3">
         <p className="text-sm text-muted-foreground">
-          While this is on, the first text to a HomeQuote lead asks if you can send a quick voice memo. When they say yes, they get your voice note, then a link to describe their project and book the free in-home estimate.
-          Contractor-branded texts keep their usual first text.
+          {value.contractorId
+            ? `While this is on, the first text to ${value.senderName}’s leads asks if you can send a quick voice memo. When they say yes, they get this voice note, then a link to describe their project and book the free in-home estimate. Off or not recorded: their usual first text.`
+            : 'While this is on, the first text to a HomeQuote lead asks if you can send a quick voice memo. When they say yes, they get your voice note, then a link to describe their project and book the free in-home estimate. Each contractor’s branded texts use that contractor’s own voice note (set on their contractor page).'}
         </p>
         {value.url ? (
           <div className="space-y-2 rounded-md border p-3">
@@ -184,11 +189,13 @@ export function VoiceNoteForm({ value }: { value: VoiceNoteValue }) {
         <div className="flex flex-wrap items-center gap-3 border-t pt-3">
           <p className="text-sm">Voice memo question: <b className={value.enabled && value.url ? 'text-emerald-600' : 'text-muted-foreground'}>{value.enabled && value.url ? 'ON' : 'OFF'}</b></p>
           <form action={setVoiceNote}>
+            {value.contractorId ? <input type="hidden" name="contractorId" value={value.contractorId} /> : null}
             <input type="hidden" name="do" value={value.enabled ? 'off' : 'on'} />
             <Button type="submit" size="sm" variant={value.enabled ? 'outline' : 'default'} disabled={!value.url || busy}>{value.enabled ? 'Turn off' : 'Turn on'}</Button>
           </form>
           {value.url && (
             <form action={setVoiceNote} onSubmit={(e) => { if (!confirm('Delete the voice note? The voice memo question turns off too.')) e.preventDefault(); }}>
+              {value.contractorId ? <input type="hidden" name="contractorId" value={value.contractorId} /> : null}
               <input type="hidden" name="do" value="remove" />
               <Button type="submit" size="sm" variant="ghost" disabled={busy}>Delete voice note</Button>
             </form>
@@ -209,23 +216,24 @@ function VoiceWordingForm({ value }: { value: VoiceNoteValue }) {
   const sample = { firstName: 'Sam', senderName: value.senderName, project: 'bathroom remodel' };
   return (
     <form action={action} className="space-y-4 border-t pt-4">
+      {value.contractorId ? <input type="hidden" name="contractorId" value={value.contractorId} /> : null}
       <div className="space-y-1.5">
         <Label htmlFor="voice_offer_template">First text (asks to send the voice memo)</Label>
         <textarea id="voice_offer_template" name="voice_offer_template" value={offer} onChange={(e) => setOffer(e.target.value)} maxLength={1000} rows={2}
-          placeholder={DEFAULT_VOICE_OFFER_TEMPLATE} className="w-full rounded-md border bg-background p-3 text-sm" />
-        <p className="text-xs text-muted-foreground">Blank uses the wording shown. Fill-ins: <code className="rounded bg-muted px-1">{'{first_name}'}</code> <code className="rounded bg-muted px-1">{'{sender}'}</code> <code className="rounded bg-muted px-1">{'{project}'}</code>. Must include <code className="rounded bg-muted px-1">{'{sender}'}</code>.</p>
+          placeholder={value.generalOfferTemplate || DEFAULT_VOICE_OFFER_TEMPLATE} className="w-full rounded-md border bg-background p-3 text-sm" />
+        <p className="text-xs text-muted-foreground">Blank uses the {value.contractorId ? 'general ' : ''}wording shown. Fill-ins: <code className="rounded bg-muted px-1">{'{first_name}'}</code> <code className="rounded bg-muted px-1">{'{sender}'}</code> <code className="rounded bg-muted px-1">{'{project}'}</code>. Must include <code className="rounded bg-muted px-1">{'{sender}'}</code>.</p>
         {offerProblem && <p role="alert" className="text-xs text-destructive">{offerProblem}</p>}
       </div>
-      <div className="space-y-1.5">
+      {value.contractorId ? <input type="hidden" name="voice_link_template" value="" /> : <div className="space-y-1.5">
         <Label htmlFor="voice_link_template">Line before the booking link</Label>
         <textarea id="voice_link_template" name="voice_link_template" value={link} onChange={(e) => setLink(e.target.value)} maxLength={1000} rows={2}
           placeholder={DEFAULT_VOICE_LINK_TEMPLATE} className="w-full rounded-md border bg-background p-3 text-sm" />
         <p className="text-xs text-muted-foreground">Sent after the voice note. The link follows in its own message so iMessage shows it as a card.</p>
         {linkProblem && <p role="alert" className="text-xs text-destructive">{linkProblem}</p>}
-      </div>
+      </div>}
       <div className="space-y-1 rounded-md border bg-muted/40 p-3 text-sm">
         <p className="text-xs font-medium text-muted-foreground">What a lead named Sam would get (preview)</p>
-        <p>{voiceOfferMessage({ template: offerProblem ? '' : offer, ...sample })}</p>
+        <p>{voiceOfferMessage({ template: offerProblem ? '' : offer || value.generalOfferTemplate, ...sample })}</p>
         <p className="text-xs text-muted-foreground">They reply “yes please” →</p>
         <p>🎙 your voice note</p>
         <p>{voiceLinkLine({ template: linkProblem ? '' : link, ...sample })}</p>

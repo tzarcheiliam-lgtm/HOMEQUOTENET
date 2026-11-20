@@ -66,3 +66,21 @@ export async function note(db: Db, leadId: string | null, body: string, metadata
   if (!leadId) return;
   await db.from('lead_activities').insert({ lead_id: leadId, type: 'system', body, metadata: { sms: true, ...metadata } });
 }
+
+/** The voice note a conversation offers: HomeQuote's own (contractorId null) or one contractor's. */
+export interface VoiceSource { contractorId: string | null; path: string; mime: string; offerTemplate: string | null; linkTemplate: string | null }
+/**
+ * The voice note to use for HomeQuote (null) or for a contractor's own texts, or null when that one is off or not
+ * uploaded. A contractor's memo question falls back to the general wording; the line before the link is shared.
+ */
+export async function voiceSourceFor(db: Db, settings: SmsSettings, contractorId: string | null): Promise<VoiceSource | null> {
+  if (!contractorId) {
+    return voiceNoteReady(settings)
+      ? { contractorId: null, path: settings.voice_note_path!, mime: settings.voice_note_mime!, offerTemplate: settings.voice_offer_template ?? null, linkTemplate: settings.voice_link_template ?? null }
+      : null;
+  }
+  const { data, error } = await db.from('contractors').select('voice_note_enabled,voice_note_path,voice_note_mime,voice_offer_template').eq('id', contractorId).maybeSingle();
+  const c = (error ? null : data) as { voice_note_enabled?: boolean; voice_note_path?: string | null; voice_note_mime?: string | null; voice_offer_template?: string | null } | null;
+  if (!c?.voice_note_enabled || !c.voice_note_path || !c.voice_note_mime) return null;
+  return { contractorId, path: c.voice_note_path, mime: c.voice_note_mime, offerTemplate: c.voice_offer_template?.trim() || settings.voice_offer_template || null, linkTemplate: settings.voice_link_template ?? null };
+}

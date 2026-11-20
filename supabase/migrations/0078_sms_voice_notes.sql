@@ -1,8 +1,8 @@
 -- 0078: Voice notes and the in-home visit booking link for the texting assistant.
 --
--- 1. The owner records one short introductory voice note (Texting page). It lives in the PRIVATE storage bucket
---    'sms-voice-notes' (no storage policies: the server reads and writes it with the service role).
--- 2. While it is on, the first text to a HomeQuote lead asks "Can I send you a quick voice memo here?". When they say
+-- 1. The owner records a short introductory voice note for HomeQuote (Texting page) and one per contractor (contractor
+--    page). They live in the PRIVATE storage bucket 'sms-voice-notes' (no storage policies: service role only).
+-- 2. While the matching voice note is on, the first text to a lead asks "Can I send you a quick voice memo here?". When they say
 --    yes, the voice note goes out, followed by a link to /booking/visit/<signed link> where they describe the project
 --    and book the free in-home estimate (or a quick call when no contractor is on the lead yet).
 -- 3. sms_messages can carry one attachment (the voice note), which the Mac bridge sends from Messages.
@@ -18,9 +18,20 @@ alter table public.sms_settings add column if not exists voice_note_updated_at t
 alter table public.sms_settings add column if not exists voice_offer_template text check (voice_offer_template is null or char_length(voice_offer_template) <= 1000);
 alter table public.sms_settings add column if not exists voice_link_template text check (voice_link_template is null or char_length(voice_link_template) <= 1000);
 
+-- Each contractor can have its own voice note for its contractor-branded texts (set on the contractor's page).
+-- Their voice memo question has its own wording too (blank = the general one); the line before the link is shared.
+alter table public.contractors add column if not exists voice_note_enabled boolean not null default false;
+alter table public.contractors add column if not exists voice_note_path text check (voice_note_path is null or char_length(voice_note_path) <= 300);
+alter table public.contractors add column if not exists voice_note_mime text check (voice_note_mime is null or char_length(voice_note_mime) <= 60);
+alter table public.contractors add column if not exists voice_note_seconds integer check (voice_note_seconds is null or voice_note_seconds between 1 and 600);
+alter table public.contractors add column if not exists voice_note_updated_at timestamptz;
+alter table public.contractors add column if not exists voice_offer_template text check (voice_offer_template is null or char_length(voice_offer_template) <= 1000);
+
 -- offered: the first text asked; sent: the voice note and link went out; declined: they said no or wanted something else.
 alter table public.sms_conversations add column if not exists voice_note_state text
   check (voice_note_state is null or voice_note_state in ('offered', 'sent', 'declined'));
+-- Whose voice note was offered: the contractor's (its id), or NULL = HomeQuote's own.
+alter table public.sms_conversations add column if not exists voice_note_contractor_id uuid references public.contractors(id) on delete set null;
 
 alter table public.sms_messages add column if not exists attachment_path text check (attachment_path is null or char_length(attachment_path) <= 300);
 alter table public.sms_messages add column if not exists attachment_mime text check (attachment_mime is null or char_length(attachment_mime) <= 60);

@@ -146,11 +146,38 @@ describe('voice note and visit link (real migrations, PGlite)', () => {
     return l;
   }
 
-  it('asks to send the voice memo first when it is on, and not for contractor-branded texts', async () => {
+  it('a contractor\'s branded texts use that contractor\'s own voice note and wording, even with HomeQuote\'s off', async () => {
+    const CO_VOICE = `contractors/${randomUUID()}/${randomUUID()}.mp3`;
+    sb.storage.files.set(CO_VOICE, new Uint8Array([9]));
+    await q(`update public.sms_settings set contractor_funnels_enabled=true, voice_note_enabled=false where id`);
+    const l = await lead({ contractorFunnel: true });
+    await q(`update public.contractors set voice_note_enabled=true, voice_note_path=$2, voice_note_mime='audio/mpeg', voice_offer_template='Hi {first_name}, {sender} here! Mind if I send a quick voice memo?' where id=$1`, [l.contractorId, CO_VOICE]);
+    expect((await startSmsForLead(sb, l.leadId, NOW)).started).toBe(true);
+    expect((await outs(l.leadId))[0].body).toBe('Hi Rachel, Valley Kitchens here! Mind if I send a quick voice memo?');
+    expect(await convo(l.leadId)).toMatchObject({ voice_note_state: 'offered', voice_note_contractor_id: l.contractorId });
+    await q(`update public.sms_messages set status='sent' where lead_id=$1`, [l.leadId]);
+    expect((await text(l.from, 'sure')).reason).toBe('voice_note');
+    expect((await outs(l.leadId)).find((m) => m.attachment_path)).toMatchObject({ attachment_path: CO_VOICE, attachment_mime: 'audio/mpeg' });
+
+    // Switched off after the question went out: a yes is just a reply to the assistant, and the question is closed.
+    const m = await lead({ contractorFunnel: true });
+    await q(`update public.contractors set voice_note_enabled=true, voice_note_path=$2, voice_note_mime='audio/mpeg' where id=$1`, [m.contractorId, CO_VOICE]);
+    await startSmsForLead(sb, m.leadId, NOW);
+    expect((await outs(m.leadId))[0].body).toBe("Hey Rachel, it's Valley Kitchens. Just got your kitchen remodel request. Can I send you a quick voice memo here?"); // general wording
+    await q(`update public.contractors set voice_note_enabled=false where id=$1`, [m.contractorId]);
+    const agent = agentSays({ message: 'what are you hoping to change?' });
+    await text(m.from, 'sure', { agent });
+    expect(agent).toHaveBeenCalled();
+    expect((await outs(m.leadId)).some((x) => x.attachment_path)).toBe(false);
+    expect((await convo(m.leadId)).voice_note_state).toBe('declined');
+    await q(`update public.sms_settings set contractor_funnels_enabled=false where id`);
+  });
+
+  it('asks to send the voice memo first when it is on, and not for a contractor without its own voice note', async () => {
     const l = await lead();
     await startSmsForLead(sb, l.leadId, NOW);
     expect((await outs(l.leadId))[0].body).toBe("Hey Rachel, it's Mia at HomeQuote. Just got your kitchen remodel request. Can I send you a quick voice memo here?");
-    expect((await convo(l.leadId)).voice_note_state).toBe('offered');
+    expect(await convo(l.leadId)).toMatchObject({ voice_note_state: 'offered', voice_note_contractor_id: null });
 
     await q(`update public.sms_settings set contractor_funnels_enabled=true where id`);
     const c = await lead({ contractorFunnel: true });
