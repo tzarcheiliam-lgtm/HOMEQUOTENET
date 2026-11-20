@@ -14,6 +14,9 @@ import { SENDER_HOUSE } from '@/lib/sms/rules';
 import { RemindersForm, type ReminderFormValue } from '@/components/texting/reminders-form';
 import { reminderConfig } from '@/lib/sms/reminder-config';
 import { FOLLOW_UP_STEPS, MEETING_STEPS } from '@/lib/sms/reminder-plan';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { VOICE_NOTE_BUCKET } from '@/lib/sms/voice-note';
+import { VoiceNoteForm } from '@/components/texting/voice-note-form';
 
 /** Merged settings for the switches, but only the CUSTOM wording in the text boxes (blank = the standard text). */
 function reminderFormValue(raw: unknown): ReminderFormValue {
@@ -57,6 +60,11 @@ export default async function TextingPage() {
   ]);
   const { count: waiting } = await db.from('sms_messages').select('id', { count: 'exact', head: true }).eq('direction', 'out').eq('status', 'queued').lte('send_after', new Date().toISOString());
   const live = !!s.enabled && !s.stopped_at;
+  // The voice note (migration 0078): a short-lived private link so the owner can play it back here.
+  const v = s as { voice_note_enabled?: boolean; voice_note_path?: string | null; voice_note_seconds?: number | null; voice_note_updated_at?: string | null; voice_offer_template?: string | null; voice_link_template?: string | null };
+  const voiceUrl = v.voice_note_path
+    ? (await createAdminClient().storage.from(VOICE_NOTE_BUCKET).createSignedUrl(v.voice_note_path, 3600).catch(() => ({ data: null }))).data?.signedUrl ?? null
+    : null;
 
   return (
     <div className="space-y-6">
@@ -85,6 +93,15 @@ export default async function TextingPage() {
       <Card><CardHeader><CardTitle className="text-base">What the assistant says</CardTitle></CardHeader><CardContent>
         <SmsBotForm instructions={s.bot_extra_instructions ?? ''} senderName={s.house_sender_name ?? ''} defaultName={SENDER_HOUSE} max={MAX_EXTRA_INSTRUCTIONS}
           template={s.opening_template ?? ''} />
+      </CardContent></Card>
+
+      <Card id="voice-note"><CardHeader><CardTitle className="text-base">Voice note</CardTitle></CardHeader><CardContent>
+        {'voice_note_enabled' in (settings ?? {}) ? (
+          <VoiceNoteForm value={{
+            enabled: !!v.voice_note_enabled, url: voiceUrl, seconds: v.voice_note_seconds ?? null, updatedAt: v.voice_note_updated_at ?? null,
+            offerTemplate: v.voice_offer_template ?? '', linkTemplate: v.voice_link_template ?? '', senderName: (s.house_sender_name as string | null)?.trim() || SENDER_HOUSE,
+          }} />
+        ) : <p className="text-sm text-muted-foreground">Run database migration 0078 to add a voice note.</p>}
       </CardContent></Card>
 
       <Card><CardHeader><CardTitle className="text-base">Reminders &amp; follow-ups</CardTitle></CardHeader><CardContent>

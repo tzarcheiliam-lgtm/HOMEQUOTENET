@@ -4,12 +4,14 @@ import { normalizeUsPhone } from '@/lib/ai-calling/phone';
 import { nextEligible, resolveZones } from '@/lib/ai-calling/timezone';
 import { runSmsAgent, type AgentInput, type AgentResult, type OpenTimesForAgent, type SmsTurn } from './agent';
 import { AWAIT_BOOKING_STEP, callBookedText, takenText, threeSpread, visitBookedText, type OpenTime } from './scheduling';
-import { bookCall, bookVisit, loadBookingOptions, NO_OPTIONS, noteBooked, type BookingOptions } from './scheduling.server';
+import { bookCall, bookVisit, loadBookingOptions, NO_OPTIONS, noteBooked, type BookingOptions, type CallOption, type VisitOption } from './scheduling.server';
 import type { Alert } from './health';
 import { notifyAdmins } from './health-notify';
 import { DEFAULT_ZONES, MAX_AI_TURNS } from './config';
 import { handleLeadReminderReply, handleProspectReply } from './reminder-replies';
-import { isLive, loadSettings, note, phoneInUse, queue, sentToday, type Db } from './core';
+import { isLive, loadSettings, note, phoneInUse, queue, sentToday, voiceNoteReady, type Db, type SmsSettings } from './core';
+import { isClearYes, VOICE_NOTE_BUCKET, VOICE_NOTE_HISTORY, voiceLinkLine, voiceOfferMessage } from './voice-note';
+import { signVisitGrant, visitUrl } from './visit-link';
 import { finalizeOutbound, helpReply, isHelp, isOptOut, isStart, metaProject, openingMessage, optOutConfirmation, projectLabel, SENDER_HOUSE } from './rules';
 
 export interface ContractorTexting { enabled: boolean; senderName: string | null; openingTemplate: string | null; extraInstructions: string | null }
@@ -60,6 +62,21 @@ function readAnswers(answers: Record<string, unknown>, snap: Snapshot): Record<s
   return out;
 }
 
+/** What we know about a lead's project for texts and the visit page: their first name, a project label, form answers. */
+export async function leadContext(db: Db, leadId: string): Promise<{ firstName: string | null; project: string | null; known: Record<string, string> }> {
+  const [{ data: lead }, { data: session }] = await Promise.all([
+    db.from('leads').select('first_name,source,answers').eq('id', leadId).maybeSingle(),
+    db.from('funnel_sessions').select('answers,config_snapshot').eq('lead_id', leadId).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+  ]);
+  const firstName = ((lead as { first_name?: string | null } | null)?.first_name as string | null) ?? null;
+  if (session) {
+    const snap = (session.config_snapshot ?? {}) as Snapshot;
+    return { firstName, project: projectLabel(snap.industry), known: readAnswers((session.answers ?? {}) as Record<string, unknown>, snap) };
+  }
+  const answers = ((lead as { answers?: unknown } | null)?.answers ?? {}) as Record<string, string>;
+  return { firstName, project: metaProject(answers), known: Object.fromEntries(Object.entries(answers).filter(([, v]) => typeof v === 'string')) };
+}
+
 export type StartResult = { started: true; conversationId: string } | { started: false; reason: string };
 
 /** Called right after a real funnel lead is saved. Idempotent (one conversation per lead) and never throws. */
@@ -89,8 +106,10 @@ async function startSmsForLeadInner(db: Db, leadId: string, now: Date): Promise<
 
     const houseName = settings.house_sender_name?.trim().slice(0, 40) || SENDER_HOUSE;
     const sender = house ? houseName : (co?.senderName?.trim() || snap.clientName || houseName).slice(0, 80);
+    // The owner's voice note is HomeQuote's own introduction: only HomeQuote conversations get the voice memo question.
+    const voice = house && voiceNoteReady(settings);
     const { data: convo, error } = await db.from('sms_conversations').insert({
-      lead_id: leadId, contractor_id: funnel.contractor_id ?? null, sender_name: sender, phone_e164: phone,
+      lead_id: leadId, contractor_id: funnel.contractor_id ?? null, sender_name: sender, phone_e164: phone, ...(voice ? { voice_note_state: 'offered' } : {}),
     }).select('id,lead_id').single();
     if (error || !convo) return { started: false, reason: 'exists' };
     const zones = resolveZones({ state: lead.state as string | null, zip: lead.zip as string | null }) ?? DEFAULT_ZONES;
@@ -98,7 +117,10 @@ async function startSmsForLeadInner(db: Db, leadId: string, now: Date): Promise<
     const ready = new Date(now.getTime() + Math.max(0, settings.first_text_delay_minutes ?? 0) * 60_000);
     const when = nextEligible(ready, zones, { startHour: settings.window_start_hour, endHour: settings.window_end_hour }) ?? ready;
     const template = (co?.openingTemplate?.trim() || settings.opening_template?.trim()) || null;
-    await queue(db, convo as { id: string; lead_id: string }, openingMessage({ firstName: lead.first_name as string | null, senderName: sender, project: projectLabel(snap.industry), template }), { ai: false, sendAfter: when });
+    const opening = voice
+      ? voiceOfferMessage({ template: settings.voice_offer_template, firstName: lead.first_name as string | null, senderName: sender, project: projectLabel(snap.industry) })
+      : openingMessage({ firstName: lead.first_name as string | null, senderName: sender, project: projectLabel(snap.industry), template });
+    await queue(db, convo as { id: string; lead_id: string }, opening, { ai: false, sendAfter: when });
     await note(db, leadId, `Automatic text queued${when > now ? ` for ${when.toISOString()} (outside texting hours)` : ''}.`);
     return { started: true, conversationId: convo.id as string };
   } catch {
@@ -146,13 +168,17 @@ async function startSmsForMetaLeadInner(db: Db, leadId: string, now: Date, sourc
 
     const houseName = settings.house_sender_name?.trim().slice(0, 40) || SENDER_HOUSE;
     const sender = source.senderName?.trim().slice(0, 40) || houseName;
+    const voice = !contractorId && voiceNoteReady(settings);
     const { data: convo, error } = await db.from('sms_conversations').insert({
-      lead_id: leadId, contractor_id: contractorId, sender_name: sender, phone_e164: phone,
+      lead_id: leadId, contractor_id: contractorId, sender_name: sender, phone_e164: phone, ...(voice ? { voice_note_state: 'offered' } : {}),
     }).select('id,lead_id').single();
     if (error || !convo) return { started: false, reason: 'exists' };
     const zones = resolveZones({ state: lead.state as string | null, zip: lead.zip as string | null }) ?? DEFAULT_ZONES;
     const when = nextEligible(now, zones, { startHour: settings.window_start_hour, endHour: settings.window_end_hour }) ?? now;
-    await queue(db, convo as { id: string; lead_id: string }, openingMessage({ firstName: lead.first_name as string | null, senderName: sender, project: metaProject(answers) }), { ai: false, sendAfter: when });
+    const opening = voice
+      ? voiceOfferMessage({ template: settings.voice_offer_template, firstName: lead.first_name as string | null, senderName: sender, project: metaProject(answers) })
+      : openingMessage({ firstName: lead.first_name as string | null, senderName: sender, project: metaProject(answers) });
+    await queue(db, convo as { id: string; lead_id: string }, opening, { ai: false, sendAfter: when });
     await note(db, leadId, `Automatic text queued${when > now ? ` for ${when.toISOString()} (outside texting hours)` : ''}.`);
     return { started: true, conversationId: convo.id as string };
   } catch {
@@ -204,7 +230,7 @@ export async function handleInbound(db: Db, input: InboundInput, deps: InboundDe
       .in('status', ['sent', 'sending', 'queued']).gte('created_at', new Date(now.getTime() - 30 * 60_000).toISOString()).order('created_at', { ascending: false }).limit(20);
     if ((recentOut ?? []).some((m: { body: string }) => normalizeBody(m.body) === normalizeBody(body))) return { handled: true, reason: 'echo' };
   }
-  const c = convo as { id: string; lead_id: string | null; prospect_id?: string | null; sender_name: string; status: string; ai_turns: number; mode?: string | null; call_time_preference?: string | null; workflow_owned?: boolean; contractor_id?: string | null };
+  const c = convo as { id: string; lead_id: string | null; prospect_id?: string | null; sender_name: string; status: string; ai_turns: number; mode?: string | null; call_time_preference?: string | null; workflow_owned?: boolean; contractor_id?: string | null; voice_note_state?: string | null };
   const { data: inRow } = await db.from('sms_messages').insert({ conversation_id: c.id, lead_id: c.lead_id, ...(c.prospect_id ? { prospect_id: c.prospect_id } : {}), direction: 'in', body, status: 'received', external_guid: input.guid, sent_at: input.receivedAt ?? now.toISOString() }).select('id').single();
   await db.from('sms_conversations').update({ last_inbound_at: now.toISOString(), updated_at: now.toISOString() }).eq('id', c.id);
 
@@ -380,23 +406,67 @@ async function bookPicked(
     return { handled: true, replied: true, reason: 'booking_failed' };
   }
 
-  const body = finalizeOutbound(visit
-    ? visitBookedText({ firstName: l.first_name, label: picked.label, who: visit.who })
-    : callBookedText({ firstName: l.first_name, label: picked.label, who: call!.who, minutes: call!.minutes, fromPhone: call!.fromPhone, callerFirstName: call!.callerFirstName }));
-  const msgId = await queue(db, c, body, { ai: true, sendAfter: pause(), reminder: { kind: 'home_appointment', ref: outcome.appointmentId, step: 'booked' } });
-  await db.from('sms_reminders').insert({ kind: 'home_appointment', ref_id: outcome.appointmentId, step: 'booked', anchor_at: outcome.startsAt, status: 'queued', message_id: msgId ?? null, detail: 'Confirmation sent by the texting assistant.' });
-  await db.from('sms_conversations').update({ ...base, status: 'handoff', mode: visit ? 'text' : 'call' }).eq('id', c.id);
-  await noteBooked(db, c.lead_id, picked.kind, picked.label, visit ? visit.who : call!.who);
-  await (deps.notify ?? notifyAdmins)({
-    title: visit ? 'A lead booked a visit' : 'A lead booked a call',
-    body: `Booked by text: ${visit ? 'free estimate visit' : `${call!.minutes}-minute call`} ${picked.label}.`,
-    url: `/app/leads/${c.lead_id}`,
-    linkLabel: 'Open the lead',
-  }).catch(() => undefined);
+  await confirmBooked(db, c, picked, (visit ?? call)!, l, outcome, { ...base, status: 'handoff', mode: visit ? 'text' : 'call' }, deps.notify, now);
   return { handled: true, replied: true, reason: visit ? 'booked_visit' : 'booked_call' };
 }
 
-async function replyWithAgent(db: Db, c: { id: string; lead_id: string; sender_name: string; ai_turns: number; mode?: string | null; call_time_preference?: string | null }, deps: InboundDeps, now: Date): Promise<InboundResult> {
+/**
+ * After a booking made by text or from the visit booking link: the confirmation text with the exact time (filed as the
+ * appointment's "booked" reminder, so the reminder runner doesn't send a second one and YES / R replies work), the
+ * conversation handed to a person, a timeline note, and a push + email to the owner (with the project brief, if any).
+ */
+export async function confirmBooked(
+  db: Db,
+  c: { id: string; lead_id: string },
+  picked: OpenTime,
+  opt: VisitOption | CallOption,
+  l: { first_name: string | null },
+  outcome: { appointmentId: string; startsAt: string },
+  convoUpdate: Record<string, unknown>,
+  notify: InboundDeps['notify'],
+  now: Date,
+  extra: { via?: 'text' | 'link'; brief?: string | null } = {},
+) {
+  const pause = new Date(now.getTime() + 3000 + Math.floor(Math.random() * 4000));
+  const visit = opt.kind === 'visit' ? opt : null;
+  const call = opt.kind === 'call' ? opt : null;
+  const body = finalizeOutbound(visit
+    ? visitBookedText({ firstName: l.first_name, label: picked.label, who: visit.who })
+    : callBookedText({ firstName: l.first_name, label: picked.label, who: call!.who, minutes: call!.minutes, fromPhone: call!.fromPhone, callerFirstName: call!.callerFirstName }));
+  const msgId = await queue(db, c, body, { ai: extra.via !== 'link', sendAfter: pause, reminder: { kind: 'home_appointment', ref: outcome.appointmentId, step: 'booked' } });
+  await db.from('sms_reminders').insert({ kind: 'home_appointment', ref_id: outcome.appointmentId, step: 'booked', anchor_at: outcome.startsAt, status: 'queued', message_id: msgId ?? null, detail: extra.via === 'link' ? 'Confirmation sent after booking from the text link.' : 'Confirmation sent by the texting assistant.' });
+  await db.from('sms_conversations').update(convoUpdate).eq('id', c.id);
+  await noteBooked(db, c.lead_id, picked.kind, picked.label, visit ? visit.who : call!.who, extra.via);
+  const how = visit ? 'free estimate visit' : `${call!.minutes}-minute call`;
+  const brief = extra.brief?.trim() ? ` Project: ${extra.brief.trim().slice(0, 300)}` : '';
+  await (notify ?? notifyAdmins)({
+    title: visit ? 'A lead booked a visit' : 'A lead booked a call',
+    body: `Booked ${extra.via === 'link' ? 'from the text link' : 'by text'}: ${how} ${picked.label}.${brief}`,
+    url: `/app/leads/${c.lead_id}`,
+    linkLabel: 'Open the lead',
+  }).catch(() => undefined);
+}
+
+/**
+ * They said yes to the voice memo: the voice note, then a short line, then the visit booking link on its own (iMessage
+ * shows a link alone as a preview card). The bridge sends them in this order a few seconds apart; a voice note that
+ * fails to send never holds up the link. Without a link secret only the voice note goes out.
+ */
+async function sendVoiceNoteAndLink(db: Db, c: { id: string; lead_id: string; sender_name: string }, settings: SmsSettings, lead: { firstName: string | null; project: string | null }, now: Date): Promise<boolean> {
+  if (!voiceNoteReady(settings)) return false;
+  const at = (ms: number) => new Date(now.getTime() + ms);
+  await queue(db, c, '', { ai: false, sendAfter: at(4000 + Math.floor(Math.random() * 4000)), attachment: { path: settings.voice_note_path!, mime: settings.voice_note_mime! } });
+  const grant = signVisitGrant(c.id, now.getTime());
+  if (grant) {
+    await queue(db, c, voiceLinkLine({ template: settings.voice_link_template, firstName: lead.firstName, senderName: c.sender_name, project: lead.project }), { ai: false, sendAfter: at(9000) });
+    await queue(db, c, visitUrl(grant), { ai: false, sendAfter: at(10_000) });
+  }
+  await db.from('sms_conversations').update({ voice_note_state: 'sent', updated_at: now.toISOString() }).eq('id', c.id);
+  await note(db, c.lead_id, grant ? 'Lead said yes to the voice memo: sent the voice note and the link to book the free in-home estimate.' : 'Lead said yes to the voice memo: sent the voice note (no booking link: neither BOOKING_TICKET_SECRET nor the service role key is set).');
+  return true;
+}
+
+async function replyWithAgent(db: Db, c: { id: string; lead_id: string; sender_name: string; ai_turns: number; mode?: string | null; call_time_preference?: string | null; voice_note_state?: string | null }, deps: InboundDeps, now: Date): Promise<InboundResult> {
   const settings = await loadSettings(db);
   const handoff = async (reason: string) => {
     await db.from('sms_conversations').update({ status: 'handoff', updated_at: now.toISOString() }).eq('id', c.id);
@@ -407,19 +477,25 @@ async function replyWithAgent(db: Db, c: { id: string; lead_id: string; sender_n
   if (c.ai_turns >= (settings.max_ai_turns ?? MAX_AI_TURNS)) return handoff('the assistant reached its message limit');
   if ((await sentToday(db)) >= settings.daily_cap) return handoff('the daily text limit was reached');
   if ((await aiRepliesToday(db)) >= (settings.max_ai_replies_per_day ?? 150)) return handoff('the daily assistant reply limit was reached');
-  const aiOn = deps.aiConfigured ?? !!process.env.ANTHROPIC_API_KEY?.trim();
-  if (!aiOn && !deps.agent) return handoff('the AI assistant is not configured');
 
   const [{ data: msgs }, { data: lead }, { data: session }] = await Promise.all([
-    db.from('sms_messages').select('direction,body,status,created_at').eq('conversation_id', c.id).order('created_at', { ascending: true }).limit(60),
+    db.from('sms_messages').select('direction,body,status,created_at,attachment_path').eq('conversation_id', c.id).order('created_at', { ascending: true }).limit(60),
     db.from('leads').select('first_name,source,answers').eq('id', c.lead_id).maybeSingle(),
     db.from('funnel_sessions').select('answers,config_snapshot,qualified').eq('lead_id', c.lead_id).order('created_at', { ascending: false }).limit(1).maybeSingle(),
   ]);
   const snap = (session?.config_snapshot ?? {}) as Snapshot;
   const metaAnswers = !session && lead?.source === 'meta' ? ((lead.answers ?? {}) as Record<string, string>) : null;
-  const history: SmsTurn[] = ((msgs ?? []) as { direction: string; body: string; status: string }[])
+  const project = metaAnswers ? metaProject(metaAnswers) : projectLabel(snap.industry);
+  const firstName = (lead?.first_name as string | null) ?? null;
+  // Asked "can I send you a quick voice memo?" and they plainly said yes: no AI needed.
+  const voiceOffer = c.voice_note_state === 'offered' && voiceNoteReady(settings);
+  const lastIn = [...((msgs ?? []) as { direction: string; body: string }[])].reverse().find((m) => m.direction === 'in')?.body ?? '';
+  if (voiceOffer && isClearYes(lastIn) && (await sendVoiceNoteAndLink(db, c, settings, { firstName, project }, now))) return { handled: true, replied: true, reason: 'voice_note' };
+  const aiOn = deps.aiConfigured ?? !!process.env.ANTHROPIC_API_KEY?.trim();
+  if (!aiOn && !deps.agent) return handoff('the AI assistant is not configured');
+  const history: SmsTurn[] = ((msgs ?? []) as { direction: string; body: string; status: string; attachment_path?: string | null }[])
     .filter((m) => m.direction === 'in' || m.status === 'sent' || m.status === 'queued' || m.status === 'sending')
-    .map((m) => ({ role: m.direction === 'in' ? 'lead' : 'us', text: m.body }));
+    .map((m) => ({ role: m.direction === 'in' ? 'lead' : 'us', text: m.attachment_path && !m.body.trim() ? VOICE_NOTE_HISTORY : m.body }));
   // Instructions for the whole assistant, plus any specific to the contractor this conversation is for.
   const { data: convoRow } = await db.from('sms_conversations').select('contractor_id').eq('id', c.id).maybeSingle();
   const coExtra = (convoRow as { contractor_id?: string | null } | null)?.contractor_id
@@ -432,13 +508,21 @@ async function replyWithAgent(db: Db, c: { id: string; lead_id: string; sender_n
   let result: AgentResult;
   try {
     result = await (deps.agent ?? runSmsAgent)({
-      senderName: c.sender_name, firstName: (lead?.first_name as string | null) ?? null, project: metaAnswers ? metaProject(metaAnswers) : projectLabel(snap.industry),
-      extraInstructions, openTimes: forAgent(options),
+      senderName: c.sender_name, firstName, project,
+      extraInstructions, openTimes: forAgent(options), voiceOffer,
       known: metaAnswers ?? readAnswers((session?.answers ?? {}) as Record<string, unknown>, snap), formQualified: (session?.qualified as boolean | null) ?? null, history,
     });
   } catch {
     return handoff('the assistant could not reply');
   }
+  // The voice memo question: a yes (in any words) sends it; still asking keeps the question open; anything else moves on.
+  if (voiceOffer && !result.close && !result.handoff) {
+    if (result.voice_note === 'yes' && (await sendVoiceNoteAndLink(db, c, settings, { firstName, project }, now))) {
+      await db.from('sms_conversations').update({ ai_turns: c.ai_turns + 1, qualification: result.qualification, summary: result.summary, updated_at: now.toISOString() }).eq('id', c.id);
+      return { handled: true, replied: true, reason: 'voice_note' };
+    }
+  }
+  if (voiceOffer && result.voice_note !== 'pending') await db.from('sms_conversations').update({ voice_note_state: 'declined' }).eq('id', c.id);
   // They accepted one of the offered times: book it and confirm with the exact time.
   const picked = result.book_slot && !result.close ? [...(options.visit?.times ?? []), ...(options.call?.times ?? [])].find((t) => t.id === result.book_slot) : undefined;
   if (picked) return bookPicked(db, target, picked, options, result, deps, now);
@@ -486,14 +570,39 @@ async function replyWithAgent(db: Db, c: { id: string; lead_id: string; sender_n
   return { handled: true, replied: true };
 }
 
-export interface ClaimedMessage { id: string; phone_e164: string; body: string }
-export async function claimOutbound(db: Db, limit = 5): Promise<ClaimedMessage[]> {
+export interface ClaimedMessage {
+  id: string; phone_e164: string; body: string;
+  /** The voice note: a short-lived private download link, and its type. */
+  attachment_url?: string; attachment_mime?: string;
+}
+interface ClaimedRow { id: string; phone_e164: string; body: string; attachment_path?: string | null; attachment_mime?: string | null; send_after?: string | null }
+/** Download links for the bridge last 15 minutes: long enough for a slow Mac, short enough to be useless if leaked. */
+const ATTACHMENT_LINK_SECONDS = 900;
+export async function claimOutbound(db: Db, limit = 5, opts: { attachments?: boolean } = { attachments: true }): Promise<ClaimedMessage[]> {
   const settings = await loadSettings(db);
   await db.from('sms_settings').update({ bridge_last_seen_at: new Date().toISOString() }).eq('id', true);
   if (settings.stopped_at) return [];
   const { data, error } = await db.rpc('claim_sms_outbound', { p_limit: limit });
   if (error) throw new Error('claim failed');
-  return (data ?? []) as ClaimedMessage[];
+  // Oldest first, so a voice note goes out before the line and link queued after it.
+  const rows = ((data ?? []) as ClaimedRow[]).sort((a, b) => Date.parse(a.send_after ?? '') - Date.parse(b.send_after ?? '') || 0);
+  const out: ClaimedMessage[] = [];
+  for (const r of rows) {
+    const base = { id: r.id, phone_e164: r.phone_e164, body: r.body };
+    if (!r.attachment_path) { out.push(base); continue; }
+    if (!opts.attachments) {
+      await ackOutbound(db, r.id, false, 'The Mac bridge is out of date and cannot send voice notes. Update it (scripts/mac-sms-bridge).');
+      continue;
+    }
+    const { data: link } = await db.storage.from(VOICE_NOTE_BUCKET).createSignedUrl(r.attachment_path, ATTACHMENT_LINK_SECONDS).catch(() => ({ data: null }));
+    if (!link?.signedUrl) {
+      // Never send an empty text in its place: the voice note fails, the messages around it still go out.
+      await ackOutbound(db, r.id, false, 'The voice note file could not be read from storage');
+      continue;
+    }
+    out.push({ ...base, attachment_url: link.signedUrl, attachment_mime: r.attachment_mime ?? 'audio/mp4' });
+  }
+  return out;
 }
 
 export async function ackOutbound(db: Db, id: string, ok: boolean, error?: string) {
