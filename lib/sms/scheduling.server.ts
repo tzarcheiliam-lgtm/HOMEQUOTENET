@@ -12,7 +12,7 @@ import { flushCalendarSyncSoon } from '@/lib/calendar/sync.server';
 import { prettyPhone } from '@/lib/emails/booking';
 import { flushNotificationsSoon } from '@/lib/notifications/outbox';
 import { note, type Db } from './core';
-import { OFFER_DAYS, pickOpenTimes, type OpenTime } from './scheduling';
+import { MIN_LEAD_MS, OFFER_DAYS, pickOpenTimes, slotLabel, type OpenTime } from './scheduling';
 
 /**
  * Loads real open times for the texting assistant and books the one a homeowner picks
@@ -83,31 +83,33 @@ export async function hasLiveAppointment(db: Db, leadId: string, now: Date): Pro
   return ((byAssignment as any).data?.length ?? 0) + viaLead > 0;
 }
 
-/** The free in-home visit: the contractor's on-site availability (its own hours, or the default ones). */
-async function visitOption(db: Db, c: Convo, now: Date): Promise<VisitOption | null> {
+interface Span { startMs: number; endMs: number }
+type VisitBase = Omit<VisitOption, 'times'> & { slots: Span[] };
+type CallBase = Omit<CallOption, 'times'> & { slots: Span[] };
+
+/** Every bookable start for the free in-home visit: the contractor's on-site availability (its own hours, or the default ones). */
+async function visitBase(db: Db, c: Convo, now: Date): Promise<VisitBase | null> {
   const assignment = await openAssignment(db, c.lead_id, c.contractor_id ?? null);
   if (!assignment) return null;
   const from = now.getTime();
   const to = from + LOOKAHEAD_DAYS * 86_400_000;
   const ctx = await loadAvailabilityContext(assignment.contractor_id, from, to, { db: db as any });
-  const slots = bookableSlots({ ...ctx, nowMs: from }, from, to, { stepMinutes: 60 });
-  const tz = ctx.settings.timezone;
-  const times = pickOpenTimes(slots, 'visit', tz, from);
-  if (!times.length) return null;
+  const slots = bookableSlots({ ...ctx, nowMs: from }, from, to, { stepMinutes: 60 }).filter((s) => s.startMs >= from + MIN_LEAD_MS);
+  if (!slots.length) return null;
   const { data: co } = await db.from('contractors').select('name,texting_sender_name').eq('id', assignment.contractor_id).maybeSingle();
   const who = ((co as any)?.texting_sender_name?.trim() || (co as any)?.name || c.sender_name).slice(0, 60);
-  return { kind: 'visit', contractorId: assignment.contractor_id, assignmentId: assignment.id, who, timeZone: tz, times };
+  return { kind: 'visit', contractorId: assignment.contractor_id, assignmentId: assignment.id, who, timeZone: ctx.settings.timezone, slots };
 }
 
-/** The quick call: the HomeQuote calendar this lead books into (the contractor's, else the team's). */
-async function callOption(db: Db, c: Convo, now: Date): Promise<CallOption | null> {
+/** Every bookable start for the quick call: the HomeQuote calendar this lead books into (the contractor's, else the team's). */
+async function callBase(db: Db, c: Convo, now: Date): Promise<CallBase | null> {
   const cal = c.contractor_id ? await getContractorCalendar(c.contractor_id, { create: true, db: db as any }) : await getTeamCalendar(db as any);
   if (!cal || !cal.active) return null;
   const from = now.getTime();
   const res = await getSlots(cal.id, from, from + Math.min(cal.horizonDays, LOOKAHEAD_DAYS) * 86_400_000, { db: db as any, nowMs: from });
   if (!res) return null;
-  const times = pickOpenTimes(res.slots, 'call', cal.timezone, from, { days: OFFER_DAYS });
-  if (!times.length) return null;
+  const slots = res.slots.filter((s) => s.startMs >= from + MIN_LEAD_MS);
+  if (!slots.length) return null;
   const host = resolveHostContact({ kind: cal.kind, name: cal.name, host: cal.host });
   const assignment = c.contractor_id ? await openAssignment(db, c.lead_id, c.contractor_id) : null;
   return {
@@ -119,8 +121,42 @@ async function callOption(db: Db, c: Convo, now: Date): Promise<CallOption | nul
     fromPhone: prettyPhone(host?.phone),
     minutes: cal.durationMinutes,
     timeZone: cal.timezone,
-    times,
+    slots,
   };
+}
+
+/** The visit option the assistant offers: a short, varied menu of the open times. */
+async function visitOption(db: Db, c: Convo, now: Date): Promise<VisitOption | null> {
+  const base = await visitBase(db, c, now);
+  if (!base) return null;
+  const { slots, ...rest } = base;
+  const times = pickOpenTimes(slots, 'visit', base.timeZone, now.getTime());
+  return times.length ? { ...rest, times } : null;
+}
+
+/** The call option the assistant offers. */
+async function callOption(db: Db, c: Convo, now: Date): Promise<CallOption | null> {
+  const base = await callBase(db, c, now);
+  if (!base) return null;
+  const { slots, ...rest } = base;
+  const times = pickOpenTimes(slots, 'call', base.timeZone, now.getTime(), { days: OFFER_DAYS });
+  return times.length ? { ...rest, times } : null;
+}
+
+const allTimes = (slots: Span[], kind: 'visit' | 'call', timeZone: string): OpenTime[] =>
+  slots.map((s, i) => ({ id: `${kind === 'visit' ? 'v' : 'c'}${i + 1}`, kind, startMs: s.startMs, endMs: s.endMs, label: slotLabel(s.startMs, timeZone) }));
+
+/**
+ * What the visit booking page (/booking/visit/<link>) offers: EVERY open time for the free in-home visit when a
+ * contractor is on the lead, else every open time for a quick call (a network lead with no contractor yet). Null when
+ * neither has open times. The lead already being booked is the caller's check (hasLiveAppointment).
+ */
+export async function loadPageOption(db: Db, c: Convo, now: Date): Promise<VisitOption | CallOption | null> {
+  const visit = await visitBase(db, c, now).catch(() => null);
+  if (visit) { const { slots, ...rest } = visit; return { ...rest, times: allTimes(slots, 'visit', visit.timeZone) }; }
+  const call = await callBase(db, c, now).catch(() => null);
+  if (call) { const { slots, ...rest } = call; return { ...rest, times: allTimes(slots, 'call', call.timeZone) }; }
+  return null;
 }
 
 /**
@@ -156,7 +192,7 @@ async function contractorBusy(db: Db, contractorId: string, startMs: number, end
 }
 
 /** Books the visit picked by text: an on-site appointment on the lead's assignment, like a staff booking. */
-export async function bookVisit(db: Db, opt: VisitOption, time: OpenTime, leadId: string, now: Date): Promise<BookOutcome> {
+export async function bookVisit(db: Db, opt: VisitOption, time: OpenTime, leadId: string, now: Date, notes = 'Booked by the homeowner over text with the texting assistant.'): Promise<BookOutcome> {
   try {
     // Re-check: someone may have taken the time since it was offered.
     const ctx = await loadAvailabilityContext(opt.contractorId, time.startMs - 86_400_000, time.endMs + 86_400_000, { db: db as any });
@@ -166,7 +202,7 @@ export async function bookVisit(db: Db, opt: VisitOption, time: OpenTime, leadId
     const { data, error } = await db.from('appointments').insert({
       assignment_id: opt.assignmentId,
       scheduled_at: startsAt,
-      notes: 'Booked by the homeowner over text with the texting assistant.',
+      notes,
       booked_via: 'chat',
     }).select('id').single();
     if (error || !data) return { ok: false, reason: 'error' };
@@ -181,7 +217,7 @@ export async function bookVisit(db: Db, opt: VisitOption, time: OpenTime, leadId
 }
 
 /** Books the call picked by text on its HomeQuote calendar (atomic, re-checked under the calendar lock). */
-export async function bookCall(db: Db, opt: CallOption, time: OpenTime, lead: { id: string; first_name: string | null; last_name?: string | null; phone: string | null; email?: string | null }): Promise<BookOutcome> {
+export async function bookCall(db: Db, opt: CallOption, time: OpenTime, lead: { id: string; first_name: string | null; last_name?: string | null; phone: string | null; email?: string | null }, notes = 'Booked by the homeowner over text with the texting assistant.'): Promise<BookOutcome> {
   try {
     const name = [lead.first_name, lead.last_name].filter(Boolean).join(' ').trim();
     const r = await bookAppointment({
@@ -192,7 +228,7 @@ export async function bookCall(db: Db, opt: CallOption, time: OpenTime, lead: { 
       source: 'ai',
       contact: { ...(name ? { name } : {}), ...(lead.phone ? { phone: lead.phone } : {}), ...(lead.email ? { email: lead.email } : {}) },
       actorKind: 'homeowner',
-      notes: 'Booked by the homeowner over text with the texting assistant.',
+      notes,
       db: db as any,
     });
     if (!r.ok) return { ok: false, reason: PICK_ANOTHER_TIME.has(r.error) ? 'taken' : 'error' };
@@ -206,8 +242,9 @@ export async function bookCall(db: Db, opt: CallOption, time: OpenTime, lead: { 
 }
 
 /** A line on the lead's timeline for the team. */
-export async function noteBooked(db: Db, leadId: string, kind: 'visit' | 'call', label: string, who: string) {
+export async function noteBooked(db: Db, leadId: string, kind: 'visit' | 'call', label: string, who: string, via: 'text' | 'link' = 'text') {
+  const how = via === 'link' ? 'from the text link' : 'by text';
   await note(db, leadId, kind === 'visit'
-    ? `Booked a free estimate visit by text: ${label} with ${who}.`
-    : `Booked a call by text: ${label} with ${who}.`, { booked_by_text: true });
+    ? `Booked a free estimate visit ${how}: ${label} with ${who}.`
+    : `Booked a call ${how}: ${label} with ${who}.`, { booked_by_text: true, ...(via === 'link' ? { booked_from_link: true } : {}) });
 }

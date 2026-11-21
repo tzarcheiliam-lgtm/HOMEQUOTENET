@@ -9,6 +9,8 @@ import { assetUrl } from '@/lib/contracts/storage';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { setContractorTexting } from '@/lib/actions/sms';
 import { ContractorWordingForm } from '@/components/texting/contractor-wording-form';
+import { VoiceNoteForm } from '@/components/texting/voice-note-form';
+import { VOICE_NOTE_BUCKET } from '@/lib/sms/voice-note';
 import { MAX_EXTRA_INSTRUCTIONS } from '@/lib/sms/agent';
 import { getContractor } from '@/lib/data/contractors';
 import { listVerticals } from '@/lib/data/verticals';
@@ -173,8 +175,14 @@ export default async function ContractorDetailPage({
 
   const { data: logoRow } = await createAdminClient().from('contractors').select('*').eq('id', contractor.id).maybeSingle();
   const logoUrl = await assetUrl(logoRow?.logo_path ?? null);
-  const { data: smsRow } = await createAdminClient().from('sms_settings').select('opening_template').eq('id', true).maybeSingle();
+  const { data: smsRow } = await createAdminClient().from('sms_settings').select('*').eq('id', true).maybeSingle();
   const generalOpening = (smsRow as { opening_template?: string | null } | null)?.opening_template ?? '';
+  // This contractor's own voice note (migration 0078), with a short-lived link to play it back.
+  const voice = logoRow as { voice_note_enabled?: boolean; voice_note_path?: string | null; voice_note_seconds?: number | null; voice_note_updated_at?: string | null; voice_offer_template?: string | null; texting_sender_name?: string | null } | null;
+  const generalVoice = smsRow as { voice_offer_template?: string | null; voice_link_template?: string | null } | null;
+  const voiceUrl = voice?.voice_note_path
+    ? (await createAdminClient().storage.from(VOICE_NOTE_BUCKET).createSignedUrl(voice.voice_note_path, 3600).catch(() => ({ data: null }))).data?.signedUrl ?? null
+    : null;
 
   return (
     <div className="space-y-8">
@@ -276,6 +284,23 @@ export default async function ContractorDetailPage({
             generalTemplate={generalOpening}
             max={MAX_EXTRA_INSTRUCTIONS}
           />
+        </CardContent>
+      </Card>
+
+      <Card id="voice-note">
+        <CardHeader>
+          <CardTitle>{contractor.name}’s voice note</CardTitle>
+          <CardDescription>An intro voice note for this contractor’s texted leads, sent when they say yes to a quick voice memo, followed by the link to book the free in-home estimate.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {voice && 'voice_note_enabled' in voice ? (
+            <VoiceNoteForm value={{
+              contractorId: contractor.id,
+              enabled: !!voice.voice_note_enabled, url: voiceUrl, seconds: voice.voice_note_seconds ?? null, updatedAt: voice.voice_note_updated_at ?? null,
+              offerTemplate: voice.voice_offer_template ?? '', generalOfferTemplate: generalVoice?.voice_offer_template ?? '',
+              linkTemplate: generalVoice?.voice_link_template ?? '', senderName: voice.texting_sender_name?.trim() || contractor.name,
+            }} />
+          ) : <p className="text-sm text-muted-foreground">Run database migration 0078 to add a voice note.</p>}
         </CardContent>
       </Card>
 

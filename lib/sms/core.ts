@@ -10,13 +10,16 @@ export interface SmsSettings {
   enabled: boolean; contractor_funnels_enabled: boolean; window_start_hour: number; window_end_hour: number; daily_cap: number; stopped_at: string | null;
   bot_extra_instructions?: string | null; house_sender_name?: string | null;
   opening_template?: string | null; first_text_delay_minutes?: number; max_ai_turns?: number; max_ai_replies_per_day?: number;
+  /** Migration 0078: the introductory voice note (lib/sms/voice-note.ts). */
+  voice_note_enabled?: boolean; voice_note_path?: string | null; voice_note_mime?: string | null; voice_offer_template?: string | null; voice_link_template?: string | null;
 }
 export const DEFAULT_SETTINGS: SmsSettings = { enabled: false, contractor_funnels_enabled: false, window_start_hour: 8, window_end_hour: 21, daily_cap: 200, stopped_at: null };
 
 export async function loadSettings(db: Db): Promise<SmsSettings> {
   const core = 'enabled,contractor_funnels_enabled,window_start_hour,window_end_hour,daily_cap,stopped_at';
-  // Newer columns arrive with migrations 0057 and 0059; until they are applied, fall back so texting keeps working.
-  for (const cols of [`${core},bot_extra_instructions,house_sender_name,opening_template,first_text_delay_minutes,max_ai_turns,max_ai_replies_per_day`, `${core},bot_extra_instructions,house_sender_name,opening_template,first_text_delay_minutes,max_ai_turns`, `${core},bot_extra_instructions,house_sender_name`, core]) {
+  // Newer columns arrive with migrations 0057, 0059 and 0078; until they are applied, fall back so texting keeps working.
+  const voice = 'voice_note_enabled,voice_note_path,voice_note_mime,voice_offer_template,voice_link_template';
+  for (const cols of [`${core},bot_extra_instructions,house_sender_name,opening_template,first_text_delay_minutes,max_ai_turns,max_ai_replies_per_day,${voice}`, `${core},bot_extra_instructions,house_sender_name,opening_template,first_text_delay_minutes,max_ai_turns,max_ai_replies_per_day`, `${core},bot_extra_instructions,house_sender_name,opening_template,first_text_delay_minutes,max_ai_turns`, `${core},bot_extra_instructions,house_sender_name`, core]) {
     const { data, error } = await db.from('sms_settings').select(cols).eq('id', true).maybeSingle();
     if (!error) return { ...DEFAULT_SETTINGS, ...(data as Partial<SmsSettings> | null) };
   }
@@ -24,6 +27,8 @@ export async function loadSettings(db: Db): Promise<SmsSettings> {
 }
 
 export const isLive = (s: SmsSettings) => s.enabled && !s.stopped_at;
+/** The voice note is switched on and uploaded. */
+export const voiceNoteReady = (s: SmsSettings) => !!s.voice_note_enabled && !!s.voice_note_path && !!s.voice_note_mime;
 
 export async function sentToday(db: Db): Promise<number> {
   const since = new Date(Date.now() - 24 * 3600_000).toISOString();
@@ -39,7 +44,11 @@ export async function phoneInUse(db: Db, phone: string, now: Date): Promise<bool
 }
 
 export interface QueueTarget { id: string; lead_id: string | null; prospect_id?: string | null }
-export interface QueueOpts { ai: boolean; sendAfter?: Date; workflowStepRunId?: string; reminder?: { kind: 'sales_meeting' | 'home_appointment' | 'no_reply'; ref: string; step: string } }
+export interface QueueOpts {
+  ai: boolean; sendAfter?: Date; workflowStepRunId?: string; reminder?: { kind: 'sales_meeting' | 'home_appointment' | 'no_reply'; ref: string; step: string };
+  /** A file in the sms-voice-notes bucket the bridge sends (the voice note). The body may then be empty. */
+  attachment?: { path: string; mime: string };
+}
 /** Puts one text in line for the Mac bridge (texting hours and caps are the caller's job). */
 export async function queue(db: Db, c: QueueTarget, body: string, opts: QueueOpts) {
   const { data } = await db.from('sms_messages').insert({
@@ -47,6 +56,7 @@ export async function queue(db: Db, c: QueueTarget, body: string, opts: QueueOpt
     direction: 'out', body, status: 'queued', ai: opts.ai, send_after: (opts.sendAfter ?? new Date()).toISOString(),
     ...(opts.workflowStepRunId ? { workflow_step_run_id: opts.workflowStepRunId } : {}),
     ...(opts.reminder ? { reminder_kind: opts.reminder.kind, reminder_ref: opts.reminder.ref, reminder_step: opts.reminder.step } : {}),
+    ...(opts.attachment ? { attachment_path: opts.attachment.path, attachment_mime: opts.attachment.mime } : {}),
   }).select('id').single();
   await db.from('sms_conversations').update({ last_outbound_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', c.id);
   return data?.id as string | undefined;
@@ -55,4 +65,22 @@ export async function queue(db: Db, c: QueueTarget, body: string, opts: QueueOpt
 export async function note(db: Db, leadId: string | null, body: string, metadata: Record<string, unknown> = {}) {
   if (!leadId) return;
   await db.from('lead_activities').insert({ lead_id: leadId, type: 'system', body, metadata: { sms: true, ...metadata } });
+}
+
+/** The voice note a conversation offers: HomeQuote's own (contractorId null) or one contractor's. */
+export interface VoiceSource { contractorId: string | null; path: string; mime: string; offerTemplate: string | null; linkTemplate: string | null }
+/**
+ * The voice note to use for HomeQuote (null) or for a contractor's own texts, or null when that one is off or not
+ * uploaded. A contractor's memo question falls back to the general wording; the line before the link is shared.
+ */
+export async function voiceSourceFor(db: Db, settings: SmsSettings, contractorId: string | null): Promise<VoiceSource | null> {
+  if (!contractorId) {
+    return voiceNoteReady(settings)
+      ? { contractorId: null, path: settings.voice_note_path!, mime: settings.voice_note_mime!, offerTemplate: settings.voice_offer_template ?? null, linkTemplate: settings.voice_link_template ?? null }
+      : null;
+  }
+  const { data, error } = await db.from('contractors').select('voice_note_enabled,voice_note_path,voice_note_mime,voice_offer_template').eq('id', contractorId).maybeSingle();
+  const c = (error ? null : data) as { voice_note_enabled?: boolean; voice_note_path?: string | null; voice_note_mime?: string | null; voice_offer_template?: string | null } | null;
+  if (!c?.voice_note_enabled || !c.voice_note_path || !c.voice_note_mime) return null;
+  return { contractorId, path: c.voice_note_path, mime: c.voice_note_mime, offerTemplate: c.voice_offer_template?.trim() || settings.voice_offer_template || null, linkTemplate: settings.voice_link_template ?? null };
 }

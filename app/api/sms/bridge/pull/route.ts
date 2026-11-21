@@ -10,6 +10,8 @@ export async function POST(request: Request) {
   const denied = bridgeUnauthorized(request);
   if (denied) return denied;
   try {
-    return NextResponse.json({ messages: await claimOutbound(createAdminClient(), 5) });
+    // Bridges from before voice notes send no version: they get texts only (a voice note would go out as a blank text).
+    const version = Number(request.headers.get('x-bridge-version') ?? '1') || 1;
+    return NextResponse.json({ messages: await claimOutbound(createAdminClient(), 5, { attachments: version >= 2 }) });
   } catch { return NextResponse.json({ error: 'Unavailable' }, { status: 503 }); }
 }

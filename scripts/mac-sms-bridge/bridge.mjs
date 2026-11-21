@@ -2,19 +2,22 @@
 /**
  * HomeQuote Mac text bridge. Runs on the Mac that is signed into iMessage.
  *
- *  - Every few seconds asks the web app for texts to send and sends them through the Messages app.
+ *  - Every few seconds asks the web app for texts to send and sends them through the Messages app, including the
+ *    owner's voice note (downloaded, converted to .m4a with macOS's own afconvert, then sent as an audio message).
  *  - Reads new incoming texts from the Messages database and hands them to the web app.
  *
- * No dependencies: Node 18+, plus macOS's own `osascript` and `sqlite3`.
+ * No dependencies: Node 18+, plus macOS's own `osascript`, `sqlite3` and `afconvert`.
  * Config comes from environment variables (see README.md):
  *   HQN_URL            e.g. https://www.homequote.net
  *   SMS_BRIDGE_TOKEN   the same long secret set in Vercel
  *   BRIDGE_SMS_FALLBACK=true  (optional) fall back to SMS via a paired iPhone when the number is not on iMessage
  *   BRIDGE_DRY_RUN=true       (optional) print what would be sent, send nothing
+ *   BRIDGE_MEDIA_DIR          (optional) where voice notes are staged before sending (default ~/Pictures/HomeQuote Bridge:
+ *                             recent macOS versions only let AppleScript send files Messages can read from there)
  */
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, readdir, stat, unlink } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -27,6 +30,9 @@ const CHAT_DB = process.env.CHAT_DB ?? join(homedir(), 'Library', 'Messages', 'c
 const STATE_DIR = join(homedir(), '.homequote-sms-bridge');
 const STATE_FILE = join(STATE_DIR, 'state.json');
 const POLL_MS = 4000;
+const MEDIA_DIR = process.env.BRIDGE_MEDIA_DIR ?? join(homedir(), 'Pictures', 'HomeQuote Bridge');
+const MEDIA_KEEP_MS = 60 * 60_000; // Messages copies the file in the background: keep staged files for an hour.
+const AUDIO_EXT = { 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/x-m4a': 'm4a', 'audio/m4a': 'm4a', 'audio/aac': 'aac', 'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/x-caf': 'caf' };
 const APPLE_EPOCH_MS = Date.UTC(2001, 0, 1);
 
 if (!BASE || TOKEN.length < 24) {
@@ -39,7 +45,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function api(path, body) {
   const res = await fetch(`${BASE}/api/sms/bridge/${path}`, {
-    method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${TOKEN}` }, body: JSON.stringify(body ?? {}),
+    // x-bridge-version 2+: this bridge can send voice notes (an older one is never handed them).
+    method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${TOKEN}`, 'x-bridge-version': '2' }, body: JSON.stringify(body ?? {}),
   });
   if (!res.ok) throw new Error(`${path} -> HTTP ${res.status}`);
   return res.json();
@@ -63,16 +70,64 @@ on run argv
   end tell
 end run`;
 
+// The same, for a file (the voice note). The path is an argument too.
+const SEND_FILE_SCRIPT = `
+on run argv
+  set theNumber to item 1 of argv
+  set theFile to POSIX file (item 2 of argv)
+  set theKind to item 3 of argv
+  tell application "Messages"
+    if theKind is "imessage" then
+      set theService to 1st account whose service type = iMessage
+    else
+      set theService to 1st account whose service type = SMS
+    end if
+    set theBuddy to participant theNumber of theService
+    send theFile to theBuddy
+  end tell
+end run`;
+
 async function sendVia(kind, number, text) {
   await run('osascript', ['-e', SEND_SCRIPT, number, text, kind], { timeout: 30_000 });
 }
-async function sendText(number, text) {
-  if (DRY) { log('[dry run] would send to', number, JSON.stringify(text)); return; }
-  try { await sendVia('imessage', number, text); }
+async function withFallback(send) {
+  try { await send('imessage'); }
   catch (e) {
     if (!SMS_FALLBACK) throw e;
     log('iMessage failed, trying SMS fallback');
-    await sendVia('sms', number, text);
+    await send('sms');
+  }
+}
+async function sendText(number, text) {
+  if (DRY) { log('[dry run] would send to', number, JSON.stringify(text)); return; }
+  await withFallback((kind) => sendVia(kind, number, text));
+}
+
+/** Downloads the voice note (a short-lived private link) and makes it an AAC .m4a, which plays inline in Messages. */
+async function stageAudio(id, url, mime) {
+  await mkdir(MEDIA_DIR, { recursive: true });
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`voice note download -> HTTP ${res.status}`);
+  const ext = AUDIO_EXT[mime] ?? 'm4a';
+  const src = join(MEDIA_DIR, `${id}-src.${ext}`);
+  await writeFile(src, Buffer.from(await res.arrayBuffer()));
+  if (ext === 'm4a') return src;
+  const out = join(MEDIA_DIR, `Voice note ${id.slice(0, 8)}.m4a`);
+  await run('afconvert', ['-f', 'm4af', '-d', 'aac', '-b', '96000', src, out], { timeout: 60_000 });
+  await unlink(src).catch(() => {});
+  return out;
+}
+async function sendAudio(id, number, url, mime) {
+  if (DRY) { log('[dry run] would send a voice note to', number); return; }
+  const file = await stageAudio(id, url, mime);
+  await withFallback((kind) => run('osascript', ['-e', SEND_FILE_SCRIPT, number, file, kind], { timeout: 60_000 }));
+}
+async function cleanMedia() {
+  let names = [];
+  try { names = await readdir(MEDIA_DIR); } catch { return; }
+  for (const n of names) {
+    const p = join(MEDIA_DIR, n);
+    try { if (Date.now() - (await stat(p)).mtimeMs > MEDIA_KEEP_MS) await unlink(p); } catch { /* next time */ }
   }
 }
 
@@ -80,7 +135,8 @@ async function sendOutbound() {
   const { messages } = await api('pull');
   for (const m of messages) {
     try {
-      await sendText(m.phone_e164, m.body);
+      if (m.attachment_url) await sendAudio(m.id, m.phone_e164, m.attachment_url, m.attachment_mime);
+      if (m.body && m.body.trim()) await sendText(m.phone_e164, m.body);
       await api('ack', { id: m.id, ok: true });
       log('sent', m.id);
     } catch (e) {
@@ -149,5 +205,6 @@ log('HomeQuote text bridge started', DRY ? '(dry run)' : '');
 for (;;) {
   try { await receiveInbound(); } catch (e) { log('receive error:', String(e.message ?? e).split('\n')[0]); }
   try { await sendOutbound(); } catch (e) { log('send error:', String(e.message ?? e).split('\n')[0]); }
+  await cleanMedia();
   await sleep(POLL_MS);
 }
