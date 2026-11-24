@@ -42,7 +42,7 @@ export function MoneyQueue({
                 <strong className="text-foreground tabular-nums">{chances}</strong> {chances === 1 ? 'chance' : 'chances'} to book
                 {payPerSale !== null ? (
                   <>
-                    {' '}· each that sells = <span className="font-semibold text-emerald-700">{formatMoney(payPerSale)}</span>
+                    {' '}· each that sells = <span className="font-semibold text-emerald-700">{formatMoney(payPerSale)}</span> + monthly
                   </>
                 ) : null}
               </>
