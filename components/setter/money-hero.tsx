@@ -52,7 +52,7 @@ export function MoneyHero({ d }: { d: SetterDashboardData }) {
             )}
             {d.payPerSale !== null ? (
               <span className="rounded-full bg-emerald-600 px-3 py-1 font-semibold text-white">
-                Every meeting that sells = +{formatMoney(d.payPerSale)}
+                Every meeting that sells = {formatMoney(d.payPerSale)} up front + monthly while they stay
               </span>
             ) : (
               <span className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-amber-900">
