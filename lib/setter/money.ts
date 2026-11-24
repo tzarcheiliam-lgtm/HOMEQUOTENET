@@ -21,8 +21,62 @@ export interface Meeting {
   status: SalesAppointmentStatus;
   saleOutcome: 'sold' | 'not_sold' | null;
   saleDecidedAt: string | null;
-  /** Pay snapshot, set when sold. */
+  /** First-month commission snapshot, set when sold. */
   payAmount: number | null;
+  /** What the contractor pays HomeQuote per month (0079); null on older sales. */
+  monthlyFee?: number | null;
+  /** When the contractor cancelled; recurring commission stops. */
+  churnedAt?: string | null;
+}
+
+/** A monthly payment at or above this earns the higher commission tier. */
+export const COMMISSION_MINIMUM = 2500;
+
+/** First-month and every-later-month commission rates for a monthly payment. */
+export function commissionRates(fee: number): { first: number; recurring: number } {
+  return fee >= COMMISSION_MINIMUM ? { first: 0.15, recurring: 0.1 } : { first: 0.1, recurring: 0.07 };
+}
+
+export const firstMonthCommission = (fee: number) => Math.round(fee * commissionRates(fee).first * 100) / 100;
+export const recurringCommission = (fee: number) => Math.round(fee * commissionRates(fee).recurring * 100) / 100;
+
+/** `key` (YYYY-MM-DD) moved forward by whole months, clamped to month end. */
+export function addMonths(key: string, n: number): string {
+  const [y, m, d] = key.split('-').map(Number);
+  const t = m - 1 + n;
+  const yy = y + Math.floor(t / 12);
+  const mm = ((t % 12) + 12) % 12;
+  const last = new Date(Date.UTC(yy, mm + 1, 0)).getUTCDate();
+  return `${yy}-${String(mm + 1).padStart(2, '0')}-${String(Math.min(d, last)).padStart(2, '0')}`;
+}
+
+export interface PayoutEvent {
+  dayKey: string;
+  amount: number;
+  kind: 'first' | 'recurring';
+}
+
+/**
+ * Every commission payment a sold meeting has produced so far: the first
+ * month on the sale date, then one each month on the sale-date anniversary
+ * until the contractor cancels. Sales without a monthly fee keep the old
+ * single payment.
+ */
+export function payoutEvents(m: Meeting, now = new Date(), tz = CALL_TZ): PayoutEvent[] {
+  if (!isSold(m) || !m.saleDecidedAt) return [];
+  const start = dayKey(m.saleDecidedAt, tz);
+  const out: PayoutEvent[] = [{ dayKey: start, amount: m.payAmount ?? 0, kind: 'first' }];
+  if (m.monthlyFee == null) return out;
+  const end = dayKey(m.churnedAt ?? now, tz);
+  const todayKey = dayKey(now, tz);
+  const last = end < todayKey ? end : todayKey;
+  const amount = recurringCommission(m.monthlyFee);
+  for (let n = 1; n < 600; n++) {
+    const k = addMonths(start, n);
+    if (k > last) break;
+    out.push({ dayKey: k, amount, kind: 'recurring' });
+  }
+  return out;
 }
 
 /** A meeting that never happened cannot be sold, so it is not pending. */
@@ -39,13 +93,11 @@ export function weekStart(key: string): string {
 
 export const monthOf = (key: string) => key.slice(0, 7);
 
-/** Sum of pay for meetings sold with a decision date in [fromKey, toKey]. */
-export function earnedBetween(meetings: Meeting[], fromKey: string, toKey: string, tz = CALL_TZ): number {
+/** Commission paid in [fromKey, toKey]: first months by sale date plus recurring months. */
+export function earnedBetween(meetings: Meeting[], fromKey: string, toKey: string, tz = CALL_TZ, now = new Date()): number {
   let sum = 0;
   for (const m of meetings) {
-    if (!isSold(m) || !m.saleDecidedAt) continue;
-    const k = dayKey(m.saleDecidedAt, tz);
-    if (k >= fromKey && k <= toKey) sum += m.payAmount ?? 0;
+    for (const e of payoutEvents(m, now, tz)) if (e.dayKey >= fromKey && e.dayKey <= toKey) sum += e.amount;
   }
   return Math.round(sum * 100) / 100;
 }
@@ -128,9 +180,10 @@ export function records(meetings: Meeting[], tz = CALL_TZ): {
   }
   const months = new Map<string, number>();
   for (const m of meetings) {
-    if (!isSold(m) || !m.saleDecidedAt) continue;
-    const mo = monthOf(dayKey(m.saleDecidedAt, tz));
-    months.set(mo, (months.get(mo) ?? 0) + (m.payAmount ?? 0));
+    for (const e of payoutEvents(m, new Date(), tz)) {
+      const mo = monthOf(e.dayKey);
+      months.set(mo, (months.get(mo) ?? 0) + e.amount);
+    }
   }
   let bestWeekKey: string | null = null;
   let bestWeekBookings = 0;

@@ -168,3 +168,27 @@ describe('money on the table queue', () => {
     expect(chancesToBook([item('confirm', null), item('callback', null), item('hot', null), item('rescue', null), item('slipped', null), item('fresh', null)])).toBe(4);
   });
 });
+
+describe('recurring commission (monthly payment tiers)', () => {
+  const now = new Date(LA('2026-12-20T12:00:00'));
+  it('pays 15% then 10% from $2,500, and 10% then 7% below', async () => {
+    const { commissionRates, firstMonthCommission, recurringCommission } = await import('@/lib/setter/money');
+    expect(commissionRates(2500)).toEqual({ first: 0.15, recurring: 0.1 });
+    expect(commissionRates(2499)).toEqual({ first: 0.1, recurring: 0.07 });
+    expect(firstMonthCommission(5000)).toBe(750);
+    expect(recurringCommission(5000)).toBe(500);
+    expect(firstMonthCommission(1000)).toBe(100);
+    expect(recurringCommission(1000)).toBe(70);
+  });
+  it('earns the first month on the sale date then each month they stay', () => {
+    const m = sold('2026-10-15T12:00:00', 750, { monthlyFee: 5000 });
+    expect(earnedBetween([m], '2026-10-01', '2026-10-31', undefined, now)).toBe(750);
+    expect(earnedBetween([m], '2026-11-01', '2026-11-30', undefined, now)).toBe(500);
+    expect(earnedBetween([m], '2026-12-01', '2026-12-31', undefined, now)).toBe(500);
+    expect(earnedBetween([m], '2027-01-01', '2027-01-31', undefined, now)).toBe(0);
+  });
+  it('stops recurring pay once the contractor cancels', () => {
+    const m = sold('2026-10-15T12:00:00', 750, { monthlyFee: 5000, churnedAt: LA('2026-11-20T12:00:00') });
+    expect(earnedBetween([m], '2026-10-01', '2026-12-31', undefined, now)).toBe(1250);
+  });
+});

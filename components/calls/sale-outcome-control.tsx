@@ -9,21 +9,24 @@ import { creditMeeting, recordSale, type PayActionState } from '@/lib/actions/se
 import { formatMoney } from '@/lib/setter/money';
 
 /**
- * Admin-only: did this booked sales meeting sell? "Sold" pays the booking
- * partner their current rate (or the amount typed here) and is stored on the
- * meeting, so later rate changes never rewrite it.
+ * Admin-only: did this booked sales meeting sell? "Sold" takes the contractor's
+ * monthly payment; the booking setter earns 15% of the first month then 10%
+ * monthly ($2,500+), or 10% then 7% (under), until the contractor cancels.
  */
 export function SaleOutcomeControl({
   id,
   outcome,
-  pay,
-  partnerRate,
+  monthlyFee = null,
+  churned = false,
 }: {
   id: string;
   outcome: 'sold' | 'not_sold' | null;
-  pay: number | null;
-  /** The booking partner's current pay per sale, for the placeholder. */
-  partnerRate: number | null;
+  pay?: number | null;
+  partnerRate?: number | null;
+  /** What the sold contractor pays HomeQuote per month (the commission base). */
+  monthlyFee?: number | null;
+  /** The sold contractor has cancelled: recurring commission stopped. */
+  churned?: boolean;
 }) {
   const [state, action, pending] = useActionState<PayActionState, FormData>(recordSale, undefined);
   const [choice, setChoice] = useState<string>(outcome ?? 'undecided');
@@ -46,14 +49,21 @@ export function SaleOutcomeControl({
         <option value="not_sold">Not sold</option>
       </Select>
       {choice === 'sold' ? (
-        <Input
-          name="amount"
-          inputMode="decimal"
-          defaultValue={outcome === 'sold' && pay !== null ? String(pay) : ''}
-          placeholder={partnerRate !== null ? `${formatMoney(partnerRate)} (rate)` : 'Pay $'}
-          aria-label="Setter pay for this sale"
-          className="h-9 w-28 tabular-nums lg:h-8"
-        />
+        <>
+          <Input
+            name="amount"
+            inputMode="decimal"
+            defaultValue={monthlyFee !== null ? String(monthlyFee) : ''}
+            placeholder="Monthly $"
+            aria-label="Contractor's monthly payment"
+            title="What the contractor pays per month. $2,500+: setter gets 15% first month then 10% monthly. Under $2,500: 10% then 7%."
+            className="h-9 w-28 tabular-nums lg:h-8"
+          />
+          <Select name="churned" defaultValue={churned ? '1' : '0'} aria-label="Contractor status" className="h-9 w-auto lg:h-8">
+            <option value="0">Still paying</option>
+            <option value="1">Cancelled</option>
+          </Select>
+        </>
       ) : null}
       <Button type="submit" size="sm" variant="outline" disabled={pending}>
         {pending ? 'Saving…' : 'Save'}

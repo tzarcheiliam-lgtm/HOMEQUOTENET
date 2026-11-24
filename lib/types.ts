@@ -531,6 +531,9 @@ export interface ProspectSalesAppointment {
   sale_decided_at?: string | null;
   sale_decided_by?: string | null;
   setter_pay_amount?: number | string | null;
+  /** Migration 0079: contractor's monthly payment (commission base) and when they cancelled. */
+  monthly_fee?: number | string | null;
+  churned_at?: string | null;
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
