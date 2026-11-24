@@ -197,7 +197,7 @@ export default async function SalesAppointmentsPage({
         title="Sales appointments"
         description={
           isAdmin
-            ? 'Calls booked with contractor prospects. Mark each one Sold or Not sold after the meeting — Sold pays the setter who booked it.'
+            ? 'Calls booked with contractor prospects. Mark each one Sold or Not sold after the meeting — Sold takes the contractor’s monthly payment: the setter earns 15% of month one then 10% monthly ($2,500+), or 10% then 7% (under), until they cancel.'
             : 'Calls booked with contractor prospects. Confirm them the day before; mark the result afterwards. You earn when one sells.'
         }
       >
@@ -362,7 +362,8 @@ export default async function SalesAppointmentsPage({
                         id={a.id}
                         outcome={a.sale_outcome ?? null}
                         pay={payOf(a)}
-                        partnerRate={a.partner_id ? (rateOf.get(a.partner_id) ?? null) : null}
+                        monthlyFee={a.monthly_fee == null ? null : Number(a.monthly_fee)}
+                        churned={!!a.churned_at}
                       />
                       <CreditControl id={a.id} partnerId={a.partner_id} partners={partners} />
                     </div>
@@ -438,7 +439,8 @@ export default async function SalesAppointmentsPage({
                           id={a.id}
                           outcome={a.sale_outcome ?? null}
                           pay={payOf(a)}
-                          partnerRate={a.partner_id ? (rateOf.get(a.partner_id) ?? null) : null}
+                          monthlyFee={a.monthly_fee == null ? null : Number(a.monthly_fee)}
+                          churned={!!a.churned_at}
                         />
                       ) : (
                         a.sale_outcome ? <SaleBadge outcome={a.sale_outcome} pay={payOf(a)} /> : <span className="text-muted-foreground">—</span>

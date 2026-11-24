@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireRole } from '@/lib/auth';
-import { formatMoney } from '@/lib/setter/money';
+import { firstMonthCommission, formatMoney } from '@/lib/setter/money';
 
 /**
  * Administrator controls for setter pay: each partner's pay per sold meeting
@@ -22,8 +22,8 @@ async function audit(action: string, targetUserId: string | null, metadata: Reco
   await supabase.from('audit_logs').insert({ actor_id: user?.id ?? null, action, target_user_id: targetUserId, metadata });
 }
 
-const MIGRATION_HINT = 'Setter pay needs database migration 0062 — apply it, then try again.';
-const needsMigration = (msg: string) => /pay_per_sale|weekly_booking_goal|sale_outcome|setter_pay_amount|sale_decided/.test(msg);
+const MIGRATION_HINT = 'Setter pay needs database migrations 0062 and 0079 — apply it, then try again.';
+const needsMigration = (msg: string) => /pay_per_sale|weekly_booking_goal|sale_outcome|setter_pay_amount|sale_decided|monthly_fee|churned_at/.test(msg);
 
 function revalidateMoney(userId?: string | null) {
   revalidatePath('/app');
@@ -103,24 +103,20 @@ export async function recordSale(_prev: PayActionState, fd: FormData): Promise<P
     prospect: { company_name: string } | null;
   };
 
+  // Commission base: what the contractor pays HomeQuote per month. The setter's
+  // first-month commission is fixed now; later months are computed from it.
   let pay: number | null = null;
+  let fee: number | null = null;
   if (outcome === 'sold') {
     const typed = blankToNull(fd.get('amount'));
-    if (typed !== null) {
-      const n = Number(typed.replace(/[$,]/g, ''));
-      if (!Number.isFinite(n) || n < 0 || n > 100000) return { ok: false, error: 'Enter a pay amount from $0 to $100,000' };
-      pay = Math.round(n * 100) / 100;
-    } else if (meeting.partner_id) {
-      const { data: partner } = await supabase.from('profiles').select('pay_per_sale, full_name').eq('id', meeting.partner_id).maybeSingle();
-      const rate = (partner as { pay_per_sale?: number | string | null } | null)?.pay_per_sale;
-      if (rate === null || rate === undefined) {
-        return { ok: false, error: 'No pay rate is set for this setter. Set their pay per sale on the team board, or type an amount.' };
-      }
-      pay = Number(rate);
-    } else {
-      pay = 0; // nobody to pay: a meeting booked by a since-removed account
+    const n = typed === null ? NaN : Number(typed.replace(/[$,]/g, ''));
+    if (!Number.isFinite(n) || n <= 0 || n > 100000) {
+      return { ok: false, error: "Enter the contractor's monthly payment ($1–$100,000) — commission is a percentage of it" };
     }
+    fee = Math.round(n * 100) / 100;
+    pay = meeting.partner_id ? firstMonthCommission(fee) : 0; // nobody to pay: a since-removed account
   }
+  const churned = outcome === 'sold' && String(fd.get('churned') ?? '0') === '1';
 
   const decided = outcome !== 'undecided';
   const { error } = await supabase
@@ -130,13 +126,15 @@ export async function recordSale(_prev: PayActionState, fd: FormData): Promise<P
       sale_decided_at: decided ? new Date().toISOString() : null,
       sale_decided_by: decided ? me.id : null,
       setter_pay_amount: outcome === 'sold' ? pay : null,
+      monthly_fee: outcome === 'sold' ? fee : null,
+      churned_at: churned ? new Date().toISOString() : null,
       ...(decided && OPEN_STATUSES.includes(meeting.status) ? { status: 'completed' } : {}),
       updated_by: me.id,
     })
     .eq('id', id);
   if (error) return { ok: false, error: needsMigration(error.message) ? MIGRATION_HINT : error.message };
 
-  await audit('sales_appointment.sale', meeting.partner_id, { appointment_id: id, outcome, pay });
+  await audit('sales_appointment.sale', meeting.partner_id, { appointment_id: id, outcome, pay, monthly_fee: fee, churned });
 
   // The partner hears about it in their bell; their dashboard celebrates on next open.
   if (outcome === 'sold' && meeting.partner_id && meeting.sale_outcome !== 'sold') {
@@ -147,7 +145,7 @@ export async function recordSale(_prev: PayActionState, fd: FormData): Promise<P
         user_id: meeting.partner_id,
         type: 'meeting_sold',
         title: `💰 ${company} signed — ${formatMoney(pay ?? 0)} earned`,
-        body: 'A sales meeting you booked was sold. Book the next one.',
+        body: 'A sales meeting you booked was sold. You earn a commission every month they stay. Book the next one.',
         url: '/app',
         entity_id: id,
       })

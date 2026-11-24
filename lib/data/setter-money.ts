@@ -8,6 +8,7 @@ import {
   isPending,
   isSold,
   monthOf,
+  payoutEvents,
   type Meeting,
 } from '@/lib/setter/money';
 
@@ -31,6 +32,8 @@ interface Row {
   sale_outcome?: 'sold' | 'not_sold' | null;
   sale_decided_at?: string | null;
   setter_pay_amount?: number | string | null;
+  monthly_fee?: number | string | null;
+  churned_at?: string | null;
 }
 
 export async function loadMeetings(opts: { partnerId?: string; db?: Db } = {}): Promise<Meeting[]> {
@@ -65,6 +68,8 @@ export async function loadMeetings(opts: { partnerId?: string; db?: Db } = {}): 
     status: r.status,
     saleOutcome: r.sale_outcome ?? null,
     saleDecidedAt: r.sale_decided_at ?? null,
+    monthlyFee: r.monthly_fee == null ? null : Number(r.monthly_fee),
+    churnedAt: r.churned_at ?? null,
     payAmount: r.setter_pay_amount === null || r.setter_pay_amount === undefined ? null : Number(r.setter_pay_amount),
   }));
 }
@@ -182,15 +187,18 @@ export async function getPayouts(month: string): Promise<Payouts> {
   });
 
   const lines: PayoutLine[] = meetings
-    .filter((m) => isSold(m) && m.saleDecidedAt && dayKey(m.saleDecidedAt) >= from && dayKey(m.saleDecidedAt) <= to)
-    .map((m) => ({
-      id: m.id,
-      partnerName: (m.partnerId && byId.get(m.partnerId)?.name) || 'Unassigned',
-      companyName: m.companyName,
-      scheduledAt: m.scheduledAt,
-      decidedAt: m.saleDecidedAt as string,
-      pay: m.payAmount ?? 0,
-    }))
+    .flatMap((m) =>
+      payoutEvents(m)
+        .filter((e) => e.dayKey >= from && e.dayKey <= to)
+        .map((e) => ({
+          id: m.id,
+          partnerName: (m.partnerId && byId.get(m.partnerId)?.name) || 'Unassigned',
+          companyName: e.kind === 'recurring' ? `${m.companyName} (monthly)` : m.companyName,
+          scheduledAt: m.scheduledAt,
+          decidedAt: e.kind === 'first' ? (m.saleDecidedAt as string) : `${e.dayKey}T12:00:00Z`,
+          pay: e.amount,
+        }))
+    )
     .sort((a, b) => a.decidedAt.localeCompare(b.decidedAt));
 
   return {
