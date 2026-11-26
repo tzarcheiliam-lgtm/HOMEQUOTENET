@@ -322,7 +322,11 @@ Lives at `/app/calls` (admin/caller/setter).
   `[Your Name]`, `[trade]` from the prospect, the caller and the niche
   (`tradeFromNiche`); any other `[bracket]` is a detail the owner hasn't decided and is
   highlighted, never filled with a guess. No fixed price anywhere (the old pool-only
-  "$125 per appointment" framework was replaced 2026-10-28). Test: `tests/call-script.test.tsx`.
+  "$125 per appointment" framework was replaced 2026-10-28). Since 2026-11-26 the
+  offer is a **flat monthly retainer** (we run the ads, call and qualify every lead,
+  book onto the contractor's calendar; ad budget separate) instead of pay-per-appointment,
+  with a 7-point "qualified appointment" standard (`CALL_SCRIPT.qualified`) and the
+  "I don't do retainers" / "word of mouth" objections. Test: `tests/call-script.test.tsx`.
 - Views in the UI are just filters over one table: My list / Liam's / Nadav's
   / All / New / Callbacks due / Interested / Booked / Do not call.
 - `caller`/`admin` are the only assignable roles for prospects

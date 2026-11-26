@@ -8,11 +8,13 @@ const allText = (): string[] => {
   return [
     s.goal,
     s.offer,
+    ...s.qualified,
     ...s.openers.map((o) => o.text),
     s.afterOpener,
     s.pitch,
     s.pitchQuestion,
     ...s.qualify,
+    s.qualifyTip,
     s.roi,
     s.close,
     s.closeTip,
@@ -30,9 +32,10 @@ describe('call script content', () => {
   it('uses only placeholders the page fills or the owner still has to decide', () => {
     const filled = ['[Name]', '[Owner Name]', '[Company]', '[Your Name]', '[trade]', '[their trade]'];
     const toDecide = [
-      '[Thursday]', '[$ average job]', '[X]', '[tomorrow at 10]', '[Friday afternoon]', '[specific day/time]',
-      '[How billing works: invoice, card, how often.]', '[test size]', '[X days]', '[Exclusive or shared in this area.]',
-      '[Timeline to first appointment.]', '[number]', '[day]',
+      '[Thursday]', '[$X]', '[one / two]', '[client / case study]', '[tomorrow at 10]', '[Friday afternoon]',
+      '[specific day/time]', '[How billing works: invoice, card, how often.]', '[contract length and how to cancel]',
+      '[How no-shows are handled.]', '[Exclusive or shared in this area.]', '[Timeline to first appointment.]',
+      '[number]', '[day]',
     ];
     const used = new Set(allText().flatMap((t) => t.match(/\[[^\]]+\]/g) ?? []));
     for (const p of used) expect([...filled, ...toDecide]).toContain(p);
@@ -40,6 +43,15 @@ describe('call script content', () => {
 
   it('never quotes a fixed price', () => {
     for (const t of allText()) expect(t).not.toMatch(/\$\d/);
+  });
+
+  it('pitches the flat monthly retainer, not pay-per-appointment', () => {
+    expect(CALL_SCRIPT.offer).toMatch(/flat monthly retainer/i);
+    for (const t of allText()) expect(t).not.toMatch(/pay(ing)? (only )?per appointment|you don’t pay for it/i);
+  });
+
+  it('spells out all seven parts of a qualified appointment', () => {
+    expect(CALL_SCRIPT.qualified).toHaveLength(7);
   });
 
   it('answers the questions callers get asked', () => {
@@ -57,7 +69,7 @@ describe('fillScript', () => {
     expect(fillScript('Is [Owner Name] around?', vars)).toBe('Is Dana Reyes around?');
   });
   it('leaves unknown values and decisions as brackets', () => {
-    expect(fillScript('Hey [Name], within [X days].', {})).toBe('Hey [Name], within [X days].');
+    expect(fillScript('Hey [Name], like [client / case study].', {})).toBe('Hey [Name], like [client / case study].');
   });
 });
 
@@ -89,7 +101,9 @@ describe('<CallScript>', () => {
     expect(html).toContain('Prospect Q&amp;A');
     expect(html).toContain('What’s a booked appointment?');
     expect(html).not.toContain('[Name]');
-    expect(html).toMatch(/<mark[^>]*>\[X days\]<\/mark>/);
+    expect(html).toContain('know a pool pro is coming to quote');
+    expect(html).toContain('I don’t do retainers.');
+    expect(html).toMatch(/<mark[^>]*>\[client \/ case study\]<\/mark>/);
     expect(html).not.toContain('$125');
   });
 });

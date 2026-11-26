@@ -1,8 +1,8 @@
 /**
  * The cold-call script shown beside every call (components/calls/call-script.tsx).
- * Source: the owner's "HomeQuote Cold Call Script" plus the prospect Q&A, kept
- * word for word. Placeholders stay in [brackets]: fillScript() fills the ones
- * the call page knows (the contact, company, caller and trade); the rest are
+ * Source: the owner's "HomeQuote Cold Call Script" (flat monthly retainer
+ * version, 2026-11-26) plus the prospect Q&A, lightly tightened. Placeholders
+ * stay in [brackets]: fillScript() fills the ones the call page knows (the contact, company, caller and trade); the rest are
  * details the owner still has to decide, and the panel highlights them so a
  * caller never reads a bracket out loud.
  */
@@ -18,9 +18,20 @@ export interface ScriptQA {
 }
 
 export const CALL_SCRIPT = {
-  goal: 'Get a 15-minute follow-up booked. Not to close on the phone.',
+  goal: 'Get a 10-minute follow-up booked. Not to close on the phone.',
   offer:
-    'Qualified, booked appointments delivered to you. You pay per appointment. If it no-shows, you don’t pay and it gets replaced.',
+    'I run your ads, call and qualify every lead, and book the good ones straight onto your company’s calendar. Flat monthly retainer, you just show up and close.',
+
+  /** What a "qualified appointment" means. Know it cold, say it with confidence. */
+  qualified: [
+    'They own the home. No renters, no “asking for my landlord.”',
+    'They want the work done now, or within the next 3 to 6 months. Not “just curious,” not “someday.”',
+    'The project matches your trade and the type of job you want more of.',
+    'It’s in your service area.',
+    'They have a realistic budget for the job, and we’ve talked numbers before you show up.',
+    'Every decision-maker will be there (spouse, partner) so you’re not doing the pitch twice.',
+    'They confirmed a specific day and time and know a [trade] pro is coming to quote.',
+  ],
 
   openers: [
     {
@@ -39,7 +50,7 @@ export const CALL_SCRIPT = {
   afterOpener: 'Then STOP TALKING. Let them respond. The silence is the point.',
 
   pitch:
-    'Appreciate it. What I do is simple: I get qualified appointments booked straight onto your calendar. Homeowners who already want a quote on [their trade]. All you do is show up. You pay per appointment, not a retainer, not a monthly fee for ‘maybe leads.’ And if an appointment doesn’t show for any reason, you don’t pay for it, and I replace it. You don’t do any work. No ads, no chasing, no follow-up calls. You show up to the appointment and quote the job.',
+    'Appreciate it. What I do is simple: I get qualified appointments booked straight onto your company’s calendar. Homeowners who already want a quote on [their trade]. And when I say qualified, I mean they own the home, they want it done now or in the next 3 to 6 months, they’re in your area, they have the budget, and both decision-makers will be there. I run the ads, I call every lead myself, and I only book the ones with a real project and a budget. Not a list of ‘maybe leads’ you have to chase. It’s a flat monthly retainer, and we’ve done it for [trade] guys like [client / case study]. No ads, no chasing, no follow-up calls on your end. You show up to the appointment and quote the job.',
   pitchQuestion: 'Quick question, are you taking on more jobs right now, or are you full for the next couple months?',
 
   qualify: [
@@ -48,10 +59,11 @@ export const CALL_SCRIPT = {
     'Where are your jobs coming from right now: referrals, Google, Angi/Thumbtack?',
     'What’s a job worth to you when you close one?',
   ],
-  roi: 'So if an average job is [$ average job] … [X]. That math works, and if one no-shows, it costs you nothing.',
+  qualifyTip: 'The last one sets up the ROI math below. Use their number, not yours.',
+  roi: 'So if an average job is [$X], closing [one / two] extra jobs a month more than covers it. That math works, and you’re not paying for leads you have to chase, only for a calendar that’s already booked.',
 
   close:
-    'Here’s what I’d suggest: let me jump on a quick 10-minute call so I can show you exactly how it works and what an appointment costs in your area. Are you free [tomorrow at 10] or would [Friday afternoon] be better?',
+    'Here’s what I’d suggest: let me jump on a quick 10-minute call so I can show you exactly how it works and what it would look like in your area. Are you free [tomorrow at 10] or would [Friday afternoon] be better?',
   closeTip:
     'Always offer two times. Never ask “when are you free?” If they say yes: confirm the best number and email, and send a calendar invite while still on the call.',
 
@@ -62,15 +74,23 @@ export const CALL_SCRIPT = {
     },
     {
       q: 'I’ve been burned by lead companies.',
-      a: 'That’s exactly why I do it differently. You never pay for a lead, only for a real appointment that actually shows up. If they don’t show, you don’t pay. The risk is on me, not you.',
+      a: 'That’s exactly why I do it differently. I don’t sell you leads. I run the ads for you, call every lead myself, and only book homeowners with a real project, a budget, and a time they confirmed. You never chase anyone.',
     },
     {
       q: 'How much?',
-      a: 'It depends on the trade and your area, which is why I’d like 10 minutes to give you a real number instead of guessing. It’s pay-per-appointment, so there’s no monthly commitment. When are you free?',
+      a: 'It depends on the trade and your area, which is why I’d like 10 minutes to give you a real number instead of guessing. It’s a flat monthly retainer, and your ad budget goes straight to the ads. When are you free?',
+    },
+    {
+      q: 'I don’t do retainers.',
+      a: 'I get it, most retainers pay for ‘activity.’ Mine pays for booked appointments on your company’s calendar, and you’ll see every lead and every call. If one extra job a month covers it, is it worth 10 minutes to see the numbers? Thursday or Friday?',
+    },
+    {
+      q: 'I get all my work from word of mouth / referrals.',
+      a: 'That’s awesome, it means you do good work. Can I ask you something though: what happens when the referrals slow down? Word of mouth is great until it isn’t. You can’t turn it up when you need it, and one slow season can leave you with no jobs lined up and your guys sitting around. This doesn’t replace your referrals, it’s a steady stream on top of them that you control. Worth 10 minutes to see what that looks like? Thursday or Friday?',
     },
     {
       q: 'Send me an email.',
-      a: 'Happy to. So I send you the right thing, what’s the one thing you’d want to know: pricing, how the appointments are qualified, or how the guarantee works? (Then:) And let’s put 10 minutes on the calendar to go through it, so it doesn’t get buried. Thursday or Friday?',
+      a: 'Happy to. So I send you the right thing, what’s the one thing you’d want to know: pricing, how the appointments are qualified, or results we’ve gotten for other [trade] guys? (Then:) And let’s put 10 minutes on the calendar to go through it, so it doesn’t get buried. Thursday or Friday?',
     },
     {
       q: 'I’m too busy.',
@@ -78,15 +98,15 @@ export const CALL_SCRIPT = {
     },
     {
       q: 'How do you get the appointments?',
-      a: 'I run the marketing and do the screening on my end, so by the time it hits your calendar it’s a homeowner with a real project, a budget, and a time they confirmed. I’ll walk you through the exact process on the 10-minute call.',
+      a: 'I run the marketing and do the screening on my end, so by the time it hits your company’s calendar it’s someone who owns the home, wants the work done in the next 3 to 6 months, has the budget, and confirmed a time with every decision-maker there. I’ll walk you through the exact process on the 10-minute call.',
     },
     {
       q: 'What if the appointment is bad?',
-      a: 'Same deal as a no-show: if it doesn’t meet what we agreed on, you don’t pay and I replace it.',
+      a: 'Then I want to hear about it. We agree up front on what a qualified appointment is, and I screen every one against that before it hits your company’s calendar. Bad ones get flagged and I tighten the targeting.',
     },
     {
       q: 'I already have a marketing guy.',
-      a: 'Great, this isn’t a replacement. It’s extra appointments with no retainer and no risk. Worst case you pay nothing.',
+      a: 'Great, this isn’t a replacement for everything he does. Does he also call your leads and book them on your company’s calendar? That’s the part most guys are missing.',
     },
     {
       q: 'Is this a scam?',
@@ -104,15 +124,15 @@ export const CALL_SCRIPT = {
         },
         {
           q: 'What do you mean by “qualified”?',
-          a: 'Six things: it’s the homeowner or the person who decides, the contact info is real, the house is in your area, it’s a job you actually do, it’s a real project and not a price check, and they agreed to a set time. We write your exact standard down together before anything starts.',
+          a: 'They own the home, they want it done now or in the next 3 to 6 months, it’s a job you want in your area, they have a realistic budget and we’ve talked numbers, every decision-maker will be there, and they confirmed a day and time. We write your exact standard down together before anything starts.',
         },
         {
           q: 'So it’s just leads?',
-          a: 'No. A lead is a phone number you chase. This is a time on your calendar with a homeowner who’s expecting you. You pay for the appointment, not the inquiry.',
+          a: 'No. A lead is a phone number you chase. This is a time on your calendar with a homeowner who’s expecting you. We do the chasing, you do the quoting.',
         },
         {
           q: 'How is this different from Angi, Thumbtack or HomeAdvisor?',
-          a: 'Those sell you contact info and you race to call it back. We do the calling, the screening and the scheduling, and you only pay once there’s a real appointment on your calendar. What do you use now?',
+          a: 'Those sell you contact info, often to three other guys, and you race to call it back. We run your ads, do the calling, the screening and the scheduling, and you get appointments on your calendar. What do you use now?',
         },
         {
           q: 'Who are you guys?',
@@ -125,23 +145,23 @@ export const CALL_SCRIPT = {
       items: [
         {
           q: 'How do you do it? / Walk me through it.',
-          a: 'Four steps. One, we agree your trade, area, the jobs you want and when you’re available. Two, we run ads that bring homeowners in your area to ask for a quote. Three, we contact them, check they fit, and book a day and time. Four, you show up, quote it, and close it. The job’s yours.',
+          a: 'Four steps. One, we agree your trade, area, the jobs you want and when you’re available. Two, we run ads that bring homeowners in your area to ask for a quote. Three, we call them, check they fit, and book a day and time. Four, you show up, quote it, and close it. The job’s yours.',
         },
         {
           q: 'Where do the homeowners come from?',
-          a: 'Our own ads, mostly Facebook and Instagram, sending homeowners to our quote pages where they fill out their project. They come to us asking for a quote. No bought lists, ever.',
+          a: 'Ads we run for you, mostly Facebook and Instagram, sending homeowners to quote pages where they fill out their project. They come asking for a quote. No bought lists, ever.',
         },
         {
           q: 'What do you ask them?',
-          a: 'What the project is, their ZIP and address, whether they own the home, and when they want to start. Then we confirm a time that works for them and for you.',
+          a: 'What the project is, their ZIP and address, whether they own the home, when they want to start, their budget, and who else needs to be there. Then we confirm a time that works for them and for you.',
         },
         {
           q: 'Are these people ready, or just price shopping?',
-          a: 'We screen for that. If they’re just checking prices on work they’re not planning to do, it doesn’t count as a qualified appointment and you don’t pay for it.',
+          a: 'We screen for that. If they’re just checking prices on work they’re not planning to do in the next 3 to 6 months, they don’t get booked.',
         },
         {
           q: 'Who talks to the homeowner? Is it a robot?',
-          a: 'They hear from us within minutes, usually by text first. Part of that first reply is automated so nobody waits. A person on our team confirms the appointment before it goes on your calendar.',
+          a: 'They hear from us within minutes, usually by text first. Part of that first reply is automated so nobody waits. A person on our team calls them and confirms the appointment before it goes on your calendar.',
         },
         {
           q: 'How does it get on my calendar?',
@@ -149,11 +169,11 @@ export const CALL_SCRIPT = {
         },
         {
           q: 'What info do I get?',
-          a: 'The homeowner’s name, phone and address, the type of project, when they want to start, and anything they told us. You walk in knowing the job.',
+          a: 'The homeowner’s name, phone and address, the type of project, when they want to start, their budget, and anything they told us. You walk in knowing the job. And you can see every lead and every call.',
         },
         {
           q: 'How many appointments can you get me?',
-          a: 'Depends on your area and the jobs you want, and I won’t make up a number. That’s why we start with a small test, so you see real numbers before you commit to more.',
+          a: 'Depends on your area, your ad budget and the jobs you want, and I won’t make up a number. I’ll show you what it would look like in your area on the 10-minute call.',
         },
       ],
     },
@@ -162,27 +182,27 @@ export const CALL_SCRIPT = {
       items: [
         {
           q: 'How much?',
-          a: 'Depends on the trade and your area, so I’d rather give you a real number on the 10-minute call than guess. It’s per appointment, no monthly fee.',
+          a: 'Depends on the trade and your area, so I’d rather give you a real number on the 10-minute call than guess. It’s a flat monthly retainer, and your ad budget goes straight to the ads.',
+        },
+        {
+          q: 'Is the ad budget included?',
+          a: 'No, it’s separate, and every dollar of it goes to the ads, not to me. We set the amount together based on your area and how many jobs you want.',
         },
         {
           q: 'Is there a contract?',
-          a: 'There’s a short written agreement so we’re both clear: what counts as qualified, your area, your price, and what happens with no-shows. No retainer, no monthly fee.',
-        },
-        {
-          q: 'Do I pay anything up front?',
-          a: 'No buying a batch of leads up front. You pay per appointment.',
+          a: 'There’s a short written agreement so we’re both clear: what counts as qualified, your area, your price, and [contract length and how to cancel].',
         },
         {
           q: 'Do I still pay if I don’t close the job?',
-          a: 'Yes. You’re paying for a qualified appointment, not the sale. The close is your part. Your price, your pitch, and the profit stays all yours.',
+          a: 'Yes. The retainer covers the ads, the calling and the booking, not the sale. The close is your part. Your price, your pitch, and the profit stays all yours.',
         },
         {
           q: 'How do I pay?',
           a: '[How billing works: invoice, card, how often.] I’ll walk you through it on the 10-minute call.',
         },
         {
-          q: 'Can I just try it first?',
-          a: 'Yes, that’s how we recommend starting: a small test, [test size], so you can judge it against your own numbers before you do more.',
+          q: 'Why a retainer and not pay per lead?',
+          a: 'Pay-per-lead means someone’s paid to send you more names, good or bad. A retainer means my job is filling your calendar with appointments that meet the standard we agreed. If one extra job a month covers it, the math works.',
         },
       ],
     },
@@ -191,11 +211,11 @@ export const CALL_SCRIPT = {
       items: [
         {
           q: 'What if they don’t show up?',
-          a: 'You don’t pay for it, and we replace it. You just let us know within [X days].',
+          a: 'Every one confirmed a day and time with every decision-maker, so it shouldn’t happen often. How no-shows are handled is written into your agreement up front: [How no-shows are handled.]',
         },
         {
           q: 'What if it’s a bad appointment, or a job I don’t do?',
-          a: 'If it doesn’t meet the standard we agreed, you flag it within [X days], we check the booking, and it’s replaced or credited. That rule is in writing before you ever get one.',
+          a: 'Then I want to hear about it. We agree up front on what qualified means, I screen every one against it, and bad ones get flagged so I tighten the targeting.',
         },
         {
           q: 'Are the appointments only mine, or do you send them to other contractors?',
@@ -203,11 +223,11 @@ export const CALL_SCRIPT = {
         },
         {
           q: 'Can you guarantee me jobs?',
-          a: 'No, and be careful of anyone who does. What I guarantee is that every appointment you pay for met the standard we agreed. Closing it is on you.',
+          a: 'No, and be careful of anyone who does. What I stand behind is that every appointment met the standard we agreed. Closing it is on you.',
         },
         {
           q: 'What if the homeowner reschedules?',
-          a: 'Reschedules and cancellations are handled by the same written rules as no-shows, so there’s no arguing after the fact.',
+          a: 'Reschedules and cancellations are handled by the same written rules as no-shows, agreed up front, so there’s no arguing after the fact.',
         },
       ],
     },
@@ -232,7 +252,7 @@ export const CALL_SCRIPT = {
         },
         {
           q: 'Who else do you work with? Got references?',
-          a: 'I don’t share other contractors’ names without their OK. The best proof is a small test with your own numbers. Want to start there?',
+          a: 'We’ve done it for [trade] guys like [client / case study]. I’ll walk you through real numbers on the 10-minute call.',
         },
         {
           q: 'Can I use my own CRM?',
@@ -253,33 +273,34 @@ export const CALL_SCRIPT = {
     },
     {
       label: 'If the owner isn’t available',
-      text: 'No problem. When’s the best time to catch him/her? I’ll call back then.',
+      text: 'No problem. When’s the best time to catch them? I’ll call back then.',
     },
   ] satisfies ScriptLine[],
 
   voicemail:
-    'Hey [Name], it’s [Your Name] with HomeQuote. This is a cold call, I’ll be honest. I book qualified appointments for [trade] contractors, you only pay when an appointment shows up. If it’s not a fit, no worries. If you want to hear how it works, call or text me at [number]. Again, [Your Name], [number]. Have a good one.',
+    'Hey [Name], it’s [Your Name] with HomeQuote. This is a cold call, I’ll be honest. I book qualified appointments for [trade] contractors: I run the ads, call the leads, and put the good ones on your company’s calendar. If it’s not a fit, no worries. If you want to hear how it works, call or text me at [number]. Again, [Your Name], [number]. Have a good one.',
 
   followUpText:
-    'Hey [Name], [Your Name] from HomeQuote, just tried you. I book qualified appointments for [trade] contractors. You only pay per appointment that actually shows. Worth a 10-minute call? Free [day] or [day]?',
+    'Hey [Name], [Your Name] from HomeQuote, just tried you. I book qualified appointments for [trade] contractors: I run the ads, call the leads, and put the good ones on your calendar. Worth a 10-minute call? Free [day] or [day]?',
 
   rules: [
     'Say the opener slow. Fast = telemarketer. Slow = confident.',
     'Never say “How are you today?” It’s the number one tell of a cold call.',
     'Every turn ends in a question. The person asking the questions controls the call.',
-    'Name the risk reversal early and clearly: pay per appointment, no-show = no charge + replacement.',
+    'Know the qualified standard cold and say it with confidence: owns the home, 3 to 6 months, budget, every decision-maker there. That’s what separates us from a lead company.',
+    'Get their average job value early. The ROI line only lands with their number.',
     'Don’t over-explain. The call’s job is the 10-minute follow-up.',
     'Log every call: answered, conversation, booked, objection heard. After 50 calls you’ll know which opener and objection response need fixing.',
   ],
 
   neverSay: [
     'Guaranteed jobs, sales, revenue or a close rate.',
-    'That homeowners always show up. Say what happens when they don’t.',
-    'A price you weren’t given.',
+    'That homeowners always show up.',
+    'A price you weren’t given, for the retainer or the ad budget.',
     '“Exclusive” or “only yours” unless it’s confirmed for that area.',
     'Names of contractors we work with, or results, unless approved.',
     'A number of appointments per month.',
-    'That a person does every step. The first reply is partly automated; a person confirms the booking.',
+    'That a person does every step. The first reply is partly automated; a person calls and confirms the booking.',
   ],
 } as const;
 

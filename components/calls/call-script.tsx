@@ -3,8 +3,9 @@ import { CALL_SCRIPT, fillScript, splitPlaceholders, type ScriptVars } from '@/l
 
 /**
  * The cold-call script beside every call, laid out to be scanned mid-call:
- * the opener and pitch open, everything else (questions, close, objections,
- * prospect Q&A, gatekeeper, voicemail, text, rules) one tap away. The
+ * the opener and pitch open, everything else (the qualified standard,
+ * questions, close, objections, prospect Q&A, gatekeeper, voicemail, text,
+ * rules) one tap away. The
  * contact, company, caller and trade are filled in; any [blank] still left is
  * highlighted so it is never read out loud.
  */
@@ -22,6 +23,14 @@ export function CallScript({ vars = {} }: { vars?: ScriptVars }) {
         </p>
       </CardHeader>
       <CardContent className="space-y-2 text-sm">
+        <Section title="What “qualified” means (know it cold)">
+          <ol className="list-decimal space-y-1 pl-5">
+            {s.qualified.map((q) => (
+              <li key={q}>{say(q)}</li>
+            ))}
+          </ol>
+        </Section>
+
         <Section title="1. Opener" open>
           <ul className="space-y-2">
             {s.openers.map((o) => (
@@ -51,6 +60,7 @@ export function CallScript({ vars = {} }: { vars?: ScriptVars }) {
               </li>
             ))}
           </ul>
+          <p className="text-xs text-muted-foreground">{s.qualifyTip}</p>
           <p className="text-xs font-medium text-muted-foreground">ROI close-the-gap line:</p>
           <Quote>{say(s.roi)}</Quote>
         </Section>
